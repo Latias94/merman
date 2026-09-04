@@ -23,6 +23,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "",
         "values": [
           -2.5,
           0.75,

@@ -48,32 +48,6 @@ pub(super) fn render_class_namespace_cluster_group(
         .unwrap_or_default())
 }
 
-pub(super) fn render_class_elk_subgraphs(
-    out: &mut impl SvgOutput,
-    content_bounds: &mut Option<Bounds>,
-    clusters: &[LayoutCluster],
-    ctx: ClassNamespaceClusterGroupContext<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
-) -> crate::Result<std::time::Duration> {
-    let clusters_start = ctx.timing.start();
-    out.push_str(r#"<g class="subgraphs">"#);
-    out.checkpoint()?;
-    for cluster in clusters {
-        out.push_str(r#"<g class="subgraph">"#);
-        let typography = render_class_namespace_cluster(out, content_bounds, cluster, ctx)?;
-        out.push_str("</g>");
-        out.checkpoint()?;
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_namespace(&cluster.id, typography);
-        }
-    }
-    out.push_str("</g>");
-    out.checkpoint()?;
-    Ok(clusters_start
-        .map(|start| start.elapsed())
-        .unwrap_or_default())
-}
-
 fn render_class_namespace_cluster(
     out: &mut impl SvgOutput,
     content_bounds: &mut Option<Bounds>,

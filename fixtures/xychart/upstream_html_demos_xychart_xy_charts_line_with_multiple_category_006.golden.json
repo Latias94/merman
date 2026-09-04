@@ -27,6 +27,7 @@
     "plots": [
       {
         "type": "line",
+        "title": "sample line",
         "values": [
           52.0,
           96.0,

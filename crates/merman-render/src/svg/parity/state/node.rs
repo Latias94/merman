@@ -74,6 +74,7 @@ pub(super) fn render_state_node_svg(
     };
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
+    let effective_look = state_effective_look(ctx);
     let node_style = ctx.style_plan.node(node_id);
     let compatibility = ctx.style_plan.compatibility();
     let node_text_style = node_style
@@ -109,7 +110,7 @@ pub(super) fn render_state_node_svg(
 
     match node.shape.as_str() {
         "stateStart" => {
-            if data_look == "handDrawn" {
+            if effective_look == "handDrawn" {
                 let key = StateRoughCacheKey {
                     tag: 7,
                     a: 14.0f64.to_bits(),
@@ -309,7 +310,10 @@ pub(super) fn render_state_node_svg(
                 escape_attr(outer_fill),
                 fill_path_style_escaped,
                 outer_d.as_str(),
-                escape_attr(outer_stroke),
+                // Mermaid's stateEnd outer path keeps the compatibility stroke as its
+                // presentation attribute. A classDef override is emitted in `style`, where it
+                // can override that fallback without changing the terminal's base SVG shape.
+                escape_attr(&compatibility_outer_stroke),
                 fmt(outer_stroke_width),
                 stroke_path_style_escaped,
                 inner_d.as_str(),
@@ -1039,7 +1043,7 @@ pub(super) fn render_state_node_svg(
                 )
             };
 
-            if data_look != "handDrawn" {
+            if effective_look != "handDrawn" {
                 let effect_filter = if let Some(binding) =
                     node_style.and_then(crate::state::StateNodeStylePlan::effect)
                 {
@@ -1077,7 +1081,7 @@ pub(super) fn render_state_node_svg(
                     .map(|(_, _, attr, _)| attr.as_str())
                     .unwrap_or_default();
                 let rect_radius = radius_override
-                    .unwrap_or_else(|| if data_look == "neo" { 3.0 } else { 5.0 })
+                    .unwrap_or_else(|| if effective_look == "neo" { 3.0 } else { 5.0 })
                     .max(0.0);
                 let rect_style = escape_xml_display(&shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);

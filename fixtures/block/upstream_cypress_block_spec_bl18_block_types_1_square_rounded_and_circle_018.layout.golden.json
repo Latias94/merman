@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "A",
-          "x": 28.08,
+          "x": 40.08,
           "y": 0.0,
-          "width": 56.16,
+          "width": 80.16,
           "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 92.24,
+          "x": 128.24,
           "y": 0.0,
-          "width": 56.16,
+          "width": 80.16,
           "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 156.4,
+          "x": 216.4,
           "y": 0.0,
-          "width": 56.16,
+          "width": 80.16,
           "height": 44.48,
           "is_cluster": false
         }
@@ -33,14 +33,14 @@
         {
           "id": "A",
           "allocated": {
-            "x": 28.08,
+            "x": 40.08,
             "y": 0.0,
-            "width": 56.16,
+            "width": 80.16,
             "height": 44.48
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 56.16,
+            "width": 80.16,
             "height": 44.48,
             "radius": 0.0,
             "kind": "basic"
@@ -49,14 +49,14 @@
         {
           "id": "B",
           "allocated": {
-            "x": 92.24,
+            "x": 128.24,
             "y": 0.0,
-            "width": 56.16,
+            "width": 80.16,
             "height": 44.48
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 56.16,
+            "width": 80.16,
             "height": 44.48,
             "radius": 5.0,
             "kind": "basic"
@@ -65,23 +65,23 @@
         {
           "id": "C",
           "allocated": {
-            "x": 156.4,
+            "x": 216.4,
             "y": 0.0,
-            "width": 56.16,
+            "width": 80.16,
             "height": 44.48
           },
           "boundary": {
             "shape": "circle",
             "radius": 22.24,
             "width_attribute": 44.48,
-            "height_attribute": 32.0
+            "height_attribute": 44.48
           }
         }
       ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -22.24,
-        "max_x": 184.48,
+        "max_x": 256.48,
         "max_y": 22.24
       }
     }

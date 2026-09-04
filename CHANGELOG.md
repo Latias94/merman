@@ -4,12 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0-alpha.6] - Unreleased
 
-The next workspace release remains in development. This section records only completed user-visible outcomes since alpha.5; its final version and release scope have not been selected.
+Alpha.6 is a deliberately breaking prerelease that advances Mermaid compatibility to 11.17.2, makes long-running work easier to control, expands terminal output, and brings first-party integrations onto more consistent contracts. This entry still describes a source candidate: no alpha.6 channel is considered published until the exact tagged commit passes release preflight and its independently owned publication is authorized. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).
 
-### Typst Package 0.3.0
+### Highlights
 
+- Mermaid compatibility now follows the 11.17.2 behavior graph, including ER subgraphs, collapsed Flowchart subgraphs, new Flowchart shapes, XYChart legends, and the latest C4, Class, requirement, and ELK rendering contracts.
+- Rust and the first-party bindings now share one operation-scoped execution model, with explicit cancellation, deadlines, resource policy, and structured failure details carried through each supported transport.
+- Terminal rendering now has grapheme-aware plans, terminal-width profiles, styled encodings, broader diagram-family coverage, structured-text fallbacks, and configurable Flowchart label wrapping.
+- Editor integrations now combine parser-backed semantic snapshots with Tree-sitter-owned syntax highlighting, including incremental native LSP and browser-worker paths that no longer require full analysis on every keystroke.
+- New first-party delivery surfaces include experimental Node.js 22+ native and WASM packages, checked rustdoc SVG fragments, richer Playground exports and sharing, and an independently versioned Typst 0.3.0 candidate.
+- Wrapper-specific native profiles and explicit ELK opt-in make default artifacts smaller and their licensing boundary clearer without reducing the documented wrapper capability set.
 - Rebuilt the Typst package after removing ICU4X collation data and generated font-metric tables from the production WebAssembly closure. The package now uses Merman's deterministic Unicode-aware measurement fallback and retains Typst plugin ABI 3. The host measurement callback seam remains available to other transports that can provide that service; the Typst package itself is deterministic-only. This materially reduces the downloaded WASM without changing the exported theme-operation protocol.
 
 ### Breaking changes
@@ -61,21 +67,14 @@ The next workspace release remains in development. This section records only com
 - Removed the stateful Rust `DocumentWorkspace` map and `DocumentAnalysisOutcome` wrapper. Editor hosts now call `analyze_document_snapshot_with_shared_text` or `analyze_document_context_with_shared_text` and own URI/version storage themselves. The cancellable context function preserves cooperative cancellation as the outer result and resource rejection as the inner result; no deprecated alias or compatibility cache remains. See the [unreleased upgrade guide](docs/release/UNRELEASED_UPGRADE_GUIDE.md).
 - The Flutter/Dart package now uses `package_ffi` and Native Assets with Dart 3.10 / Flutter 3.38 minimums. Legacy Flutter plugin registrars and platform-specific CocoaPods, SwiftPM, Gradle, CMake, and desktop wrapper glue are removed; `Merman.open()` remains the default API and `openMermanLibrary()` is removed.
 - Replaced ASCII's single grid ceiling with a typed six-phase resource policy, added an explicit terminal-width profile, and expanded ASCII errors and diagnostics with stable resource details. Flowchart edge semantics, Gantt constraints, Timeline/Journey ownership, ER declaration order, and the terminal output of the common diagram families have consequently changed; consumers that compare ASCII bytes should refresh their snapshots.
-
 ### Added
 
-- Added production Tree-sitter syntax highlighting to the native LSP and Playground. Both adapters
-  consume the canonical `tree-sitter-mermaid` grammar and portable highlight query; the Playground
-  loads the distribution WASM and runs incremental syntax parsing in a dedicated browser worker.
-  The independently versioned grammar is published as the `tree-sitter-mermaid` crate and the
-  `@mermanjs/tree-sitter-mermaid` npm package; its standalone GitHub Release remains deferred.
-- Added the experimental public `@mermanjs/node` alpha package group for Node.js 22 and newer on macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The root loader selects one exact-version native package and exposes deterministic static SVG plus metadata/layout operations without a postinstall downloader or browser-WASM fallback.
-- Added grapheme-aware terminal plans, checked six-phase ASCII resource descriptors, parser-backed semantic evidence for the diagrammatic families, and explicit structured-text projections for Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and TreeView.
-- Added configurable terminal-cell wrapping for ordinary Flowchart node labels, including the Issue #53 regression fixture and binding JSON snake/camel aliases.
-- Added family-local canonical/compact ASCII layout admission for Flowchart and Sequence,
-  terminal-native ANSI16 semantic roles, schema-2 output encoding metadata, Plain-only CLI reports
-  and viewport fallback, and capability preflight for layout, width, and encoding combinations.
-- Added `merman-cli rustdoc build/check` as a checked static-fragment workflow. Crates can commit deterministic light/dark SVG Markdown, consume it through Rust's native `include_str!`, verify freshness in CI, and build hosted documentation without adding a Merman renderer or proc macro to the consuming Cargo graph.
+- Added production Tree-sitter highlighting to the native LSP and Playground through the canonical `tree-sitter-mermaid` grammar, portable query, and incremental browser worker; the grammar keeps independent Cargo/npm versioning.
+- Added the experimental `@mermanjs/node` package group for Node.js 22+ across macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC, plus an opt-in Node-targeted `@mermanjs/node-wasm` package. The native loader selects an exact-version platform package and never downloads binaries at install time.
+- Added grapheme-aware ASCII plans, canonical/compact Flowchart and Sequence layouts, ANSI16 semantic roles, schema-2 output encoding, structured-text projections for non-diagrammatic families, and configurable Flowchart label wrapping for Issue #53.
+- Added `merman-cli rustdoc build/check` for checked static SVG fragments that can be committed, freshness-checked in CI, and included by Rust documentation without adding a renderer or proc macro to the consumer graph.
+- Added Playground export previews for SVG/raster/document outputs, reproducible share URLs, and an infinite-canvas viewport that keeps editor pan/zoom state separate from exported geometry.
+- Prepared independently versioned Typst package `0.3.0` with Typst plugin ABI `2` and a smaller deterministic WASM closure after removing ICU collation data and generated font-metric tables; the published Typst channel remains separate from the workspace release.
 
 ### Changed
 
@@ -100,6 +99,28 @@ The next workspace release remains in development. This section records only com
 - Native Assets eliminates Flutter's legacy Linux Windows-wrapper linkage and SwiftPM symlink packaging paths, while Apple dylibs use normalized install names and refreshed signatures before Flutter's final assembly. #55 #56 #57
 - Fixed ASCII direction, compound ownership, parallel and self-loop routing, markers, notes, Sequence control frames, XYChart axes and disclosure, labels, and declaration-order semantics across the common families.
 - Aligned ASCII capability metadata, Playground discovery, Web catalogs, support documentation, and executable reference evidence on which families are diagrammatic, structured text, partial, or unsupported.
+-- Decoupled Playground Tree-sitter syntax state from strict Merman semantic analysis so highlighting no longer triggers or waits for full analysis on every keystroke.
+-- Replaced one universal native release closure with wrapper-specific Android, Apple, Python, and Flutter profiles. Their default artifacts include SVG, Cytoscape/ELK layouts, ASCII, analysis, validation, and document analysis while omitting math, raster/PDF export, and native clock/time-zone/random adapters.
+-- Kept the native C ABI `3` prefix compatible with the alpha.5 header and added an alpha.5 consumer compile/run gate, while higher-level generated bindings continue to reject mismatched transport versions.
+-- Made Flutter publication use package-specific `flutter-v<version>` tags, and made Web/Node npm retries verify existing exact-version manifests before publishing only missing members under the requested final tag. Node publication now consumes only the verified package group from the same workflow run, while PyPI retries reconcile the exact wheel SHA-256 values after upload.
+-- Excluded independently versioned `roughr-merman` and `tree-sitter-mermaid` from the lockstep crates.io graph and added fresh downstream compilation plus exact registry-byte checks to their dedicated release paths.
+-- Narrowed release integrity hashing to immutable trust boundaries: pinned GitHub Actions, source commit/tree identity, staged release artifacts, downloaded tools, and registry reconciliation. Ordinary unit tests and workspace builds do not add content hashes; pub.dev uses validated member-level comparison because Dart rewrites tar metadata.
+-- Made platform GitHub Release uploads non-destructive and bounded Tree-sitter prebuild retries to the original workflow run, so an ambiguous rerun fails for operator inspection instead of overwriting accepted assets.
+-- Revalidated tag identity at credentialed tag-bound publication boundaries, required Tree-sitter's complete four-target native set and requested npm dist-tag, and rechecked independent-crate checksums after registry visibility.
+
+- Made deterministic SVG text measurement font-family agnostic and grapheme-aware, centered Flowchart edge labels from emitted text bounds, preserved empty Pie canvases, and applied Flowchart `diagramPadding` directly for zero and fractional values.
+- Fixed native PNG, JPEG, and PDF text export to match font-family names with Unicode default case folding while preserving CSS family-stack order, so lowercase Mermaid defaults no longer bypass the requested font. #113
+- Restored `merman-rustdoc` browser-parity SVG defaults without duplicate visible fallback text; explicit `readable` and `resvg-safe` pipelines remain available. #81
+- Restored `roughr-merman` 0.12 source compatibility for Merman 0.7 while preserving operation-owned randomness for current releases.
+- Fixed Flutter Native Assets assembly across Linux, Windows, Apple dylib install names/signatures, and package verification; the source package no longer depends on duplicated legacy wrappers. #55 #56 #57
+- Fixed ASCII direction, compound ownership, routing, markers, notes, Sequence controls, XYChart axes, declaration order, and structured disclosure across the common families.
+- Fixed ASCII viewport fallback accounting so failed Flowchart, Class, and ER primary projections roll back speculative document-cell charges while retaining the layout work needed to prove overflow.
+- Fixed long Flowchart label wrapping so cancellation is checked between measurement probes and no partial output is returned.
+- Isolated Playground comparison styling so page CSS no longer overrides Mermaid label colors and ZenUML's injected font does not leak into other examples.
+- Aligned executable capability catalogs, Playground discovery, Web metadata, and support documentation on which ASCII families are diagrammatic, structured text, partial, or unsupported.
+- Corrected GitGraph ASCII capability identity resolution, rejected non-portable ASCII width values at the shared binding boundary, and preserved structured ASCII diagnostics/output plans across the Android, Flutter, Node, Web, and Python projections.
+- Routed caller operation control through every typed render-family parser, made request-overlay execution observe cancellation after final serialization, and made Flutter ABI table discovery target-width aware for the packaged ARMv7 library.
+- Tightened release owner selection for package assets and profile consumers, added Playground Tree-sitter deployment triggers, and made Python wheel timestamps reproducible from the immutable source commit.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 

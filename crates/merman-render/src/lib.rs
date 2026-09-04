@@ -1273,6 +1273,22 @@ mod tests {
     }
 
     #[cfg(feature = "layout-elk")]
+    fn element_with_id_suffix_position(svg: &str, tag: &str, suffix: &str) -> usize {
+        let needle = format!("<{tag}");
+        svg.match_indices(&needle)
+            .find_map(|(position, _)| {
+                let end = svg[position..].find('>')? + position;
+                let element = &svg[position..=end];
+                let id = element
+                    .split_once(r#"id="#)
+                    .and_then(|(_, value)| value.strip_prefix('"'))
+                    .and_then(|value| value.split('"').next())?;
+                id.ends_with(suffix).then_some(position)
+            })
+            .unwrap_or_else(|| panic!("missing <{tag}> with id suffix {suffix:?}"))
+    }
+
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_operation_seed_is_captured_once_per_render_operation() {
         fn capture(seed: u64) -> merman_layout_elk::ElkOperationSeed {
@@ -1475,7 +1491,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.metadata().diagram_type, "class");
+        assert_eq!(parsed.metadata().diagram_type, "classDiagram");
         let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
         let animal = layout
             .nodes
@@ -1599,36 +1615,31 @@ Animal <|-- Duck
             },
         );
 
-        let document_scope = "elk-smoke-merman-flowchart-document";
-        let marker_id = format!("{document_scope}_flowchart-elk-pointEnd");
-        let filter_id = format!("{document_scope}-filter-drop-shadow");
         assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
-        assert!(svg.contains(&marker_id));
+        assert!(svg.contains("elk-smoke-merman-flowchart-document_flowchart-elk-pointEnd"));
         assert!(!svg.contains(r#"aria-roledescription="flowchart-v2""#));
-        assert!(!svg.contains(r#"<g class="root""#));
+        assert!(svg.contains(r#"<g class="root""#));
 
-        let marker_pos = svg
-            .find(&format!(r#"<g><marker id="{marker_id}""#))
-            .expect("ELK marker group");
-        let defs_pos = svg
-            .find(&format!(r#"<defs><filter id="{filter_id}""#))
-            .expect("ELK shadow defs");
-        let subgraphs_pos = svg
-            .find(r#"<g class="subgraphs"/>"#)
-            .expect("ELK subgraphs group");
-        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let marker_pos = element_with_id_suffix_position(&svg, "marker", "-pointEnd");
+        let root_pos = svg.find(r#"<g class="root">"#).expect("ELK root group");
+        let clusters_pos = svg
+            .find(r#"<g class="clusters"/>"#)
+            .expect("ELK clusters group");
         let edges_pos = svg
-            .find(r#"<g class="edges edgePaths">"#)
+            .find(r#"<g class="edges edgePath">"#)
             .expect("ELK edge paths group");
         let labels_pos = svg
             .find(r#"<g class="edgeLabels">"#)
             .expect("ELK edge labels group");
+        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let defs_pos = element_with_id_suffix_position(&svg, "filter", "-drop-shadow");
 
-        assert!(marker_pos < defs_pos);
-        assert!(defs_pos < subgraphs_pos);
-        assert!(subgraphs_pos < nodes_pos);
-        assert!(nodes_pos < edges_pos);
+        assert!(marker_pos < root_pos);
+        assert!(root_pos < clusters_pos);
+        assert!(clusters_pos < edges_pos);
         assert!(edges_pos < labels_pos);
+        assert!(labels_pos < nodes_pos);
+        assert!(nodes_pos < defs_pos);
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1649,35 +1660,30 @@ A{A} --> B & C
             },
         );
 
-        let document_scope = "layout-elk-smoke-merman-flowchart-document";
-        let marker_id = format!("{document_scope}_flowchart-v2-pointEnd");
-        let filter_id = format!("{document_scope}-filter-drop-shadow");
         assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
-        assert!(svg.contains(&marker_id));
-        assert!(!svg.contains(r#"<g class="root""#));
+        assert!(svg.contains("layout-elk-smoke-merman-flowchart-document_flowchart-v2-pointEnd"));
+        assert!(svg.contains(r#"<g class="root""#));
 
-        let marker_pos = svg
-            .find(&format!(r#"<g><marker id="{marker_id}""#))
-            .expect("ELK marker group");
-        let defs_pos = svg
-            .find(&format!(r#"<defs><filter id="{filter_id}""#))
-            .expect("ELK shadow defs");
-        let subgraphs_pos = svg
-            .find(r#"<g class="subgraphs"/>"#)
-            .expect("ELK subgraphs group");
-        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let marker_pos = element_with_id_suffix_position(&svg, "marker", "-pointEnd");
+        let root_pos = svg.find(r#"<g class="root">"#).expect("ELK root group");
+        let clusters_pos = svg
+            .find(r#"<g class="clusters"/>"#)
+            .expect("ELK clusters group");
         let edges_pos = svg
-            .find(r#"<g class="edges edgePaths">"#)
+            .find(r#"<g class="edges edgePath">"#)
             .expect("ELK edge paths group");
         let labels_pos = svg
             .find(r#"<g class="edgeLabels">"#)
             .expect("ELK edge labels group");
+        let nodes_pos = svg.find(r#"<g class="nodes">"#).expect("ELK nodes group");
+        let defs_pos = element_with_id_suffix_position(&svg, "filter", "-drop-shadow");
 
-        assert!(marker_pos < defs_pos);
-        assert!(defs_pos < subgraphs_pos);
-        assert!(subgraphs_pos < nodes_pos);
-        assert!(nodes_pos < edges_pos);
+        assert!(marker_pos < root_pos);
+        assert!(root_pos < clusters_pos);
+        assert!(clusters_pos < edges_pos);
         assert!(edges_pos < labels_pos);
+        assert!(labels_pos < nodes_pos);
+        assert!(nodes_pos < defs_pos);
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1763,7 +1769,7 @@ id1(Start)-->id2(Stop)
             !svg.contains("A---A---1") && !svg.contains("cyclic-special"),
             "ELK renderer must not reuse Dagre self-loop helper nodes: {svg}"
         );
-        assert!(svg.contains(r#"data-id="L_A_A_0" transform="translate(0,0)""#));
+        assert_eq!(edge_attr_value(path, "data-id"), "L_A_A_0");
     }
 
     #[cfg(not(feature = "layout-elk"))]
@@ -1825,7 +1831,7 @@ Animal <|-- Duck
                 capability: RenderCapability::LayoutElk,
                 diagram_type,
             }
-                if diagram_type == "class"
+                if diagram_type == "classDiagram"
         ));
     }
 

@@ -1,4 +1,4 @@
-// ER diagram grammar (phase 1), based on Mermaid 11.12.2 `erDiagram.jison`.
+// ER diagram grammar, based on Mermaid 11.17.2 `erDiagram.jison`.
 
 grammar;
 
@@ -36,6 +36,8 @@ extern {
     "style" => Tok::StyleKw,
     "classDef" => Tok::ClassDefKw,
     "class" => Tok::ClassKw,
+    "subgraph" => Tok::SubgraphKw,
+    "end" => Tok::EndKw,
 
     ZeroOrOne => Tok::ZeroOrOne,
     ZeroOrMore => Tok::ZeroOrMore,
@@ -52,7 +54,7 @@ extern {
 }
 
 pub Actions: Vec<Action> = {
-  <_n:Newlines> "erDiagram" <_n1:Newlines1> <s:Statements> => s
+  <_n:Newlines> "erDiagram" <_n1:Newlines> <s:Statements> => s
 };
 
 Newlines: () = {
@@ -81,6 +83,45 @@ Statement: Vec<Action> = {
   <a:ClassDefStatement> => vec![a],
   <a:ClassStatement> => vec![a],
   <a:StyleStatement> => vec![a],
+  <a:SubgraphStatement> => vec![a],
+};
+
+SubgraphStatement: Action = {
+  "subgraph" <header:SubgraphHeader> <_n:Newlines1> <body:SubgraphBody> => {
+    let (id, title, label_type) = header;
+    Action::AddSubgraph { id, title, label_type, body }
+  },
+};
+
+SubgraphBody: Vec<Action> = {
+  "end" => Vec::new(),
+  <s:Statement> <_n:Newlines> <rest:SubgraphBody> => {
+    let mut v = s;
+    v.extend(rest);
+    v
+  },
+};
+
+SubgraphHeader: (String, String, String) = {
+  <id:SubgraphName> => (id.clone(), id, "markdown".to_string()),
+  <id:SubgraphName> SquareStart <title:SubgraphTitle> SquareStop => {
+    (id, title, "markdown".to_string())
+  },
+};
+
+SubgraphName: String = {
+  Name => <>,
+  Str => <>,
+};
+
+SubgraphTitle: String = {
+  <part:SubgraphTitlePart> => part,
+  <left:SubgraphTitle> <part:SubgraphTitlePart> => format!("{left} {part}"),
+};
+
+SubgraphTitlePart: String = {
+  Name => <>,
+  Str => <>,
 };
 
 AccStatement: Action = {
@@ -107,29 +148,21 @@ ClassStatement: Action = {
 
 RelationshipStatement: Vec<Action> = {
   <a:Name> <spec:RelSpec> <b:Name> Colon <role:Role> => vec![
-    Action::AddEntity { name: a.clone(), alias: None },
-    Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a, role, b, spec },
   ],
 
   <a:Name> StyleSeparator <classes_a:IdNames> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdNames> Colon <role:Role> => vec![
-    Action::AddEntity { name: a.clone(), alias: None },
-    Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
     Action::SetClass { entities: vec![a], classes: classes_a },
     Action::SetClass { entities: vec![b], classes: classes_b },
   ],
 
   <a:Name> StyleSeparator <classes_a:IdNames> <spec:RelSpec> <b:Name> Colon <role:Role> => vec![
-    Action::AddEntity { name: a.clone(), alias: None },
-    Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
     Action::SetClass { entities: vec![a], classes: classes_a },
   ],
 
   <a:Name> <spec:RelSpec> <b:Name> StyleSeparator <classes_b:IdNames> Colon <role:Role> => vec![
-    Action::AddEntity { name: a.clone(), alias: None },
-    Action::AddEntity { name: b.clone(), alias: None },
     Action::AddRelationship { a: a.clone(), role, b: b.clone(), spec },
     Action::SetClass { entities: vec![b], classes: classes_b },
   ],

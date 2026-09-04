@@ -27,6 +27,12 @@ use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyPrope
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::{Specified, TextStyle};
 
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use super::semantic::OrdinalSelector;
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+use sha2::{Digest as _, Sha256};
+
 #[cfg(test)]
 use super::family_mechanism_matrix::FamilyThemeMechanism;
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
@@ -264,6 +270,9 @@ pub struct LegacyFamilyThemeBridgeRetirementStatus {
     matrix_only_family_count: usize,
     dispatch_only_family_count: usize,
     dispatch_error_count: usize,
+    matrix_route_digest: [u8; 32],
+    matrix_family_digest: [u8; 32],
+    dispatched_family_digest: [u8; 32],
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
@@ -294,13 +303,42 @@ impl LegacyFamilyThemeBridgeRetirementStatus {
         self.dispatch_error_count
     }
 
-    pub const fn can_delete_bridge(self) -> bool {
+    /// Returns the canonical digest of the complete matrix-declared legacy route set.
+    ///
+    /// The digest is order-independent because the inventory is canonically sorted before it is
+    /// hashed. It is intended for release/retirement ledgers that need to bind an exact route set,
+    /// rather than merely asserting that the set is non-empty.
+    pub const fn matrix_route_digest(self) -> [u8; 32] {
+        self.matrix_route_digest
+    }
+
+    /// Returns the canonical digest of families with at least one matrix-declared legacy route.
+    pub const fn matrix_family_digest(self) -> [u8; 32] {
+        self.matrix_family_digest
+    }
+
+    /// Returns the canonical digest of families with an executable bridge dispatch.
+    pub const fn dispatched_family_digest(self) -> [u8; 32] {
+        self.dispatched_family_digest
+    }
+
+    /// Returns whether the bridge can be removed after checking every known deletion condition.
+    ///
+    /// The compiler owns provider installation, so this module cannot inspect that registration
+    /// without creating a dependency back into the compiler. Callers must pass that independently
+    /// observed fact explicitly. Passing `true` means the provider is still installed and always
+    /// keeps the deletion gate closed.
+    pub fn can_delete_bridge(self, provider_registered: bool) -> bool {
         self.matrix_route_count == 0
             && self.matrix_family_count == 0
             && self.dispatched_family_count == 0
             && self.matrix_only_family_count == 0
             && self.dispatch_only_family_count == 0
             && self.dispatch_error_count == 0
+            && self.matrix_route_digest != [0; 32]
+            && self.matrix_family_digest != [0; 32]
+            && self.dispatched_family_digest != [0; 32]
+            && !provider_registered
     }
 }
 
@@ -342,7 +380,165 @@ pub fn legacy_family_theme_bridge_retirement_status() -> LegacyFamilyThemeBridge
         matrix_only_family_count,
         dispatch_only_family_count,
         dispatch_error_count,
+        matrix_route_digest: digest_legacy_routes(&matrix_routes),
+        matrix_family_digest: digest_family_set("matrix", &matrix_families),
+        dispatched_family_digest: digest_family_set("dispatch", &dispatched_families),
     }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn digest_legacy_routes(routes: &[LegacyCompatibilityRouteKey]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, b"merman.legacy-family-theme-bridge.routes.v1");
+    let mut routes = routes.to_vec();
+    routes.sort_unstable();
+    routes.dedup();
+    update_len(&mut hasher, routes.len());
+    for route in &routes {
+        update_route_key(&mut hasher, route);
+    }
+    hasher.finalize().into()
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn digest_family_set(label: &str, families: &BTreeSet<DiagramFamilyId>) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(
+        &mut hasher,
+        b"merman.legacy-family-theme-bridge.families.v1",
+    );
+    update_len_prefixed(&mut hasher, label.as_bytes());
+    update_len(&mut hasher, families.len());
+    for family in families {
+        update_len_prefixed(&mut hasher, family.as_str().as_bytes());
+    }
+    hasher.finalize().into()
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_route_key(hasher: &mut Sha256, route: &LegacyCompatibilityRouteKey) {
+    match route {
+        LegacyCompatibilityRouteKey::BaseTypography { family, property } => {
+            update_len_prefixed(hasher, b"base-typography");
+            update_len_prefixed(hasher, family.as_str().as_bytes());
+            update_len_prefixed(hasher, property.id().as_bytes());
+        }
+        LegacyCompatibilityRouteKey::RuleFacet {
+            family,
+            target,
+            selector,
+            facet,
+        } => {
+            update_len_prefixed(hasher, b"rule-facet");
+            update_len_prefixed(hasher, family.as_str().as_bytes());
+            update_len_prefixed(hasher, target.id().as_bytes());
+            update_selector(hasher, *selector);
+            update_rule_facet(hasher, *facet);
+        }
+        LegacyCompatibilityRouteKey::OrdinalPalette { family, target } => {
+            update_len_prefixed(hasher, b"ordinal-palette");
+            update_len_prefixed(hasher, family.as_str().as_bytes());
+            update_len_prefixed(hasher, target.id().as_bytes());
+        }
+        LegacyCompatibilityRouteKey::EffectBinding { family, target } => {
+            update_len_prefixed(hasher, b"effect-binding");
+            update_len_prefixed(hasher, family.as_str().as_bytes());
+            update_len_prefixed(hasher, target.id().as_bytes());
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_selector(hasher: &mut Sha256, selector: FamilyThemeSelectorShape) {
+    match selector {
+        FamilyThemeSelectorShape::Static { variant } => {
+            update_len_prefixed(hasher, b"static");
+            update_optional_variant(hasher, variant);
+        }
+        FamilyThemeSelectorShape::Ordinal { variant, selector } => {
+            update_len_prefixed(hasher, b"ordinal");
+            update_optional_variant(hasher, variant);
+            match selector {
+                OrdinalSelector::Exact(index) => {
+                    update_len_prefixed(hasher, b"exact");
+                    update_usize(hasher, index);
+                }
+                OrdinalSelector::Cycle { period, offset } => {
+                    update_len_prefixed(hasher, b"cycle");
+                    update_usize(hasher, period);
+                    update_usize(hasher, offset);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_optional_variant(hasher: &mut Sha256, variant: Option<ThemeVariant>) {
+    match variant {
+        Some(variant) => {
+            hasher.update([1]);
+            update_len_prefixed(hasher, variant.id().as_bytes());
+        }
+        None => hasher.update([0]),
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_rule_facet(hasher: &mut Sha256, facet: FamilyThemeRuleFacet) {
+    match facet {
+        FamilyThemeRuleFacet::Fill(kind) => {
+            update_len_prefixed(hasher, b"fill");
+            update_paint_kind(hasher, kind);
+        }
+        FamilyThemeRuleFacet::Stroke(kind) => {
+            update_len_prefixed(hasher, b"stroke");
+            update_paint_kind(hasher, kind);
+        }
+        FamilyThemeRuleFacet::StrokeWidth => update_len_prefixed(hasher, b"stroke-width"),
+        FamilyThemeRuleFacet::StrokeDasharray => update_len_prefixed(hasher, b"stroke-dasharray"),
+        FamilyThemeRuleFacet::StrokeLinecap => update_len_prefixed(hasher, b"stroke-linecap"),
+        FamilyThemeRuleFacet::StrokeLinejoin => update_len_prefixed(hasher, b"stroke-linejoin"),
+        FamilyThemeRuleFacet::Opacity => update_len_prefixed(hasher, b"opacity"),
+        FamilyThemeRuleFacet::FillOpacity => update_len_prefixed(hasher, b"fill-opacity"),
+        FamilyThemeRuleFacet::StrokeOpacity => update_len_prefixed(hasher, b"stroke-opacity"),
+        FamilyThemeRuleFacet::Radius => update_len_prefixed(hasher, b"radius"),
+        FamilyThemeRuleFacet::Padding => update_len_prefixed(hasher, b"padding"),
+        FamilyThemeRuleFacet::Typography(property) => {
+            update_len_prefixed(hasher, b"typography");
+            update_len_prefixed(hasher, property.id().as_bytes());
+        }
+        FamilyThemeRuleFacet::Effect => update_len_prefixed(hasher, b"effect"),
+    }
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_paint_kind(hasher: &mut Sha256, kind: FamilyThemePaintKind) {
+    let id = match kind {
+        FamilyThemePaintKind::Clear => "clear",
+        FamilyThemePaintKind::Transparent => "transparent",
+        FamilyThemePaintKind::Solid => "solid",
+        FamilyThemePaintKind::LinearGradient => "linear-gradient",
+        FamilyThemePaintKind::RadialGradient => "radial-gradient",
+        FamilyThemePaintKind::Pattern => "pattern",
+    };
+    update_len_prefixed(hasher, id.as_bytes());
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_len(hasher: &mut Sha256, value: usize) {
+    hasher.update((value as u64).to_be_bytes());
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_usize(hasher: &mut Sha256, value: usize) {
+    hasher.update((value as u64).to_be_bytes());
+}
+
+#[cfg(any(test, feature = "internal-theme-acceptance"))]
+fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
+    update_len(hasher, bytes.len());
+    hasher.update(bytes);
 }
 
 fn legacy_family_dispatch(
@@ -2273,14 +2469,86 @@ mod tests {
 
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
+        const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
+            0x20, 0x85, 0xb5, 0x83, 0xf2, 0x73, 0xa4, 0x2c, 0x65, 0x89, 0x06, 0x66, 0x51, 0x3a,
+            0xe9, 0xe8, 0xd1, 0x1c, 0x56, 0x6e, 0x8e, 0xd0, 0xc7, 0x72, 0xf0, 0xb0, 0x3c, 0x95,
+            0xd9, 0x65, 0xee, 0x16,
+        ];
+        const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
+            0xde, 0x1d, 0xed, 0x0e, 0x2f, 0x87, 0x54, 0xf3, 0xb9, 0xcc, 0x65, 0x1b, 0xbf, 0xe4,
+            0x78, 0x56, 0xa1, 0x7f, 0xfe, 0x8b, 0x26, 0x0e, 0x7b, 0x35, 0xd9, 0x88, 0x74, 0xb2,
+            0x75, 0x1f, 0xc4, 0xd7,
+        ];
+        const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
+            0xd1, 0x10, 0xba, 0xbc, 0xc8, 0xb9, 0xb5, 0x89, 0x4f, 0x08, 0x7d, 0xad, 0x69, 0xcd,
+            0x04, 0xf6, 0xca, 0x30, 0x8a, 0x8f, 0x7b, 0x55, 0xa1, 0x7d, 0xa7, 0xa0, 0xb7, 0x91,
+            0xfe, 0xca, 0xbd, 0x52,
+        ];
+
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert!(status.matrix_route_count() > 0);
-        assert!(status.matrix_family_count() > 0);
-        assert!(status.dispatched_family_count() > 0);
+        assert_eq!(status.matrix_route_count(), 404);
+        assert_eq!(status.matrix_family_count(), 24);
+        assert_eq!(status.dispatched_family_count(), 24);
+        assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
+        assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
+        assert_eq!(
+            status.dispatched_family_digest(),
+            EXPECTED_DISPATCH_FAMILY_DIGEST
+        );
         assert_eq!(status.matrix_only_family_count(), 0);
         assert_eq!(status.dispatch_only_family_count(), 0);
-        assert!(!status.can_delete_bridge());
+        assert!(!status.can_delete_bridge(true));
+        assert!(!status.can_delete_bridge(false));
+    }
+
+    #[test]
+    fn bridge_deletion_gate_requires_provider_registration_to_be_absent() {
+        let empty_routes = digest_legacy_routes(&[]);
+        let empty_families = BTreeSet::new();
+        let status = LegacyFamilyThemeBridgeRetirementStatus {
+            matrix_route_count: 0,
+            matrix_family_count: 0,
+            dispatched_family_count: 0,
+            matrix_only_family_count: 0,
+            dispatch_only_family_count: 0,
+            dispatch_error_count: 0,
+            matrix_route_digest: empty_routes,
+            matrix_family_digest: digest_family_set("matrix", &empty_families),
+            dispatched_family_digest: digest_family_set("dispatch", &empty_families),
+        };
+
+        assert!(status.can_delete_bridge(false));
+        assert!(!status.can_delete_bridge(true));
+    }
+
+    #[test]
+    fn legacy_route_digest_is_independent_of_inventory_order() {
+        let routes = legacy_compatibility_route_inventory();
+        let mut reversed = routes.clone();
+        reversed.reverse();
+
+        assert_eq!(
+            digest_legacy_routes(&routes),
+            digest_legacy_routes(&reversed)
+        );
+    }
+
+    #[test]
+    fn bridge_deletion_gate_rejects_missing_route_digests() {
+        let status = LegacyFamilyThemeBridgeRetirementStatus {
+            matrix_route_count: 0,
+            matrix_family_count: 0,
+            dispatched_family_count: 0,
+            matrix_only_family_count: 0,
+            dispatch_only_family_count: 0,
+            dispatch_error_count: 0,
+            matrix_route_digest: [0; 32],
+            matrix_family_digest: [1; 32],
+            dispatched_family_digest: [1; 32],
+        };
+
+        assert!(!status.can_delete_bridge(false));
     }
 
     #[test]

@@ -165,6 +165,14 @@ impl<'a> SequenceConfigView<'a> {
         &self,
         role: SequenceTypographyConfigRole,
     ) -> SequenceRoleTypographyConfig {
+        self.resolve_role_typography_with_typed_properties(role, &BTreeSet::new())
+    }
+
+    pub(crate) fn resolve_role_typography_with_typed_properties(
+        &self,
+        role: SequenceTypographyConfigRole,
+        typed_theme_properties: &BTreeSet<ThemeTypographyProperty>,
+    ) -> SequenceRoleTypographyConfig {
         let (family_key, family_path, size_key, size_path, weight_key, weight_path) = match role {
             SequenceTypographyConfigRole::Actor => (
                 "actorFontFamily",
@@ -203,12 +211,17 @@ impl<'a> SequenceConfigView<'a> {
             root_font_family.is_some() && self.path_overrides_typed_default("fontFamily");
         let role_font_family_owns =
             role_font_family.is_some() && self.path_overrides_typed_default(family_path);
+        let typed_font_stack = typed_theme_properties.contains(&ThemeTypographyProperty::FontStack);
+        let root_font_family_present = root_font_family.is_some();
+        // Mermaid mirrors every root font value, including generated defaults, over the
+        // role-local Sequence value. A role-local config only bypasses a generated root value
+        // when that property participates in typed-theme ownership.
         let (font_family, font_stack_measurement_winner) = if root_font_family_owns {
             (
                 root_font_family,
                 Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
             )
-        } else if role_font_family_owns {
+        } else if typed_font_stack && role_font_family_owns {
             (
                 role_font_family,
                 Some(SequenceTypographyMeasurementWinner { path: family_path }),
@@ -233,12 +246,14 @@ impl<'a> SequenceConfigView<'a> {
             root_font_size.is_some() && self.path_overrides_typed_default("fontSize");
         let role_font_size_owns =
             role_font_size.is_some() && self.path_overrides_typed_default(size_path);
+        let typed_font_size = typed_theme_properties.contains(&ThemeTypographyProperty::FontSize);
+        let root_font_size_present = root_font_size.is_some();
         let (font_size, font_size_measurement_winner) = if root_font_size_owns {
             (
                 root_font_size.expect("owned root Sequence font size must exist"),
                 Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
             )
-        } else if role_font_size_owns {
+        } else if typed_font_size && role_font_size_owns {
             (
                 role_font_size.expect("owned role Sequence font size must exist"),
                 Some(SequenceTypographyMeasurementWinner { path: size_path }),
@@ -307,10 +322,15 @@ impl<'a> SequenceConfigView<'a> {
         };
 
         let mut config_owned_properties = BTreeSet::new();
-        if theme_variable_font_family_owns || root_font_family_owns || role_font_family_owns {
+        if theme_variable_font_family_owns
+            || root_font_family_owns
+            || (role_font_family_owns && (typed_font_stack || !root_font_family_present))
+        {
             config_owned_properties.insert(ThemeTypographyProperty::FontStack);
         }
-        if root_font_size_owns || role_font_size_owns {
+        if root_font_size_owns
+            || (role_font_size_owns && (typed_font_size || !root_font_size_present))
+        {
             config_owned_properties.insert(ThemeTypographyProperty::FontSize);
         }
         if theme_note_font_weight_owns || root_font_weight_owns || role_font_weight_owns {
@@ -612,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_role_typography_uses_explicit_role_values_ahead_of_generated_root_defaults() {
+    fn sequence_role_typography_uses_generated_root_defaults_on_mermaid_compatibility_path() {
         let metadata = merman_core::Engine::new()
             .with_site_config(MermaidConfig::from_value(json!({
                 "sequence": {
@@ -625,6 +645,48 @@ mod tests {
             .expect("parse Sequence role typography config");
         let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
             .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+        let generated_root_family = metadata
+            .effective_config
+            .as_value()
+            .get("fontFamily")
+            .and_then(Value::as_str)
+            .expect("generated root fontFamily");
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some(generated_root_family)
+        );
+        assert_eq!(resolved.measurement_style().font_size, 16.0);
+        assert_eq!(
+            resolved.measurement_style().font_weight.as_deref(),
+            Some("500")
+        );
+        assert!(!resolved.config_owns(ThemeTypographyProperty::FontStack));
+        assert!(!resolved.config_owns(ThemeTypographyProperty::FontSize));
+        assert!(resolved.config_owns(ThemeTypographyProperty::FontWeight));
+    }
+
+    #[test]
+    fn sequence_role_typography_keeps_explicit_role_ownership_for_typed_properties() {
+        let metadata = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "sequence": {
+                    "actorFontFamily": "Actor Family",
+                    "actorFontSize": 19,
+                    "actorFontWeight": 500,
+                },
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
+            .expect("parse Sequence role typography config");
+        let typed_theme_properties = BTreeSet::from([
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ]);
+        let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
+            .resolve_role_typography_with_typed_properties(
+                SequenceTypographyConfigRole::Actor,
+                &typed_theme_properties,
+            );
 
         assert_eq!(
             resolved.measurement_style().font_family.as_deref(),

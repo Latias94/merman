@@ -5,33 +5,33 @@
       "nodes": [
         {
           "id": "A",
-          "x": 8.8,
+          "x": 20.8,
           "y": -40.0,
-          "width": 17.6,
+          "width": 41.6,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 8.8,
+          "x": 20.8,
           "y": 40.0,
-          "width": 17.6,
+          "width": 41.6,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 34.4,
+          "x": 70.4,
           "y": 40.0,
-          "width": 17.6,
+          "width": 41.6,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "D",
-          "x": 60.0,
+          "x": 120.0,
           "y": 40.0,
-          "width": 17.6,
+          "width": 41.6,
           "height": 32.0,
           "is_cluster": false
         }
@@ -45,15 +45,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8.8,
+              "x": 20.8,
               "y": -40.0
             },
             {
-              "x": 8.8,
+              "x": 20.8,
               "y": 0.0
             },
             {
-              "x": 8.8,
+              "x": 20.8,
               "y": 40.0
             }
           ],
@@ -74,15 +74,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8.8,
+              "x": 20.8,
               "y": -40.0
             },
             {
-              "x": 21.6,
+              "x": 45.6,
               "y": 0.0
             },
             {
-              "x": 34.4,
+              "x": 70.4,
               "y": 40.0
             }
           ],
@@ -103,15 +103,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 8.8,
+              "x": 20.8,
               "y": -40.0
             },
             {
-              "x": 34.4,
+              "x": 70.4,
               "y": 0.0
             },
             {
-              "x": 60.0,
+              "x": 120.0,
               "y": 40.0
             }
           ],
@@ -129,14 +129,14 @@
         {
           "id": "A",
           "allocated": {
-            "x": 8.8,
+            "x": 20.8,
             "y": -40.0,
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -145,14 +145,14 @@
         {
           "id": "B",
           "allocated": {
-            "x": 8.8,
+            "x": 20.8,
             "y": 40.0,
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -161,14 +161,14 @@
         {
           "id": "C",
           "allocated": {
-            "x": 34.4,
+            "x": 70.4,
             "y": 40.0,
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -177,14 +177,14 @@
         {
           "id": "D",
           "allocated": {
-            "x": 60.0,
+            "x": 120.0,
             "y": 40.0,
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 17.6,
+            "width": 41.6,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -194,7 +194,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -56.0,
-        "max_x": 68.8,
+        "max_x": 140.8,
         "max_y": 56.0
       }
     }

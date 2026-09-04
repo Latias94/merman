@@ -163,6 +163,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_cynefin_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -170,6 +171,21 @@ pub(crate) fn parse_cynefin_model_for_render(
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
     Ok(model)
+}
+
+pub(crate) fn parse_cynefin_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<CynefinDiagramRenderModel>> {
+    let outcome = construct_cynefin_parse_outcome_controlled(code, meta, control)?;
+    let source = match outcome.into_strict_source() {
+        Ok(source) => source,
+        Err(error) => return Ok(Err(error)),
+    };
+    let mut model = source.model;
+    model.sanitize_common_db_fields(&meta.effective_config);
+    Ok(Ok(model))
 }
 
 fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {

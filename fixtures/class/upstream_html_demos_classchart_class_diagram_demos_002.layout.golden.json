@@ -1,5 +1,5 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
@@ -160,14 +160,14 @@
           "start_label_right": {
             "x": 208.36,
             "y": 155.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 233.36,
             "y": 273.5,
-            "width": 24.8,
-            "height": 24.0
+            "width": 17.05,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -199,14 +199,14 @@
           "start_label_right": {
             "x": 335.001,
             "y": 155.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 360.001,
             "y": 273.5,
-            "width": 35.04,
-            "height": 24.0
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -288,14 +288,14 @@
           "start_label_right": {
             "x": 441.195,
             "y": 148.271,
-            "width": 35.04,
-            "height": 24.0
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 467.651,
             "y": 632.339,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -327,14 +327,14 @@
           "start_label_right": {
             "x": 464.602,
             "y": 155.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 489.602,
             "y": 273.5,
-            "width": 24.8,
-            "height": 24.0
+            "width": 17.05,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,

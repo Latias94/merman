@@ -13,8 +13,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const THEME_SNAPSHOT_OUTPUT: &str = "crates/merman-core/src/generated/theme_variables_11_16_1.json";
-const THEME_ORACLE_OUTPUT: &str = "crates/merman-core/src/generated/theme_oracles_11_16_1.json";
+pub(super) const THEME_RUNTIME_OUTPUT: &str =
+    "crates/merman-core/src/generated/theme_variables_11_17_2.json";
+pub(super) const THEME_AUDIT_OUTPUT: &str =
+    "fixtures/_verification/theme_variables_oracle_11_17_2.json";
 const THEME_ARTIFACT_SCHEMA_VERSION: u32 = 2;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
 const THEME_NAMES: &[&str] = &[
@@ -286,8 +288,8 @@ struct RuntimeThemeProjection {
 
 #[derive(Debug)]
 struct GenerateOptions {
-    out_path: PathBuf,
-    oracle_out_path: PathBuf,
+    runtime_out_path: PathBuf,
+    audit_out_path: PathBuf,
 }
 
 pub(crate) fn gen_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
@@ -296,8 +298,8 @@ pub(crate) fn gen_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
     let (mut runtime_artifact, mut oracle_artifact) = build_artifacts(projection);
     sort_json_value_keys(&mut runtime_artifact);
     sort_json_value_keys(&mut oracle_artifact);
-    write_pretty_json(&options.out_path, &runtime_artifact)?;
-    write_pretty_json(&options.oracle_out_path, &oracle_artifact)
+    write_pretty_json(&options.runtime_out_path, &runtime_artifact)?;
+    write_pretty_json(&options.audit_out_path, &oracle_artifact)
 }
 
 fn build_artifacts(projection: RuntimeThemeProjection) -> (JsonValue, JsonValue) {
@@ -332,47 +334,47 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         return Err(XtaskError::Usage);
     }
 
-    let mut out_path = None;
-    let mut oracle_out_path = None;
+    let mut runtime_out_path = None;
+    let mut audit_out_path = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--out" => {
                 index += 1;
-                out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+                runtime_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
             }
-            "--oracle-out" => {
+            "--audit-out" => {
                 index += 1;
-                oracle_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
+                audit_out_path = Some(PathBuf::from(args.get(index).ok_or(XtaskError::Usage)?));
             }
             _ => return Err(XtaskError::Usage),
         }
         index += 1;
     }
 
-    let (out_path, oracle_out_path) = match (out_path, oracle_out_path) {
+    let (runtime_out_path, audit_out_path) = match (runtime_out_path, audit_out_path) {
         (None, None) => (
-            PathBuf::from(THEME_SNAPSHOT_OUTPUT),
-            PathBuf::from(THEME_ORACLE_OUTPUT),
+            PathBuf::from(THEME_RUNTIME_OUTPUT),
+            PathBuf::from(THEME_AUDIT_OUTPUT),
         ),
-        (Some(out_path), None) => {
-            let oracle_out_path = paired_output_path(&out_path, THEME_ORACLE_OUTPUT);
-            (out_path, oracle_out_path)
+        (Some(runtime_out_path), None) => {
+            let audit_out_path = paired_output_path(&runtime_out_path, THEME_AUDIT_OUTPUT);
+            (runtime_out_path, audit_out_path)
         }
-        (None, Some(oracle_out_path)) => {
-            let out_path = paired_output_path(&oracle_out_path, THEME_SNAPSHOT_OUTPUT);
-            (out_path, oracle_out_path)
+        (None, Some(audit_out_path)) => {
+            let runtime_out_path = paired_output_path(&audit_out_path, THEME_RUNTIME_OUTPUT);
+            (runtime_out_path, audit_out_path)
         }
-        (Some(out_path), Some(oracle_out_path)) => (out_path, oracle_out_path),
+        (Some(runtime_out_path), Some(audit_out_path)) => (runtime_out_path, audit_out_path),
     };
-    if out_path == oracle_out_path {
+    if runtime_out_path == audit_out_path {
         return Err(XtaskError::ThemeSnapshotProjection(
-            "runtime and oracle artifacts require distinct output paths".to_string(),
+            "runtime and audit artifacts require distinct output paths".to_string(),
         ));
     }
     Ok(GenerateOptions {
-        out_path,
-        oracle_out_path,
+        runtime_out_path,
+        audit_out_path,
     })
 }
 
@@ -1095,35 +1097,38 @@ mod tests {
         let options = parse_generate_options(vec![
             "--out".to_string(),
             "runtime.json".to_string(),
-            "--oracle-out".to_string(),
+            "--audit-out".to_string(),
             "oracles.json".to_string(),
         ])
         .expect("both output paths are valid");
 
-        assert_eq!(options.out_path, PathBuf::from("runtime.json"));
-        assert_eq!(options.oracle_out_path, PathBuf::from("oracles.json"));
+        assert_eq!(options.runtime_out_path, PathBuf::from("runtime.json"));
+        assert_eq!(options.audit_out_path, PathBuf::from("oracles.json"));
 
         let runtime_only =
             parse_generate_options(vec!["--out".to_string(), "tmp/runtime.json".to_string()])
-                .expect("runtime output derives a colocated oracle output");
-        assert_eq!(runtime_only.out_path, PathBuf::from("tmp/runtime.json"));
+                .expect("runtime output derives a colocated audit output");
         assert_eq!(
-            runtime_only.oracle_out_path,
-            PathBuf::from("tmp/theme_oracles_11_16_1.json")
+            runtime_only.runtime_out_path,
+            PathBuf::from("tmp/runtime.json")
+        );
+        assert_eq!(
+            runtime_only.audit_out_path,
+            PathBuf::from("tmp/theme_variables_oracle_11_17_2.json")
         );
 
         let oracle_only = parse_generate_options(vec![
-            "--oracle-out".to_string(),
+            "--audit-out".to_string(),
             "tmp/oracles.json".to_string(),
         ])
-        .expect("oracle output derives a colocated runtime output");
+        .expect("audit output derives a colocated runtime output");
         assert_eq!(
-            oracle_only.oracle_out_path,
+            oracle_only.audit_out_path,
             PathBuf::from("tmp/oracles.json")
         );
         assert_eq!(
-            oracle_only.out_path,
-            PathBuf::from("tmp/theme_variables_11_16_1.json")
+            oracle_only.runtime_out_path,
+            PathBuf::from("tmp/theme_variables_11_17_2.json")
         );
     }
 
@@ -1133,16 +1138,16 @@ mod tests {
             vec![
                 "--out".to_string(),
                 "same.json".to_string(),
-                "--oracle-out".to_string(),
+                "--audit-out".to_string(),
                 "same.json".to_string(),
             ],
             vec![
                 "--out".to_string(),
-                "tmp/theme_oracles_11_16_1.json".to_string(),
+                "tmp/theme_variables_oracle_11_17_2.json".to_string(),
             ],
             vec![
-                "--oracle-out".to_string(),
-                "tmp/theme_variables_11_16_1.json".to_string(),
+                "--audit-out".to_string(),
+                "tmp/theme_variables_11_17_2.json".to_string(),
             ],
         ] {
             let error = parse_generate_options(args).expect_err("output paths must not collide");

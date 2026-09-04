@@ -10,9 +10,9 @@ prose ownership boundary.
 | Item | Current state |
 | --- | --- |
 | Dashboard | Active |
-| Upstream baseline | Mermaid `@11.16.1` |
+| Upstream baseline | Mermaid `@11.17.2` |
 | Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
-| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-17; exact gate state belongs to the revision that ran it |
+| Dashboard review | Authority links and lifecycle boundaries reviewed on 2026-08-31; exact gate state belongs to the revision that ran it |
 | Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
 | Root viewport | Every primary-matrix family has covered root-viewport evidence |
 | Semantic edge labels | C4, Flowchart ELK, Architecture, Requirement, State, Class, and ER use fail-closed identity/geometry/presentation admission |
@@ -106,7 +106,7 @@ not a quality ranking. Callers may select another supported mode explicitly.
 LSP/editor support is tracked independently in the family capability registry. SVG admission must
 not be used to infer completions, navigation, diagnostics, or source-span support for a family.
 
-## Mermaid 11.16 Scope
+## Retained Mermaid 11.16 Source Scope
 
 The pinned baseline includes families that were absent from older dashboards. All families below
 are in the primary matrix, with these boundaries:
@@ -141,7 +141,7 @@ out of ordinary snapshot sweeps. Family-specific fixtures and upstream SVG basel
 promotion mechanism.
 
 Five exact parser-only fixtures remain: one Flowchart parser case, two Sankey circular-link cases,
-and two XYChart inputs without plot data. Pinned Mermaid 11.16 fails to render all five, so
+and two XYChart inputs without plot data. The selected Mermaid 11.17.2 runtime fails to render all five, so
 `cargo run -p xtask -- audit-gaps --check-upstream-render` reports zero actionable parser-only
 gaps. Exact family-scoped capability facts own these exclusions; filename patterns do not.
 

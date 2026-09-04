@@ -14,22 +14,23 @@
     "shapes": [
       {
         "alias": "customerA",
-        "label": {
-          "text": ""
-        },
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_person"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": ""
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -37,8 +38,7 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": []

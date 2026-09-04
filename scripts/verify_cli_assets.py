@@ -162,7 +162,7 @@ probe_completion() {
     local current="$2"
     COMP_WORDS=(merman-cli "$subcommand" "$current")
     COMP_CWORD=2
-    _merman-cli merman-cli "$current" "$subcommand"
+    _merman__cli merman-cli "$current" "$subcommand"
     printf '%s\n' "${COMPREPLY[@]}"
 }
 probe_completion render --f
@@ -171,17 +171,17 @@ probe_completion mmdc -e
 printf '%s\n' __RUSTDOC__
 COMP_WORDS=(merman-cli rustdoc b)
 COMP_CWORD=2
-_merman-cli merman-cli b rustdoc
+_merman__cli merman-cli b rustdoc
 printf '%s\n' "${COMPREPLY[@]}"
 printf '%s\n' __RUSTDOC_BUILD__
 COMP_WORDS=(merman-cli rustdoc build --c)
 COMP_CWORD=3
-_merman-cli merman-cli --c build
+_merman__cli merman-cli --c build
 printf '%s\n' "${COMPREPLY[@]}"
 printf '%s\n' __RUSTDOC_CHECK__
 COMP_WORDS=(merman-cli rustdoc check --c)
 COMP_CWORD=3
-_merman-cli merman-cli --c check
+_merman__cli merman-cli --c check
 printf '%s\n' "${COMPREPLY[@]}"
 '''
     result = run_checked(

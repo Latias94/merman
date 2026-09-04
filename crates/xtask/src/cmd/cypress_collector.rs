@@ -138,6 +138,13 @@ pub(crate) struct DigestPath {
     pub(crate) sha256: String,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CypressSourcePolicy {
+    Selected,
+    Historical,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReviewedRegistration {
@@ -167,6 +174,30 @@ pub(crate) struct CypressCollectionEvidence {
     pub(crate) collector: CypressCollectorEvidence,
     pub(crate) registrations: Vec<RegistrationEvidence>,
     pub(crate) runtime_effects: Vec<RuntimeEffectEvidence>,
+}
+
+/// Mermaid source identity associated with collected evidence.
+///
+/// Current collection results must match the selected workspace version, while committed
+/// historical evidence must match its own declared version. Passing these identities separately
+/// prevents a baseline upgrade from relabeling older, still-useful browser evidence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CypressSourceIdentity<'a> {
+    pub(crate) package: &'a str,
+    pub(crate) version: &'a str,
+    pub(crate) tag: &'a str,
+    pub(crate) commit: &'a str,
+}
+
+impl CypressSourceIdentity<'static> {
+    pub(crate) const fn selected() -> Self {
+        Self {
+            package: "mermaid",
+            version: PINNED_MERMAID_VERSION,
+            tag: MERMAID_SOURCE_TAG,
+            commit: MERMAID_SOURCE_COMMIT,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -746,6 +777,7 @@ pub(crate) fn committed_collection_evidence_failures(
     evidence: &CypressCollectionEvidence,
     expected_scope: &str,
     expected_description: &str,
+    expected_source: CypressSourceIdentity<'_>,
 ) -> Vec<String> {
     let mut failures = Vec::new();
     if evidence.scope_id != expected_scope || evidence.description != expected_description {
@@ -754,13 +786,13 @@ pub(crate) fn committed_collection_evidence_failures(
             evidence.scope_id, evidence.description
         ));
     }
-    if evidence.source.package != "mermaid"
-        || evidence.source.version != PINNED_MERMAID_VERSION
-        || evidence.source.tag != MERMAID_SOURCE_TAG
-        || evidence.source.commit != MERMAID_SOURCE_COMMIT
+    if evidence.source.package != expected_source.package
+        || evidence.source.version != expected_source.version
+        || evidence.source.tag != expected_source.tag
+        || evidence.source.commit != expected_source.commit
     {
         failures.push(format!(
-            "Cypress collection manifest {expected_scope} disagrees with the selected Mermaid graph"
+            "Cypress collection manifest {expected_scope} disagrees with the expected Mermaid source identity"
         ));
     }
     if evidence.expected_active_calls == 0 {

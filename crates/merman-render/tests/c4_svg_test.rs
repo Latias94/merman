@@ -7,10 +7,7 @@ use merman_render::diagram_theme::{
     ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
     TypographySpec,
 };
-use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
-};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::C4DiagramLayout;
 use merman_render::resources::{
@@ -18,7 +15,6 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use std::sync::Arc;
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
     let parsed = Engine::new()
@@ -176,11 +172,52 @@ fn c4_rect_labeled<'a, 'input>(
         .find(|node| node.has_tag_name("text") && svg_text_content(*node) == label)
         .unwrap_or_else(|| panic!("missing C4 label {label}"));
 
+    let shape_group = label_node.ancestors().find(|node| {
+        node.has_tag_name("g")
+            && node
+                .attribute("class")
+                .is_some_and(|classes| classes.split_whitespace().any(|class| class == "c4-shape"))
+    });
+
+    if let Some(group) = shape_group
+        && let Some(shape) = group.descendants().find(|node| {
+            ["rect", "path", "polygon", "circle", "ellipse"].contains(&node.tag_name().name())
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "label-container")
+                })
+        })
+    {
+        return shape;
+    }
+
     label_node
         .ancestors()
         .filter(|node| node.has_tag_name("g"))
-        .find_map(|group| group.children().find(|child| child.has_tag_name("rect")))
-        .unwrap_or_else(|| panic!("missing C4 rect for label {label}"))
+        .find_map(|group| {
+            group.children().find(|child| {
+                child.has_tag_name("rect")
+                    && (child.attribute("fill").is_some() || child.attribute("style").is_some())
+            })
+        })
+        .unwrap_or_else(|| panic!("missing C4 shape for label {label}"))
+}
+
+fn c4_effective_property(node: roxmltree::Node<'_, '_>, property: &str) -> Option<String> {
+    let from_style = node.attribute("style").and_then(|style| {
+        style.split(';').find_map(|declaration| {
+            let (key, value) = declaration.split_once(':')?;
+            (key.trim() == property).then_some(
+                value
+                    .trim()
+                    .trim_end_matches("!important")
+                    .trim()
+                    .to_owned(),
+            )
+        })
+    });
+    from_style.or_else(|| node.attribute(property).map(str::to_owned))
 }
 
 #[derive(Debug)]
@@ -238,8 +275,14 @@ Boundary(dashed, "Dashed Boundary") {
     }
 
     let ordinary_element = c4_rect_labeled(&document, "Service");
-    assert_eq!(ordinary_element.attribute("fill"), Some("#1168BD"));
-    assert_eq!(ordinary_element.attribute("stroke"), Some("#3C7FC0"));
+    assert_eq!(
+        c4_effective_property(ordinary_element, "fill"),
+        Some("#1168BD".to_owned())
+    );
+    assert_eq!(
+        c4_effective_property(ordinary_element, "stroke"),
+        Some("#3C7FC0".to_owned())
+    );
 }
 
 #[test]
@@ -257,8 +300,14 @@ Boundary(boundary, "Boundary") {
     assert_eq!(boundary.attribute("fill"), Some("transparent"));
     assert_eq!(boundary.attribute("stroke"), Some("transparent"));
     let ordinary_element = c4_rect_labeled(&document, "Service");
-    assert_eq!(ordinary_element.attribute("fill"), Some("#1168BD"));
-    assert_eq!(ordinary_element.attribute("stroke"), Some("#3C7FC0"));
+    assert_eq!(
+        c4_effective_property(ordinary_element, "fill"),
+        Some("#1168BD".to_owned())
+    );
+    assert_eq!(
+        c4_effective_property(ordinary_element, "stroke"),
+        Some("#3C7FC0".to_owned())
+    );
 }
 
 #[test]
@@ -360,8 +409,14 @@ fn c4_cluster_paint_is_not_applicable_without_explicit_boundaries() {
     let document = roxmltree::Document::parse(&svg).expect("valid empty-domain C4 SVG XML");
     let service = c4_rect_labeled(&document, "Service");
 
-    assert_eq!(service.attribute("fill"), Some("#1168BD"));
-    assert_eq!(service.attribute("stroke"), Some("#3C7FC0"));
+    assert_eq!(
+        c4_effective_property(service, "fill"),
+        Some("#1168BD".to_owned())
+    );
+    assert_eq!(
+        c4_effective_property(service, "stroke"),
+        Some("#3C7FC0".to_owned())
+    );
     assert!(!svg.contains("#ef4444"));
     assert!(!svg.contains("#2563eb"));
 }
@@ -471,16 +526,29 @@ Boundary(dashed, "Dashed Boundary") {
     );
 
     let ordinary_element = c4_rect_labeled(&document, "Service");
-    assert_eq!(ordinary_element.attribute("rx"), Some("2.5"));
-    assert_eq!(ordinary_element.attribute("ry"), Some("2.5"));
+    assert_eq!(
+        c4_effective_property(ordinary_element, "rx"),
+        Some("12px".to_owned())
+    );
+    assert_eq!(
+        c4_effective_property(ordinary_element, "ry"),
+        Some("12px".to_owned())
+    );
 
     let cleared_svg = render_c4_svg_with_theme(source, &c4_cluster_radius_theme(Specified::Clear));
     let cleared_document =
         roxmltree::Document::parse(&cleared_svg).expect("valid cleared C4 SVG XML");
     for label in ["Solid Boundary", "Dashed Boundary", "Service"] {
         let rect = c4_rect_labeled(&cleared_document, label);
-        assert_eq!(rect.attribute("rx"), Some("2.5"));
-        assert_eq!(rect.attribute("ry"), Some("2.5"));
+        let expected_radius = if label == "Service" { "12px" } else { "2.5" };
+        assert_eq!(
+            c4_effective_property(rect, "rx"),
+            Some(expected_radius.to_owned())
+        );
+        assert_eq!(
+            c4_effective_property(rect, "ry"),
+            Some(expected_radius.to_owned())
+        );
     }
 }
 
@@ -564,39 +632,63 @@ fn c4_public_layout_and_svg_render_handle_deep_boundary_chain() {
 }
 
 #[test]
-fn c4_type_text_length_comes_from_canonical_text_measurement() {
-    let identity = TextMeasurementProfileIdentity::new(
-        MeasurementProfileId::new("test.c4-type-width").unwrap(),
-        "test",
-    )
-    .unwrap();
-    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
-        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
-            identity,
-            Arc::new(C4TypeWidthProbe),
-        )),
-    );
+fn c4_unified_shapes_render_canonical_labels() {
     let svg = render_c4_svg_with_environment(
         r#"C4Context
 Person(person, "Person")
-System(system, "System")
+Container(system, "System", "Rust", "A short description")
 Person_Ext(external, "External")
+System(framed, "Framed", "A component-shaped system", $shape="component")
 "#,
-        &environment,
+        &RenderEnvironment::deterministic(),
     );
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
 
-    for (label, expected) in [
-        ("<<person>>", "151"),
-        ("<<system>>", "252"),
-        ("<<external_person>>", "399"),
-    ] {
-        let text = document
-            .descendants()
-            .find(|node| node.has_tag_name("text") && node.text() == Some(label))
-            .unwrap_or_else(|| panic!("missing C4 type label {label}: {svg}"));
-        assert_eq!(text.attribute("textLength"), Some(expected), "{label}");
+    for class in ["c4-name", "c4-type", "c4-descr"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.has_tag_name("g") && node.attribute("class") == Some(class) }),
+            "missing unified C4 label section {class}: {svg}"
+        );
     }
+    let type_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-type"))
+        .map(svg_text_content)
+        .collect::<Vec<_>>();
+    assert!(type_texts.iter().any(|text| text == "[Person]"));
+    assert!(type_texts.iter().any(|text| text == "[Container: Rust]"));
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-descr"))
+            .map(svg_text_content)
+            .any(|text| text == "A short description")
+    );
+    assert_eq!(svg.matches("<circle ").count(), 2);
+    assert_eq!(svg.matches("<polygon ").count(), 1);
+    assert!(!svg.contains("<<person>>"));
+    assert!(!svg.contains("<<system>>"));
+    assert!(!svg.contains("<<external_person>>"));
+}
+
+#[test]
+fn c4_shape_explicit_type_reaches_the_rendered_type_section() {
+    let svg = render_c4_svg_with_environment(
+        r#"C4Context
+Container(app, "Application", $type="Domain Service")
+"#,
+        &RenderEnvironment::deterministic(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let type_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-type"))
+        .map(svg_text_content)
+        .collect::<Vec<_>>();
+
+    assert_eq!(type_texts, ["[Domain Service]"]);
 }
 
 #[test]

@@ -20,6 +20,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "",
         "values": [
           23.0,
           -45.0,

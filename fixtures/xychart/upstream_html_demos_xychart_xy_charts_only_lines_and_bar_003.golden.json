@@ -20,6 +20,7 @@
     "plots": [
       {
         "type": "line",
+        "title": "",
         "values": [
           23.0,
           46.0,
@@ -47,6 +48,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           45.0,
           32.0,
@@ -74,6 +76,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           87.0,
           54.0,
@@ -101,6 +104,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           78.0,
           88.0,
@@ -128,6 +132,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           22.0,
           29.0,
@@ -155,6 +160,7 @@
       },
       {
         "type": "bar",
+        "title": "",
         "values": [
           52.0,
           96.0,

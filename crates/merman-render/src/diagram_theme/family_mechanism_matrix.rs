@@ -6043,6 +6043,27 @@ mod tests {
     }
 
     #[test]
+    fn railroad_title_paint_remains_on_the_legacy_rule_name_route() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::RAILROAD,
+                        ThemeTarget::Title,
+                        FamilyThemeSelectorShape::Static { variant },
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "Railroad rule-name titleColor route drifted for {paint_kind:?}, variant={variant:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn info_and_error_text_paint_routes_match_their_actual_terminals() {
         let disposition = |family, target| {
             let rule = ThemeRule::new(

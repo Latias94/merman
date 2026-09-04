@@ -227,6 +227,7 @@ pub(crate) fn parse_wardley_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_wardley_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -234,6 +235,19 @@ pub(crate) fn parse_wardley_model_for_render(
     Ok(construct_wardley_semantic_source(code, meta)
         .map_err(CombinedSemanticFailure::into_error)?
         .into_render_model(meta))
+}
+
+pub(crate) fn parse_wardley_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<WardleyDiagramRenderModel>> {
+    let construction = construct_wardley_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    Ok(Ok(source.into_render_model_controlled(meta, control)?))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -356,6 +370,7 @@ struct WardleySemanticSource {
 }
 
 impl WardleySemanticSource {
+    #[cfg(test)]
     fn into_render_model(mut self, meta: &ParseMetadata) -> WardleyDiagramRenderModel {
         self.model.sanitize_common_db_fields(&meta.effective_config);
         self.model

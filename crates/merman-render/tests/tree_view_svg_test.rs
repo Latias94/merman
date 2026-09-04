@@ -23,6 +23,7 @@ use merman_render::resources::{
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_render::{DiagramFamilyId, LayoutOptions};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -320,6 +321,34 @@ fn layout_tree_view(input: &str, environment: &RenderEnvironment) -> TreeViewDia
     serde_json::from_value(projection["layout"]["TreeViewDiagram"].clone()).unwrap()
 }
 
+fn tree_view_icon_group_for_label<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    label: &str,
+) -> roxmltree::Node<'a, 'input> {
+    let label_node = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+        .expect("TreeView label node");
+    label_node
+        .parent()
+        .expect("TreeView node group")
+        .children()
+        .find(|node| {
+            node.has_tag_name("g") && node.attribute("class") == Some("treeView-node-icon")
+        })
+        .expect("inline TreeView icon group")
+}
+
+fn tree_view_icon_svg_for_label<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    label: &str,
+) -> roxmltree::Node<'a, 'input> {
+    tree_view_icon_group_for_label(document, label)
+        .children()
+        .find(|node| node.has_tag_name("svg"))
+        .expect("inline TreeView icon SVG")
+}
+
 #[test]
 fn tree_view_typed_render_model_outputs_svg() {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -368,6 +397,53 @@ treeView-beta
     assert!(svg.contains(r#"font-size: 20px"#));
     assert!(svg.contains(r#"fill: #FF0000"#));
     assert!(svg.contains(r#"stroke: #00FF00"#));
+}
+
+#[test]
+fn tree_view_line_terminals_carry_renderer_owned_dual_paint_markers() {
+    let svg = render_tree_view_svg_with_options(
+        "treeView-beta\nRoot/\n    Child\n        Leaf\n",
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-paint-proof".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Tree View SVG XML");
+    let line_terminals = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-node-line"))
+        .collect::<Vec<_>>();
+    assert!(
+        !line_terminals.is_empty(),
+        "fixture must emit line terminals"
+    );
+
+    let mut ids = BTreeSet::new();
+    for line in &line_terminals {
+        let id = line
+            .attribute("id")
+            .expect("every Tree View line needs a renderer-owned semantic id");
+        assert!(
+            id.starts_with("treeView-edge-"),
+            "unexpected Tree View line id: {id}"
+        );
+        assert!(
+            id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX),
+            "Tree View line id must bind both semantic paint facets: {id}"
+        );
+        assert!(ids.insert(id), "Tree View line ids must be unique: {id}");
+    }
+
+    let marked_nodes = document
+        .descendants()
+        .filter(|node| {
+            node.attribute("id").is_some_and(|id| {
+                id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX)
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(marked_nodes.len(), line_terminals.len());
+    assert!(marked_nodes.iter().all(|node| node.has_tag_name("line")));
 }
 
 #[test]
@@ -733,10 +809,9 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
         .and_then(|node| node.text())
         .expect("Tree View stylesheet");
 
+    let icon_group = tree_view_icon_group_for_label(&document, "Root");
     assert!(
-        document.descendants().any(|node| {
-            node.has_tag_name("use") && node.attribute("class") == Some("treeView-node-icon")
-        }),
+        icon_group.children().any(|node| node.has_tag_name("svg")),
         "the fixture must exercise a real icon terminal"
     );
     assert!(
@@ -865,8 +940,16 @@ src/ :::highlight icon(folder) ## source directory
     assert!(svg.contains(r#"class="treeView-node-description""#));
     assert!(svg.contains("source directory"));
     assert!(svg.contains("main component"));
-    assert!(svg.contains(r#"id="tv-icon-tree-view-11-16-test-mermaid-treeview-folder""#));
-    assert!(svg.contains(r#"id="tv-icon-tree-view-11-16-test-logos-react""#));
+    let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+    assert_eq!(
+        tree_view_icon_svg_for_label(&document, "src").attribute("viewBox"),
+        Some("0 0 24 24")
+    );
+    assert_eq!(
+        tree_view_icon_svg_for_label(&document, "App.tsx").attribute("viewBox"),
+        Some("0 0 80 80")
+    );
+    assert!(!svg.contains("<defs"));
     assert!(!svg.contains("<use"));
     assert!(!svg.contains("package.json icon"));
     assert!(svg.contains(".treeView-node-icon"));
@@ -875,7 +958,7 @@ src/ :::highlight icon(folder) ## source directory
 }
 
 #[test]
-fn tree_view_security_level_controls_only_icon_use_nodes() {
+fn tree_view_security_levels_keep_inline_icon_dom() {
     let input = "treeView-beta\nRoot icon(folder)\n";
     let options = SvgRenderOptions {
         diagram_id: Some("tree-view-security-level-test".to_string()),
@@ -893,28 +976,19 @@ fn tree_view_security_level_controls_only_icon_use_nodes() {
     );
     let strict_document = roxmltree::Document::parse(&strict_svg).expect("valid strict SVG");
     let loose_document = roxmltree::Document::parse(&loose_svg).expect("valid loose SVG");
-    let symbol_id = "tv-icon-tree-view-security-level-test-mermaid-treeview-folder";
-    let symbol_href = format!("#{symbol_id}");
 
     for document in [&strict_document, &loose_document] {
         assert!(
             document
                 .descendants()
-                .any(|node| node.attribute("id") == Some(symbol_id)),
-            "both security levels retain the icon definition"
+                .all(|node| !node.has_tag_name("defs"))
+        );
+        assert!(document.descendants().all(|node| !node.has_tag_name("use")));
+        assert_eq!(
+            tree_view_icon_svg_for_label(document, "Root").attribute("viewBox"),
+            Some("0 0 24 24")
         );
     }
-    assert!(
-        strict_document
-            .descendants()
-            .all(|node| node.tag_name().name() != "use"),
-        "strict rendering mirrors Mermaid's final DOMPurify pass"
-    );
-    assert!(loose_document.descendants().any(|node| {
-        node.tag_name().name() == "use"
-            && node.attribute(("http://www.w3.org/1999/xlink", "href"))
-                == Some(symbol_href.as_str())
-    }));
 
     let root_attribute = |document: &roxmltree::Document<'_>, name| {
         document
@@ -969,40 +1043,26 @@ App.tsx icon(logos:react)
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
 
-    for (icon, label) in [("folder", "src"), ("file", "file.txt")] {
-        let symbol_id = format!("tv-icon-tree-view-icon-size-test-mermaid-treeview-{icon}");
-        let symbol = document
-            .descendants()
-            .find(|node| node.attribute("id") == Some(symbol_id.as_str()))
-            .expect("built-in icon definition");
-        let icon_svg = symbol
-            .children()
-            .find(|node| node.is_element() && node.tag_name().name() == "svg")
-            .expect("built-in icon uses a size-constrained SVG viewport");
+    for label in ["src", "file.txt"] {
+        let icon_group = tree_view_icon_group_for_label(&document, label);
+        let icon_svg = tree_view_icon_svg_for_label(&document, label);
 
         assert_eq!(icon_svg.attribute("width"), Some("14"));
         assert_eq!(icon_svg.attribute("height"), Some("14"));
         assert_eq!(icon_svg.attribute("viewBox"), Some("0 0 24 24"));
 
-        let href = format!("#{symbol_id}");
-        let icon_use = document
-            .descendants()
-            .find(|node| {
-                node.tag_name().name() == "use"
-                    && node.attribute(("http://www.w3.org/1999/xlink", "href"))
-                        == Some(href.as_str())
-            })
-            .expect("icon use node");
         let label_node = document
             .descendants()
             .find(|node| node.tag_name().name() == "text" && node.text() == Some(label))
             .expect("icon label node");
-        let icon_right = icon_use
-            .attribute("x")
-            .expect("icon x")
+        let icon_x = icon_group
+            .attribute("transform")
+            .and_then(|transform| transform.strip_prefix("translate("))
+            .and_then(|transform| transform.split(',').next())
+            .expect("icon translate x")
             .parse::<f64>()
-            .expect("numeric icon x")
-            + 14.0;
+            .expect("numeric icon x");
+        let icon_right = icon_x + 14.0;
         let label_x = label_node
             .attribute("x")
             .expect("label x")
@@ -1013,14 +1073,7 @@ App.tsx icon(logos:react)
     }
     assert!(!svg.contains("registry-override"), "{svg}");
 
-    let third_party_symbol = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-icon-size-test-logos-react"))
-        .expect("third-party fallback icon definition");
-    let fallback_svg = third_party_symbol
-        .children()
-        .find(|node| node.is_element() && node.tag_name().name() == "svg")
-        .expect("missing icon uses the standard fallback SVG");
+    let fallback_svg = tree_view_icon_svg_for_label(&document, "App.tsx");
     assert_eq!(fallback_svg.attribute("width"), Some("14"));
     assert_eq!(fallback_svg.attribute("height"), Some("14"));
     assert_eq!(fallback_svg.attribute("viewBox"), Some("0 0 80 80"));
@@ -1058,23 +1111,14 @@ fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
 
-    let rocket_symbol = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-rocket"))
-        .expect("registry icon symbol");
+    let rocket_svg = tree_view_icon_svg_for_label(&document, "Rocket");
     assert_eq!(
         document
             .descendants()
-            .filter(|node| {
-                node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-rocket")
-            })
+            .filter(|node| node.attribute("data-icon") == Some("tree-view-registry"))
             .count(),
-        1
+        2
     );
-    let rocket_svg = rocket_symbol
-        .children()
-        .find(|node| node.is_element() && node.tag_name().name() == "svg")
-        .expect("registry icon SVG");
     assert_eq!(rocket_svg.attribute("width"), Some("14"));
     assert_eq!(rocket_svg.attribute("height"), Some("14"));
     assert_eq!(rocket_svg.attribute("viewBox"), Some("2 3 32 18"));
@@ -1084,16 +1128,9 @@ fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
             .any(|node| node.attribute("data-icon") == Some("tree-view-registry"))
     );
 
-    assert_unknown_tree_view_icon(&document, "tv-icon-tree-view-registry-test-test-missing");
+    assert_unknown_tree_view_icon(&document, "Missing");
 
-    let empty_symbol = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-empty"))
-        .expect("empty registry icon symbol");
-    let empty_svg = empty_symbol
-        .children()
-        .find(|node| node.is_element() && node.tag_name().name() == "svg")
-        .expect("an explicitly empty registry icon still resolves");
+    let empty_svg = tree_view_icon_svg_for_label(&document, "Empty");
     assert_eq!(empty_svg.attribute("viewBox"), Some("0 0 16 16"));
     assert_eq!(
         empty_svg
@@ -1114,18 +1151,11 @@ fn tree_view_missing_icon_without_registry_uses_unknown_icon() {
         },
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
-    assert_unknown_tree_view_icon(&document, "tv-icon-tree-view-no-registry-test-test-missing");
+    assert_unknown_tree_view_icon(&document, "Root");
 }
 
-fn assert_unknown_tree_view_icon(document: &roxmltree::Document<'_>, symbol_id: &str) {
-    let symbol = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some(symbol_id))
-        .expect("missing icon symbol");
-    let icon_svg = symbol
-        .children()
-        .find(|node| node.is_element() && node.tag_name().name() == "svg")
-        .expect("unknown icon SVG");
+fn assert_unknown_tree_view_icon(document: &roxmltree::Document<'_>, label: &str) {
+    let icon_svg = tree_view_icon_svg_for_label(document, label);
     assert_eq!(icon_svg.attribute("width"), Some("14"));
     assert_eq!(icon_svg.attribute("height"), Some("14"));
     assert_eq!(icon_svg.attribute("viewBox"), Some("0 0 80 80"));

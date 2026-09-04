@@ -155,6 +155,350 @@ fn style_decls_with_important(decls: &[ErStyleDeclaration]) -> String {
     style_decls_with_important_join(decls, "; ")
 }
 
+// The ER parser also accepts source declarations represented as raw strings for
+// subgraph compatibility styling. Keep that formatting path separate from the
+// prepared declaration path used by the typed theme receipts.
+fn insert_er_redux_color_css<I>(css: &mut String, diagram_id: I, color_css: &str)
+where
+    I: SvgDiagramIdValue,
+{
+    if color_css.is_empty() {
+        return;
+    }
+
+    let escaped_id = diagram_id.semantic_value();
+    let family_rule = format!("#{escaped_id} .entityBox");
+    let root_rule = format!("#{escaped_id} :root");
+    let insertion_point = css
+        .find(&family_rule)
+        .or_else(|| css.find(&root_rule))
+        .unwrap_or(css.len());
+    css.insert_str(insertion_point, color_css);
+}
+
+fn compile_er_entity_styles(
+    entity: &crate::er::ErEntity,
+    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
+) -> (Vec<String>, Vec<String>) {
+    let mut compiled_box: Vec<String> = Vec::new();
+    let mut compiled_text: Vec<String> = Vec::new();
+    let mut seen_classes: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for class_name in entity.css_classes.split_whitespace() {
+        if !seen_classes.insert(class_name) {
+            continue;
+        }
+        let Some(def) = classes.get(class_name) else {
+            continue;
+        };
+        for s in &def.styles {
+            let t = s.trim();
+            if t.is_empty() {
+                continue;
+            }
+            compiled_box.push(t.to_string());
+        }
+        for s in &def.text_styles {
+            let t = s.trim();
+            if t.is_empty() {
+                continue;
+            }
+            compiled_text.push(t.to_string());
+        }
+    }
+
+    let mut rect_map: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    let mut text_map: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+
+    // Box styles: classDef styles + `style` statements.
+    for s in compiled_box.iter().chain(entity.css_styles.iter()) {
+        let Some((k, v)) = parse_style_decl(s) else {
+            continue;
+        };
+        if is_rect_style_key(k) {
+            rect_map.insert(k.to_string(), v.to_string());
+        }
+        // Mermaid treats `color:` as the HTML label text color (even if it comes from the style list).
+        if k == "color" {
+            text_map.insert("color".to_string(), v.to_string());
+        }
+    }
+
+    // Text styles: classDef textStyles + `style` statements (only text-related keys).
+    for s in compiled_text.iter().chain(entity.css_styles.iter()) {
+        let Some((k, v)) = parse_style_decl(s) else {
+            continue;
+        };
+        if !is_text_style_key(k) {
+            continue;
+        }
+        if k == "color" {
+            text_map.insert("color".to_string(), v.to_string());
+        } else {
+            text_map.insert(k.to_string(), v.to_string());
+        }
+    }
+
+    let mut rect_decls: Vec<String> = Vec::new();
+    for k in [
+        "fill",
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "opacity",
+        "fill-opacity",
+        "stroke-opacity",
+    ] {
+        if let Some(v) = rect_map.get(k) {
+            rect_decls.push(format!("{k}:{v}"));
+        }
+    }
+
+    let mut text_decls: Vec<String> = Vec::new();
+    for k in [
+        "color",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "opacity",
+    ] {
+        if let Some(v) = text_map.get(k) {
+            text_decls.push(format!("{k}:{v}"));
+        }
+    }
+
+    (rect_decls, text_decls)
+}
+
+fn compile_er_subgraph_styles(
+    subgraph: &crate::er::ErSubgraph,
+    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
+) -> (Vec<String>, Vec<String>) {
+    let mut compiled_box = Vec::new();
+    let mut compiled_text = Vec::new();
+    let mut seen_classes = std::collections::HashSet::new();
+    for class_name in &subgraph.classes {
+        if !seen_classes.insert(class_name.as_str()) {
+            continue;
+        }
+        let Some(def) = classes.get(class_name) else {
+            continue;
+        };
+        compiled_box.extend(def.styles.iter().map(|style| style.trim().to_string()));
+        compiled_text.extend(def.text_styles.iter().map(|style| style.trim().to_string()));
+    }
+
+    let mut rect_map = std::collections::BTreeMap::new();
+    let mut text_map = std::collections::BTreeMap::new();
+    for style in compiled_box.iter().chain(subgraph.css_styles.iter()) {
+        let Some((key, value)) = parse_style_decl(style) else {
+            continue;
+        };
+        if is_rect_style_key(key) {
+            rect_map.insert(key.to_string(), value.to_string());
+        }
+        if key == "color" {
+            text_map.insert("color".to_string(), value.to_string());
+        }
+    }
+    for style in compiled_text.iter().chain(subgraph.css_styles.iter()) {
+        let Some((key, value)) = parse_style_decl(style) else {
+            continue;
+        };
+        if is_text_style_key(key) {
+            text_map.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    let rect_decls = [
+        "fill",
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "opacity",
+        "fill-opacity",
+        "stroke-opacity",
+    ]
+    .into_iter()
+    .filter_map(|key| rect_map.get(key).map(|value| format!("{key}:{value}")))
+    .collect();
+    let text_decls = [
+        "color",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "opacity",
+    ]
+    .into_iter()
+    .filter_map(|key| text_map.get(key).map(|value| format!("{key}:{value}")))
+    .collect();
+    (rect_decls, text_decls)
+}
+
+fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
+    if subgraph.label_type == "string" || subgraph.label_type == "text" {
+        escape_xml(&subgraph.title)
+    } else {
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&subgraph.title, true)
+    }
+}
+
+fn er_svg_label_source(label: &crate::er::ErBoxLabel) -> &str {
+    label.svg_text_source()
+}
+
+fn write_er_svg_box_label(
+    out: &mut impl SvgOutput,
+    label: &crate::er::ErBoxLabel,
+    style: &crate::text::TextStyle,
+    measurer: &dyn TextMeasurer,
+    max_width_px: Option<f64>,
+) {
+    let source = er_svg_label_source(label);
+    if let Some(max_width_px) = max_width_px {
+        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped(
+            out,
+            source,
+            true,
+            measurer,
+            style,
+            Some(max_width_px),
+        );
+    } else {
+        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, source, true);
+    }
+}
+
+fn write_er_svg_plain_label(out: &mut impl SvgOutput, text: &str) {
+    let lines = crate::flowchart::flowchart_non_markdown_svg_source_word_lines(text);
+    crate::svg::parity::flowchart::write_flowchart_svg_source_word_lines(out, &lines, true);
+}
+
+fn write_er_svg_label_background(out: &mut impl SvgOutput) {
+    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+}
+
+#[derive(Clone, Copy)]
+struct ErSubgraphRenderContext<'a> {
+    diagram_id: SvgDiagramId<'a>,
+    data_look: &'a str,
+    classes: &'a indexmap::IndexMap<String, crate::er::ErClassDef>,
+    use_html_labels: bool,
+    translate_x: f64,
+    translate_y: f64,
+}
+
+fn render_er_subgraph_cluster(
+    out: &mut impl SvgOutput,
+    cluster: &crate::model::LayoutCluster,
+    subgraph: &crate::er::ErSubgraph,
+    context: ErSubgraphRenderContext<'_>,
+) {
+    let (rect_styles, text_styles) = compile_er_subgraph_styles(subgraph, context.classes);
+    let rect_style_attr = if rect_styles.is_empty() {
+        "style=\"\"".to_string()
+    } else {
+        format!(
+            r#"style="{}""#,
+            escape_xml(&string_style_decls_with_important(&rect_styles))
+        )
+    };
+    let text_style_attr = if text_styles.is_empty() {
+        "style=\"\"".to_string()
+    } else {
+        format!(
+            r#"style="{}""#,
+            escape_xml(&string_style_decls_with_important(&text_styles))
+        )
+    };
+    let class_attr = if subgraph.classes.is_empty() {
+        "cluster".to_string()
+    } else {
+        format!("cluster {}", subgraph.classes.join(" "))
+    };
+    let width = cluster.width.max(1.0);
+    let height = cluster.height.max(1.0);
+    let left = cluster.x - width / 2.0 + context.translate_x;
+    let top = cluster.y - height / 2.0 + context.translate_y;
+    let title_width = cluster.title_label.width.max(0.0);
+    let title_height = cluster.title_label.height.max(0.0);
+    let title_x = cluster.title_label.x + context.translate_x;
+    let title_y = cluster.title_label.y + context.translate_y;
+    let _ = write!(
+        out,
+        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})">"#,
+        escape_xml(&format!("{}", context.diagram_id)),
+        escape_xml(&subgraph.id),
+        escape_xml(&class_attr),
+        escape_xml(context.data_look),
+        rect_style_attr,
+        fmt(left),
+        fmt(top),
+        fmt(width),
+        fmt(height),
+        fmt(title_x),
+        fmt(title_y),
+    );
+    if context.use_html_labels {
+        let title_fragment = er_subgraph_label_fragment(subgraph);
+        let _ = write!(
+            out,
+            r#"<foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject>"#,
+            fmt(-title_width / 2.0),
+            fmt(-title_height / 2.0),
+            fmt(title_width),
+            fmt(title_height),
+            text_style_attr,
+            title_fragment,
+        );
+    } else {
+        let _ = write!(out, "<g {}>", text_style_attr);
+        write_er_svg_label_background(out);
+        if subgraph.label_type == "string" || subgraph.label_type == "text" {
+            write_er_svg_plain_label(out, &subgraph.title);
+        } else {
+            crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+                out,
+                &subgraph.title,
+                true,
+            );
+        }
+        out.push_str("</g>");
+    }
+    out.push_str("</g></g>");
+    out.push('\n');
+}
+
+fn string_style_decls_with_important_join(decls: &[String], join: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for d in decls {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        out.push(format!("{k}:{v} !important"));
+    }
+    out.join(join)
+}
+
+fn render_er_subgraph_clusters(
+    out: &mut impl SvgOutput,
+    clusters: &[crate::model::LayoutCluster],
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    context: ErSubgraphRenderContext<'_>,
+) {
+    for cluster in clusters {
+        let Some(subgraph) = model.subgraphs.iter().find(|item| item.id == cluster.id) else {
+            continue;
+        };
+        render_er_subgraph_cluster(out, cluster, subgraph, context);
+    }
+}
+
+fn string_style_decls_with_important(decls: &[String]) -> String {
+    string_style_decls_with_important_join(decls, "; ")
+}
+
 fn typed_text_terminal_style(typed_paint: Option<(usize, &str)>) -> String {
     typed_paint
         .map(|(_, css)| format!("color:{css};fill:{css}"))
@@ -265,20 +609,11 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) ->
     let Some(rel) = relationships.get(idx) else {
         return edge_id.to_string();
     };
-    let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
-    let idx_prefix = idx.to_string();
-    let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
-
-    if rel.entity_a == rel.entity_b {
-        match suffix {
-            "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
-            "" => format!("{}-cyclic-special-mid", rel.entity_a),
-            "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
-            _ => format!("{}-cyclic-special-mid", rel.entity_a),
-        }
-    } else {
-        format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
-    }
+    // The SVG-facing layout projection merges Dagre's three internal self-loop segments into
+    // one logical relationship edge. Mermaid's common painter consequently uses the ordinary
+    // relationship id for that visible edge; the `cyclic-special-*` ids belong only to the
+    // hidden helper labels that remain in the layout model.
+    format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -384,10 +719,21 @@ pub(crate) fn render_er_diagram_svg_model(
     let mut nodes = layout.nodes.clone();
     nodes.sort_by_key(|n| er_node_sort_key(&n.id));
 
-    let mut edges = layout.edges.clone();
-    fn er_edge_sort_key(id: &str) -> (i64, i64) {
+    // Layout keeps Dagre's helper segments for reproducible layout artifacts. The family
+    // preparation path also carries Mermaid's SVG-facing projection, where self-loops are
+    // already merged into one visible edge. Fall back to the canonical edges for hand-built
+    // layouts used by unit tests and older callers.
+    let mut edges = if layout.render_edges.is_empty() {
+        layout.edges.clone()
+    } else {
+        layout.render_edges.clone()
+    };
+    fn er_edge_sort_key(edge: &crate::model::LayoutEdge) -> (i64, i64, i64) {
+        // Mermaid's getEdgesToRender() appends merged self-loops after ordinary graph edges.
+        let self_loop = i64::from(edge.from == edge.to);
+        let id = edge.id.as_str();
         let Some(rest) = id.strip_prefix("er-rel-") else {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         };
         let mut digits_len = 0usize;
         for ch in rest.chars() {
@@ -397,21 +743,14 @@ pub(crate) fn render_er_diagram_svg_model(
             digits_len += ch.len_utf8();
         }
         if digits_len == 0 {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         }
         let Ok(idx) = rest[..digits_len].parse::<i64>() else {
-            return (i64::MAX, i64::MAX);
+            return (self_loop, i64::MAX, i64::MAX);
         };
-        let suffix = &rest[digits_len..];
-        let variant = match suffix {
-            "-cyclic-0" => 0,
-            "" => 1,
-            "-cyclic-2" => 2,
-            _ => 99,
-        };
-        (idx, variant)
+        (self_loop, idx, 0)
     }
-    edges.sort_by_key(|e| er_edge_sort_key(&e.id));
+    edges.sort_by_key(er_edge_sort_key);
 
     let visible_relation_edges = edges
         .iter()
@@ -449,7 +788,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
     let is_empty_diagram = nodes.is_empty() && edges.is_empty() && diagram_title.is_none();
 
-    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or({
+    let bounds = compute_layout_bounds(&layout.clusters, &nodes, &edges).unwrap_or({
         if is_empty_diagram {
             Bounds {
                 min_x: 0.0,
@@ -716,20 +1055,31 @@ pub(crate) fn render_er_diagram_svg_model(
     for e in model.entities.values() {
         entity_by_id.insert(e.id.as_str(), e);
     }
-    if is_elk_layout {
-        // Mermaid's ER diagram output changes shape when `layout=elk` is enabled: markers are
-        // emitted in their own wrapper `<g>`, and the rest of the content is written as sibling
-        // top-level groups (`edges/edgePaths`, `subgraphs`, `nodes`, `edgeLabels`).
-        out.push_str("</g>\n");
-        out.push_str(r#"<g class="subgraphs"/>"#);
-    } else {
-        let _ = writeln!(&mut out, r#"<g class="root">"#);
-        out.push_str(r#"<g class="clusters"/>"#);
+    let subgraph_context = ErSubgraphRenderContext {
+        diagram_id,
+        data_look,
+        classes: &model.classes,
+        use_html_labels: matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike),
+        translate_x,
+        translate_y,
+    };
+
+    // Mermaid 11.17 renders both providers through the common layout painter. The provider only
+    // changes the edge group name and z-order: ELK lowers `.edges` beneath `.clusters`, while
+    // Dagre keeps the ordinary `edgePaths` group after clusters.
+    let _ = writeln!(&mut out, r#"<g class="root">"#);
+    if !is_elk_layout {
+        if layout.clusters.is_empty() {
+            out.push_str(r#"<g class="clusters"/>"#);
+        } else {
+            out.push_str(r#"<g class="clusters">"#);
+            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            out.push_str("</g>");
+        }
     }
-    out.checkpoint()?;
 
     if is_elk_layout {
-        out.push_str(r#"<g class="edges edgePaths">"#);
+        out.push_str(r#"<g class="edges edgePath">"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
@@ -817,6 +1167,18 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.push_str("</g>");
     out.checkpoint()?;
+
+    // The published `@mermaid-js/layout-elk@0.2.3` common painter lowers the edge group after
+    // insertion, so its root order is edges, clusters, edgeLabels, nodes.
+    if is_elk_layout {
+        if layout.clusters.is_empty() {
+            out.push_str(r#"<g class="clusters"/>"#);
+        } else {
+            out.push_str(r#"<g class="clusters">"#);
+            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            out.push_str("</g>");
+        }
+    }
 
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
@@ -1034,6 +1396,9 @@ pub(crate) fn render_er_diagram_svg_model(
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
     for n in &nodes {
+        if n.is_cluster {
+            continue;
+        }
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
             if n.id.contains("---") {
                 let cx = n.x + translate_x;
@@ -1046,7 +1411,16 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cy)
                 );
                 out.push_str(r#"<rect width="0.1" height="0.1"/>"#);
-                out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#);
+                if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+                    out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#);
+                } else {
+                    out.push_str(
+                        r#"<g class="label" style="" transform="translate(0, 0)"><rect/>"#,
+                    );
+                    write_er_svg_label_background(&mut out);
+                    write_er_svg_plain_label(&mut out, "");
+                    out.push_str("</g></g>");
+                }
             }
             out.checkpoint()?;
             continue;
@@ -1158,17 +1532,31 @@ pub(crate) fn render_er_diagram_svg_model(
             };
             let lh = label_metrics.height.max(0.0);
 
-            let _ = write!(
-                &mut out,
-                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g>"#,
-                fmt(-lw / 2.0),
-                fmt(-lh / 2.0),
-                entity_name_style_attr,
-                fmt(lw),
-                fmt(lh),
-                measure.label_max_width_px.max(0),
-                html_label_content(&measure.label, "", true)
-            );
+            if matches!(wrap_mode, crate::text::WrapMode::HtmlLike) {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g>"#,
+                    fmt(-lw / 2.0),
+                    fmt(-lh / 2.0),
+                    entity_name_style_attr,
+                    fmt(lw),
+                    fmt(lh),
+                    measure.label_max_width_px.max(0),
+                    html_label_content(&measure.label, "", true)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" transform="translate({}, {})" {}><rect/><g transform="translate({}, 0)">"#,
+                    fmt(0.0),
+                    fmt(-lh / 2.0),
+                    entity_name_style_attr,
+                    fmt(-lw / 2.0),
+                );
+                write_er_svg_label_background(&mut out);
+                write_er_svg_box_label(&mut out, &measure.label, &label_style, measurer, None);
+                out.push_str("</g></g>");
+            }
             out.push_str("</g>");
             out.checkpoint()?;
             entity_theme_receipt.record_checkpointed_entity(
@@ -1501,7 +1889,10 @@ pub(crate) fn render_er_diagram_svg_model(
             entity_theme_receipt.record_table_row(&entity.id, idx, &typed_row_terminal_style);
         }
 
-        // HTML labels
+        // ER entity tables read root `htmlLabels` directly. This intentionally differs from
+        // relationship labels, whose renderer consults `flowchart.htmlLabels` as a fallback.
+        // The HTML path keeps Mermaid's foreignObject structure; the SVG path below mirrors
+        // createText(..., useHtmlLabels: false) with a background group and text/tspan output.
         let line_h = (font_size * 1.5).max(1.0);
         let mut pad = entity_measurement.diagram_padding;
         // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
@@ -1521,19 +1912,38 @@ pub(crate) fn render_er_diagram_svg_model(
         let typed_entity_name = entity_theme.typed_entity_name(&entity.id);
         let entity_name_style_attr = er_text_style_attr(text_style_decls, typed_entity_name);
         let entity_name_terminal_style = typed_text_terminal_style(typed_entity_name);
-        let _ = write!(
-            &mut out,
-            r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-            fmt(name_x),
-            fmt(name_y),
-            entity_name_style_attr,
-            fmt(name_w),
-            fmt(line_h),
-            escape_xml(&label_div_color_prefix),
-            name_mw_px.max(0),
-            html_label_content(&measure.label, &span_style_attr, false)
-        );
-        out.push_str("</div></foreignObject></g>");
+        if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+            let _ = write!(
+                &mut out,
+                r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                fmt(name_x),
+                fmt(name_y),
+                entity_name_style_attr,
+                fmt(name_w),
+                fmt(line_h),
+                escape_xml(&label_div_color_prefix),
+                name_mw_px.max(0),
+                html_label_content(&measure.label, &span_style_attr, false)
+            );
+            out.push_str("</div></foreignObject></g>");
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<g class="label name" transform="translate({}, {})" {}>"#,
+                fmt(name_x),
+                fmt(name_y),
+                entity_name_style_attr,
+            );
+            write_er_svg_label_background(&mut out);
+            write_er_svg_box_label(
+                &mut out,
+                &measure.label,
+                &label_style,
+                measurer,
+                Some(name_mw_px.max(0) as f64),
+            );
+            out.push_str("</g>");
+        }
         out.checkpoint()?;
         if entity_theme_receipt.records_text_terminals()
             && measure.label.visible_style_facts().parse_valid()
@@ -1583,19 +1993,38 @@ pub(crate) fn render_er_diagram_svg_model(
             let row_h = row.height.max(1.0);
             let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
 
-            let type_w = crate::er::er_box_label_metrics(&row.type_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let name_w = crate::er::er_box_label_metrics(&row.name_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let keys_w = crate::er::er_box_label_metrics(&row.key_label, measurer, &attr_style)
-                .width
-                .max(0.0);
-            let comment_w =
-                crate::er::er_box_label_metrics(&row.comment_label, measurer, &attr_style)
-                    .width
-                    .max(0.0);
+            let type_w = crate::er::er_box_label_metrics_with_wrap_mode(
+                &row.type_label,
+                measurer,
+                &attr_style,
+                entity_wrap_mode,
+            )
+            .width
+            .max(0.0);
+            let name_w = crate::er::er_box_label_metrics_with_wrap_mode(
+                &row.name_label,
+                measurer,
+                &attr_style,
+                entity_wrap_mode,
+            )
+            .width
+            .max(0.0);
+            let keys_w = crate::er::er_box_label_metrics_with_wrap_mode(
+                &row.key_label,
+                measurer,
+                &attr_style,
+                entity_wrap_mode,
+            )
+            .width
+            .max(0.0);
+            let comment_w = crate::er::er_box_label_metrics_with_wrap_mode(
+                &row.comment_label,
+                measurer,
+                &attr_style,
+                entity_wrap_mode,
+            )
+            .width
+            .max(0.0);
 
             let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,
@@ -1643,69 +2072,145 @@ pub(crate) fn render_er_diagram_svg_model(
             let keys_style_attr = er_text_style_attr(text_style_decls, keys_paint);
             let comment_style_attr = er_text_style_attr(text_style_decls, comment_paint);
 
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(type_left),
-                fmt(cell_y),
-                type_style_attr,
-                fmt(type_w),
-                fmt(line_h),
-                escape_xml(&label_div_color_prefix),
-                type_mw_px.max(0),
-                html_label_content(&row.type_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
+            if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    fmt(type_left),
+                    fmt(cell_y),
+                    type_style_attr,
+                    fmt(type_w),
+                    fmt(line_h),
+                    escape_xml(&label_div_color_prefix),
+                    type_mw_px.max(0),
+                    html_label_content(&row.type_label, &span_style_attr, false)
+                );
+                out.push_str("</div></foreignObject></g>");
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-type" transform="translate({}, {})" {}>"#,
+                    fmt(type_left),
+                    fmt(cell_y),
+                    type_style_attr,
+                );
+                write_er_svg_label_background(&mut out);
+                write_er_svg_box_label(
+                    &mut out,
+                    &row.type_label,
+                    &attr_style,
+                    measurer,
+                    Some(type_mw_px.max(0) as f64),
+                );
+                out.push_str("</g>");
+            }
 
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(name_left),
-                fmt(cell_y),
-                name_style_attr,
-                fmt(name_w),
-                fmt(line_h),
-                escape_xml(&label_div_color_prefix),
-                name_mw_px.max(0),
-                html_label_content(&row.name_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
+            if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    fmt(name_left),
+                    fmt(cell_y),
+                    name_style_attr,
+                    fmt(name_w),
+                    fmt(line_h),
+                    escape_xml(&label_div_color_prefix),
+                    name_mw_px.max(0),
+                    html_label_content(&row.name_label, &span_style_attr, false)
+                );
+                out.push_str("</div></foreignObject></g>");
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-name" transform="translate({}, {})" {}>"#,
+                    fmt(name_left),
+                    fmt(cell_y),
+                    name_style_attr,
+                );
+                write_er_svg_label_background(&mut out);
+                write_er_svg_box_label(
+                    &mut out,
+                    &row.name_label,
+                    &attr_style,
+                    measurer,
+                    Some(name_mw_px.max(0) as f64),
+                );
+                out.push_str("</g>");
+            }
 
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(key_left),
-                fmt(cell_y),
-                keys_style_attr,
-                fmt(keys_w),
-                fmt(if row.key_label.rendered_text().is_empty() {
-                    0.0
-                } else {
-                    line_h
-                }),
-                escape_xml(&label_div_color_prefix),
-                keys_mw_px.max(0),
-                html_label_content(&row.key_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
+            if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    fmt(key_left),
+                    fmt(cell_y),
+                    keys_style_attr,
+                    fmt(keys_w),
+                    fmt(if row.key_label.rendered_text().is_empty() {
+                        0.0
+                    } else {
+                        line_h
+                    }),
+                    escape_xml(&label_div_color_prefix),
+                    keys_mw_px.max(0),
+                    html_label_content(&row.key_label, &span_style_attr, false)
+                );
+                out.push_str("</div></foreignObject></g>");
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-keys" transform="translate({}, {})" {}>"#,
+                    fmt(key_left),
+                    fmt(cell_y),
+                    keys_style_attr,
+                );
+                write_er_svg_label_background(&mut out);
+                write_er_svg_box_label(
+                    &mut out,
+                    &row.key_label,
+                    &attr_style,
+                    measurer,
+                    Some(keys_mw_px.max(0) as f64),
+                );
+                out.push_str("</g>");
+            }
 
-            let _ = write!(
-                &mut out,
-                r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
-                fmt(comment_left),
-                fmt(cell_y),
-                comment_style_attr,
-                fmt(comment_w),
-                fmt(if row.comment_label.rendered_text().is_empty() {
-                    0.0
-                } else {
-                    line_h
-                }),
-                escape_xml(&label_div_color_prefix),
-                comment_mw_px.max(0),
-                html_label_content(&row.comment_label, &span_style_attr, false)
-            );
-            out.push_str("</div></foreignObject></g>");
+            if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                    fmt(comment_left),
+                    fmt(cell_y),
+                    comment_style_attr,
+                    fmt(comment_w),
+                    fmt(if row.comment_label.rendered_text().is_empty() {
+                        0.0
+                    } else {
+                        line_h
+                    }),
+                    escape_xml(&label_div_color_prefix),
+                    comment_mw_px.max(0),
+                    html_label_content(&row.comment_label, &span_style_attr, false)
+                );
+                out.push_str("</div></foreignObject></g>");
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label attribute-comment" transform="translate({}, {})" {}>"#,
+                    fmt(comment_left),
+                    fmt(cell_y),
+                    comment_style_attr,
+                );
+                write_er_svg_label_background(&mut out);
+                write_er_svg_box_label(
+                    &mut out,
+                    &row.comment_label,
+                    &attr_style,
+                    measurer,
+                    Some(comment_mw_px.max(0) as f64),
+                );
+                out.push_str("</g>");
+            }
 
             out.checkpoint()?;
 
@@ -1841,10 +2346,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.push_str("</g>\n");
     out.checkpoint()?;
-
-    if !is_elk_layout {
-        out.push_str("</g>\n</g>\n");
-    }
+    out.push_str("</g>\n</g>\n");
     out.checkpoint()?;
 
     push_er_gradient(&mut out, diagram_id.semantic_str(), effective_config)?;
@@ -2218,6 +2720,8 @@ mod tests {
                 },
             ],
             edges: Vec::new(),
+            render_edges: Vec::new(),
+            clusters: Vec::new(),
             bounds: Some(Bounds {
                 min_x: 0.0,
                 min_y: 0.0,

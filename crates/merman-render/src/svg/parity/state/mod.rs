@@ -41,7 +41,10 @@ fn state_transition_marker_id(diagram_id: impl SvgDiagramIdValue, ordinal: usize
 
 struct StateRenderCtx<'a> {
     diagram_id: SvgDiagramId<'a>,
+    /// The normalized look used for renderer behavior (`default` behaves as `classic`).
     diagram_look: String,
+    /// The allow-listed source token emitted in Mermaid-compatible `data-look` attributes.
+    serialized_diagram_look: String,
     hand_drawn_seed: roughr::core::RoughRandomness,
     html_labels: bool,
     html_label_wrapping_width: f64,

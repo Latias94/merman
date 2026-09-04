@@ -7,12 +7,18 @@ import json
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 try:
+    import scripts.ci_plan as ci_plan_module
     from scripts.ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
+        _validate_plan,
         _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
@@ -22,9 +28,12 @@ try:
         plan_selected,
     )
 except ModuleNotFoundError:
+    import ci_plan as ci_plan_module
     from ci_plan import (
         OWNER_NAMES,
         GateError,
+        main,
+        _validate_plan,
         _write_github_outputs,
         evaluate_gate,
         parse_name_status_z,
@@ -87,7 +96,33 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["owners"]["web"])
         self.assertFalse(plan["svg_parity"])
 
-    def test_renderer_change_selects_core_without_unrelated_lifecycle_owners(self) -> None:
+    def test_package_readmes_and_changelogs_select_their_surface_owners(self) -> None:
+        expected = {
+            "crates/merman-analysis/README.md": {"hygiene"},
+            "distribution/typst/merman/README.md": {"hygiene", "typst"},
+            "platforms/flutter/README.md": {"hygiene", "platform"},
+            "platforms/node/CHANGELOG.md": {"hygiene", "node"},
+            "platforms/python/merman/CHANGELOG.md": {"hygiene", "python"},
+            "platforms/web/packages/full/README.md": {"hygiene", "web"},
+            "distribution/tree-sitter-mermaid/README.md": {"grammar", "hygiene"},
+            "tools/vscode-extension/CHANGELOG.md": {"hygiene", "vscode"},
+        }
+        for path, expected_owners in expected.items():
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(
+                    {name for name, enabled in plan["owners"].items() if enabled},
+                    expected_owners,
+                )
+                self.assertFalse(plan["svg_parity"])
+
+    def test_renderer_change_selects_core_and_fuzz_without_unrelated_owners(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
             base="a" * 40,
@@ -97,7 +132,7 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["fallback"])
         self.assertEqual(
             {name for name, enabled in plan["owners"].items() if enabled},
-            {"core", "hygiene"},
+            {"core", "fuzz", "hygiene"},
         )
         self.assertTrue(plan["svg_parity"])
 
@@ -160,12 +195,16 @@ class PlannerTests(unittest.TestCase):
                 "python",
             },
             "crates/merman-core/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman-ffi/src/lib.rs": {"core", "fuzz", "hygiene", "platform"},
+            "crates/merman-render/src/lib.rs": {"core", "fuzz", "hygiene"},
+            "crates/merman/src/lib.rs": {"core", "fuzz", "hygiene"},
             "crates/merman/benches/ascii_pipeline.rs": {
                 "core",
+                "fuzz",
                 "hygiene",
                 "performance",
             },
-            "crates/merman/Cargo.toml": {"core", "hygiene", "performance"},
+            "crates/merman/Cargo.toml": {"core", "fuzz", "hygiene", "performance"},
         }
 
         for path, expected in fixtures.items():
@@ -192,7 +231,16 @@ class PlannerTests(unittest.TestCase):
         self.assertFalse(plan["fallback"])
         self.assertEqual(
             selected,
-            {"cli", "core", "hygiene", "platform", "python"},
+            {
+                "cli",
+                "core",
+                "hygiene",
+                "platform",
+                "python",
+                "security",
+                "typst",
+                "vscode",
+            },
         )
 
     def test_xtask_changes_select_their_artifact_consumers(self) -> None:
@@ -249,7 +297,13 @@ class PlannerTests(unittest.TestCase):
             },
             "scripts/build-python-uniffi-wheel.py": {"hygiene", "python"},
             "scripts/audit_plan.py": {"hygiene", "npm", "security"},
-            "scripts/strict_json.py": {"hygiene"},
+            "scripts/generate-rust-license-report.py": {"hygiene", "security"},
+            "scripts/strict_json.py": {"hygiene", "security"},
+            "scripts/verify_artifact_dependency_closures.py": {
+                "hygiene",
+                "security",
+                "typst",
+            },
             "scripts/release_projection.py": {"hygiene"},
         }
 
@@ -331,7 +385,7 @@ class PlannerTests(unittest.TestCase):
                 selected = {
                     name for name, enabled in plan["owners"].items() if enabled
                 }
-                self.assertEqual(selected, {"grammar", "hygiene"})
+                self.assertEqual(selected, {"fuzz", "grammar", "hygiene"})
 
     def test_browser_tree_sitter_assets_select_the_web_owner(self) -> None:
         for path in (
@@ -352,6 +406,7 @@ class PlannerTests(unittest.TestCase):
     def test_tree_sitter_manifests_select_dependency_owners(self) -> None:
         fixtures = {
             "distribution/tree-sitter-mermaid/Cargo.toml": {
+                "fuzz",
                 "grammar",
                 "hygiene",
                 "security",
@@ -624,7 +679,7 @@ class PlannerTests(unittest.TestCase):
 
         self.assertTrue(plan["svg_parity"])
 
-    def test_github_outputs_include_svg_parity_selector(self) -> None:
+    def test_github_outputs_are_bounded_selectors(self) -> None:
         plan = plan_changes(
             parse_name_status_z(b"M\0crates/merman-render/src/lib.rs\0"),
             base="a" * 40,
@@ -635,7 +690,49 @@ class PlannerTests(unittest.TestCase):
             _write_github_outputs(output_path, plan)
             output = output_path.read_text(encoding="utf-8")
 
+        self.assertIn('\nowners={"cli":false,"core":true,', f"\n{output}")
         self.assertIn("\nsvg_parity=true\n", output)
+        self.assertNotIn("\nplan=", f"\n{output}")
+
+    def test_plan_cli_validates_and_publishes_bounded_selectors(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "github-output"
+            with patch.object(
+                ci_plan_module,
+                "_validate_plan",
+                wraps=ci_plan_module._validate_plan,
+            ) as validate_plan:
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                    exit_code = main(
+                        [
+                            "plan",
+                            "--base",
+                            "a" * 40,
+                            "--head",
+                            "b" * 40,
+                            "--select-owner",
+                            "core",
+                            "--github-output",
+                            str(output_path),
+                        ]
+                    )
+
+            output = output_path.read_text(encoding="utf-8")
+            entries = dict(line.split("=", 1) for line in output.splitlines())
+
+        self.assertEqual(exit_code, 0)
+        validate_plan.assert_called_once()
+        owners = json.loads(entries["owners"])
+        self.assertEqual(set(owners), set(OWNER_NAMES))
+        self.assertTrue(owners["core"])
+        self.assertEqual(entries["core"], "true")
+        self.assertNotIn("plan", entries)
+
+        summary = evaluate_gate(
+            owners,
+            {"build-test": {"owner": "core", "required": True, "result": "success"}},
+        )
+        self.assertEqual(summary["selected"], ["build-test"])
 
     def test_non_pr_host_safety_net_can_select_only_core(self) -> None:
         plan = plan_selected(
@@ -652,7 +749,7 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertTrue(plan["svg_parity"])
         summary = evaluate_gate(
-            plan,
+            plan["owners"],
             {"build-test": {"owner": "core", "required": True, "result": "success"}},
         )
         self.assertEqual(summary["selected"], ["build-test"])
@@ -674,6 +771,7 @@ class GateTests(unittest.TestCase):
             base="a" * 40,
             head="b" * 40,
         )
+        self.owners = self.plan["owners"]
 
     def test_selected_success_and_unselected_skip_pass(self) -> None:
         jobs = {
@@ -681,7 +779,7 @@ class GateTests(unittest.TestCase):
             "core": {"owner": "core", "required": True, "result": "skipped"},
         }
 
-        summary = evaluate_gate(self.plan, jobs)
+        summary = evaluate_gate(self.owners, jobs)
 
         self.assertEqual(summary["selected"], ["hygiene"])
         self.assertEqual(summary["skipped"], ["core"])
@@ -697,13 +795,13 @@ class GateTests(unittest.TestCase):
                     }
                 }
                 with self.assertRaises(GateError):
-                    evaluate_gate(self.plan, jobs)
+                    evaluate_gate(self.owners, jobs)
 
     def test_missing_selected_owner_job_fails_closed(self) -> None:
         with self.assertRaises(GateError):
-            evaluate_gate(self.plan, {})
+            evaluate_gate(self.owners, {})
 
-    def test_malformed_plan_or_job_shape_fails_closed(self) -> None:
+    def test_malformed_plan_fails_closed_at_the_producer_boundary(self) -> None:
         malformed_plans = (
             {},
             {**self.plan, "owners": {"hygiene": True}},
@@ -740,18 +838,30 @@ class GateTests(unittest.TestCase):
         for plan in malformed_plans:
             with self.subTest(plan=plan):
                 with self.assertRaises(GateError):
-                    evaluate_gate(plan, {})
+                    _validate_plan(plan)
+
+    def test_malformed_owner_or_job_shape_fails_closed(self) -> None:
+        malformed_owners = (
+            {},
+            {"hygiene": True},
+            {**self.owners, "hygiene": "true"},
+            {**self.owners, "unexpected": False},
+        )
+        for owners in malformed_owners:
+            with self.subTest(owners=owners):
+                with self.assertRaises(GateError):
+                    evaluate_gate(owners, {})
 
         with self.assertRaises(GateError):
             evaluate_gate(
-                self.plan,
+                self.owners,
                 {"hygiene": {"owner": "missing", "required": True, "result": "success"}},
             )
 
     def test_valid_empty_diff_needs_no_owner_job(self) -> None:
         plan = plan_changes([], base="a" * 40, head="b" * 40)
 
-        summary = evaluate_gate(plan, {})
+        summary = evaluate_gate(plan["owners"], {})
 
         self.assertEqual(summary["selected"], [])
         self.assertEqual(summary["skipped"], [])

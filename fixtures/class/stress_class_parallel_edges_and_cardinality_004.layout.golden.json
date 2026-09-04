@@ -1,5 +1,5 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
@@ -59,14 +59,14 @@
           "start_label_right": {
             "x": 75.293,
             "y": 43.276,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 129.718,
             "y": 9.063,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -103,14 +103,14 @@
           "start_label_right": {
             "x": 66.714,
             "y": 69.471,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 121.492,
             "y": 36.087,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -147,14 +147,14 @@
           "start_label_right": {
             "x": 229.122,
             "y": 44.94,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 309.075,
             "y": 11.199,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -199,7 +199,7 @@
       "clusters": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -2.937,
+        "min_y": 0.0,
         "max_x": 382.406,
         "max_y": 84.0
       }

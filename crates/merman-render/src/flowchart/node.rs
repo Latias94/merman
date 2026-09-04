@@ -183,6 +183,41 @@ fn node_render_dimensions(
             (s, s)
         }
 
+        // Mermaid 11.17 folder/directory shape: a file-folder outline with a raised tab.
+        // The tab is part of the rendered bounds, so include it in the layout height.
+        "folder" | "directory" => {
+            let w = (text_w + 2.0 * p).max(90.0);
+            let content_height = text_h + 2.0 * p;
+            let tab_height = (content_height * 0.16).clamp(8.0, 14.0);
+            (w, content_height + tab_height)
+        }
+
+        // Mermaid 11.17 object-storage bucket: a tapered body plus an elliptical rim.
+        "bucket" => {
+            let w = (text_w + 2.0 * p).max(80.0);
+            let rim_ry = (w * 0.08).clamp(5.0, 12.0);
+            (w, text_h + 2.0 * p + rim_ry)
+        }
+
+        // Mermaid 11.17 console/browser windows reserve a top chrome band for their decoration.
+        "console" => {
+            let w = (text_w + 2.0 * p).max(90.0);
+            (w, text_h + 2.0 * p + 20.0)
+        }
+        "browser" => {
+            let w = (text_w + 2.0 * p).max(90.0);
+            (w, text_h + 2.0 * p + 18.0)
+        }
+
+        // Mermaid 11.17 person: a C4-style head above a rounded body.
+        "person" => {
+            let w = (text_w + 2.0 * p).max(100.0);
+            let head_radius = (w * 0.23).clamp(16.0, 56.0);
+            let overlap = head_radius * 0.27;
+            let body_height = text_h + 2.0 * p;
+            (w, body_height + 2.0 * head_radius - overlap)
+        }
+
         // Hexagon / prepare. Mermaid 11.15 computes the shoulder from the padded height, then
         // adds that shoulder on both sides plus the regular horizontal padding.
         "hexagon" | "hex" | "prepare" => {
@@ -263,6 +298,12 @@ fn node_render_dimensions(
         "cloud" => {
             let geometry = crate::flowchart::cloud_geometry(text_w, text_h, p);
             (geometry.width(), geometry.height())
+        }
+
+        // Collapsed subgraphs are compact two-row nodes with fixed 8px padding, an 8px
+        // separator gap, and a 20px ellipsis row. Mermaid enforces an 80px minimum width.
+        "collapsedGroup" | "collapsed-group" => {
+            ((text_w + 16.0).max(80.0), text_h + 8.0 + 20.0 + 16.0)
         }
 
         // Double circle.
@@ -1165,6 +1206,27 @@ mod render_dimension_tests {
         let expected_ry = 62.0 / (2.5 + 124.0 / 50.0);
         assert_eq!(cylinder_w, 124.0);
         assert!((cylinder_h - (44.0 + 3.0 * expected_ry)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn mermaid_1172_object_shapes_use_pinned_dimensions() {
+        let (person_w, person_h) = node_render_dimensions(Some("person"), metrics(), 15.0, false);
+        let person_width = 100.0 + 2.0 * 15.0;
+        let head_radius = person_width * 0.23;
+        assert_eq!(person_w, person_width);
+        assert!((person_h - (50.0 + 2.0 * head_radius - head_radius * 0.27)).abs() < 1e-9);
+        assert_eq!(
+            node_render_dimensions(Some("bucket"), metrics(), 15.0, false),
+            (130.0, 60.4)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("console"), metrics(), 15.0, false),
+            (130.0, 70.0)
+        );
+        assert_eq!(
+            node_render_dimensions(Some("browser"), metrics(), 15.0, false),
+            (130.0, 68.0)
+        );
     }
 
     #[test]

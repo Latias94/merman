@@ -1,5 +1,5 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
@@ -221,14 +221,14 @@
           "start_label_right": {
             "x": 295.08,
             "y": 191.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 320.08,
             "y": 357.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -260,14 +260,14 @@
           "start_label_right": {
             "x": 421.721,
             "y": 191.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 446.721,
             "y": 357.5,
-            "width": 35.04,
-            "height": 24.0
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -299,14 +299,14 @@
           "start_label_right": {
             "x": 718.484,
             "y": 511.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 989.275,
             "y": 588.477,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -359,14 +359,14 @@
           "start_label_right": {
             "x": 532.574,
             "y": 185.864,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 893.424,
             "y": 753.085,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -398,14 +398,14 @@
           "start_label_right": {
             "x": 551.322,
             "y": 191.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 576.322,
             "y": 357.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -437,14 +437,14 @@
           "start_label_right": {
             "x": 606.285,
             "y": 193.732,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 743.484,
             "y": 327.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,

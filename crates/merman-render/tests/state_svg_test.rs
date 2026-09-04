@@ -4131,7 +4131,7 @@ fn native_state_transition_auto_wrap_shares_tspans_background_and_layout_bounds(
 }
 
 #[test]
-fn state_note_compatibility_css_does_not_override_terminal_fallback_text() {
+fn state_note_compatibility_css_targets_the_note_text_terminal() {
     let theme = DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
@@ -4160,12 +4160,12 @@ note right of A : terminal note text
     );
 
     assert!(
-        svg.contains(".statediagram-note .noteLabel text{fill:"),
-        "the compatibility color must be scoped to the native note-label subtree: {svg}"
+        svg.contains(".statediagram-note text{fill:"),
+        "the compatibility color must target the Mermaid State note text terminal: {svg}"
     );
     assert!(
-        !svg.contains(".statediagram-note text{fill:"),
-        "a broad descendant selector would also capture postprocessed fallback text: {svg}"
+        !svg.contains(".statediagram-note .noteLabel text{fill:"),
+        "the State note selector must match Mermaid's final text terminal: {svg}"
     );
     assert!(
         svg.contains("color:#fef3c7 !important"),
@@ -4414,6 +4414,30 @@ Join --> [*]
 note right of Idle : seeded note"#;
 
     render_state_svg_from_text_with_engine(Engine::new().with_site_config(site_config), source)
+}
+
+#[test]
+fn state_svg_preserves_default_look_token_without_enabling_alternate_renderer_behavior() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "default"
+    })));
+    let svg = render_state_svg_from_text_with_engine(
+        engine,
+        "stateDiagram-v2\n[*] --> Ready\nReady --> [*]\n",
+    );
+
+    assert!(
+        svg.contains(r#"data-look="default""#),
+        "State must preserve Mermaid's historical default look token in the DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<circle class="state-start""#),
+        "the default token must still use classic State rendering behavior: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"[data-look="handDrawn"].node rect"#),
+        "the default token must not enable handDrawn-only rules: {svg}"
+    );
 }
 
 #[test]

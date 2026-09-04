@@ -53,6 +53,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         .map(|s| s.to_string());
     let state_render_settings = crate::state::StateConfigView::new(effective_config)
         .render_settings(style_plan.compatibility());
+    let serialized_diagram_look = crate::config::config_diagram_look(effective_config)
+        .serialized()
+        .to_string();
     let title_top_margin = state_render_settings.title_top_margin;
     let hand_drawn_seed = options.rough_randomness(
         state_render_settings.hand_drawn_seed,
@@ -109,6 +112,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut ctx = StateRenderCtx {
         diagram_id,
         diagram_look: state_render_settings.diagram_look,
+        serialized_diagram_look,
         hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
@@ -847,6 +851,7 @@ fn render_state_cluster(
     let terminal_start = out.len();
 
     let data_look = state_data_look(ctx);
+    let effective_look = state_effective_look(ctx);
 
     let shape = ctx
         .nodes_by_id
@@ -926,7 +931,7 @@ fn render_state_cluster(
         .unwrap_or_default();
 
     if shape == "divider" {
-        if data_look == "handDrawn" {
+        if effective_look == "handDrawn" {
             let compatibility = ctx.style_plan.compatibility();
             let surface = cluster_node
                 .and_then(|node| {
@@ -1013,7 +1018,7 @@ fn render_state_cluster(
     let title_height = cluster.title_label.height.max(0.0);
     let inner_y = y + title_height + 2.0;
     let inner_height = (cluster.height - title_height - 6.0).max(1.0);
-    let (outer_shape, inner_shape) = if data_look == "handDrawn" {
+    let (outer_shape, inner_shape) = if effective_look == "handDrawn" {
         let compatibility = ctx.style_plan.compatibility();
         let body_surface = cluster_node
             .and_then(|node| {

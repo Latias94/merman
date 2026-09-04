@@ -27,14 +27,6 @@ use rustc_hash::FxHashMap;
 const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
 const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
-pub(super) struct ClassEdgeGroupsRenderState<'a, O: SvgOutput> {
-    pub out: &'a mut O,
-    pub content_bounds: &'a mut Option<Bounds>,
-    pub detail: &'a mut ClassRenderDetails,
-    pub theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
-    pub typography_receipt: &'a mut Option<crate::class::ClassTypographyThemeReceipt>,
-}
-
 pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub edges: &'a [LayoutEdge],
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
@@ -57,6 +49,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub emit: ClassEmitCheckpoint<'a>,
 }
+
+pub(super) type ClassEdgeLabelCenters = FxHashMap<String, LayoutPoint>;
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
     match ty {
@@ -173,18 +167,13 @@ pub(super) fn class_line_with_marker_offset_points_into(
     }
 }
 
-pub(super) fn render_class_edge_groups<O: SvgOutput>(
-    state: ClassEdgeGroupsRenderState<'_, O>,
+pub(super) fn render_class_edge_paths<O: SvgOutput>(
+    out: &mut O,
+    content_bounds: &mut Option<Bounds>,
+    detail: &mut ClassRenderDetails,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::Result<()> {
-    let ClassEdgeGroupsRenderState {
-        out,
-        content_bounds,
-        detail,
-        theme_receipt,
-        typography_receipt,
-    } = state;
-
+) -> crate::Result<ClassEdgeLabelCenters> {
     let mut edge_points_json_buf = String::new();
     let mut edge_points_json_ryu = ryu_js::Buffer::new();
     let mut edge_points_b64_buf = String::new();
@@ -196,8 +185,8 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
 
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
-    let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
-        FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
+    let mut edge_label_centers =
+        ClassEdgeLabelCenters::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     out.checkpoint()?;
     for e in ordered_edges.iter().copied() {
@@ -267,7 +256,7 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         let render_d = rough_d.as_deref().unwrap_or(&d);
         if let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
-                e.id.as_str(),
+                e.id.to_string(),
                 class_edge_label_center(
                     &edge_raw_points,
                     render_d,
@@ -465,7 +454,20 @@ pub(super) fn render_class_edge_groups<O: SvgOutput>(
         detail.edge_paths += s.elapsed();
     }
 
+    Ok(edge_label_centers)
+}
+
+pub(super) fn render_class_edge_labels<O: SvgOutput>(
+    out: &mut O,
+    content_bounds: &mut Option<Bounds>,
+    detail: &mut ClassRenderDetails,
+    typography_receipt: &mut Option<crate::class::ClassTypographyThemeReceipt>,
+    ctx: &ClassEdgeGroupsRenderContext<'_>,
+    edge_label_centers: &ClassEdgeLabelCenters,
+) -> crate::Result<()> {
+    let mut edge_dom_id_buf = String::with_capacity(64);
     let edge_labels_start = ctx.timing.start();
+    let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.

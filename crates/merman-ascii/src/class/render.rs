@@ -664,7 +664,19 @@ pub(crate) fn render_class_diagram_with_execution(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
-    render_class_diagram_impl(model, options, execution)
+    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            render_class_diagram_impl(model, options, execution)
+        });
+        match result {
+            // Class fallback reuses the render-wide ledger. Preserve layout work spent proving
+            // the primary viewport overflow, but discard speculative document cells.
+            Err(error @ crate::error::AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
 }
 
 fn render_class_diagram_impl(

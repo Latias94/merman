@@ -53,13 +53,15 @@ fn push_node(
                 .ok_or_else(|| work_meter.arithmetic_overflow())?,
         )?;
         let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
+        let css_compiled_styles =
+            clone_styles_with_work(current.css_compiled_styles.as_deref(), work_meter)?;
         let idx = nodes.len();
         nodes.push(HierNode {
             name: current.name.clone(),
             own_value,
             value: 0.0,
             class_selector: current.class_selector.clone(),
-            css_compiled_styles: current.css_compiled_styles.clone(),
+            css_compiled_styles,
             parent: parent_idx,
             children: Vec::new(),
             depth: current_depth,
@@ -192,7 +194,7 @@ fn hier_node_materialization_work(
     node: &HierNode,
     work_meter: &OperationWorkMeter,
 ) -> Result<usize> {
-    let mut work = 1usize
+    let work = 1usize
         .checked_add(node.name.len().div_ceil(64))
         .and_then(|value| {
             value.checked_add(
@@ -202,12 +204,83 @@ fn hier_node_materialization_work(
             )
         })
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    for style in node.css_compiled_styles.as_deref().unwrap_or(&[]) {
-        work = work
-            .checked_add(1usize.saturating_add(style.len().div_ceil(64)))
-            .ok_or_else(|| work_meter.arithmetic_overflow())?;
-    }
     Ok(work)
+}
+
+fn clone_styles_with_work(
+    styles: Option<&[String]>,
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<Vec<String>>> {
+    let Some(styles) = styles else {
+        return Ok(None);
+    };
+    let mut cloned = Vec::new();
+    for style in styles {
+        let work = 1usize
+            .checked_add(style.len().div_ceil(64))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?;
+        // Charge before cloning so a rejected expansion never allocates the current declaration.
+        work_meter.charge(work)?;
+        cloned.push(style.clone());
+    }
+    Ok(Some(cloned))
+}
+
+fn join_class_styles_with_work(
+    styles: &[String],
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<Vec<String>>> {
+    if styles.is_empty() {
+        return Ok(None);
+    }
+
+    let total_bytes = styles.iter().try_fold(0usize, |total, style| {
+        total
+            .checked_add(style.len())
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| work_meter.arithmetic_overflow())
+    })?;
+    work_meter.charge(
+        1usize
+            .checked_add(total_bytes.div_ceil(64))
+            .ok_or_else(|| work_meter.arithmetic_overflow())?,
+    )?;
+
+    let mut joined = String::with_capacity(total_bytes.saturating_sub(1));
+    for (index, style) in styles.iter().enumerate() {
+        if index != 0 {
+            joined.push(';');
+        }
+        joined.push_str(style);
+    }
+    Ok(Some(vec![joined]))
+}
+
+fn clone_node_styles_with_work(
+    node: &HierNode,
+    classes: &std::collections::BTreeMap<
+        String,
+        merman_core::diagrams::treemap::TreemapClassDefRenderModel,
+    >,
+    work_meter: &OperationWorkMeter,
+) -> Result<Option<Vec<String>>> {
+    if let Some(styles) = node.css_compiled_styles.as_deref() {
+        return clone_styles_with_work(Some(styles), work_meter);
+    }
+
+    let Some(selector) = node.class_selector.as_deref() else {
+        return Ok(None);
+    };
+    let Some(class_def) = classes.get(selector) else {
+        return Ok(None);
+    };
+    if class_def.styles.is_empty() {
+        return Ok(None);
+    }
+    // Mermaid's render model stores a classDef's compiled declaration list as one
+    // CSS string.  Keep that shape at the output boundary; the renderer's
+    // declaration parser still resolves individual properties later.
+    join_class_styles_with_work(class_def.styles.as_slice(), work_meter)
 }
 
 fn descendants_bfs(
@@ -529,6 +602,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
     for idx in &branch_nodes {
         work_meter.charge(hier_node_materialization_work(&nodes[*idx], work_meter)?)?;
         let n = &nodes[*idx];
+        let css_compiled_styles = clone_node_styles_with_work(n, &model.classes, work_meter)?;
         sections.push(TreemapSectionLayout {
             name: n.name.clone(),
             depth: n.depth as i64,
@@ -538,7 +612,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
             x1: n.x1,
             y1: n.y1,
             class_selector: n.class_selector.clone(),
-            css_compiled_styles: n.css_compiled_styles.clone(),
+            css_compiled_styles,
         });
     }
 
@@ -549,6 +623,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
         }
         work_meter.charge(hier_node_materialization_work(&nodes[idx], work_meter)?)?;
         let n = &nodes[idx];
+        let css_compiled_styles = clone_node_styles_with_work(n, &model.classes, work_meter)?;
         leaves.push(TreemapLeafLayout {
             name: n.name.clone(),
             value: n.value,
@@ -558,7 +633,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
             x1: n.x1,
             y1: n.y1,
             class_selector: n.class_selector.clone(),
-            css_compiled_styles: n.css_compiled_styles.clone(),
+            css_compiled_styles,
         });
     }
 
@@ -580,7 +655,9 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
 
 #[cfg(test)]
 mod tests {
-    use merman_core::diagrams::treemap::{TreemapDiagramRenderModel, TreemapNodeRenderModel};
+    use merman_core::diagrams::treemap::{
+        TreemapClassDefRenderModel, TreemapDiagramRenderModel, TreemapNodeRenderModel,
+    };
 
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
@@ -610,10 +687,83 @@ mod tests {
         }
     }
 
+    fn shared_class_fixture(styles: Vec<String>) -> TreemapDiagramRenderModel {
+        let mut model = work_budget_fixture();
+        model.root.children.as_mut().unwrap()[0].class_selector = Some("important".to_string());
+        model.classes.insert(
+            "important".to_string(),
+            TreemapClassDefRenderModel {
+                id: "important".to_string(),
+                styles,
+                text_styles: Vec::new(),
+            },
+        );
+        model
+    }
+
     #[test]
     fn treemap_geometry_constants_match_mermaid() {
         assert_eq!(super::TREEMAP_SECTION_INNER_PADDING_PX, 10.0);
         assert_eq!(super::TREEMAP_SECTION_HEADER_HEIGHT_PX, 25.0);
+    }
+
+    #[test]
+    fn treemap_layout_resolves_class_styles_at_the_output_boundary() {
+        let model = shared_class_fixture(vec!["fill:#f96".to_string(), "stroke:#333".to_string()]);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let layout = super::layout_treemap_diagram_typed_with_work_meter(
+            &model,
+            None,
+            &serde_json::json!({}),
+            &meter,
+        )
+        .expect("Treemap layout with shared class styles");
+
+        let section = layout
+            .sections
+            .iter()
+            .find(|section| section.name == "Section")
+            .expect("styled section");
+        assert_eq!(
+            section.css_compiled_styles.as_ref(),
+            Some(&vec!["fill:#f96;stroke:#333".to_string()])
+        );
+    }
+
+    #[test]
+    fn treemap_layout_charges_class_style_materialization() {
+        let styles = vec![format!("fill:{}", "#abcdef".repeat(128))];
+        let model = shared_class_fixture(styles);
+        let mut without_class_styles = model.clone();
+        without_class_styles.classes.clear();
+
+        let baseline_meter =
+            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::layout_treemap_diagram_typed_with_work_meter(
+            &without_class_styles,
+            None,
+            &serde_json::json!({}),
+            &baseline_meter,
+        )
+        .expect("unstyled Treemap layout");
+
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, baseline_meter.used())
+            .expect("valid exact Treemap work ceiling");
+        let meter = OperationWorkMeter::new(policy);
+        let error = super::layout_treemap_diagram_typed_with_work_meter(
+            &model,
+            None,
+            &serde_json::json!({}),
+            &meter,
+        )
+        .expect_err("class style materialization must be budgeted");
+
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected Treemap layout work rejection, got {error}");
+        };
+        assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+        assert!(limit.actual > limit.max);
     }
 
     #[test]

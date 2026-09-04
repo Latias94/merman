@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "id1",
-          "x": 89.84,
+          "x": 101.84,
           "y": 0.0,
-          "width": 179.68,
+          "width": 203.68,
           "height": 32.0,
           "is_cluster": false
         }
@@ -17,14 +17,14 @@
         {
           "id": "id1",
           "allocated": {
-            "x": 89.84,
+            "x": 101.84,
             "y": 0.0,
-            "width": 179.68,
+            "width": 203.68,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 179.68,
+            "width": 203.68,
             "height": 32.0,
             "radius": 5.0,
             "kind": "basic"
@@ -34,7 +34,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 179.68,
+        "max_x": 203.68,
         "max_y": 16.0
       }
     }

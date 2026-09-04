@@ -97,7 +97,12 @@ pub(super) fn render_flowchart_svg_model(
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(model, &layout.edge_owners, layout.uses_elk_adapter_dom);
+    } = prepare_flowchart_render_inputs(
+        model,
+        render_context,
+        &layout.edge_owners,
+        layout.uses_elk_adapter_dom,
+    );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
     }
@@ -205,7 +210,10 @@ pub(super) fn render_flowchart_svg_model(
             subgraph_index_by_id.insert(id, subgraph_index);
             subgraph_order.push(id);
         }
-        if !sg.nodes.is_empty() {
+        if !sg.nodes.is_empty()
+            && !render_context.is_subgraph_collapsed(id)
+            && render_context.collapsed_replacement(id).is_none()
+        {
             subgraph_ids_with_children.insert(id);
         }
     }
@@ -489,12 +497,15 @@ pub(super) fn render_flowchart_svg_model(
     if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
         defs.push_base_markers(&mut out)?;
-        defs.push_extra_markers(&mut out)?;
-        out.push_str("</g>");
         out.checkpoint()?;
-        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
+        defs.push_extra_markers(&mut out)?;
         out.checkpoint()?;
         render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
+        out.push_str("</g>");
+        // The shadow filters are siblings of Mermaid's marker/root wrapper,
+        // rather than children of the wrapper that owns the painted graph.
+        push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
+        out.checkpoint()?;
     } else {
         push_flowchart_shadow_defs(&mut out, &document_ids, effective_config_value);
         out.checkpoint()?;

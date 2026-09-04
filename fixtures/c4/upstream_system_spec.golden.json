@@ -1,164 +1,164 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Context",
+    "title": "System Context diagram for Internet Banking System",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "SystemAA",
-        "descr": {
-          "text": "Allows customers to view information about their bank accounts, and make payments."
-        },
-        "label": {
-          "text": "Internet Banking System"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system"
         },
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view information about their bank accounts, and make payments."
+        }
       },
       {
         "alias": "SystemDbA",
-        "descr": {
-          "text": "Database system"
-        },
-        "label": {
-          "text": "System DB"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system_db"
         },
-        "wrap": false
+        "label": {
+          "text": "System DB"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Database system"
+        }
       },
       {
         "alias": "SystemQueueA",
-        "descr": {
-          "text": "Queue system"
-        },
-        "label": {
-          "text": "System Queue"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system_queue"
         },
-        "wrap": false
+        "label": {
+          "text": "System Queue"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Queue system"
+        }
       },
       {
         "alias": "SystemExtA",
-        "descr": {
-          "text": "External system"
-        },
-        "label": {
-          "text": "External System"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "wrap": false
+        "label": {
+          "text": "External System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "External system"
+        }
       },
       {
         "alias": "SystemDbExtA",
-        "descr": {
-          "text": "External database system"
-        },
-        "label": {
-          "text": "External System DB"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system_db"
         },
-        "wrap": false
+        "label": {
+          "text": "External System DB"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "External database system"
+        }
       },
       {
         "alias": "SystemQueueExtA",
-        "descr": {
-          "text": "External queue system"
-        },
-        "label": {
-          "text": "External System Queue"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system_queue"
         },
-        "wrap": false
+        "label": {
+          "text": "External System Queue"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "External queue system"
+        }
       },
       {
         "alias": "SystemSprite",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
         },
         "label": {
           "text": {
             "sprite": "users"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "SystemLink",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
         },
         "label": {
           "text": {
             "link": "https://github.com/mermaidjs"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "SystemTags",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
         },
         "label": {
           "text": {
             "tags": "tag1,tag2"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       }
     ],
-    "title": "System Context diagram for Internet Banking System",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
+    "rels": []
   }
 }

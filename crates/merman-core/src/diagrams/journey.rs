@@ -336,6 +336,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_journey_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -347,6 +348,22 @@ pub(crate) fn parse_journey_model_for_render(
                 .unwrap_or_else(JourneyDiagramRenderModel::empty_compatibility_output)
         })
         .map_err(CombinedSemanticFailure::into_error)
+}
+
+pub(crate) fn parse_journey_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<JourneyDiagramRenderModel>> {
+    let construction = construct_journey_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source.model.unwrap_or_else(
+        JourneyDiagramRenderModel::empty_compatibility_output,
+    )))
 }
 
 fn construct_journey_semantic_source(

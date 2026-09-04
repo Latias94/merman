@@ -23,10 +23,10 @@ enum ClassMarkerPaintShape {
 
 /// Paint geometry for the ordinary marker referenced by a Class relation path.
 ///
-/// The margin marker variants are emitted for Mermaid DOM parity but relation paths currently
-/// reference the ordinary marker ids. Most ordinary markers use SVG's default
-/// `markerUnits="strokeWidth"`; `extensionStart` is the upstream exception and uses
-/// `userSpaceOnUse` when the complete marker set is emitted.
+/// The serialized marker declaration is profile-specific: Mermaid 11.17.2's host helper uses
+/// `userSpaceOnUse` for ordinary markers, while the selected ELK helper relies on SVG's default
+/// `strokeWidth` units. The `units` field is the coordinate scale used by the conservative bounds
+/// model; emitted attributes are checked separately for each [`ClassMarkerProfile`].
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ClassMarkerPaintSpec {
     ref_x: f64,
@@ -258,6 +258,14 @@ pub(super) fn class_marker_terminal_expectations(
         .collect()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClassMarkerProfile {
+    /// Mermaid 11.17.2's host marker helper used by the Dagre renderer.
+    Mermaid1172,
+    /// The marker helper bundled into the selected `@mermaid-js/layout-elk@0.2.3` release.
+    LayoutElk023,
+}
+
 pub(super) fn class_markers<I: SvgDiagramIdValue>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -265,6 +273,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     include_margin_markers: bool,
     relation_theme: &crate::class::ClassRelationThemePlan,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    profile: ClassMarkerProfile,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
     struct MarkerContext<'a, O: SvgOutput, I: SvgDiagramIdValue> {
@@ -297,6 +306,13 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
         wrap_defs: bool,
         shape: MarkerShape<'a>,
     }
+
+    // This value is profile-dependent but the nested generic marker helper cannot capture the
+    // outer function's `profile` parameter. Compute it once before entering the helper.
+    let ordinary_marker_units = match profile {
+        ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
+        ClassMarkerProfile::LayoutElk023 => None,
+    };
 
     fn marker<O: SvgOutput, I: SvgDiagramIdValue>(
         ctx: &mut MarkerContext<'_, O, I>,
@@ -456,7 +472,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -471,7 +487,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -540,7 +556,10 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: match profile {
+                ClassMarkerProfile::Mermaid1172 => Some("userSpaceOnUse"),
+                ClassMarkerProfile::LayoutElk023 => None,
+            },
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_EXTENSION_END_MARKER_PATH),
@@ -588,7 +607,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -603,7 +622,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DIAMOND_MARKER_PATH),
@@ -651,7 +670,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DEPENDENCY_START_MARKER_PATH),
@@ -666,7 +685,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "20",
             marker_h: "28",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Path(CLASS_DEPENDENCY_END_MARKER_PATH),
@@ -714,7 +733,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -732,7 +751,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
             ref_y: "7",
             marker_w: "190",
             marker_h: "240",
-            marker_units: None,
+            marker_units: ordinary_marker_units,
             view_box: None,
             wrap_defs: true,
             shape: MarkerShape::Circle {
@@ -810,41 +829,52 @@ mod tests {
 
     #[test]
     fn relation_marker_paint_specs_match_the_emitted_coordinate_contract() {
-        let mut svg = String::new();
         let relation_theme = crate::class::ClassRelationThemePlan::default();
-        let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
-        class_markers(
-            &mut svg,
-            "diagram",
-            "class",
-            true,
-            &relation_theme,
-            &mut receipt,
-        )
-        .expect("render Class markers");
+        for profile in [
+            ClassMarkerProfile::Mermaid1172,
+            ClassMarkerProfile::LayoutElk023,
+        ] {
+            let mut svg = String::new();
+            let mut receipt = relation_theme.begin_terminal_receipt(Vec::new(), Vec::new(), false);
+            class_markers(
+                &mut svg,
+                "diagram",
+                "class",
+                true,
+                &relation_theme,
+                &mut receipt,
+                profile,
+            )
+            .expect("render Class markers");
 
-        for (ty, is_start) in (0..=4).flat_map(|ty| [(ty, true), (ty, false)]) {
-            let marker_name = class_marker_name(ty, is_start).expect("Class marker name");
-            let marker = class_marker_paint_spec(ty, is_start).expect("Class marker paint spec");
-            let marker_id = format!(r#"id="diagram_class-{marker_name}""#);
-            let marker_start = svg.find(&marker_id).expect("emitted Class marker");
-            let marker_opening = &svg[marker_start..];
-            let marker_opening = &marker_opening[..marker_opening
-                .find('>')
-                .expect("complete Class marker opening tag")];
-            let (ref_x, ref_y) = marker.reference_point();
+            for (ty, is_start) in (0..=4).flat_map(|ty| [(ty, true), (ty, false)]) {
+                let marker_name = class_marker_name(ty, is_start).expect("Class marker name");
+                let marker =
+                    class_marker_paint_spec(ty, is_start).expect("Class marker paint spec");
+                let marker_id = format!(r#"id="diagram_class-{marker_name}""#);
+                let marker_start = svg.find(&marker_id).expect("emitted Class marker");
+                let marker_opening = &svg[marker_start..];
+                let marker_opening = &marker_opening[..marker_opening
+                    .find('>')
+                    .expect("complete Class marker opening tag")];
+                let (ref_x, ref_y) = marker.reference_point();
+                let expects_user_space_units = match profile {
+                    ClassMarkerProfile::Mermaid1172 => true,
+                    ClassMarkerProfile::LayoutElk023 => marker_name == "extensionStart",
+                };
 
-            assert!(marker_opening.contains(&format!(r#"refX="{ref_x}""#)));
-            assert!(marker_opening.contains(&format!(r#"refY="{ref_y}""#)));
-            assert_eq!(
-                marker_opening.contains(r#"markerUnits="userSpaceOnUse""#),
-                marker.units == ClassMarkerCoordinateUnits::UserSpaceOnUse,
-                "marker={marker_name} opening={marker_opening}"
-            );
-            assert!(
-                marker.local_paint_bounds().min_x.is_finite(),
-                "marker={marker_name} must have finite paint geometry"
-            );
+                assert!(marker_opening.contains(&format!(r#"refX="{ref_x}""#)));
+                assert!(marker_opening.contains(&format!(r#"refY="{ref_y}""#)));
+                assert_eq!(
+                    marker_opening.contains(r#"markerUnits="userSpaceOnUse""#),
+                    expects_user_space_units,
+                    "profile={profile:?} marker={marker_name} opening={marker_opening}"
+                );
+                assert!(
+                    marker.local_paint_bounds().min_x.is_finite(),
+                    "marker={marker_name} must have finite paint geometry"
+                );
+            }
         }
     }
 
@@ -920,6 +950,7 @@ mod tests {
             true,
             &relation_theme,
             &mut receipt,
+            ClassMarkerProfile::Mermaid1172,
         )
         .expect_err("the rejecting sink must stop Class marker rendering");
 

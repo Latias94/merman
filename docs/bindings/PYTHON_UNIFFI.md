@@ -237,8 +237,9 @@ mutation lifecycle.
 - Move API 6 generated modules and native libraries together to API 7 before consuming the merged
   `family_id` capability record or `theme_catalog_json()` metadata catalog.
 - Use the result-returning binary methods when callers need typed operation metadata or the
-  effective output plan. Switch on `output_plan.kind`; read `raster` or `pdf_filter_images` when
-  present, and retain `raw_json` for unknown future kinds.
+  effective output plan. Switch on `output_plan.kind`; read `raster`, `pdf_filter_images`, or
+  `ascii` when present, and retain `raw_json` for unknown future kinds. The ASCII payload records
+  the selected projection, encoding, emitted dimensions, and viewport fallback outcome.
 - Preserve unknown runtime discovery IDs instead of treating generated known constants as a closed
   enum.
 

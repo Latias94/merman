@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; updated 2026-08-28 for Mermaid `@11.16.1`, ADR-0050, ADR-0062, and ADR-0086.
+Accepted; updated 2026-08-31 for Mermaid `@11.17.2`, ADR-0050, ADR-0062, and ADR-0086.
 
 ## Context
 

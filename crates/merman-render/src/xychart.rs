@@ -6,7 +6,7 @@ use crate::text::{TextMeasurer, TextStyle};
 use crate::theme::MermaidThemeAdapter;
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
-    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
+    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
 };
 use serde_json::Value;
 use std::fmt::Write as _;
@@ -49,6 +49,9 @@ struct ChartConfig {
     show_title: bool,
     title_font_size: f64,
     title_padding: f64,
+    show_legend: bool,
+    legend_font_size: f64,
+    legend_padding: f64,
     chart_orientation: String,
     x_axis: AxisConfig,
     y_axis: AxisConfig,
@@ -167,6 +170,13 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
         title_font_size: config_f64(effective_config, &["xyChart", "titleFontSize"])
             .unwrap_or(20.0),
         title_padding: config_f64(effective_config, &["xyChart", "titlePadding"]).unwrap_or(10.0),
+        show_legend: config_bool(effective_config, &["xyChart", "showLegend"]).unwrap_or(true),
+        legend_font_size: config_f64(effective_config, &["xyChart", "legendFontSize"])
+            .unwrap_or(14.0)
+            .max(1.0),
+        legend_padding: config_f64(effective_config, &["xyChart", "legendPadding"])
+            .unwrap_or(10.0)
+            .max(0.0),
         chart_orientation: match model.orientation.as_str() {
             "horizontal" => "horizontal".to_string(),
             _ => "vertical".to_string(),
@@ -215,6 +225,131 @@ fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -
         ..Default::default()
     };
     measurer.measure_svg_simple_text_bbox_height_px(text, &style)
+}
+
+const LEGEND_MARKER_TO_FONT_RATIO: f64 = 0.75;
+const LEGEND_ITEM_SPACING_TO_FONT_RATIO: f64 = 0.5;
+const LEGEND_MARKER_SPACING_TO_FONT_RATIO: f64 = 0.35;
+
+fn calculate_legend_space(
+    plots: &[(usize, &XyChartPlotRenderModel)],
+    chart_config: &ChartConfig,
+    available_space: Dimension,
+    measurer: &dyn TextMeasurer,
+) -> Dimension {
+    if plots.is_empty() {
+        return Dimension {
+            width: 0.0,
+            height: 0.0,
+        };
+    }
+
+    let titles = plots
+        .iter()
+        .filter_map(|(_, plot)| plot.title.clone())
+        .collect::<Vec<_>>();
+    let text_dimension = max_text_dimension(&titles, chart_config.legend_font_size, measurer);
+    let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
+    let marker_spacing = chart_config.legend_font_size * LEGEND_MARKER_SPACING_TO_FONT_RATIO;
+    let item_spacing = chart_config.legend_font_size * LEGEND_ITEM_SPACING_TO_FONT_RATIO;
+    let width =
+        chart_config.legend_padding * 2.0 + marker_size + marker_spacing + text_dimension.width;
+    let height = chart_config.legend_padding * 2.0
+        + plots.len() as f64 * chart_config.legend_font_size
+        + plots.len().saturating_sub(1) as f64 * item_spacing;
+
+    if width <= available_space.width && height <= available_space.height {
+        Dimension { width, height }
+    } else {
+        Dimension {
+            width: 0.0,
+            height: 0.0,
+        }
+    }
+}
+
+fn legend_drawable_elements(
+    plots: &[(usize, &XyChartPlotRenderModel)],
+    origin: Point,
+    chart_config: &ChartConfig,
+    legend_text_color: &str,
+    series_paint: &XyChartSeriesPaintPlan,
+) -> Result<Vec<XyChartDrawableElem>> {
+    if plots.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
+    let marker_spacing = chart_config.legend_font_size * LEGEND_MARKER_SPACING_TO_FONT_RATIO;
+    let item_spacing = chart_config.legend_font_size * LEGEND_ITEM_SPACING_TO_FONT_RATIO;
+    let row_height = chart_config.legend_font_size + item_spacing;
+    let start_x = origin.x + chart_config.legend_padding;
+    let start_y = origin.y + chart_config.legend_padding;
+    let mut bar_markers = Vec::new();
+    let mut line_markers = Vec::new();
+    let mut labels = Vec::with_capacity(plots.len());
+
+    for (legend_index, (plot_index, plot)) in plots.iter().enumerate() {
+        let fill_color = series_paint
+            .fill_css(*plot_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "XY Chart legend fill plan is incomplete".to_string(),
+            })?;
+        let stroke_color =
+            series_paint
+                .stroke_css(*plot_index)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "XY Chart legend stroke plan is incomplete".to_string(),
+                })?;
+        match plot.plot_type {
+            XyChartPlotType::Bar => bar_markers.push(XyChartRectData {
+                x: start_x,
+                y: start_y + legend_index as f64 * row_height,
+                width: marker_size,
+                height: marker_size,
+                fill: fill_color.to_string(),
+                stroke_fill: stroke_color.to_string(),
+                stroke_width: 0.0,
+            }),
+            XyChartPlotType::Line => {
+                let marker_y = start_y + legend_index as f64 * row_height + marker_size / 2.0;
+                line_markers.push(XyChartPathData {
+                    path: format!(
+                        "M {start_x},{marker_y} L {},{marker_y}",
+                        start_x + marker_size
+                    ),
+                    fill: None,
+                    stroke_fill: stroke_color.to_string(),
+                    stroke_width: 2.0,
+                });
+            }
+        }
+        labels.push(XyChartTextData {
+            text: plot.title.clone().unwrap_or_default(),
+            x: start_x + marker_size + marker_spacing,
+            y: start_y + legend_index as f64 * row_height + marker_size / 2.0,
+            fill: legend_text_color.to_string(),
+            font_size: chart_config.legend_font_size,
+            rotation: 0.0,
+            vertical_pos: "middle".to_string(),
+            horizontal_pos: "left".to_string(),
+        });
+    }
+
+    Ok(vec![
+        XyChartDrawableElem::Rect {
+            group_texts: vec!["legend".to_string(), "markers".to_string()],
+            data: bar_markers,
+        },
+        XyChartDrawableElem::Path {
+            group_texts: vec!["legend".to_string(), "markers".to_string()],
+            data: line_markers,
+        },
+        XyChartDrawableElem::Text {
+            group_texts: vec!["legend".to_string(), "label".to_string()],
+            data: labels,
+        },
+    ])
 }
 
 fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
@@ -1086,6 +1221,17 @@ pub(crate) fn layout_xychart_diagram_typed(
 
     let mut available_width = chart_cfg.width - chart_width;
     let mut available_height = chart_cfg.height - chart_height;
+    let mut legend_plots = if chart_cfg.show_legend {
+        model
+            .plots
+            .iter()
+            .enumerate()
+            .filter(|(_, plot)| plot.title.as_deref().is_some_and(|title| !title.is_empty()))
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let legend_origin;
 
     let plot_rect = if chart_cfg.chart_orientation == "horizontal" {
         let title_y_end = if show_chart_title { title_height } else { 0.0 };
@@ -1113,6 +1259,20 @@ pub(crate) fn layout_xychart_diagram_typed(
         available_height = (available_height - space_used_y.height).max(0.0);
         let plot_y = title_y_end + space_used_y.height;
 
+        let legend_space = calculate_legend_space(
+            &legend_plots,
+            &chart_cfg,
+            Dimension {
+                width: available_width,
+                height: chart_height,
+            },
+            text_measurer,
+        );
+        if legend_space.width == 0.0 && legend_space.height == 0.0 {
+            legend_plots.clear();
+        }
+        available_width = (available_width - legend_space.width).max(0.0);
+
         if available_width > 0.0 {
             chart_width += available_width;
         }
@@ -1126,6 +1286,10 @@ pub(crate) fn layout_xychart_diagram_typed(
             width: chart_width,
             height: chart_height,
         };
+        legend_origin = pt(
+            plot_x + chart_width,
+            plot_y + ((chart_height - legend_space.height) / 2.0).max(0.0),
+        );
 
         y_axis.set_range((plot_x, plot_x + chart_width));
         y_axis.set_bounding_box_xy(pt(plot_x, title_y_end));
@@ -1157,6 +1321,20 @@ pub(crate) fn layout_xychart_diagram_typed(
         let plot_x = space_used_y.width;
         available_width = (available_width - space_used_y.width).max(0.0);
 
+        let legend_space = calculate_legend_space(
+            &legend_plots,
+            &chart_cfg,
+            Dimension {
+                width: available_width,
+                height: chart_height,
+            },
+            text_measurer,
+        );
+        if legend_space.width == 0.0 && legend_space.height == 0.0 {
+            legend_plots.clear();
+        }
+        available_width = (available_width - legend_space.width).max(0.0);
+
         if available_width > 0.0 {
             chart_width += available_width;
         }
@@ -1170,6 +1348,10 @@ pub(crate) fn layout_xychart_diagram_typed(
             width: chart_width,
             height: chart_height,
         };
+        legend_origin = pt(
+            plot_x + chart_width,
+            plot_y + ((chart_height - legend_space.height) / 2.0).max(0.0),
+        );
 
         x_axis.set_range((plot_x, plot_x + chart_width));
         x_axis.set_bounding_box_xy(pt(plot_x, plot_y + chart_height));
@@ -1313,6 +1495,14 @@ pub(crate) fn layout_xychart_diagram_typed(
             }
         }
     }
+
+    drawables.extend(legend_drawable_elements(
+        &legend_plots,
+        legend_origin,
+        &chart_cfg,
+        &theme_cfg.legend_text_color,
+        series_paint,
+    )?);
 
     drawables.extend(x_axis.drawable_elements());
     drawables.extend(y_axis.drawable_elements());

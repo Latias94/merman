@@ -17,6 +17,7 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) edges: &'a mut Vec<Edge>,
     pub(super) subgraphs: &'a mut Vec<FlowSubGraph>,
     pub(super) subgraph_vertex_styles: &'a mut FlowchartRenderStyleSources,
+    pub(super) collapsed_subgraphs: &'a mut rustc_hash::FxHashSet<String>,
     pub(super) vertex_calls: &'a mut Vec<String>,
     pub(super) warning_facts: &'a mut Vec<DiagramWarningFact>,
     pub(super) class_defs: &'a mut IndexMap<String, Vec<String>>,
@@ -243,6 +244,31 @@ impl<'a> FlowchartSemanticContext<'a> {
                     };
                     if let Some(indices) = seen_edge_indices.get(target) {
                         Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
+                        continue;
+                    }
+
+                    // Mermaid routes `id@{ view: collapsed }` to an existing subgraph
+                    // declaration instead of creating a same-named vertex. Keep that metadata
+                    // in the parser-owned render context so compatibility JSON stays unchanged.
+                    if active_subgraphs.contains_key(target)
+                        && value
+                            .get("view")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some()
+                    {
+                        match value
+                            .get("view")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::trim)
+                        {
+                            Some("collapsed") => {
+                                self.collapsed_subgraphs.insert(target.clone());
+                            }
+                            Some("expanded") => {
+                                self.collapsed_subgraphs.remove(target);
+                            }
+                            _ => {}
+                        }
                         continue;
                     }
 
@@ -644,6 +670,7 @@ mod tests {
             edges: &mut edges,
             subgraphs: &mut subgraphs,
             subgraph_vertex_styles: &mut subgraph_vertex_styles,
+            collapsed_subgraphs: &mut rustc_hash::FxHashSet::default(),
             vertex_calls: &mut vertex_calls,
             warning_facts: &mut warning_facts,
             class_defs: &mut class_defs,

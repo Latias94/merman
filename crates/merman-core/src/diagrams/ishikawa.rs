@@ -160,6 +160,7 @@ pub(crate) fn render_model_to_compat_json(
     Ok(Value::Object(out))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -167,6 +168,22 @@ pub(crate) fn parse_ishikawa_model_for_render(
     Ok(construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
         .into_render_model(meta))
+}
+
+pub(crate) fn parse_ishikawa_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<IshikawaDiagramRenderModel>> {
+    let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(*failure.error)),
+    };
+    control.checkpoint()?;
+    let model = source.into_render_model(meta);
+    control.checkpoint()?;
+    Ok(Ok(model))
 }
 
 impl IshikawaParseFailure {

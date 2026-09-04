@@ -1,9 +1,11 @@
-# Pinned Cypress collector
+# Historical Cypress collector
 
-This upgrade-only collector executes selected Mermaid Cypress spec modules through the `esbuild`
-version installed by Mermaid's pinned `pnpm-lock.yaml`. It replaces only the imported render-helper
-module and provides a strict test-registration host. It does not parse JavaScript syntax or emulate
-JavaScript expressions.
+This upgrade-only collector executes the retained Mermaid `11.16.1` Cypress spec modules through
+the `esbuild` version installed by that checkout's pinned `pnpm-lock.yaml`. Mermaid `11.17.2`
+migrated these scopes to Playwright, so this tool and its manifests remain historical evidence; do
+not relabel them when refreshing the current Mermaid baseline. The collector replaces only the
+imported render-helper module and provides a strict test-registration host. It does not parse
+JavaScript syntax or emulate JavaScript expressions.
 
 Run it from the repository root with Mermaid's exact Node and pnpm versions after installing the
 pinned checkout with lifecycle scripts disabled:

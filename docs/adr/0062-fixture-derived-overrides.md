@@ -6,7 +6,7 @@ Accepted
 
 ## Updated
 
-2026-08-11 for Mermaid `@11.16.1`
+2026-08-31 for Mermaid `@11.17.2`
 
 ## Context
 

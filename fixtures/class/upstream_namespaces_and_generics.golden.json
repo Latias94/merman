@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "LR",
     "accTitle": "My Title",
     "accDescr": "This is my multi\nline description",
@@ -178,7 +178,6 @@
         "explicit": true
       }
     },
-    "styleClasses": {},
     "constants": {
       "lineType": {
         "line": 0,
@@ -192,6 +191,7 @@
         "dependency": 3,
         "lollipop": 4
       }
-    }
+    },
+    "styleClasses": {}
   }
 }

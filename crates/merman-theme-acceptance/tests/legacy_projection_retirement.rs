@@ -20,13 +20,36 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 
 #[test]
 fn bridge_retirement_gate_reports_live_legacy_routes_without_visual_proof() {
+    const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
+        0x20, 0x85, 0xb5, 0x83, 0xf2, 0x73, 0xa4, 0x2c, 0x65, 0x89, 0x06, 0x66, 0x51, 0x3a, 0xe9,
+        0xe8, 0xd1, 0x1c, 0x56, 0x6e, 0x8e, 0xd0, 0xc7, 0x72, 0xf0, 0xb0, 0x3c, 0x95, 0xd9, 0x65,
+        0xee, 0x16,
+    ];
+    const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
+        0xde, 0x1d, 0xed, 0x0e, 0x2f, 0x87, 0x54, 0xf3, 0xb9, 0xcc, 0x65, 0x1b, 0xbf, 0xe4, 0x78,
+        0x56, 0xa1, 0x7f, 0xfe, 0x8b, 0x26, 0x0e, 0x7b, 0x35, 0xd9, 0x88, 0x74, 0xb2, 0x75, 0x1f,
+        0xc4, 0xd7,
+    ];
+    const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
+        0xd1, 0x10, 0xba, 0xbc, 0xc8, 0xb9, 0xb5, 0x89, 0x4f, 0x08, 0x7d, 0xad, 0x69, 0xcd, 0x04,
+        0xf6, 0xca, 0x30, 0x8a, 0x8f, 0x7b, 0x55, 0xa1, 0x7d, 0xa7, 0xa0, 0xb7, 0x91, 0xfe, 0xca,
+        0xbd, 0x52,
+    ];
+
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_retirement_status();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert!(status.matrix_route_count() > 0);
-    assert!(status.matrix_family_count() > 0);
-    assert!(status.dispatched_family_count() > 0);
+    assert_eq!(status.matrix_route_count(), 404);
+    assert_eq!(status.matrix_family_count(), 24);
+    assert_eq!(status.dispatched_family_count(), 24);
+    assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
+    assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
+    assert_eq!(
+        status.dispatched_family_digest(),
+        EXPECTED_DISPATCH_FAMILY_DIGEST
+    );
     assert_eq!(status.matrix_only_family_count(), 0);
     assert_eq!(status.dispatch_only_family_count(), 0);
-    assert!(!status.can_delete_bridge());
+    assert!(!status.can_delete_bridge(true));
+    assert!(!status.can_delete_bridge(false));
 }

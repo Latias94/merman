@@ -15,16 +15,16 @@
           "id": "entity-CUSTOMER-0---entity-CUSTOMER-0---1",
           "x": 26.06,
           "y": 235.0,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         },
         {
           "id": "entity-CUSTOMER-0---entity-CUSTOMER-0---2",
           "x": 66.085,
           "y": 420.0,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         },
         {

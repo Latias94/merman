@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "A",
-          "x": 55.6,
+          "x": 67.6,
           "y": 0.0,
-          "width": 111.2,
+          "width": 135.2,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 174.8,
+          "x": 210.8,
           "y": 0.0,
-          "width": 111.2,
+          "width": 135.2,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 294.0,
+          "x": 354.0,
           "y": 0.0,
-          "width": 111.2,
+          "width": 135.2,
           "height": 32.0,
           "is_cluster": false
         }
@@ -33,14 +33,14 @@
         {
           "id": "A",
           "allocated": {
-            "x": 55.6,
+            "x": 67.6,
             "y": 0.0,
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0,
             "radius": 5.0,
             "kind": "basic"
@@ -49,14 +49,14 @@
         {
           "id": "B",
           "allocated": {
-            "x": 174.8,
+            "x": 210.8,
             "y": 0.0,
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -65,14 +65,14 @@
         {
           "id": "C",
           "allocated": {
-            "x": 294.0,
+            "x": 354.0,
             "y": 0.0,
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 111.2,
+            "width": 135.2,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -82,7 +82,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 349.6,
+        "max_x": 421.6,
         "max_y": 16.0
       }
     }

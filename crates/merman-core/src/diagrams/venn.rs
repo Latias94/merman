@@ -466,11 +466,24 @@ pub(crate) fn parse_venn_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_venn_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<VennDiagramRenderModel> {
     Ok(parse_venn_semantic_source(code, meta)?.model)
+}
+
+pub(crate) fn parse_venn_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<VennDiagramRenderModel>> {
+    let outcome = construct_venn_parse_outcome_controlled(code, meta, control)?;
+    match outcome.first_error {
+        Some(error) => Ok(Err(error)),
+        None => Ok(Ok(outcome.source.model)),
+    }
 }
 
 pub(crate) fn render_model_to_compat_json(

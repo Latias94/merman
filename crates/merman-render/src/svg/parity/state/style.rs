@@ -563,7 +563,7 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note .noteLabel text{{fill:{};}}"#,
+        r#"#{} .statediagram-note text{{fill:{};}}"#,
         id, note_text
     );
     let _ = write!(
@@ -571,16 +571,18 @@ where
         r#"#{} .statediagram-note .nodeLabel{{color:{};}}"#,
         id, note_text
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} [data-look="handDrawn"].node rect{{fill:{};stroke:{};stroke-width:{}px;}}"#,
-        id, hand_drawn_state_fill, hand_drawn_state_stroke, hand_drawn_state_stroke_width
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} [data-look="handDrawn"].node line.divider{{stroke:{};stroke-width:{}px;}}"#,
-        id, hand_drawn_state_stroke, hand_drawn_state_stroke_width
-    );
+    if theme.is_hand_drawn() {
+        let _ = write!(
+            &mut css,
+            r#"#{} [data-look="handDrawn"].node rect{{fill:{};stroke:{};stroke-width:{}px;}}"#,
+            id, hand_drawn_state_fill, hand_drawn_state_stroke, hand_drawn_state_stroke_width
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} [data-look="handDrawn"].node line.divider{{stroke:{};stroke-width:{}px;}}"#,
+            id, hand_drawn_state_stroke, hand_drawn_state_stroke_width
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} .statediagram .edgeLabel{{color:red;}}"#,
@@ -1344,7 +1346,7 @@ mod tests {
         assert!(css.contains(
             r#"#st .statediagram-cluster rect{fill:#050505;stroke:#040404;stroke-width:4px;}"#
         ));
-        assert!(css.contains(r#"#st .statediagram-note .noteLabel text{fill:#b0b0b0;}"#));
+        assert!(css.contains(r#"#st .statediagram-note text{fill:#b0b0b0;}"#));
         assert!(css.contains(
             r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
         ));
@@ -1416,5 +1418,18 @@ mod tests {
         assert!(
             css.contains(r##"#st [data-look="neo"].node circle{stroke:#112233;filter:none;}"##)
         );
+    }
+
+    #[test]
+    fn state_css_emits_hand_drawn_rules_only_for_hand_drawn_look() {
+        let model = StateSvgModel::default();
+        let classic_css = rendered_state_css("st", &style_plan(&model, &json!({})));
+        assert!(!classic_css.contains(r#"[data-look="handDrawn"].node rect"#));
+        assert!(!classic_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
+
+        let hand_drawn_css =
+            rendered_state_css("st", &style_plan(&model, &json!({ "look": "handDrawn" })));
+        assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node rect"#));
+        assert!(hand_drawn_css.contains(r#"[data-look="handDrawn"].node line.divider"#));
     }
 }

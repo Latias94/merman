@@ -1,60 +1,60 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Context",
+    "title": "title",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "Person",
-        "descr": {
-          "text": "Person"
-        },
-        "label": {
-          "text": "Person"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "Person"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Person"
+        }
       },
       {
         "alias": "default",
-        "descr": {
-          "text": "default"
-        },
-        "label": {
-          "text": "default"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "default"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "default"
+        }
       }
     ],
-    "title": "title",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
+    "rels": []
   }
 }

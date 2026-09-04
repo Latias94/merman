@@ -232,11 +232,36 @@ pub(crate) fn parse_tree_view_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_tree_view_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreeViewDiagramRenderModel> {
     Ok(parse_tree_view_semantic_source(code, meta)?.render_model)
+}
+
+pub(crate) fn parse_tree_view_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<TreeViewDiagramRenderModel>> {
+    let parsed = parse_tree_view_input_controlled(code, meta, control)?;
+    let parsed = match parsed.into_strict(meta) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    let ParsedTreeViewInput {
+        title,
+        acc_title,
+        acc_descr,
+        nodes,
+        editor_facts: _,
+    } = parsed;
+    let model =
+        tree_view_input_to_render_model(title, acc_title, acc_descr, nodes, &meta.effective_config)
+            .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message));
+    control.checkpoint()?;
+    Ok(model)
 }
 
 pub(crate) fn render_model_to_compat_json(

@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 916.0,
-        "max_y": 554.0
+        "max_x": 882.0,
+        "max_y": 591.524
       },
-      "width": 966.0,
-      "height": 564.0,
+      "width": 932.0,
+      "height": 601.524,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 766.0,
-          "height": 438.0,
+          "width": 732.0,
+          "height": 475.524,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -49,8 +49,8 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 170.0,
-          "width": 666.0,
-          "height": 284.0,
+          "width": 632.0,
+          "height": 321.524,
           "image": {
             "width": 48.0,
             "height": 48.0,
@@ -81,34 +81,34 @@
           "x": 200.0,
           "y": 270.0,
           "width": 216.0,
-          "height": 134.0,
+          "height": 171.524,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Customer",
-            "y": 86.0,
-            "width": 63.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 55.44,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 124.0,
-            "width": 140.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 114.57,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -118,8 +118,8 @@
           "type_c4_shape": "system",
           "x": 516.0,
           "y": 270.0,
-          "width": 250.0,
-          "height": 86.0,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -127,27 +127,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 38.0,
-            "width": 165.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 144.76,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view account data.",
-            "y": 76.0,
-            "width": 230.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 162.212,
+            "height": 25.256,
+            "line_count": 2.0
           }
         }
       ],
@@ -157,12 +157,12 @@
           "to": "s1",
           "rel_type": "rel",
           "start_point": {
-            "x": 416.0,
-            "y": 347.531
+            "x": 345.969,
+            "y": 351.357
           },
           "end_point": {
             "x": 516.0,
-            "y": 353.264
+            "y": 363.633
           },
           "offset_x": null,
           "offset_y": null,

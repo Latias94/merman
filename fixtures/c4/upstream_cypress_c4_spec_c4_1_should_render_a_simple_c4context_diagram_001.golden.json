@@ -14,53 +14,54 @@
     "shapes": [
       {
         "alias": "customerA",
-        "label": {
-          "text": "Banking Customer A"
-        },
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts."
-        },
+        "parentBoundary": "b0",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "b0",
+        "label": {
+          "text": "Banking Customer A"
+        },
         "wrap": false,
-        "fontColor": "red",
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts."
+        },
         "bgColor": "grey",
-        "borderColor": "red"
+        "borderColor": "red",
+        "fontColor": "red"
       },
       {
         "alias": "SystemAA",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view information about their bank accounts, and make payments."
-        },
+        "parentBoundary": "b0",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "b0",
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view information about their bank accounts, and make payments."
+        }
       },
       {
         "alias": "SystemC",
-        "label": {
-          "text": "E-mail system"
-        },
-        "descr": {
-          "text": "The internal Microsoft Exchange e-mail system."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "E-mail system"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -68,37 +69,36 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "b0",
+        "parentBoundary": "global",
         "label": {
           "text": "BankBoundary0"
         },
         "type": {
           "text": "ENTERPRISE"
         },
-        "parentBoundary": "global",
         "wrap": false
       },
       {
         "alias": "b1",
+        "parentBoundary": "b0",
         "label": {
           "text": "BankBoundary"
         },
         "type": {
           "text": "ENTERPRISE"
         },
-        "parentBoundary": "b0",
         "wrap": false
       }
     ],
     "rels": [
       {
-        "type": "birel",
         "from": "customerA",
         "to": "SystemAA",
+        "type": "birel",
         "label": {
           "text": "Uses"
         },
@@ -109,14 +109,14 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "blue",
+        "offsetX": 5,
         "lineColor": "blue",
-        "offsetX": 5
+        "textColor": "blue"
       },
       {
-        "type": "rel",
         "from": "SystemAA",
         "to": "SystemC",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails"
         },
@@ -129,9 +129,9 @@
         "wrap": false
       },
       {
-        "type": "rel",
         "from": "SystemC",
         "to": "customerA",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails to"
         },
@@ -142,10 +142,10 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "red",
-        "lineColor": "red",
         "offsetX": -50,
-        "offsetY": 20
+        "offsetY": 20,
+        "lineColor": "red",
+        "textColor": "red"
       }
     ]
   }

@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 1070.0
+        "max_x": 789.694,
+        "max_y": 1080.849
       },
-      "width": 832.0,
-      "height": 1080.0,
+      "width": 839.694,
+      "height": 1090.849,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 632.0,
-          "height": 954.0,
+          "width": 639.694,
+          "height": 964.849,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -52,8 +52,8 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 166.0,
-          "width": 518.0,
-          "height": 86.0,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -61,37 +61,37 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 38.0,
-            "width": 165.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 144.76,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
-            "y": 76.0,
-            "width": 498.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 142.122,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
           "alias": "SystemDbA",
           "parent_boundary": "global",
           "type_c4_shape": "system_db",
-          "x": 150.0,
-          "y": 352.0,
+          "x": 466.0,
+          "y": 166.0,
           "width": 216.0,
-          "height": 86.0,
+          "height": 113.085,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -99,26 +99,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system_db»",
-            "y": 20.0,
-            "width": 65.28,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "System DB",
-            "y": 38.0,
-            "width": 76.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 66.5,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Database system",
-            "y": 76.0,
-            "width": 98.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 80.245,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -126,10 +126,10 @@
           "alias": "SystemQueueA",
           "parent_boundary": "global",
           "type_c4_shape": "system_queue",
-          "x": 466.0,
-          "y": 352.0,
-          "width": 216.0,
-          "height": 86.0,
+          "x": 150.0,
+          "y": 379.085,
+          "width": 223.694,
+          "height": 55.578,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -137,26 +137,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system_queue»",
-            "y": 20.0,
-            "width": 80.76,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "System Queue",
-            "y": 38.0,
-            "width": 94.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 82.18,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Queue system",
-            "y": 76.0,
-            "width": 80.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 65.436,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -164,10 +164,10 @@
           "alias": "SystemExtA",
           "parent_boundary": "global",
           "type_c4_shape": "external_system",
-          "x": 150.0,
-          "y": 538.0,
+          "x": 473.694,
+          "y": 379.085,
           "width": 216.0,
-          "height": 86.0,
+          "height": 85.578,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -175,26 +175,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system»",
-            "y": 20.0,
-            "width": 94.44,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External System",
-            "y": 38.0,
-            "width": 112.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 98.14,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External system",
-            "y": 76.0,
-            "width": 96.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 78.523,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -202,10 +202,10 @@
           "alias": "SystemDbExtA",
           "parent_boundary": "global",
           "type_c4_shape": "external_system_db",
-          "x": 466.0,
-          "y": 538.0,
+          "x": 150.0,
+          "y": 564.663,
           "width": 216.0,
-          "height": 86.0,
+          "height": 113.085,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -213,26 +213,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system_db»",
-            "y": 20.0,
-            "width": 108.72,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External System DB",
-            "y": 38.0,
-            "width": 137.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 119.56,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External database system",
-            "y": 76.0,
-            "width": 149.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 121.803,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -240,10 +240,10 @@
           "alias": "SystemQueueExtA",
           "parent_boundary": "global",
           "type_c4_shape": "external_system_queue",
-          "x": 150.0,
-          "y": 724.0,
-          "width": 216.0,
-          "height": 86.0,
+          "x": 466.0,
+          "y": 564.663,
+          "width": 223.694,
+          "height": 55.578,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -251,26 +251,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«external_system_queue»",
-            "y": 20.0,
-            "width": 124.2,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External System Queue",
-            "y": 38.0,
-            "width": 155.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 135.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External queue system",
-            "y": 76.0,
-            "width": 130.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 106.994,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -278,10 +278,10 @@
           "alias": "SystemSprite",
           "parent_boundary": "global",
           "type_c4_shape": "system",
-          "x": 466.0,
-          "y": 724.0,
+          "x": 150.0,
+          "y": 777.749,
           "width": 216.0,
-          "height": 60.0,
+          "height": 51.55,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -289,18 +289,18 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 30.0,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 38.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -310,10 +310,10 @@
           "alias": "SystemLink",
           "parent_boundary": "global",
           "type_c4_shape": "system",
-          "x": 150.0,
-          "y": 910.0,
+          "x": 466.0,
+          "y": 777.749,
           "width": 216.0,
-          "height": 60.0,
+          "height": 51.55,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -321,18 +321,18 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 30.0,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 38.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,
@@ -342,10 +342,10 @@
           "alias": "SystemTags",
           "parent_boundary": "global",
           "type_c4_shape": "system",
-          "x": 466.0,
-          "y": 910.0,
+          "x": 150.0,
+          "y": 929.299,
           "width": 216.0,
-          "height": 60.0,
+          "height": 51.55,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -353,18 +353,18 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 30.0,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 38.0,
+            "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "line_count": 1.0
+            "line_count": 0.0
           },
           "ty": null,
           "techn": null,

@@ -2580,6 +2580,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tiny-skia",
  "ttf-parser",
+ "unicase",
  "usvg",
 ]
 

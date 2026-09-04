@@ -603,6 +603,26 @@ fn diagram_theme_covers_additional_current_diagram_surfaces() {
             ],
         ),
         (
+            "presentation-theme-treemap",
+            "treemap-beta\n  \"Profile Section\"\n    \"Profile Leaf\": 42",
+            &["#0f172a", "#e5e7eb", "font-family:Inter"],
+            &[
+                ".treemapNode.section{stroke:black;stroke-width:1;fill:#efefef;}",
+                ".treemapNode.leaf{stroke:black;stroke-width:1;fill:#efefef;}",
+            ],
+        ),
+        (
+            "presentation-theme-c4",
+            "C4Component\nComponentDb(db, \"Database\", \"Postgres\", \"Stores data\")\nComponentQueue(queue, \"Queue\", \"NATS\", \"Events\")",
+            &["#0f172a", "#e5e7eb"],
+            &[
+                r#"class="node c4-shape c4-component_db""#,
+                r#"class="node c4-shape c4-component_queue""#,
+                r#"class="basic label-container outer-path""#,
+                r#"style="fill:#85BBF0;stroke:#78A8D8""#,
+            ],
+        ),
+        (
             "diagram-theme-tree-view",
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],

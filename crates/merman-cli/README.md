@@ -15,13 +15,13 @@ The command line has four explicit workflows:
 
 ## Install
 
-This README describes the current source revision. For a published release, prefer the complete prebuilt binary, with a source-build fallback when no official archive is available for the current target:
+This README describes the prepared alpha.6 source candidate. It is not a claim that alpha.6 is already published. For the published channel, prefer the complete prebuilt binary from the selected release, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
 cargo binstall merman-cli@0.8.0-alpha.5
 ```
 
-Starting with `0.8.0-alpha.5`, Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Published binary channels can trail this development branch; check `merman-cli --version` first, then use `merman-cli capabilities --json` on `0.8.0-alpha.5` and later. Pin a source revision when you need the exact contract documented here.
+The published binary channel currently ends at alpha.5. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at the exact alpha.6 preflight commit when you need the candidate contract documented here.
 
 Homebrew users can install the stable formula:
 
@@ -33,18 +33,10 @@ The formula follows stable releases and may trail this pre-release documentation
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
-Install the complete CLI from source:
+From a checkout at the exact commit accepted by alpha.6 preflight:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli
-```
-
-Replace `FULL_COMMIT_SHA` with a reviewed 40-character commit from the repository.
-
-From a local checkout:
-
-```sh
-cargo install --path crates/merman-cli
+cargo install --path crates/merman-cli --locked
 ```
 
 The standard source-install command uses the default capability set, which deliberately omits ELK. Project release artifacts select the complete `cli-release` capability set, including ELK, and ship the matching notices. Cargo-dist and, beginning with `0.8.0-alpha.5`, cargo-binstall consume the project-built `dist` artifact; source channels build the default features unless you select an explicit profile. Channels also differ in which support files they place on disk and who publishes them:
@@ -59,7 +51,7 @@ The standard source-install command uses the default capability set, which delib
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
 | Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable candidates are generated; external submission is pending |
 
-Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout. An exact remote revision can be used as `nix run "github:Latias94/merman?rev=FULL_COMMIT_SHA" -- --version`. This source package is separate from the precompiled Linux archive compatibility claim.
+Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout at the exact accepted preflight commit. This source package is separate from the precompiled Linux archive compatibility claim.
 
 Older cargo-binstall releases follow the metadata and fallback policy embedded in that selected release; the current official-archive mapping and QuickInstall prohibition do not apply retroactively.
 

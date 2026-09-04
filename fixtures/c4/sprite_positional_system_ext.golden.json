@@ -14,53 +14,54 @@
     "shapes": [
       {
         "alias": "p1",
-        "label": {
-          "text": "Customer"
-        },
-        "descr": {
-          "text": "A customer of the bank."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "Customer"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank."
+        }
       },
       {
         "alias": "s1",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view account data."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Allows customers to view account data."
+        }
       },
       {
         "alias": "sx",
-        "label": {
-          "text": "External System"
-        },
-        "descr": {
-          "text": "An external system."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "External System"
+        },
         "wrap": false,
         "sprite": "users",
         "tags": "external",
-        "link": "https://example.com/external-system"
+        "link": "https://example.com/external-system",
+        "descr": {
+          "text": "An external system."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -68,15 +69,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "p1",
         "to": "s1",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },
@@ -89,9 +89,9 @@
         "wrap": false
       },
       {
-        "type": "rel",
         "from": "s1",
         "to": "sx",
+        "type": "rel",
         "label": {
           "text": "Sends data"
         },

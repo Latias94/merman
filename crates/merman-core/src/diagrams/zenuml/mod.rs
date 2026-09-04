@@ -33,11 +33,28 @@ pub(crate) fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
     model::render_model_to_compat_json(&source.model, meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_zenuml_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ZenumlDiagramRenderModel> {
     Ok(parse_semantic_source(code, meta)?.model)
+}
+
+pub(crate) fn parse_zenuml_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<ZenumlDiagramRenderModel>> {
+    let source = construct_semantic_source(code, control)?;
+    if let Some(diagnostic) = source.first_diagnostic {
+        return Ok(Err(Error::diagram_parse_exact(
+            meta.diagram_type.clone(),
+            diagnostic.message,
+            diagnostic.span,
+        )));
+    }
+    Ok(Ok(source.model))
 }
 
 pub(crate) fn parse_zenuml_json_and_editor_facts(

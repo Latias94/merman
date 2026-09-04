@@ -4,19 +4,15 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0-alpha.6] - Unreleased
+
+This section describes the prepared alpha.6 source candidate. The Android artifact channel remains independently published and requires the matching Kotlin sources and native library before adoption.
 
 ### Added
 
-- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative
-  timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and
-  `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
-- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline
-  expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native
-  method set.
-- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count
-  range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection;
-  migrate overflow-sensitive consumers to `exactResourceDetails`.
+- Added `MermanOperationControl` with cross-thread cooperative cancellation, optional relative timeouts, cancellation state inspection, and idempotent release. Both `Merman.execute` and `MermanEngine.execute` retain their existing overloads and add controlled dispatch overloads.
+- Added structured `MermanCancelledDetails` projection for requested cancellation and deadline expiry. Android JNI transport API 2 owns the opaque control-token registry and controlled native method set.
+- Added lossless `MermanExactResourceErrorDetails` for the complete native unsigned 64-bit count range. Existing `resourceDetails` remains available as a signed-`Long` compatibility projection; migrate overflow-sensitive consumers to `exactResourceDetails`.
 
 ### Breaking changes
 

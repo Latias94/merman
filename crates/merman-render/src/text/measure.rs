@@ -28,6 +28,16 @@ pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 /// A host-provided measurer can instead use platform text APIs, a UI toolkit text system, or an
 /// optional font engine while preserving the rest of merman's parser/layout/render pipeline.
 pub trait TextMeasurer {
+    /// Reports whether the owning render operation has been cancelled.
+    ///
+    /// The measurement trait remains infallible for custom hosts. The routed operation measurer
+    /// uses this hook so long-running built-in wrapping probes can stop promptly and let the next
+    /// fallible layout boundary replay the structured cancellation error.
+    #[doc(hidden)]
+    fn cancellation_requested(&self) -> bool {
+        false
+    }
+
     /// Returns crate-private authority for reusing a measurement within the same routed operation.
     ///
     /// This hook is deliberately unnameable outside `merman-render`: external custom measurers use

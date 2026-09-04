@@ -5746,30 +5746,68 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
 }
 
 #[test]
-fn sequence_message_font_size_override_reaches_each_message_terminal() {
-    let svg = render_sequence_svg_from_fixture(
-        "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
+fn sequence_generated_root_typography_shadows_message_config_like_mermaid_11_17_2() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(
+            "upstream_cypress_sequencediagram_spec_should_render_different_message_fonts_when_configured_011.mmd",
+        );
+    let source = std::fs::read_to_string(path).expect("Sequence configured-font fixture");
+    let host = Arc::new(RecordingSequenceHost::new(SequenceHostResponse::Missing));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("sequence-mermaid-config-font-precedence")
+            .expect("valid profile id"),
+        "1",
+    )
+    .expect("valid measurement profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
     );
-    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let observation = render_sequence_with_environment(&source, &environment);
+    let requests = host.snapshot();
 
-    assert_sequence_role_text_style(
-        &document,
-        "messageText",
-        "I'm short",
-        "Arial",
-        "18px",
-        "400",
-        "normal",
-    );
-    assert_sequence_role_text_style(
-        &document,
-        "messageText",
-        "Short as well",
-        "Arial",
-        "18px",
-        "400",
-        "normal",
-    );
+    for message in ["I'm short", "Short as well"] {
+        let matching = requests
+            .iter()
+            .filter(|exchange| exchange.request.text == message)
+            .collect::<Vec<_>>();
+        assert!(
+            !matching.is_empty(),
+            "expected layout measurement requests for {message:?}"
+        );
+        assert!(
+            matching.iter().all(|exchange| {
+                exchange.request.font_size_bits == 16.0_f64.to_bits()
+                    && exchange.request.font_family.as_deref() != Some("Arial")
+            }),
+            "Mermaid's generated root typography must shadow sequence.messageFont* during measurement: {matching:#?}"
+        );
+    }
+
+    let document =
+        roxmltree::Document::parse(&observation.svg).expect("valid Sequence configured-font SVG");
+    for message in ["I'm short", "Short as well"] {
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == "messageText")
+                    })
+                    && node.text() == Some(message)
+            })
+            .unwrap_or_else(|| panic!("missing Sequence message {message:?}"));
+        let inline = text.attribute("style").expect("message inline style");
+        assert_eq!(inline_style_value(inline, "font-size"), Some("16px"));
+        assert_eq!(
+            inline_style_value(inline, "font-family"),
+            None,
+            "shadowed role-local Arial must not be reasserted by the terminal writer"
+        );
+    }
 }
 
 #[test]

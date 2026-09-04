@@ -22,6 +22,30 @@ abstract class MermanOutputPlan internal constructor() {
     abstract val kind: String
 }
 
+/** Terminal projection and viewport outcome for the ASCII operation. */
+data class MermanAsciiOutputPlan(
+    val schemaVersion: Int,
+    val family: String,
+    val projection: String,
+    val encoding: String,
+    val primaryWidth: Long,
+    val primaryHeight: Long,
+    val emittedWidth: Long,
+    val emittedHeight: Long,
+    val widthProfile: String,
+    val layoutProfile: String,
+    val requestedMaxWidth: Long?,
+    val overflowed: Boolean,
+    val outcome: String,
+    val fallbackCapability: String,
+    val fallbackAttempted: Boolean,
+    val fallbackReason: String?,
+    val trimmed: Boolean,
+    val lossiness: String,
+) : MermanOutputPlan() {
+    override val kind: String = "ascii"
+}
+
 /** Effective raster dimensions after resource-limit planning. */
 data class MermanRasterOutputPlan(
     val requestedWidthPx: Double,

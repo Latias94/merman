@@ -1,14 +1,14 @@
-# Unreleased Upgrade Guide
+# Alpha.6 Detailed Migration Reference (Source Candidate)
 
-> This guide applies only to source revisions after `v0.8.0-alpha.5`. It does not describe the
-> published alpha.5 artifacts. The next release version has not been selected.
+> This guide applies to the prepared `0.8.0-alpha.6` source candidate after `v0.8.0-alpha.5`. It does not describe the published alpha.5 artifacts. No registry package, tag, or platform artifact is implied until the exact release source passes preflight.
+
+Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference.
 
 ## Rust analysis and editor migration
 
-The unreleased branch deliberately removes prerelease compatibility shims. Migrate source and
-generated bindings together.
+The alpha.6 candidate deliberately removes prerelease compatibility shims. Migrate source and generated bindings together.
 
-| Alpha.5 or development-snapshot API | Unreleased replacement |
+| Alpha.5 or development-snapshot API | Alpha.6 replacement |
 | --- | --- |
 | Options JSON schema `2` with `presentation`, `raster.background`, `pdf.background`, or general-binding raw CSS | Options JSON schema `3`; use top-level typed `theme`, `raster.matte`, and `pdf.page_paint`. Trusted Rust/native CLI hosts keep explicit postprocessing/CSS escape hatches outside the general binding contract. Regenerate SDK projections and deploy them with a runtime catalog that advertises schema `3`; schema `2` is rejected rather than partially translated. |
 | Development-snapshot public `FilterRegion`, `EffectGraph::region()`, `EffectGraph::new(id, region, primitives)`, or `theme.spec.effects[].region` | `FilterRegion` and `EffectGraph::region()` are removed. Use `EffectGraph::new(id, primitives)` and omit `region` from binding JSON. The consuming family derives each terminal filter region from final paint geometry and admits it against the effective session theme-resource policy. The closed schema rejects the removed field; there is no compatibility decoder. Filter-region magnitude rejections now report phase `effect_materialize` instead of the former compile-time `effect_compile`, because the final geometry is not known until family materialization. |

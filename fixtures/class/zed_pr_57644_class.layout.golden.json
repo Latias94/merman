@@ -1,5 +1,5 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
@@ -143,14 +143,14 @@
           "start_label_right": {
             "x": 494.48,
             "y": 526.44,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 647.042,
             "y": 629.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -187,14 +187,14 @@
           "start_label_right": {
             "x": 381.641,
             "y": 233.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 406.641,
             "y": 267.5,
-            "width": 25.12,
-            "height": 24.0
+            "width": 17.27,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,

@@ -6,6 +6,7 @@ import {
   materializeTheme,
   renderSvgWithTextMeasurer,
 } from "../src/runtime-render.js";
+import type { BindingDiagnosticErrorDetails } from "../src/public-catalog.js";
 import type {
   AsciiBindingOptions,
   CommonBindingOptions,
@@ -24,6 +25,18 @@ import type {
   ThemeSupportQueryV2,
   ThemeSupportUnknownSubjectKindV2,
 } from "../src/public-types.js";
+
+const asciiDiagnostic: BindingDiagnosticErrorDetails = {
+  code: "merman.ascii.width_overflow",
+  span: null,
+  field: null,
+  diagram_type: "flowchart-v2",
+  requested_max_width: 10,
+  actual_width: 42,
+  width_profile: "unicode",
+  fallback_reason: null,
+};
+asciiDiagnostic.actual_width;
 
 const resources: ResourceOptions = { profile: "interactive" };
 const editorResources: EditorResourceOptions = {
@@ -47,7 +60,12 @@ const commonOptions: CommonBindingOptions = {
   parse: { suppress_errors: true },
 };
 const asciiOptions: AsciiBindingOptions = {
-  ascii: { charset: "unicode" },
+  ascii: {
+    charset: "unicode",
+    maxWidth: 80,
+    overflow: "fallback",
+    trim_trailing_spaces: true,
+  },
   merman: { resources },
   parse: { suppress_errors: true },
 };

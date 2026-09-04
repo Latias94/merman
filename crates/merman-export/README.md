@@ -31,7 +31,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
 ```
 
 ```rust
@@ -74,9 +74,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.5", default-features = false }
-merman-render = { version = "=0.8.0-alpha.5", default-features = false }
-merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png"] }
+merman-core = { version = "=0.8.0-alpha.6", default-features = false }
+merman-render = { version = "=0.8.0-alpha.6", default-features = false }
+merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png"] }
 ```
 
 ```rust

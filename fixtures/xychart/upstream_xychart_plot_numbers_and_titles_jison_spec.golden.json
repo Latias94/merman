@@ -20,6 +20,7 @@
     "plots": [
       {
         "type": "line",
+        "title": "lineTitle with space",
         "values": [
           23.0,
           -45.0,
@@ -42,6 +43,7 @@
       },
       {
         "type": "bar",
+        "title": "barTitle",
         "values": [
           23.0,
           45.0,

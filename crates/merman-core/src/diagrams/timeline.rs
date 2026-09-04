@@ -652,6 +652,7 @@ pub(crate) fn render_model_to_compat_json(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_timeline_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -663,6 +664,23 @@ pub(crate) fn parse_timeline_model_for_render(
                 .model
                 .unwrap_or_else(TimelineDiagramRenderModel::empty_compatibility_output)
         })
+}
+
+pub(crate) fn parse_timeline_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<TimelineDiagramRenderModel>> {
+    let source =
+        construct_timeline_semantic_source_controlled(code, meta, control)?.into_strict_source();
+    let source = match source {
+        Ok(source) => source,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source.model.unwrap_or_else(
+        TimelineDiagramRenderModel::empty_compatibility_output,
+    )))
 }
 
 fn construct_timeline_semantic_source(code: &str, meta: &ParseMetadata) -> TimelineParseOutcome {

@@ -32,6 +32,7 @@
     "plots": [
       {
         "type": "bar",
+        "title": "",
         "values": [
           12.0,
           18.0,
@@ -99,6 +100,7 @@
       },
       {
         "type": "line",
+        "title": "",
         "values": [
           12.0,
           18.0,

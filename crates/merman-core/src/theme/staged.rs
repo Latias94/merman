@@ -641,6 +641,7 @@ fn update_xy_chart(stage: &mut ThemeState, palette: &str) -> Result<(), ColorErr
         for field in [
             "titleColor",
             "dataLabelColor",
+            "legendTextColor",
             "xAxisTitleColor",
             "xAxisLabelColor",
             "xAxisTickColor",

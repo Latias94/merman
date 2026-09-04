@@ -138,6 +138,7 @@ impl<'a> ErConfigView<'a> {
     pub(crate) fn entity_measurement_settings(&self) -> ErEntityMeasurementSettings {
         ErEntityMeasurementSettings {
             html_labels_raw: self.root_bool("htmlLabels").unwrap_or(false),
+            label_wrap_mode: self.entity_html_label_wrap_mode(),
             diagram_padding: self
                 .er_f64("diagramPadding")
                 .unwrap_or(DEFAULT_DIAGRAM_PADDING),
@@ -197,6 +198,9 @@ impl<'a> ErConfigView<'a> {
     }
 
     fn entity_html_label_wrap_mode(&self) -> WrapMode {
+        // Mermaid's ER box painter reads the root config directly. This deliberately does
+        // not use `getEffectiveHtmlLabels`: `flowchart.htmlLabels` controls relationship
+        // labels, but does not override ER entity, attribute, or subgraph labels.
         if self.root_bool("htmlLabels").unwrap_or(true) {
             WrapMode::HtmlLike
         } else {
@@ -282,6 +286,7 @@ pub(super) struct ErLayoutSettings {
 #[derive(Clone, Copy)]
 pub(crate) struct ErEntityMeasurementSettings {
     pub(crate) html_labels_raw: bool,
+    pub(crate) label_wrap_mode: WrapMode,
     pub(crate) diagram_padding: f64,
     pub(crate) entity_padding: f64,
     pub(crate) min_entity_width: f64,
@@ -478,6 +483,15 @@ mod tests {
         assert_eq!(settings.insert_title_top_margin, 12.0);
         assert!(!settings.use_max_width);
         assert!(!settings.relationship_html_labels);
+
+        let flowchart_fallback = ErConfigView::new(&json!({
+            "flowchart": { "htmlLabels": false }
+        }))
+        .render_settings_with_font_family(None);
+        assert_eq!(
+            flowchart_fallback.entity_html_label_wrap_mode,
+            WrapMode::HtmlLike
+        );
         assert_eq!(settings.entity_html_label_wrap_mode, WrapMode::SvgLike);
 
         let root_fallback = ErConfigView::new(&json!({

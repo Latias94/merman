@@ -2,7 +2,7 @@ use super::super::timing::RenderTiming;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::groups::{
     ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
-    render_class_split_edge_groups,
+    render_class_split_edge_groups, render_class_split_edge_labels, render_class_split_edge_paths,
 };
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
@@ -12,7 +12,7 @@ use super::label::{
     class_node_paint_style, class_source_label_style,
 };
 use super::namespace::{
-    ClassNamespaceClusterGroupContext, class_namespace_root_offset, render_class_elk_subgraphs,
+    ClassNamespaceClusterGroupContext, class_namespace_root_offset,
     render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
 };
 use super::node::{
@@ -348,7 +348,19 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         });
     }
 
-    detail.clusters += render_class_elk_subgraphs(
+    // `layout-elk@0.2.3` uses Mermaid's common layout painter. It inserts one root and four
+    // sibling groups; ELK's post-paint z-order is edge paths, clusters, edge labels, nodes.
+    let edge_label_centers = render_class_split_edge_paths(
+        out,
+        content_bounds,
+        detail,
+        theme_receipt,
+        edge_ctx,
+        0.0,
+        0.0,
+    )?;
+
+    detail.clusters += render_class_namespace_cluster_group(
         out,
         content_bounds,
         &ctx.layout.clusters,
@@ -365,6 +377,17 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             emit: ctx.emit,
         },
         typography_receipt,
+    )?;
+
+    render_class_split_edge_labels(
+        out,
+        content_bounds,
+        detail,
+        typography_receipt,
+        edge_ctx,
+        0.0,
+        0.0,
+        &edge_label_centers,
     )?;
 
     out.push_str(r#"<g class="nodes">"#);
@@ -400,30 +423,6 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     }
     out.push_str("</g>");
     out.checkpoint()?;
-
-    let edges = root
-        .edge_ids
-        .iter()
-        .map(|id| {
-            edges_by_id
-                .get(id.as_str())
-                .copied()
-                .expect("validated Class ELK render edge")
-                .clone()
-        })
-        .collect::<Vec<_>>();
-    render_class_split_edges_for_namespace(
-        out,
-        content_bounds,
-        detail,
-        edge_ctx,
-        theme_receipt,
-        &edges,
-        0.0,
-        0.0,
-        false,
-        typography_receipt,
-    )?;
     Ok(())
 }
 

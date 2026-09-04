@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.1",
+    "mermaid_version": "11.17.2",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.1",
-    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
-    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
+    "mermaid_source_tag": "mermaid@11.17.2",
+    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
+    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,12 +26,12 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.1",
-        "iife_version": "11.16.1",
-        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+        "esm_version": "11.17.2",
+        "iife_version": "11.17.2",
+        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -64,7 +64,7 @@
     },
     "upstream_cypress_requirement_spec_example_001": {
       "input_sha256": "651f848a61200a6f0dafc6ba36e4f1b970354fdf711b2ea145547c5b8b2a8e20",
-      "svg_sha256": "021eaf8fdf2a79ac4ad43b009699c38912ec5e415d422855530093085ee50999",
+      "svg_sha256": "c2cf6b8bc0df4019969590bedfe3b8a88aae04054659ca006e849035a6fe47a4",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_001": {
@@ -74,7 +74,7 @@
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_003": {
       "input_sha256": "90985768cd5ffa56131287abbe99ec8ca4fbdd0ae5002dda8572d1fa094de57c",
-      "svg_sha256": "0060266072dcb2f816892411d510e44d31e5c64ab41da0d82a4185ed69433501",
+      "svg_sha256": "83fe92b2f61c0154762ce82cea1ba55a3f6731f83f09516e3b1e8c371eca1d46",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_005": {
@@ -144,7 +144,7 @@
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_021": {
       "input_sha256": "cc06d65217171c1318bf61023a83ad88c4991707d0c6eb9fef5652b36e8943bd",
-      "svg_sha256": "27cc4c78da9cfeb2d7dd48368447ef8344a4c5650a99007ce1302c1a07a42733",
+      "svg_sha256": "8575ae1f10b33bcea2fe45d9f24f5ffaf0260f697e69cd5979271d508792dc91",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_requirementdiagram_unified_spec_example_022": {
@@ -194,7 +194,7 @@
     },
     "upstream_docs_requirementdiagram_larger_example_010": {
       "input_sha256": "b9d0e63b6c8ae8164ff63beb6ec2a7a9f66c677f6131d88562b5dcc7db5e8880",
-      "svg_sha256": "cf96e43345adc658399893ccfc2f88eaa831d4f955ee7c92b877d779716babc6",
+      "svg_sha256": "3a8e92d1a6f830972d9ca5175a5b881ae8b1b958198dd33d930e1d493fc96a9f",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_requirementdiagram_markdown_formatting_005": {
@@ -209,12 +209,12 @@
     },
     "upstream_html_demos_requirements_requirement_diagram_demos_001": {
       "input_sha256": "033b5dae9685c30f2ea24f44374c8ac8262a263d8fda2dfefbc2431320cf5daf",
-      "svg_sha256": "ff937b0b43387ff0f41f72053ac81a69a5df6f7b6c9ce29e82b452eb950ef4a0",
+      "svg_sha256": "78d21280c9eab9226a2c189cab09e2499a2f34688fe053475607920cdaf45245",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_requirements_requirement_diagram_demos_002": {
       "input_sha256": "156702fd76e1df8ccec28ebaac3dca0e86da0e9f29468d2ba8c9a2b54759c4a2",
-      "svg_sha256": "4e8f85e7c73e40d1124d14691d1d6641b0b63bae34942cd2f0cbfa0dd5471efc",
+      "svg_sha256": "8629bb0fb877e4fd6a009a8ac76f077b7750139fc26bd1869ea37c36fb5f5a15",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_diagram_orchestration_spec_038": {
@@ -259,7 +259,7 @@
     },
     "upstream_requirement_full_element_and_relationships_spec": {
       "input_sha256": "f03bbcf95060e7ac2a7f563c9c879758a681302e0ddd4b58c2e88cee6c216c65",
-      "svg_sha256": "cf0b9b69a31f5ae0d03563318df60ed281c1a78ed461305fa426a3400d28ebe2",
+      "svg_sha256": "5c7da40b1a139ccef9b8af2ab693966ee54731d5f1c8f53dd9558a12dd6707a8",
       "renderer_profile": "mmdc-default"
     },
     "upstream_requirement_full_requirement_spec": {

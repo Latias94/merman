@@ -131,14 +131,14 @@
           "start_label_right": {
             "x": 49.0,
             "y": 209.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 74.0,
             "y": 273.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -170,14 +170,14 @@
           "start_label_right": {
             "x": 201.32,
             "y": 155.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 226.32,
             "y": 273.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -209,14 +209,14 @@
           "start_label_right": {
             "x": 327.961,
             "y": 155.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 352.961,
             "y": 273.5,
-            "width": 35.04,
-            "height": 24.0
+            "width": 24.09,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -248,14 +248,14 @@
           "start_label_right": {
             "x": 624.724,
             "y": 427.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 649.724,
             "y": 461.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -308,14 +308,14 @@
           "start_label_right": {
             "x": 434.155,
             "y": 148.271,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 460.108,
             "y": 632.136,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -347,14 +347,14 @@
           "start_label_right": {
             "x": 457.563,
             "y": 155.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 482.563,
             "y": 273.5,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -386,14 +386,14 @@
           "start_label_right": {
             "x": 515.238,
             "y": 149.123,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 649.724,
             "y": 243.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,
@@ -430,14 +430,14 @@
           "start_label_right": {
             "x": 624.724,
             "y": 585.5,
-            "width": 8.96,
-            "height": 24.0
+            "width": 6.16,
+            "height": 16.5
           },
           "end_label_left": {
             "x": 525.577,
             "y": 673.293,
-            "width": 7.2,
-            "height": 24.0
+            "width": 4.95,
+            "height": 16.5
           },
           "end_label_right": null,
           "start_marker": null,

@@ -1,111 +1,111 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Context",
+    "title": "System Context diagram for Internet Banking System",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "customerA",
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts."
-        },
-        "label": {
-          "text": "Banking Customer A"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "Banking Customer A"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts."
+        }
       },
       {
         "alias": "customerSprite",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": {
             "sprite": "users"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "customerLink",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": {
             "link": "https://github.com/mermaidjs"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "customerTags",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": {
             "tags": "tag1,tag2"
           }
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "customerAll",
-        "descr": {
-          "text": "Desc"
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": "Customer All"
         },
-        "link": "https://example.com",
-        "parentBoundary": "global",
+        "wrap": false,
         "sprite": "user",
         "tags": "t1,t2",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "link": "https://example.com",
+        "descr": {
+          "text": "Desc"
+        }
       }
     ],
-    "title": "System Context diagram for Internet Banking System",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
+    "rels": []
   }
 }

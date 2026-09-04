@@ -4,7 +4,9 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [Unreleased]
+## [0.8.0a6] - Unreleased
+
+This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve an earlier package until the matching wheel and native artifact are authorized.
 
 ### Breaking changes
 
@@ -33,6 +35,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 ### Changed
 
 - Generated resource options now include `max_prepared_text_retained_bytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
+- Wheel builds derive archive timestamps from the accepted source commit, and publication completes only after PyPI exposes the exact expected wheel SHA-256 values.
 
 ## [0.8.0a5] - 2026-08-09
 

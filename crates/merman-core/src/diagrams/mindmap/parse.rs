@@ -64,11 +64,24 @@ pub(crate) fn parse_mindmap_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_mindmap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<MindmapDiagramRenderModel> {
     parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)
+}
+
+pub(crate) fn parse_mindmap_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<MindmapDiagramRenderModel>> {
+    let construction = construct_mindmap_semantic_source_controlled(code, meta, control)?;
+    match construction {
+        Ok(source) => source.into_render_model_controlled(meta, control),
+        Err(error) => Ok(Err(error.into_error())),
+    }
 }
 
 struct MindmapSemanticSource {

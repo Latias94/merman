@@ -1,82 +1,82 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
+    "type": "c4",
+    "c4Type": "C4Component",
+    "title": "Component diagram",
     "accTitle": null,
-    "boundaries": [
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
       {
-        "alias": "global",
-        "label": {
-          "text": "global"
+        "alias": "api",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "component"
         },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
+        "label": {
+          "text": "API"
+        },
+        "wrap": false,
+        "techn": {
+          "text": "Rust"
+        },
+        "descr": {
+          "text": "Handles requests"
+        }
+      },
+      {
+        "alias": "db",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "component_db"
+        },
+        "label": {
+          "text": "DB"
+        },
+        "wrap": false,
+        "techn": {
+          "text": "Postgres"
+        },
+        "descr": {
+          "text": "Stores data"
         }
       }
     ],
-    "c4Type": "C4Component",
-    "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
-    },
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
     "rels": [
       {
-        "descr": {
-          "text": ""
-        },
         "from": "api",
+        "to": "db",
+        "type": "rel",
         "label": {
           "text": "queries"
         },
         "techn": {
           "text": ""
         },
-        "to": "db",
-        "type": "rel",
-        "wrap": false
-      }
-    ],
-    "shapes": [
-      {
-        "alias": "api",
         "descr": {
-          "text": "Handles requests"
-        },
-        "label": {
-          "text": "API"
-        },
-        "parentBoundary": "global",
-        "techn": {
-          "text": "Rust"
-        },
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "db",
-        "descr": {
-          "text": "Stores data"
-        },
-        "label": {
-          "text": "DB"
-        },
-        "parentBoundary": "global",
-        "techn": {
-          "text": "Postgres"
-        },
-        "typeC4Shape": {
-          "text": "component_db"
+          "text": ""
         },
         "wrap": false
       }
-    ],
-    "title": "Component diagram",
-    "type": "c4",
-    "wrap": false
+    ]
   }
 }

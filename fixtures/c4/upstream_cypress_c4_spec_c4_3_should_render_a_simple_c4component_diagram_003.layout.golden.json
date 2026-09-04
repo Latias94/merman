@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 752.0,
-        "max_y": 730.0
+        "max_x": 566.0,
+        "max_y": 731.04
       },
-      "width": 802.0,
-      "height": 740.0,
+      "width": 616.0,
+      "height": 741.04,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 602.0,
-          "height": 614.0,
+          "width": 416.0,
+          "height": 615.04,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -48,9 +48,9 @@
           "alias": "api",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 376.0,
-          "width": 435.0,
-          "height": 254.0,
+          "y": 382.834,
+          "width": 316.0,
+          "height": 248.206,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -80,8 +80,8 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 502.0,
-          "height": 104.0,
+          "width": 216.0,
+          "height": 110.834,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -89,33 +89,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«container»",
-            "y": 20.0,
-            "width": 59.04,
-            "height": 14.0,
+            "text": "[Container: javascript and angular]",
+            "y": 44.175,
+            "width": 148.26,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Single Page Application",
-            "y": 38.0,
-            "width": 151.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 132.3,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[javascript and angular]",
-            "y": 61.0,
-            "width": 115.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Provides all the internet banking functionality to customers via their web browser.",
-            "y": 94.0,
-            "width": 482.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 71.892,
+            "width": 169.904,
+            "height": 37.884,
+            "line_count": 3.0
           }
         },
         {
@@ -123,9 +117,9 @@
           "parent_boundary": "api",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 476.0,
-          "width": 335.0,
-          "height": 104.0,
+          "y": 482.834,
+          "width": 216.0,
+          "height": 98.206,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -133,33 +127,27 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«component»",
-            "y": 20.0,
-            "width": 65.04,
-            "height": 14.0,
+            "text": "[Component: MVC Rest Controller]",
+            "y": 44.175,
+            "width": 148.89,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "Sign In Controller",
-            "y": 38.0,
-            "width": 117.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 102.2,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[MVC Rest Controller]",
-            "y": 61.0,
-            "width": 110.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Allows users to sign in to the internet banking system",
-            "y": 94.0,
-            "width": 315.0,
-            "height": 15.0,
-            "line_count": 1.0
+            "y": 65.578,
+            "width": 140.286,
+            "height": 25.256,
+            "line_count": 2.0
           }
         }
       ],
@@ -169,12 +157,12 @@
           "to": "sign",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 432.243,
-            "y": 270.0
+            "x": 281.927,
+            "y": 276.834
           },
           "end_point": {
-            "x": 408.012,
-            "y": 476.0
+            "x": 318.894,
+            "y": 482.834
           },
           "offset_x": null,
           "offset_y": -40.0,

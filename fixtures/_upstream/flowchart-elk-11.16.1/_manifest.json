@@ -1,5 +1,6 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "source_policy": "historical",
   "mermaid_version": "11.16.1",
   "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
   "collection": {

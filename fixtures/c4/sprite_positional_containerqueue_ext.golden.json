@@ -14,45 +14,46 @@
     "shapes": [
       {
         "alias": "web",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Web App"
         },
+        "wrap": false,
         "techn": {
           "text": "React"
         },
         "descr": {
           "text": "Provides Internet banking functionality."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "global",
-        "wrap": false
+        }
       },
       {
         "alias": "q",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_container_queue"
+        },
         "label": {
           "text": "External Container Queue"
         },
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/external-container-queue",
         "techn": {
           "text": "RabbitMQ"
         },
         "descr": {
           "text": "External queue container."
-        },
-        "typeC4Shape": {
-          "text": "external_container_queue"
-        },
-        "parentBoundary": "global",
-        "wrap": false,
-        "sprite": "users",
-        "tags": "external",
-        "link": "https://example.com/external-container-queue"
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -60,15 +61,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "web",
         "to": "q",
+        "type": "rel",
         "label": {
           "text": "Publishes"
         },

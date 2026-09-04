@@ -20,8 +20,10 @@ pub use model::{
     GanttRenderTaskRaw, GanttRenderTaskStart, GanttTaskEndConstraint, GanttTaskStartConstraint,
 };
 #[cfg(test)]
+pub(crate) use parse::parse_gantt_model_for_render;
+#[cfg(test)]
 pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};
-pub(crate) use parse::{parse_gantt, parse_gantt_model_for_render};
+pub(crate) use parse::{parse_gantt, parse_gantt_model_for_render_controlled};
 pub(crate) use parse::{
     parse_gantt_json_and_editor_facts, render_model_to_compat_json,
     render_model_to_compat_json_controlled,

@@ -2,6 +2,84 @@
 
 use super::*;
 
+pub(in crate::svg::parity) fn flowchart_is_strict_descendant(
+    parent: &FxHashMap<&str, &str>,
+    node_id: &str,
+    cluster_id: &str,
+) -> bool {
+    if node_id == cluster_id {
+        return false;
+    }
+    let mut cur: Option<&str> = Some(node_id);
+    while let Some(id) = cur {
+        if id == cluster_id {
+            return true;
+        }
+        cur = parent.get(id).copied();
+    }
+    false
+}
+
+pub(in crate::svg::parity) fn flowchart_effective_parent<'a>(
+    ctx: &'a FlowchartRenderCtx<'_>,
+    id: &str,
+) -> Option<&'a str> {
+    let mut cur = ctx.parent.get(id).copied();
+    while let Some(p) = cur {
+        if ctx.subgraphs_by_id.contains_key(p)
+            && !ctx.recursive_clusters.contains(p)
+            && !ctx.is_subgraph_collapsed(p)
+        {
+            cur = ctx.parent.get(p).copied();
+            continue;
+        }
+        return Some(p);
+    }
+    None
+}
+
+// Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
+// is positioned by the cluster node transform, and its internal content starts at a fixed 8px
+// margin (graph marginx/marginy in Mermaid's Dagre config).
+pub(in crate::svg::parity) fn flowchart_cluster_root_offsets(
+    ctx: &FlowchartRenderCtx<'_>,
+    cid: &str,
+) -> Option<FlowchartRootOffsets> {
+    const ROOT_MARGIN_PX: f64 = 8.0;
+    let cluster = ctx.layout_clusters_by_id.get(cid)?;
+
+    let abs_left = if cluster.diff > 0.0 {
+        (cluster.x + cluster.diff - cluster.width / 2.0) + ctx.tx
+    } else {
+        (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX
+    };
+    let title_total_margin = (cluster.title_margin_top + cluster.title_margin_bottom).max(0.0);
+    let title_y_shift = title_total_margin / 2.0;
+
+    let my_parent = flowchart_effective_parent(ctx, cid);
+    let has_empty_sibling = ctx.subgraphs_by_id.keys().any(|id| {
+        *id != cid
+            && !ctx.subgraph_has_children(id)
+            && ctx.layout_clusters_by_id.contains_key(id)
+            && flowchart_effective_parent(ctx, id) == my_parent
+    });
+
+    let base_top = (cluster.y - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
+    let extra_transform_y = if has_empty_sibling {
+        cluster.offset_y.max(0.0) * 2.0
+    } else {
+        0.0
+    };
+
+    let abs_top_transform = base_top + extra_transform_y;
+    let abs_top_content = base_top + title_y_shift;
+
+    Some(FlowchartRootOffsets {
+        origin_x: abs_left,
+        origin_y: abs_top_content,
+        abs_top_transform,
+    })
+}
 pub(super) fn flowchart_node_dom_indices<'a>(
     model: &'a crate::flowchart::FlowchartModel,
 ) -> FxHashMap<&'a str, usize> {

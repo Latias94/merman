@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "id-<id>-1",
-          "x": 66.24,
+          "x": 90.24,
           "y": 0.0,
-          "width": 132.48,
+          "width": 180.48,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "aBlock",
-          "x": 35.12,
+          "x": 47.12,
           "y": 0.0,
-          "width": 54.24,
+          "width": 78.24,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "bBlock",
-          "x": 97.36,
+          "x": 133.36,
           "y": 0.0,
-          "width": 54.24,
+          "width": 78.24,
           "height": 32.0,
           "is_cluster": false
         }
@@ -33,14 +33,14 @@
         {
           "id": "id-<id>-1",
           "allocated": {
-            "x": 66.24,
+            "x": 90.24,
             "y": 0.0,
-            "width": 132.48,
+            "width": 180.48,
             "height": 48.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 132.48,
+            "width": 180.48,
             "height": 48.0,
             "radius": 0.0,
             "kind": "composite"
@@ -49,14 +49,14 @@
         {
           "id": "aBlock",
           "allocated": {
-            "x": 35.12,
+            "x": 47.12,
             "y": 0.0,
-            "width": 54.24,
+            "width": 78.24,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 54.24,
+            "width": 78.24,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -65,14 +65,14 @@
         {
           "id": "bBlock",
           "allocated": {
-            "x": 97.36,
+            "x": 133.36,
             "y": 0.0,
-            "width": 54.24,
+            "width": 78.24,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 54.24,
+            "width": 78.24,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -82,7 +82,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -24.0,
-        "max_x": 132.48,
+        "max_x": 180.48,
         "max_y": 24.0
       }
     }

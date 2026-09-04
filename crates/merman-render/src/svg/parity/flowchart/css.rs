@@ -254,7 +254,7 @@ where
     );
     let _ = write!(
         &mut *out,
-        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
         id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
     );
     let _ = write!(
@@ -272,21 +272,17 @@ where
     );
     let _ = write!(
         &mut *out,
-        "#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
-        id,
-        cluster_bkg,
-        cluster_border,
-        id,
-        title_color,
-        id,
-        title_color,
-        id,
-        font_family,
-        tertiary,
-        cluster_border,
-        id,
-        text_color,
-        id
+        "#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}",
+        id, cluster_bkg, cluster_border, id, title_color, id, title_color
+    );
+    let _ = write!(
+        &mut *out,
+        r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
+    );
+    let _ = write!(
+        &mut *out,
+        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
+        id, font_family, tertiary, cluster_border, id, text_color, id
     );
     let _ = write!(
         &mut *out,

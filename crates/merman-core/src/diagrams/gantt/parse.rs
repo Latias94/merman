@@ -862,6 +862,7 @@ pub(crate) fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     super::render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_gantt_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -870,6 +871,22 @@ pub(crate) fn parse_gantt_model_for_render(
         return Ok(GanttDiagramRenderModel::empty_compatibility_output());
     };
     gantt_db_to_render_model(db)
+}
+
+pub(crate) fn parse_gantt_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<GanttDiagramRenderModel>> {
+    let construction = construct_gantt_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    match source.db {
+        Some(db) => gantt_db_to_render_model_controlled(db, control),
+        None => Ok(Ok(GanttDiagramRenderModel::empty_compatibility_output())),
+    }
 }
 
 pub(crate) fn parse_gantt_json_and_editor_facts(

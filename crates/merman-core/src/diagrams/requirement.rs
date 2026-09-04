@@ -356,11 +356,24 @@ pub(crate) fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Valu
     render_model_to_compat_json(&model, meta)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_requirement_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RequirementDiagramRenderModel> {
     Ok(parse_requirement_semantic_source(code, meta)?.model)
+}
+
+pub(crate) fn parse_requirement_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<Result<RequirementDiagramRenderModel>> {
+    let construction = construct_requirement_semantic_source_controlled(code, meta, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.model)),
+        Err(failure) => Ok(Err(failure.into_error())),
+    }
 }
 
 pub(crate) fn parse_requirement_json_and_editor_facts(

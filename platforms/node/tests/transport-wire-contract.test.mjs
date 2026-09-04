@@ -453,6 +453,90 @@ test("error envelopes enforce discriminants, known relations, and capability ide
     );
   }
 
+  const diagnostic = {
+    code: "merman.ascii.width_overflow",
+    span: null,
+    field: null,
+    diagram_type: "flowchart-v2",
+    requested_max_width: 10,
+    actual_width: 42,
+    width_profile: "unicode",
+    fallback_reason: null,
+  };
+  const diagnosticError = {
+    code: 6,
+    codeName: "MERMAN_RENDER_ERROR",
+    kind: "generic",
+    capabilityId: null,
+    details: { diagnostic },
+    message: "ASCII output exceeds the requested width",
+  };
+  assert.throws(
+    () => decodeWireResponse(errorEnvelope(diagnosticError), SVG_EXPECTATION),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.diagnosticDetails, diagnostic);
+      return true;
+    },
+  );
+  assert.throws(
+    () =>
+      decodeWireResponse(
+        errorEnvelope({
+          ...diagnosticError,
+          details: {
+            diagnostic: {
+              code: diagnostic.code,
+              span: diagnostic.span,
+              field: diagnostic.field,
+              diagram_type: diagnostic.diagram_type,
+            },
+          },
+        }),
+        SVG_EXPECTATION,
+      ),
+    (error) => {
+      assert.ok(error instanceof MermanOperationError);
+      assert.deepEqual(error.diagnosticDetails, {
+        code: diagnostic.code,
+        span: diagnostic.span,
+        field: diagnostic.field,
+        diagram_type: diagnostic.diagram_type,
+      });
+      return true;
+    },
+  );
+  for (const [invalidDiagnostic, expectedMessage] of [
+    [{ ...diagnostic, requested_max_width: -1 }, /invalid diagnostic error details/i],
+    [{ ...diagnostic, actual_width: 42.5 }, /exact JSON-safe integers/i],
+    [{ ...diagnostic, width_profile: 7 }, /invalid diagnostic error details/i],
+    [{ ...diagnostic, fallback_reason: false }, /invalid diagnostic error details/i],
+    [
+      { ...diagnostic, requested_max_width: "9007199254740992" },
+      /invalid diagnostic error details/i,
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        decodeWireResponse(
+          errorEnvelope({
+            ...diagnosticError,
+            details: { diagnostic: invalidDiagnostic },
+          }),
+          SVG_EXPECTATION,
+        ),
+      expectedMessage,
+    );
+  }
+  const inexactDiagnosticEnvelope = errorEnvelope(diagnosticError).replace(
+    '"requested_max_width":10',
+    '"requested_max_width":10.0000000000000001',
+  );
+  assert.throws(
+    () => decodeWireResponse(inexactDiagnosticEnvelope, SVG_EXPECTATION),
+    /exact JSON-safe integers/i,
+  );
+
   assert.throws(
     () =>
       decodeWireResponse(

@@ -477,6 +477,28 @@ fn render_flowchart_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            render_flowchart_model_inner(model, render_context, options, layout, *execution)
+        });
+        match result {
+            // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
+            // that the primary graph is too wide, but discard its speculative document cells.
+            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
+}
+
+fn render_flowchart_model_inner(
+    model: &FlowchartModel,
+    render_context: Option<&FlowchartRenderContext>,
+    options: &AsciiRenderOptions,
+    layout: FlowchartLayoutPolicy,
+    execution: operation::AsciiExecution<'_>,
+) -> Result<String> {
     let mut semantic_resources =
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = graph::from_flowchart_model_with_execution(
@@ -484,7 +506,7 @@ fn render_flowchart_model(
         render_context,
         layout,
         &mut semantic_resources,
-        *execution,
+        execution,
     )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
@@ -494,7 +516,7 @@ fn render_flowchart_model(
         options,
         layout.graph_policy(),
         &mut layout_resources,
-        *execution,
+        execution,
     )
 }
 
@@ -579,13 +601,33 @@ fn render_state_model(
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_core::OperationPhase::Semantic)?;
+    let transaction = execution.new_resource_context(merman_core::OperationPhase::Semantic);
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            render_state_model_inner(model, options, layout, *execution)
+        });
+        match result {
+            // State diagrams share the graph renderer and the same render-wide fallback ledger.
+            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
+}
+
+fn render_state_model_inner(
+    model: &StateDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    layout: GraphLayoutPolicy,
+    execution: operation::AsciiExecution<'_>,
+) -> Result<String> {
     let mut semantic_resources =
         execution.new_resource_context(merman_core::OperationPhase::Semantic);
     let graph = state::from_state_model_with_context_and_execution(
         model,
         options.terminal_width_profile,
         &mut semantic_resources,
-        *execution,
+        execution,
     )?;
     execution.checkpoint(merman_core::OperationPhase::Layout)?;
     let mut layout_resources =
@@ -595,7 +637,7 @@ fn render_state_model(
         options,
         layout,
         &mut layout_resources,
-        *execution,
+        execution,
     )
 }
 

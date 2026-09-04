@@ -342,8 +342,8 @@ fn translated_rect(node: roxmltree::Node<'_, '_>) -> Option<Rect> {
 }
 
 fn rendered_scope_index(node: roxmltree::Node<'_, '_>) -> Option<usize> {
-    // Mermaid's ELK adapter intentionally emits `[object Object]` as the cluster DOM id. The
-    // unique source scope id is therefore carried in the rendered cluster label.
+    // Read the source scope from the visible label so this benchmark remains independent of the
+    // renderer's diagram-scoped DOM id format.
     let label_node = node
         .children()
         .find(|child| child.has_tag_name("g") && has_class(*child, "cluster-label"))?;

@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 370.0
+        "max_y": 421.896
       },
       "width": 832.0,
-      "height": 380.0,
+      "height": 431.896,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 254.0,
+          "height": 305.896,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -53,25 +53,25 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "A",
-            "y": 86.0,
-            "width": 10.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 8.4,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -85,7 +85,7 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 60.0,
+          "height": 69.95,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -93,17 +93,17 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«system»",
-            "y": 20.0,
-            "width": 51.0,
-            "height": 14.0,
+            "text": "[Software System]",
+            "y": 44.175,
+            "width": 85.785,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "B",
-            "y": 38.0,
-            "width": 10.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 8.4,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -117,12 +117,12 @@
           "to": "b",
           "rel_type": "rel",
           "start_point": {
-            "x": 366.0,
-            "y": 225.642
+            "x": 302.22,
+            "y": 237.935
           },
           "end_point": {
-            "x": 466.0,
-            "y": 223.0
+            "x": 480.671,
+            "y": 235.95
           },
           "offset_x": null,
           "offset_y": null,
@@ -141,12 +141,12 @@
           "to": "a",
           "rel_type": "birel",
           "start_point": {
-            "x": 466.0,
-            "y": 223.0
+            "x": 480.671,
+            "y": 235.95
           },
           "end_point": {
-            "x": 366.0,
-            "y": 225.642
+            "x": 302.22,
+            "y": 237.935
           },
           "offset_x": null,
           "offset_y": null,

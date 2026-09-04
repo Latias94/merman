@@ -589,6 +589,7 @@ pub(crate) fn parse_radar_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_radar_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -599,6 +600,25 @@ pub(crate) fn parse_radar_model_for_render(
             .map(RadarDb::into_render_model)
             .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output)
     })
+}
+
+pub(crate) fn parse_radar_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<RadarDiagramRenderModel>> {
+    let construction = construct_radar_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    control.checkpoint()?;
+    Ok(Ok(source
+        .db
+        .map(RadarDb::into_render_model)
+        .unwrap_or_else(
+            RadarDiagramRenderModel::empty_compatibility_output,
+        )))
 }
 
 pub(crate) fn render_model_to_compat_json(

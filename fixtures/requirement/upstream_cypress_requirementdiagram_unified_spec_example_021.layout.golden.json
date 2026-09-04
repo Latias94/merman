@@ -5,7 +5,7 @@
       "nodes": [
         {
           "id": "test_req",
-          "x": 187.125,
+          "x": 198.648,
           "y": 218.0,
           "width": 150.719,
           "height": 184.0,
@@ -13,7 +13,7 @@
         },
         {
           "id": "test_req2",
-          "x": 61.523,
+          "x": 115.324,
           "y": 476.0,
           "width": 212.0,
           "height": 184.0,
@@ -29,7 +29,7 @@
         },
         {
           "id": "test_entity2",
-          "x": 168.406,
+          "x": 179.93,
           "y": 8.0,
           "width": 188.156,
           "height": 136.0,
@@ -53,8 +53,8 @@
               "y": 439.0
             },
             {
-              "x": 99.799,
-              "y": 476.0
+              "x": 115.324,
+              "y": 476.081
             }
           ],
           "label": {
@@ -72,27 +72,61 @@
           "stroke_dasharray": null
         },
         {
-          "id": "test_req-test_req2-0",
+          "id": "test_req-test_req2-1",
           "from": "test_req",
           "to": "test_req2",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 262.484,
+              "x": 236.435,
               "y": 402.0
             },
             {
-              "x": 262.484,
+              "x": 221.324,
               "y": 439.0
             },
             {
-              "x": 235.248,
+              "x": 221.324,
               "y": 476.0
             }
           ],
           "label": {
-            "x": 262.484,
+            "x": 221.324,
+            "y": 439.0,
+            "width": 79.688,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "test_req-test_req2-2",
+          "from": "test_req",
+          "to": "test_req2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 311.581,
+              "y": 402.0
+            },
+            {
+              "x": 326.691,
+              "y": 439.0
+            },
+            {
+              "x": 296.47,
+              "y": 476.0
+            }
+          ],
+          "label": {
+            "x": 326.691,
             "y": 439.0,
             "width": 91.047,
             "height": 24.0
@@ -106,27 +140,61 @@
           "stroke_dasharray": null
         },
         {
-          "id": "test_entity2-test_req-0",
+          "id": "test_entity2-test_req-3",
           "from": "test_entity2",
           "to": "test_req",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 262.484,
+              "x": 240.668,
               "y": 144.0
             },
             {
-              "x": 262.484,
+              "x": 222.527,
               "y": 181.0
             },
             {
-              "x": 262.484,
+              "x": 237.293,
               "y": 218.0
             }
           ],
           "label": {
-            "x": 262.484,
+            "x": 222.527,
+            "y": 181.0,
+            "width": 88.641,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "test_entity2-test_req-4",
+          "from": "test_entity2",
+          "to": "test_req",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 307.348,
+              "y": 144.0
+            },
+            {
+              "x": 325.488,
+              "y": 181.0
+            },
+            {
+              "x": 310.723,
+              "y": 218.0
+            }
+          ],
+          "label": {
+            "x": 325.488,
             "y": 181.0,
             "width": 77.281,
             "height": 24.0
@@ -143,7 +211,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 356.563,
+        "max_x": 372.215,
         "max_y": 660.0
       }
     }

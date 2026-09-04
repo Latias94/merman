@@ -139,7 +139,10 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
             effective_parent_for_id(&n.id)
         };
         let y_off = y_offset_for_root(root);
-        if n.is_cluster || ctx.node_dom_index.contains_key(n.id.as_str()) || is_empty_subgraph_node
+        if n.is_cluster
+            || ctx.node_dom_index.contains_key(n.id.as_str())
+            || is_empty_subgraph_node
+            || ctx.is_subgraph_collapsed(n.id.as_str())
         {
             let mut left_hw = n.width / 2.0;
             let mut right_hw = left_hw;

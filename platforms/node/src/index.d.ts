@@ -238,6 +238,10 @@ export interface MermanDiagnosticErrorDetails {
   readonly span: MermanDiagnosticSpan | null;
   readonly field: string | null;
   readonly diagram_type: string | null;
+  readonly requested_max_width?: number | null;
+  readonly actual_width?: number | null;
+  readonly width_profile?: string | null;
+  readonly fallback_reason?: string | null;
 }
 
 export interface MermanCancellationErrorDetails {

@@ -671,7 +671,6 @@ fn push_base_markers(out: &mut impl fmt::Write, diagram_id: &str, diagram_type: 
         let _ = out.write_str("/></marker>");
     }
 }
-
 fn marker_color_id(color: &str) -> String {
     // Mermaid's DOM marker id coloring logic (Mermaid@11.16.1) uses:
     // `strokeColor.replace(/[^\dA-Za-z]/g, '_')`

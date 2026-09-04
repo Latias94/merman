@@ -155,6 +155,7 @@
     "wrapPadding": 10
   },
   "class": {
+    "defaultRenderer": "dagre-wrapper",
     "hideEmptyMembersBox": false,
     "hierarchicalNamespaces": true
   },
@@ -172,7 +173,9 @@
   "elk": {
     "considerModelOrder": "NODES_AND_EDGES",
     "forceNodeModelOrder": false,
+    "keepEntryNodeOnTop": false,
     "mergeEdges": false,
+    "nodePlacementAlignment": "NONE",
     "nodePlacementStrategy": "BRANDES_KOEPF"
   },
   "er": {
@@ -539,9 +542,12 @@
   "xyChart": {
     "chartOrientation": "vertical",
     "height": 500,
+    "legendFontSize": 14,
+    "legendPadding": 10,
     "plotReservedSpacePercent": 50,
     "showDataLabel": false,
     "showDataLabelOutsideBar": false,
+    "showLegend": true,
     "showTitle": true,
     "titleFontSize": 20,
     "titlePadding": 10,

@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 418.0
+        "max_y": 379.085
       },
       "width": 832.0,
-      "height": 428.0,
+      "height": 389.085,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 302.0,
+          "height": 263.085,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -53,7 +53,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 85.578,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -61,32 +61,26 @@
             "y": 0.0
           },
           "type_block": {
-            "text": "«component»",
-            "y": 20.0,
-            "width": 65.04,
-            "height": 14.0,
+            "text": "[Component: Rust]",
+            "y": 44.175,
+            "width": 79.275,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "API",
-            "y": 38.0,
-            "width": 24.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 21.0,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[Rust]",
-            "y": 61.0,
-            "width": 31.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "Handles requests.",
-            "y": 94.0,
-            "width": 99.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 81.278,
+            "height": 12.628,
             "line_count": 1.0
           }
         },
@@ -97,40 +91,34 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 152.0,
+          "height": 113.085,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«external_component_db»",
-            "y": 20.0,
-            "width": 122.76,
-            "height": 14.0,
+            "text": "[Component: PostgreSQL]",
+            "y": 44.175,
+            "width": 111.72,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "External Component DB",
-            "y": 86.0,
-            "width": 155.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 135.94,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
-          "techn": {
-            "text": "[PostgreSQL]",
-            "y": 109.0,
-            "width": 68.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
+          "techn": null,
           "descr": {
             "text": "External database component.",
-            "y": 142.0,
-            "width": 169.0,
-            "height": 15.0,
+            "y": 59.264,
+            "width": 138.449,
+            "height": 12.628,
             "line_count": 1.0
           }
         }
@@ -142,11 +130,11 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 237.358
+            "y": 223.191
           },
           "end_point": {
             "x": 466.0,
-            "y": 269.0
+            "y": 244.76
           },
           "offset_x": null,
           "offset_y": null,

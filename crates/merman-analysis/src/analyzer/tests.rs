@@ -388,7 +388,7 @@ fn analysis_facts_project_canonical_effective_layout() {
         (
             Analyzer::new(),
             "%%{init: {\"layout\": \"elk\"}}%%\nclassDiagram\nclass A\n",
-            "class",
+            "classDiagram",
             "elk",
         ),
         (

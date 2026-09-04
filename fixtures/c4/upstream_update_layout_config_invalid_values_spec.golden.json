@@ -1,74 +1,74 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Context",
+    "title": "Layout config invalid values",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "p1",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": "P1"
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "p2",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": "P2"
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       },
       {
         "alias": "p3",
-        "descr": {
-          "text": ""
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
         },
         "label": {
           "text": "P3"
         },
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "wrap": false
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       }
     ],
-    "title": "Layout config invalid values",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
+    "rels": []
   }
 }

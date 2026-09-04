@@ -7,21 +7,16 @@ use crate::tree_view::{
     TreeViewThemePlan, TreeViewThemeReceipt, is_tree_view_highlight_class,
 };
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
-use std::collections::{BTreeMap, BTreeSet};
 
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
-#[derive(Clone)]
-struct TreeViewIconSymbolId<'a> {
-    diagram_id: SvgDiagramId<'a>,
-    local_id: String,
-}
-
-impl std::fmt::Display for TreeViewIconSymbolId<'_> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "tv-icon-{}-{}", self.diagram_id, self.local_id)
-    }
+struct TreeViewNodeRenderContext<'a, 'id> {
+    layout: &'a TreeViewDiagramLayout,
+    diagram_id: SvgDiagramId<'id>,
+    icon_registry: Option<&'a crate::svg::IconRegistry>,
+    effective_config: &'a merman_core::MermaidConfig,
+    work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
 pub(crate) fn render_tree_view_diagram_svg_model(
@@ -98,9 +93,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .iter()
         .filter(|node| node.resolved_icon.is_some())
         .count();
-    let emit_icon_use =
-        config_string(effective_config_value, &["securityLevel"]).as_deref() == Some("loose");
-    let emitted_icon_count = emit_icon_use.then_some(icon_count).unwrap_or(0);
+    // Icons are emitted inline for each resolved node, matching Mermaid's
+    // node-local DOM and keeping custom icon rendering scoped to that node.
+    let emitted_icon_count = icon_count;
     let mut tree_view_receipt =
         theme.begin_terminal_receipt(layout.nodes.len(), emitted_icon_count);
     push_tree_view_css(
@@ -111,15 +106,6 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
-    let icon_symbol_ids = tree_view_icon_symbol_ids(layout, diagram_id);
-    push_tree_view_icon_defs(
-        &mut out,
-        &icon_symbol_ids,
-        diagram_id,
-        options.icon_registry(),
-        effective_config,
-        options.work_meter(),
-    )?;
     options.checkpoint_emit()?;
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
@@ -132,6 +118,13 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .count();
     let mut width_before_highlight =
         layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
+    let node_context = TreeViewNodeRenderContext {
+        layout,
+        diagram_id,
+        icon_registry: options.icon_registry(),
+        effective_config,
+        work_meter: options.work_meter(),
+    };
     for (line_index, line) in layout.lines.iter().enumerate() {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
@@ -139,9 +132,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             push_tree_view_node(
                 &mut out,
                 node,
-                layout,
-                &icon_symbol_ids,
-                emit_icon_use,
+                &node_context,
                 &mut width_before_highlight,
                 theme,
                 &mut tree_view_receipt,
@@ -149,29 +140,34 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             next_node += 1;
         }
         let emitted_stroke_width_token = theme.terminal_stroke_width_token(line.stroke_width);
+        // Tree View maps both semantic edge paint facets to the line's CSS stroke channel.  This
+        // renderer-owned marker lets the native raster proof bind that final line without
+        // inferring semantics from the presentation class.
+        let line_id = format!(
+            "treeView-edge-{line_index}{}",
+            crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX
+        );
         if let Some(stroke_width_token) = emitted_stroke_width_token {
             let _ = write!(
                 &mut out,
-                r#"<line id="treeView-edge-{}{semantic_suffix}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-                line_index,
+                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_id,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
                 fmt(line.y2),
                 stroke_width_token,
-                semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
             );
         } else {
             let _ = write!(
                 &mut out,
-                r#"<line id="treeView-edge-{}{semantic_suffix}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-                line_index,
+                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
+                line_id,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
                 fmt(line.y2),
                 fmt(line.stroke_width),
-                semantic_suffix = crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX,
             );
         }
         out.checkpoint()?;
@@ -181,9 +177,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         push_tree_view_node(
             &mut out,
             node,
-            layout,
-            &icon_symbol_ids,
-            emit_icon_use,
+            &node_context,
             &mut width_before_highlight,
             theme,
             &mut tree_view_receipt,
@@ -199,9 +193,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
 fn push_tree_view_node(
     out: &mut impl SvgOutput,
     node: &TreeViewNodeLayout,
-    layout: &TreeViewDiagramLayout,
-    icon_symbol_ids: &BTreeMap<&str, TreeViewIconSymbolId<'_>>,
-    emit_icon_use: bool,
+    context: &TreeViewNodeRenderContext<'_, '_>,
     width_before_highlight: &mut f64,
     theme: &TreeViewThemePlan,
     tree_view_receipt: &mut TreeViewThemeReceipt,
@@ -221,18 +213,21 @@ fn push_tree_view_node(
         );
         *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
-    if emit_icon_use
-        && let Some(symbol_id) = node
-            .resolved_icon
-            .as_deref()
-            .and_then(|icon| icon_symbol_ids.get(icon))
-    {
+    if let Some(icon) = node.resolved_icon.as_deref() {
+        let icon_svg = tree_view_icon_svg(
+            icon,
+            context.diagram_id,
+            node.id,
+            context.icon_registry,
+            context.effective_config,
+            context.work_meter,
+        )?;
         let _ = write!(
             out,
-            r##"<use xlink:href="#{}" x="{}" y="{}" class="treeView-node-icon"></use>"##,
-            symbol_id,
-            fmt(node.x + layout.padding_x),
-            fmt(node.y + layout.padding_y)
+            r#"<g class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
+            fmt(node.x + context.layout.padding_x),
+            fmt(node.y + context.layout.padding_y),
+            icon_svg
         );
         tree_view_receipt.record_icon(theme.icon_color_css(""));
     }
@@ -309,127 +304,47 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     classes.join(" ")
 }
 
-fn push_tree_view_icon_defs(
-    out: &mut impl SvgOutput,
-    icon_symbol_ids: &BTreeMap<&str, TreeViewIconSymbolId<'_>>,
+fn tree_view_icon_svg(
+    icon: &str,
     diagram_id: SvgDiagramId<'_>,
+    node_id: i64,
     icon_registry: Option<&crate::svg::IconRegistry>,
     effective_config: &merman_core::MermaidConfig,
     work_meter: &crate::resources::OperationWorkMeter,
-) -> Result<()> {
-    if icon_symbol_ids.is_empty() {
-        return Ok(());
+) -> Result<String> {
+    if let Some(body) = tree_view_icon_body(icon) {
+        return Ok(format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 24 24">{body}</svg>"#,
+            fmt(TREE_VIEW_ICON_SIZE),
+            fmt(TREE_VIEW_ICON_SIZE)
+        ));
     }
-    let registry_scope_prefix = icon_registry
-        .map(|_| {
-            crate::svg::icon_registry::IconIdScopePrefix::from_parts(
-                &["tv-icon-", diagram_id.semantic_str(), "-"],
+
+    let node_id = node_id.to_string();
+    let icon_svg = match icon_registry {
+        Some(registry) => {
+            let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
+                &["tree-view-", diagram_id.semantic_str(), "-"],
                 work_meter,
-            )
-        })
-        .transpose()?;
-    out.push_str("<defs>");
-    out.checkpoint()?;
-    for (icon, symbol_id) in icon_symbol_ids {
-        let _ = write!(out, r#"<g id="{symbol_id}">"#);
-        out.checkpoint()?;
-        if let Some(body) = tree_view_icon_body(icon) {
-            let _ = write!(
-                out,
-                r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 24 24">{body}</svg>"#,
-                fmt(TREE_VIEW_ICON_SIZE),
-                fmt(TREE_VIEW_ICON_SIZE)
-            );
-        } else {
-            let icon_svg = match icon_registry {
-                Some(registry) => {
-                    // Hash the exact outer symbol ID without materializing a second diagram-sized
-                    // string. This family intentionally retains the diagram ID in the visible
-                    // symbol ID, while nested registry IDs consume only the fixed-width digest.
-                    let prefix = registry_scope_prefix.ok_or_else(|| {
-                        crate::Error::icon_processing("tree view icon scope prefix is unavailable")
-                    })?;
-                    let id_scope = prefix.scope_parts(&[&symbol_id.local_id], work_meter)?;
-                    registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
-                        icon_name: icon,
-                        width_px: TREE_VIEW_ICON_SIZE,
-                        height_px: TREE_VIEW_ICON_SIZE,
-                        fallback_prefix: None,
-                        extra_class: None,
-                        id_scope,
-                        effective_config,
-                        work_meter,
-                    })?
-                }
-                None => None,
-            }
-            .unwrap_or_else(|| {
-                mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
-            });
-            out.push_str(&icon_svg);
+            )?;
+            let id_scope = prefix.scope_parts(&[&node_id], work_meter)?;
+            registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
+                icon_name: icon,
+                width_px: TREE_VIEW_ICON_SIZE,
+                height_px: TREE_VIEW_ICON_SIZE,
+                fallback_prefix: None,
+                extra_class: None,
+                id_scope,
+                effective_config,
+                work_meter,
+            })?
         }
-        out.push_str("</g>");
-        out.checkpoint()?;
+        None => None,
     }
-    out.push_str("</defs>");
-    out.checkpoint()
-}
-
-fn tree_view_icon_symbol_ids<'layout, 'id>(
-    layout: &'layout TreeViewDiagramLayout,
-    diagram_id: SvgDiagramId<'id>,
-) -> BTreeMap<&'layout str, TreeViewIconSymbolId<'id>> {
-    let base_ids = layout
-        .nodes
-        .iter()
-        .filter_map(|node| node.resolved_icon.as_deref())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .map(|icon| (icon, tree_view_icon_symbol_local_id(icon)))
-        .collect::<Vec<_>>();
-    let reserved_ids = base_ids
-        .iter()
-        .map(|(_, symbol_id)| symbol_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let mut next_suffixes = BTreeMap::new();
-    let mut symbol_ids = BTreeMap::new();
-
-    for (icon, base_id) in &base_ids {
-        let next_suffix = next_suffixes.entry(base_id.as_str()).or_insert(1usize);
-        let symbol_id = if *next_suffix == 1 {
-            *next_suffix = 2;
-            base_id.clone()
-        } else {
-            loop {
-                let candidate = format!("{base_id}-{next_suffix}");
-                *next_suffix += 1;
-                if !reserved_ids.contains(candidate.as_str()) {
-                    break candidate;
-                }
-            }
-        };
-        symbol_ids.insert(
-            *icon,
-            TreeViewIconSymbolId {
-                diagram_id,
-                local_id: symbol_id,
-            },
-        );
-    }
-
-    symbol_ids
-}
-
-fn tree_view_icon_symbol_local_id(icon: &str) -> String {
-    let mut id = String::with_capacity(icon.len());
-    for ch in icon.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-            id.push(ch);
-        } else {
-            id.push('-');
-        }
-    }
-    id
+    .unwrap_or_else(|| {
+        mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
+    });
+    Ok(icon_svg)
 }
 
 fn tree_view_icon_body(icon: &str) -> Option<&'static str> {

@@ -46,6 +46,7 @@ mod journey;
 mod kanban;
 mod label;
 mod layout_debug;
+mod markers;
 mod mindmap;
 mod output;
 mod packet;

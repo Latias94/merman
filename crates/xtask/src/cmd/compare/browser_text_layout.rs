@@ -355,23 +355,25 @@ mod tests {
     #[test]
     fn committed_catalog_is_sorted_valid_and_source_backed() {
         let catalog = load_catalog().expect("browser text layout residual catalog");
-        assert_eq!(catalog.entries.len(), 92);
+        assert_eq!(catalog.entries.len(), 96);
         for diagram in DIAGRAMS {
             assert!(
                 catalog.entries.iter().any(|entry| entry.diagram == diagram),
                 "diagram={diagram}"
             );
         }
-        assert_eq!(
-            expected_browser_text_layout_receipt_keys(&[
-                crate::svgdom::DomMode::Structure,
-                crate::svgdom::DomMode::Parity,
-                crate::svgdom::DomMode::ParityRoot,
-            ])
-            .expect("committed receipt comparison keys")
-            .len(),
-            250,
-        );
+        let expected = expected_browser_text_layout_receipt_keys(&[
+            crate::svgdom::DomMode::Structure,
+            crate::svgdom::DomMode::Parity,
+            crate::svgdom::DomMode::ParityRoot,
+        ])
+        .expect("committed receipt comparison keys");
+        let catalog_mode_count = catalog
+            .entries
+            .iter()
+            .map(|entry| entry.modes.len())
+            .sum::<usize>();
+        assert_eq!(expected.len(), catalog_mode_count);
     }
 
     #[test]

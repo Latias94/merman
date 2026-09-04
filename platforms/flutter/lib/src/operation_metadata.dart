@@ -40,6 +40,52 @@ abstract base class MermanOutputPlan {
   String get kind;
 }
 
+/// Terminal projection and viewport outcome for the ASCII operation.
+final class MermanAsciiOutputPlan extends MermanOutputPlan {
+  const MermanAsciiOutputPlan({
+    required this.schemaVersion,
+    required this.family,
+    required this.projection,
+    required this.encoding,
+    required this.primaryWidth,
+    required this.primaryHeight,
+    required this.emittedWidth,
+    required this.emittedHeight,
+    required this.widthProfile,
+    required this.layoutProfile,
+    required this.requestedMaxWidth,
+    required this.overflowed,
+    required this.outcome,
+    required this.fallbackCapability,
+    required this.fallbackAttempted,
+    required this.fallbackReason,
+    required this.trimmed,
+    required this.lossiness,
+  }) : super._();
+
+  @override
+  String get kind => 'ascii';
+
+  final int schemaVersion;
+  final String family;
+  final String projection;
+  final String encoding;
+  final int primaryWidth;
+  final int primaryHeight;
+  final int emittedWidth;
+  final int emittedHeight;
+  final String widthProfile;
+  final String layoutProfile;
+  final int? requestedMaxWidth;
+  final bool overflowed;
+  final String outcome;
+  final String fallbackCapability;
+  final bool fallbackAttempted;
+  final String? fallbackReason;
+  final bool trimmed;
+  final String lossiness;
+}
+
 /// Effective raster dimensions after resource-limit planning.
 final class MermanRasterOutputPlan extends MermanOutputPlan {
   const MermanRasterOutputPlan({

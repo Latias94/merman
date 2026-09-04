@@ -98,12 +98,62 @@ def publish_field_allows_crates_io(publish_raw: object) -> bool:
     return False
 
 
+def _independent_package_names(
+    metadata: dict,
+    workspace: dict[str, dict],
+) -> frozenset[str]:
+    """Return package names owned by an independent release workflow.
+
+    Independent packages remain workspace members so Cargo can resolve their path
+    dependencies locally, but they must not be inserted into the lockstep workspace
+    crates.io graph. Their published registry versions are external inputs to the
+    coupled graph.
+    """
+    raw_metadata = metadata.get("metadata", {})
+    if raw_metadata is None:
+        raw_metadata = {}
+    if not isinstance(raw_metadata, dict):
+        raise PublishGraphError("cargo metadata has invalid top-level metadata")
+    release_metadata = raw_metadata.get("merman-release", {})
+    if release_metadata is None:
+        release_metadata = {}
+    if not isinstance(release_metadata, dict):
+        raise PublishGraphError("cargo metadata has invalid merman-release metadata")
+    raw_names = release_metadata.get("independent-packages", [])
+    if not isinstance(raw_names, list) or not all(
+        isinstance(name, str) and name for name in raw_names
+    ):
+        raise PublishGraphError(
+            "cargo metadata merman-release.independent-packages must be a string array"
+        )
+    names = frozenset(raw_names)
+    if len(names) != len(raw_names):
+        raise PublishGraphError(
+            "cargo metadata independent package declarations must be unique"
+        )
+    unknown = sorted(names - workspace.keys())
+    if unknown:
+        raise PublishGraphError(
+            "independent packages are not workspace members: " + ", ".join(unknown)
+        )
+    non_publishable = sorted(
+        name for name in names if not publish_field_allows_crates_io(workspace[name].get("publish"))
+    )
+    if non_publishable:
+        raise PublishGraphError(
+            "independent packages must allow crates.io publication: "
+            + ", ".join(non_publishable)
+        )
+    return names
+
+
 def _crates_io_publish_graph(metadata: dict) -> _PublishGraph:
     workspace = _workspace_packages_by_name(metadata)
+    independent = _independent_package_names(metadata, workspace)
     publishable = {
         name: package
         for name, package in workspace.items()
-        if publish_field_allows_crates_io(package.get("publish"))
+        if name not in independent and publish_field_allows_crates_io(package.get("publish"))
     }
     if not publishable:
         raise PublishGraphError("Cargo workspace has no crates.io-publishable packages")
@@ -129,6 +179,11 @@ def _crates_io_publish_graph(metadata: dict) -> _PublishGraph:
                 continue
             dependency_name = manifest_owners.get(Path(dependency_path).resolve())
             if dependency_name is None or dependency_name == name:
+                continue
+            if dependency_name in independent:
+                # The independent workflow owns this package. Cargo will rewrite
+                # the local path dependency to its registry form when packaging
+                # the coupled crate, so it is an external graph input here.
                 continue
             if dependency_name not in publishable:
                 raise PublishGraphError(

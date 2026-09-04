@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "ingress",
-          "x": 222.52,
+          "x": 234.52,
           "y": 0.0,
-          "width": 445.04,
+          "width": 469.04,
           "height": 44.0,
           "is_cluster": false
         },
         {
           "id": "dispatch",
-          "x": 675.56,
+          "x": 711.56,
           "y": 0.0,
-          "width": 445.04,
+          "width": 469.04,
           "height": 44.0,
           "is_cluster": false
         }
@@ -29,20 +29,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 222.52,
+              "x": 234.52,
               "y": 0.0
             },
             {
-              "x": 449.04,
+              "x": 473.04,
               "y": 0.0
             },
             {
-              "x": 675.56,
+              "x": 711.56,
               "y": 0.0
             }
           ],
           "label": {
-            "x": 449.04,
+            "x": 473.04,
             "y": 0.0,
             "width": 149.28,
             "height": 36.0
@@ -60,14 +60,14 @@
         {
           "id": "ingress",
           "allocated": {
-            "x": 222.52,
+            "x": 234.52,
             "y": 0.0,
-            "width": 445.04,
+            "width": 469.04,
             "height": 44.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 445.04,
+            "width": 469.04,
             "height": 44.0,
             "radius": 0.0,
             "kind": "basic"
@@ -76,14 +76,14 @@
         {
           "id": "dispatch",
           "allocated": {
-            "x": 675.56,
+            "x": 711.56,
             "y": 0.0,
-            "width": 445.04,
+            "width": 469.04,
             "height": 44.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 445.04,
+            "width": 469.04,
             "height": 44.0,
             "radius": 0.0,
             "kind": "basic"
@@ -93,7 +93,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -22.0,
-        "max_x": 898.08,
+        "max_x": 946.08,
         "max_y": 22.0
       }
     }

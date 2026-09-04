@@ -1263,6 +1263,9 @@ impl BindingEngine {
                     control.clone(),
                 ),
         }?;
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
         Ok(BindingOperationExecution { operation, output })
     }
 

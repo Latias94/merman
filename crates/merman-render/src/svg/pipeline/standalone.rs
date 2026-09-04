@@ -334,6 +334,8 @@ mod tests {
             StandaloneSvgTerminalStatus::ValidationFailed
         );
         assert!(artifact.finalization_report().is_none());
+        #[cfg(feature = "internal-theme-acceptance")]
+        assert!(artifact.svg_artifact_receipt().is_none());
     }
 
     #[test]

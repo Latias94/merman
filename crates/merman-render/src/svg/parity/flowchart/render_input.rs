@@ -41,6 +41,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
+    render_context: &crate::flowchart::FlowchartRenderContext,
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
@@ -53,9 +54,17 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         .filter(|(semantic_index, _)| {
             renderable_edges.contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
         })
-        .map(|(semantic_index, edge)| FlowchartRenderEdge {
-            key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
-            edge: Cow::Borrowed(edge),
+        .filter_map(|(semantic_index, edge)| {
+            let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
+            let edge = if projected.from == edge.from && projected.to == edge.to {
+                Cow::Borrowed(edge)
+            } else {
+                Cow::Owned(projected)
+            };
+            Some(FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
+                edge,
+            })
         });
     if uses_elk_adapter_dom {
         return FlowchartRenderInputs {
@@ -68,9 +77,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     // back into the original logical self-loop before rendering.
     let mut render_edges: Vec<FlowchartRenderEdge<'a>> = semantic_edges.collect();
     let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
-    for edge in model.edges.iter().filter(|edge| edge.from == edge.to) {
-        self_loop_label_node_ids.insert(format!("{}---{}---1", edge.from, edge.from));
-        self_loop_label_node_ids.insert(format!("{}---{}---2", edge.from, edge.from));
+    for edge in &render_edges {
+        if edge.edge.from != edge.edge.to {
+            continue;
+        }
+        self_loop_label_node_ids.insert(format!("{}---{}---1", edge.edge.from, edge.edge.from));
+        self_loop_label_node_ids.insert(format!("{}---{}---2", edge.edge.from, edge.edge.from));
     }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
@@ -81,6 +93,12 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         .subgraphs
         .iter()
         .filter(|sg| !sg.nodes.is_empty())
+        .filter(|sg| !render_context.is_subgraph_collapsed(sg.id.as_str()))
+        .filter(|sg| {
+            render_context
+                .collapsed_replacement(sg.id.as_str())
+                .is_none()
+        })
         .map(|sg| sg.id.as_str())
         .collect();
     if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {

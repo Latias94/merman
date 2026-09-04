@@ -87,16 +87,16 @@
           "id": "entity-NODE-4---entity-NODE-4---1",
           "x": 1234.225,
           "y": 235.0,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         },
         {
           "id": "entity-NODE-4---entity-NODE-4---2",
           "x": 1274.25,
           "y": 420.0,
-          "width": 0.1,
-          "height": 0.1,
+          "width": 1.0,
+          "height": 1.0,
           "is_cluster": false
         },
         {

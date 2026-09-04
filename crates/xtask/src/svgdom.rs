@@ -27,6 +27,7 @@ pub(crate) struct DomComparisonProfile {
     descendants: DomMode,
     root_contract: bool,
     normalize_browser_text_wrapping: bool,
+    normalize_browser_text_word_boundaries: bool,
     normalize_browser_text_length: bool,
 }
 
@@ -35,6 +36,7 @@ struct DomSignatureKey {
     descendants: DomMode,
     decimals: u32,
     normalize_browser_text_wrapping: bool,
+    normalize_browser_text_word_boundaries: bool,
     normalize_browser_text_length: bool,
 }
 
@@ -83,12 +85,14 @@ impl DomComparisonProfile {
                 descendants: DomMode::Parity,
                 root_contract: true,
                 normalize_browser_text_wrapping: false,
+                normalize_browser_text_word_boundaries: false,
                 normalize_browser_text_length: false,
             },
             descendants => Self {
                 descendants,
                 root_contract: false,
                 normalize_browser_text_wrapping: false,
+                normalize_browser_text_word_boundaries: false,
                 normalize_browser_text_length: false,
             },
         }
@@ -100,6 +104,7 @@ impl DomComparisonProfile {
             descendants,
             root_contract: true,
             normalize_browser_text_wrapping: false,
+            normalize_browser_text_word_boundaries: false,
             normalize_browser_text_length: false,
         }
     }
@@ -107,6 +112,14 @@ impl DomComparisonProfile {
     pub(crate) const fn with_browser_text_wrapping_normalized(mut self) -> Self {
         if !matches!(self.descendants, DomMode::Strict) {
             self.normalize_browser_text_wrapping = true;
+        }
+        self
+    }
+
+    pub(crate) const fn with_browser_text_word_boundaries_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_wrapping = true;
+            self.normalize_browser_text_word_boundaries = true;
         }
         self
     }
@@ -139,6 +152,7 @@ impl DomComparisonProfile {
             descendants: self.descendants,
             decimals,
             normalize_browser_text_wrapping: self.normalize_browser_text_wrapping,
+            normalize_browser_text_word_boundaries: self.normalize_browser_text_word_boundaries,
             normalize_browser_text_length: self.normalize_browser_text_length,
         }
     }
@@ -191,6 +205,7 @@ impl<'input> ParsedSvgDom<'input> {
             descendants: mode,
             decimals,
             normalize_browser_text_wrapping: false,
+            normalize_browser_text_word_boundaries: false,
             normalize_browser_text_length: false,
         })
     }
@@ -218,7 +233,10 @@ impl<'input> ParsedSvgDom<'input> {
                     key.normalize_browser_text_wrapping,
                 );
                 if key.normalize_browser_text_wrapping {
-                    normalize_browser_text_wrapping(&mut signature);
+                    normalize_browser_text_wrapping(
+                        &mut signature,
+                        key.normalize_browser_text_word_boundaries,
+                    );
                 }
                 if key.normalize_browser_text_length {
                     normalize_browser_text_length(&mut signature);
@@ -636,6 +654,143 @@ fn is_flowchart_cluster(node: roxmltree::Node<'_, '_>) -> bool {
     is_flowchart_diagram(node) && node.tag_name().name() == "g" && has_class_token(node, "cluster")
 }
 
+fn is_eventmodeling_swimlane_text(node: roxmltree::Node<'_, '_>) -> bool {
+    if !(node.tag_name().name() == "text"
+        && node.parent().is_some_and(|parent| {
+            parent.is_element()
+                && parent.tag_name().name() == "g"
+                && parent
+                    .attribute("class")
+                    .is_some_and(|class| has_class_token_value(class, "em-swimlane"))
+        }))
+    {
+        return false;
+    }
+
+    node.ancestors().any(|ancestor| {
+        ancestor.is_element()
+            && ancestor.tag_name().name() == "svg"
+            && ancestor.attribute("aria-roledescription") == Some("eventmodeling")
+    })
+}
+
+fn is_ishikawa_text_bbox_attr(node: roxmltree::Node<'_, '_>, key: &str) -> bool {
+    key == "data-merman-text-bbox"
+        && node.is_element()
+        && node.tag_name().name() == "text"
+        && node.ancestors().any(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor.attribute("aria-roledescription") == Some("ishikawa")
+        })
+}
+
+fn is_tree_view_renderer_paint_marker_id(
+    node: roxmltree::Node<'_, '_>,
+    key: &str,
+    value: &str,
+) -> bool {
+    key == "id"
+        && node.is_element()
+        && node.tag_name().name() == "line"
+        && has_class_token(node, "treeView-node-line")
+        && value.starts_with("treeView-edge-")
+        && value.ends_with("-merman-fill-stroke-paint")
+        && node.ancestors().any(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor.attribute("aria-roledescription") == Some("treeView")
+        })
+}
+
+fn has_class_token_value(class: &str, token: &str) -> bool {
+    class.split_whitespace().any(|value| value == token)
+}
+
+fn root_layout_group_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    let is_root = is_flowchart_diagram(parent)
+        && parent.tag_name().name() == "g"
+        && parent
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "root"));
+    if !is_root {
+        return 4;
+    }
+
+    let Some(class) = child.attrs.get("class") else {
+        return 4;
+    };
+    if has_class_token_value(class, "clusters") {
+        0
+    } else if has_class_token_value(class, "edgePaths") || has_class_token_value(class, "edgePath")
+    {
+        1
+    } else if has_class_token_value(class, "edgeLabels") {
+        2
+    } else if has_class_token_value(class, "nodes") {
+        3
+    } else {
+        4
+    }
+}
+
+fn flowchart_cluster_child_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    if !is_flowchart_cluster(parent) {
+        return 2;
+    }
+
+    if child.name == "g"
+        && child
+            .attrs
+            .get("class")
+            .is_none_or(|class| class.is_empty())
+    {
+        return 0;
+    }
+    if child.name == "g"
+        && child
+            .attrs
+            .get("class")
+            .is_some_and(|class| has_class_token_value(class, "cluster-label"))
+    {
+        return 1;
+    }
+    2
+}
+
+fn flowchart_nodes_child_rank(parent: roxmltree::Node<'_, '_>, child: &SvgDomNode) -> u8 {
+    if !(is_flowchart_diagram(parent)
+        && parent.tag_name().name() == "g"
+        && parent
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "nodes")))
+    {
+        return 2;
+    }
+
+    let class = child.attrs.get("class").map(String::as_str).unwrap_or("");
+    if ["node", "rough-node", "icon-shape", "image-shape"]
+        .into_iter()
+        .any(|token| has_class_token_value(class, token))
+    {
+        return 0;
+    }
+    if has_class_token_value(class, "edgeLabel") {
+        return 1;
+    }
+    2
+}
+
+fn is_non_elk_flowchart_nodes_group(node: roxmltree::Node<'_, '_>) -> bool {
+    is_flowchart_diagram(node)
+        && flowchart_svg_root(node)
+            .is_some_and(|root| root.attribute("aria-roledescription") != Some("flowchart-elk"))
+        && node.tag_name().name() == "g"
+        && node
+            .attribute("class")
+            .is_some_and(|class| has_class_token_value(class, "nodes"))
+}
+
 fn flowchart_descendant_text(node: roxmltree::Node<'_, '_>) -> String {
     let mut text = String::new();
     for segment in node
@@ -860,11 +1015,21 @@ fn flowchart_synthetic_label_semantic_id<'a, 'input>(
         return None;
     }
 
+    fn upstream_edge_label_semantic_id(value: &str) -> Option<&str> {
+        let offset = value.rfind("-L_")?.saturating_add(1);
+        let semantic_id = value.get(offset..)?;
+        flowchart_edge_endpoint_pair(semantic_id).map(|_| semantic_id)
+    }
+
     match (node.attribute("data-et"), node.attribute("data-id")) {
-        (None, None) => node
-            .attribute("id")
-            .filter(|value| is_flowchart_self_loop_label_id(value)),
-        (Some("edge-label"), Some(data_id)) if is_flowchart_self_loop_label_id(data_id) => {
+        (None, None) => node.attribute("id").and_then(|value| {
+            upstream_edge_label_semantic_id(value)
+                .or_else(|| is_flowchart_self_loop_label_id(value).then_some(value))
+        }),
+        (Some("edge-label"), Some(data_id))
+            if flowchart_edge_endpoint_pair(data_id).is_some()
+                || is_flowchart_self_loop_label_id(data_id) =>
+        {
             let generated_id = strip_flowchart_document_scope(node, node.attribute("id")?);
             generated_id
                 .strip_prefix("synthetic-label-")
@@ -1492,6 +1657,12 @@ fn build_node(
                 })
         }
 
+        fn is_flowchart_renderer_paint_marker_id(n: roxmltree::Node<'_, '_>, value: &str) -> bool {
+            is_flowchart_hand_drawn_cluster_path(n)
+                && (value.ends_with("-merman-fill-paint")
+                    || value.ends_with("-merman-fill-stroke-paint"))
+        }
+
         fn is_architecture_edge_arrow(n: roxmltree::Node<'_, '_>) -> bool {
             if !(n.tag_name().name() == "polygon" && has_class_token(n, "arrow")) {
                 return false;
@@ -1586,6 +1757,40 @@ fn build_node(
                 {
                     val = normalized;
                 }
+            }
+
+            if mode != DomMode::Strict
+                && key == "id"
+                && is_flowchart_renderer_paint_marker_id(n, &val)
+            {
+                // Renderer-owned paint markers are an internal evidence channel. Mermaid's
+                // reference path has no corresponding id, so keep the marker out of non-strict
+                // DOM parity while strict mode still detects its presence exactly.
+                continue;
+            }
+
+            if mode != DomMode::Strict && is_tree_view_renderer_paint_marker_id(n, &key, &val) {
+                // Tree View's line carries a renderer-owned dual-paint marker so native raster
+                // evidence can bind both semantic edge facets to the final stroke terminal.
+                // Mermaid's reference DOM has no equivalent id; strict mode still compares it.
+                continue;
+            }
+
+            if mode != DomMode::Strict && key == "fill" && is_eventmodeling_swimlane_text(n) {
+                // Event Modeling's typed text route emits the final fill on each SVG text
+                // terminal, while Mermaid's reference stylesheet supplies the same value from
+                // the root text rule. The inline declaration is redundant presentation detail;
+                // keep strict mode exact and continue comparing a real upstream fill when one is
+                // present.
+                continue;
+            }
+
+            if mode != DomMode::Strict && is_ishikawa_text_bbox_attr(n, &key) {
+                // Ishikawa's renderer-owned text bbox is evidence metadata for the local
+                // receipt, not an upstream Mermaid DOM semantic. Keep it in strict signatures
+                // and final SVG output, but do not make non-strict upstream DOM parity depend on
+                // this private attribute.
+                continue;
             }
 
             if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
@@ -1963,6 +2168,23 @@ fn build_node(
                 None
             }
 
+            fn find_first_c4_node_id(n: &SvgDomNode) -> Option<&str> {
+                if n.name == "g"
+                    && n.attrs
+                        .get("class")
+                        .is_some_and(|class| class.split_whitespace().any(|token| token == "node"))
+                    && let Some(id) = n.attrs.get("id")
+                {
+                    return Some(id.as_str());
+                }
+                for c in &n.children {
+                    if let Some(id) = find_first_c4_node_id(c) {
+                        return Some(id);
+                    }
+                }
+                None
+            }
+
             if let Some(id) = n.attrs.get("id") {
                 return id.as_str();
             }
@@ -1990,6 +2212,13 @@ fn build_node(
                     && !n.attrs.contains_key("data-id")
                     && let Some(id) = find_first_path_id(n)
                 {
+                    return id;
+                }
+
+                // C4 paints each node inside an anonymous translated wrapper. The wrapper's
+                // transform is geometry-dependent, so use the nested node id as its stable
+                // semantic key instead of letting browser/font-driven coordinates reorder peers.
+                if let Some(id) = find_first_c4_node_id(n) {
                     return id;
                 }
 
@@ -2075,53 +2304,79 @@ fn build_node(
             flatten_ishikawa_nonsemantic_wrappers(&mut children);
         }
 
-        children.sort_by(|a, b| {
-            let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-            let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-            let ahint = sort_hint(a);
-            let bhint = sort_hint(b);
-            let a_is_c4_shape_group =
-                a.name == "g" && aclass.split_whitespace().any(|c| c == "person-man");
-            let b_is_c4_shape_group =
-                b.name == "g" && bclass.split_whitespace().any(|c| c == "person-man");
-            a.name
-                .cmp(&b.name)
-                .then_with(|| ahint.cmp(bhint))
-                .then_with(|| aclass.cmp(bclass))
-                .then_with(|| a.attrs.cmp(&b.attrs))
-                .then_with(|| {
-                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let a_fill = find_first_attr(a, "rect", "fill").unwrap_or("");
-                    let b_fill = find_first_attr(b, "rect", "fill").unwrap_or("");
-                    a_fill.cmp(b_fill)
-                })
-                .then_with(|| {
-                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let a_len = find_first_attr(a, "text", "textLength").unwrap_or("");
-                    let b_len = find_first_attr(b, "text", "textLength").unwrap_or("");
-                    a_len.cmp(b_len)
-                })
-                .then_with(|| {
-                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let at = count_tag(a, "tspan");
-                    let bt = count_tag(b, "tspan");
-                    at.cmp(&bt)
-                })
-                .then_with(|| {
-                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
-                        return std::cmp::Ordering::Equal;
-                    }
-                    let ady = min_tspan_dy(a).unwrap_or(0.0);
-                    let bdy = min_tspan_dy(b).unwrap_or(0.0);
-                    ady.partial_cmp(&bdy).unwrap_or(std::cmp::Ordering::Equal)
-                })
-        });
+        if is_non_elk_flowchart_nodes_group(n) {
+            // Dagre Flowchart and Swimlane emit node shells in source order. Keep that order
+            // within each semantic role and only move synthetic edge labels after node shells;
+            // sorting by generated IDs would otherwise make `answer` precede `request` in
+            // Swimlane DOM. ELK intentionally remains in the generic semantic-id order below:
+            // its layout adapter owns render order rather than the source sequence.
+            children.sort_by_key(|child| flowchart_nodes_child_rank(n, child));
+        } else {
+            children.sort_by(|a, b| {
+                let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let ahint = sort_hint(a);
+                let bhint = sort_hint(b);
+                let a_root_rank = root_layout_group_rank(n, a);
+                let b_root_rank = root_layout_group_rank(n, b);
+                let a_cluster_rank = flowchart_cluster_child_rank(n, a);
+                let b_cluster_rank = flowchart_cluster_child_rank(n, b);
+                let a_nodes_rank = flowchart_nodes_child_rank(n, a);
+                let b_nodes_rank = flowchart_nodes_child_rank(n, b);
+                let a_is_c4_shape_group =
+                    a.name == "g" && aclass.split_whitespace().any(|c| c == "person-man");
+                let b_is_c4_shape_group =
+                    b.name == "g" && bclass.split_whitespace().any(|c| c == "person-man");
+                a_root_rank
+                    .cmp(&b_root_rank)
+                    .then_with(|| a_cluster_rank.cmp(&b_cluster_rank))
+                    .then_with(|| a_nodes_rank.cmp(&b_nodes_rank))
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| ahint.cmp(bhint))
+                    .then_with(|| aclass.cmp(bclass))
+                    .then_with(|| a.attrs.cmp(&b.attrs))
+                    .then_with(|| {
+                        if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let a_fill = find_first_attr(a, "rect", "fill").unwrap_or("");
+                        let b_fill = find_first_attr(b, "rect", "fill").unwrap_or("");
+                        a_fill.cmp(b_fill)
+                    })
+                    .then_with(|| {
+                        if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let a_len = find_first_attr(a, "text", "textLength").unwrap_or("");
+                        let b_len = find_first_attr(b, "text", "textLength").unwrap_or("");
+                        a_len.cmp(b_len)
+                    })
+                    .then_with(|| {
+                        if a.name != "g"
+                            || b.name != "g"
+                            || !aclass.is_empty()
+                            || !bclass.is_empty()
+                        {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let at = count_tag(a, "tspan");
+                        let bt = count_tag(b, "tspan");
+                        at.cmp(&bt)
+                    })
+                    .then_with(|| {
+                        if a.name != "g"
+                            || b.name != "g"
+                            || !aclass.is_empty()
+                            || !bclass.is_empty()
+                        {
+                            return std::cmp::Ordering::Equal;
+                        }
+                        let ady = min_tspan_dy(a).unwrap_or(0.0);
+                        let bdy = min_tspan_dy(b).unwrap_or(0.0);
+                        ady.partial_cmp(&bdy).unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            });
+        }
     }
 
     SvgDomNode {
@@ -2220,9 +2475,9 @@ pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     Ok(document.signature_for_mode(mode, decimals).clone())
 }
 
-fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
+fn normalize_browser_text_wrapping(node: &mut SvgDomNode, word_boundaries: bool) {
     for child in &mut node.children {
-        normalize_browser_text_wrapping(child);
+        normalize_browser_text_wrapping(child, word_boundaries);
     }
 
     if node.name != "text" || node.children.is_empty() {
@@ -2244,11 +2499,12 @@ fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
     // Row boundaries are safe to remove only when doing so preserves the exact normalized text.
     // A boundary between `Hello` and `world` cannot prove whether the source contained a space, so
     // whitespace remains semantic and that browser-dependent case stays a bounded residual.
-    let text = node
+    let row_texts = node
         .children
         .iter()
         .filter_map(|child| child.text.as_deref())
-        .collect::<String>();
+        .collect::<Vec<_>>();
+    let text = row_texts.join(if word_boundaries { " " } else { "" });
     node.children = vec![SvgDomNode {
         name: "tspan".to_string(),
         attrs: [("class".to_string(), "text-outer-tspan".to_string())].into(),
@@ -2692,6 +2948,129 @@ mod tests {
                 "mode={mode:?}"
             );
         }
+    }
+
+    #[test]
+    fn flowchart_root_layout_groups_have_stable_semantic_order() {
+        let svg = r#"<svg aria-roledescription="flowchart-v2"><g class="root"><g class="nodes"/><g class="edgeLabels"/><g class="edgePath"/><g class="clusters"/></g></svg>"#;
+        let dom = dom_signature(svg, DomMode::Structure, 3).unwrap();
+        let root = &dom.children[0];
+        let classes = root
+            .children
+            .iter()
+            .map(|child| child.attrs.get("class").map(String::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            classes,
+            vec![
+                Some("clusters"),
+                Some("edgePath"),
+                Some("edgeLabels"),
+                Some("nodes")
+            ]
+        );
+    }
+
+    #[test]
+    fn flowchart_non_strict_ignores_only_renderer_paint_marker_ids() {
+        let upstream = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path d="M0 0"/></g></g></svg>"#;
+        let local = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path id="diagram-cluster-merman-fill-paint" d="M0 0"/></g></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn tree_view_non_strict_ignores_only_renderer_dual_paint_marker_ids() {
+        let upstream = r#"<svg aria-roledescription="treeView"><line x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
+        let local = r#"<svg aria-roledescription="treeView"><line id="treeView-edge-0-merman-fill-stroke-paint" x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let wrong_class = local.replace("treeView-node-line", "treeView-node-icon");
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(&wrong_class, DomMode::Structure, 3).unwrap()
+        );
+        let wrong_family = local.replace(
+            "aria-roledescription=\"treeView\"",
+            "aria-roledescription=\"flowchart-v2\"",
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(&wrong_family, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_nodes_keep_source_order_across_generated_id_shapes() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="node default" id="diagram-flowchart-request-0"/><g class="node default" id="diagram-flowchart-receive-1"/><g class="label edgeLabel" id="edge-label-triage-answer-L_triage_answer_0"/></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-v2"><g class="nodes"><g class="node default" id="diagram-merman-flowchart-document-node-0" data-id="request" data-et="node"/><g class="node default" id="diagram-merman-flowchart-document-node-1" data-id="receive" data-et="node"/><g class="label edgeLabel" id="diagram-merman-flowchart-document-synthetic-label-12" data-id="L_triage_answer_0" data-et="edge-label"/></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_nodes_compare_by_semantic_identity_not_layout_order() {
+        let upstream = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="nodes"><g class="node default" id="node-a"/><g class="node default" id="node-b"/></g></svg>"#;
+        let local = r#"<svg id="diagram" aria-roledescription="flowchart-elk"><g class="nodes"><g class="node default" id="diagram-merman-flowchart-document-node-1" data-id="b" data-et="node"/><g class="node default" id="diagram-merman-flowchart-document-node-0" data-id="a" data-et="node"/></g></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_ignores_only_eventmodeling_swimlane_inline_fill() {
+        let upstream = r#"<svg aria-roledescription="eventmodeling"><g class="em-swimlane"><text font-weight="bold">Events</text></g></svg>"#;
+        let local = r##"<svg aria-roledescription="eventmodeling"><g class="em-swimlane"><text fill="#333" font-weight="bold">Events</text></g></svg>"##;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(local, DomMode::Parity, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn parity_ignores_only_ishikawa_renderer_text_bbox_metadata() {
+        let upstream = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label">Cause</text></svg>"#;
+        let local = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label" data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
+
+        assert_eq!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(local, DomMode::Structure, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let unrelated = r#"<svg aria-roledescription="flowchart-v2"><text data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
+        assert_ne!(
+            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
+            dom_signature(unrelated, DomMode::Structure, 3).unwrap()
+        );
     }
 
     #[test]

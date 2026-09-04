@@ -1163,7 +1163,7 @@ fn configure_catalog_generic_families(fontdb: &mut usvg::fontdb::Database, catal
     }
 }
 
-fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
+pub(crate) fn shared_system_fontdb() -> Arc<usvg::fontdb::Database> {
     static FONTDB: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     Arc::clone(FONTDB.get_or_init(|| {
         let mut fontdb = usvg::fontdb::Database::new();

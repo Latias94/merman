@@ -257,8 +257,41 @@ impl SequenceResolvedTypography {
         work_meter: &OperationWorkMeter,
         base_typography: &SequenceBaseTypography,
     ) -> Result<Self, OperationWorkError> {
+        let resolved_style = resolved_theme
+            .filter(|theme| {
+                theme.family_mechanism_routes().iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet { target, .. } if target == role.target()
+                    )
+                })
+            })
+            .map(|theme| {
+                theme.style_with_work_meter(role.target(), ThemeVariant::Default, None, work_meter)
+            })
+            .transpose()?;
+        let direct_typed_properties = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
+            .into_iter()
+            .filter(|property| {
+                let Some((theme, style)) = resolved_theme.zip(resolved_style.as_ref()) else {
+                    return false;
+                };
+                let Some(origin) = style.typography_resolution().winner(*property) else {
+                    return false;
+                };
+                theme.rule_facet_disposition(
+                    origin.rule_index(),
+                    FamilyThemeRuleFacet::Typography(*property),
+                ) == Some(FamilyThemeDisposition::TypedAdapter)
+            })
+            .collect::<BTreeSet<_>>();
+        let mut typed_theme_properties = base_typography.typed_properties.clone();
+        typed_theme_properties.extend(direct_typed_properties.iter().copied());
         let role_config = super::config::SequenceConfigView::from_mermaid_config(effective_config)
-            .resolve_role_typography(role.config_role());
+            .resolve_role_typography_with_typed_properties(
+                role.config_role(),
+                &typed_theme_properties,
+            );
         let config_overrides = DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES
             .into_iter()
             .filter(|property| role_config.config_owns(*property))
@@ -276,31 +309,10 @@ impl SequenceResolvedTypography {
         let mut text_style = role_config.measurement_style().clone();
         let mut base_typed_properties =
             base_typography.apply_to_role(&role_config, &mut text_style);
-        let resolved_style = resolved_theme
-            .filter(|theme| {
-                theme.family_mechanism_routes().iter().any(|route| {
-                    matches!(
-                        route.mechanism(),
-                        FamilyThemeMechanism::RuleFacet { target, .. } if target == role.target()
-                    )
-                })
-            })
-            .map(|theme| {
-                theme.style_with_work_meter(role.target(), ThemeVariant::Default, None, work_meter)
-            })
-            .transpose()?;
         let mut typed_properties = BTreeSet::new();
-        if let (Some(theme), Some(style)) = (resolved_theme, resolved_style.as_ref()) {
-            for property in DIRECT_SEQUENCE_TYPOGRAPHY_PROPERTIES {
-                let Some(origin) = style.typography_resolution().winner(property) else {
-                    continue;
-                };
-                if theme.rule_facet_disposition(
-                    origin.rule_index(),
-                    FamilyThemeRuleFacet::Typography(property),
-                ) != Some(FamilyThemeDisposition::TypedAdapter)
-                    || config_overrides.contains(&property)
-                {
+        if let Some(style) = resolved_style.as_ref() {
+            for property in direct_typed_properties {
+                if config_overrides.contains(&property) {
                     continue;
                 }
                 apply_direct_property(&mut text_style, style, property);

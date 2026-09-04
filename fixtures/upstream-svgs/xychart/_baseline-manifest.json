@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "source": {
-    "mermaid_version": "11.16.1",
+    "mermaid_version": "11.17.2",
     "mermaid_cli_version": "11.16.0",
-    "mermaid_source_tag": "mermaid@11.16.1",
-    "mermaid_source_commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
-    "package_json_sha256": "9298a915a40b6057827e8add6044309143f836b8dbca73c34ffba5b21a762ac5",
-    "package_lock_sha256": "0ee640d994c7986b67919b663a0fec2fc6baa51becf106d5e0161678294e9b7b",
+    "mermaid_source_tag": "mermaid@11.17.2",
+    "mermaid_source_commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+    "package_json_sha256": "7335a3edb75c8a485cbbd8d64b543a6fce7db4f2a2277571e236901e90611f31",
+    "package_lock_sha256": "fcdf1d7d8fd880bc0157941dfe22c0bb48af0424186b4ebd120d79ad35ca4128",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
     "renderer_revision": "xtask-upstream-svg-v4"
   },
@@ -26,12 +26,12 @@
       "operating_system": {
         "platform": "darwin",
         "arch": "arm64",
-        "release": "25.5.0"
+        "release": "25.6.0"
       },
       "mermaid_runtime": {
-        "esm_version": "11.16.1",
-        "iife_version": "11.16.1",
-        "mermaid_package_sha256": "25fce8dc49850c02fa00127febd3976315983f13e7018d86b8c330dde04d808a",
+        "esm_version": "11.17.2",
+        "iife_version": "11.17.2",
+        "mermaid_package_sha256": "d91c2b39325b2106bf97cb723aa4f583724ada01bf4d0481db0b10144ee01bc8",
         "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
       },
       "font_probe": {
@@ -254,12 +254,12 @@
     },
     "upstream_html_demos_xychart_xy_charts_bar_with_multiple_category_005": {
       "input_sha256": "38399d9b6f84b66f397be3a42b5a03e6359ad78b5f71766c25ca776587292354",
-      "svg_sha256": "a04080c1cdc1de6d2bbe260ab8c7d9af80db70ad9bac6f1bd31f765b01d23261",
+      "svg_sha256": "05539d33d3509b1b475d94ca8ac0157dc728b48c74759c113631bece05b5021b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_xychart_xy_charts_category_with_large_text_007": {
       "input_sha256": "0cfc570b349a718a0f1842049a506a95bfd2486a6f18d78b95d5a8358e21dfc4",
-      "svg_sha256": "966e3a19b53966be7aaa27b322129f9c531a34a02598ccb729133ee618228f6a",
+      "svg_sha256": "f68796cb0a3d1c1e90d5b1a503c8497af45d907b74225f14d02846e40c1be909",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_xychart_xy_charts_demos_001": {
@@ -279,12 +279,12 @@
     },
     "upstream_html_demos_xychart_xy_charts_horizontal_002": {
       "input_sha256": "ada5297b3962a5dd64f0528fa1b58d5dd3335bf7a8c66b70ef1060e362c1a663",
-      "svg_sha256": "b606980d4856c00c4cca523c19070632c118851f11339d21ffae8fc2a5e0bf04",
+      "svg_sha256": "9c29e925b0484f73fe1ede962b7a33ff47105f256ca7e7e79831badf1fff2876",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_xychart_xy_charts_line_with_multiple_category_006": {
       "input_sha256": "506f4a1e821982f95384287df78270dbfd75a722907f32b7a2d836223847dd1c",
-      "svg_sha256": "18ca5a797df99cb0a6fdaf98df62b29a49aa66ace074931f1d8cb19cd9c1adf4",
+      "svg_sha256": "32539a33df27a6ab281efe68d32f09bca026e3674c005919c813127de44033bc",
       "renderer_profile": "mmdc-default"
     },
     "upstream_html_demos_xychart_xy_charts_only_lines_and_bar_003": {
@@ -299,17 +299,17 @@
     },
     "upstream_pkgtests_xychart_jison_spec_002": {
       "input_sha256": "f8d89363e95de9e9505fe1b70b5196d74eeb8348ba140f62ba0ae4eebd4af00f",
-      "svg_sha256": "5b6fab1908380ed450e82f052c858b636cbdadcd94c6b76e83a4fa3494322716",
+      "svg_sha256": "9287a65f601144a0c865ac41f982efc66b51c7c9158268f72535323b709e0228",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_xychart_jison_spec_141": {
       "input_sha256": "88050d11f4a8870db912434e0ce08400f2cb1ace7809751d26177c7b41448f89",
-      "svg_sha256": "3e89543ef111d323f56a7fdf4d0cc0a05d2dc79825e2f60d48577f2fd08c643e",
+      "svg_sha256": "9b103db54badbdbf16ea2f8655302be0e1b97cffd051a70e53cd405606340595",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_xychart_jison_spec_149": {
       "input_sha256": "40cbcbf662ff791b8d4a399972bb3ce8e6e4affbde6d11e0f19a0dddfefe458b",
-      "svg_sha256": "e93775248e305294aef215c7854ce9eb16af57ca89061a447c97ead0508f5487",
+      "svg_sha256": "de15d2931ea1f0ee2ce0907698037b5acb1aef978e5fb5af72304fe64acc8d46",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_xychart_jison_spec_157": {
@@ -319,12 +319,12 @@
     },
     "upstream_pkgtests_xychart_jison_spec_176": {
       "input_sha256": "7c40b524079c65f8b63fc799936d3bdfa3595e5c52748d7b5530c57664068adc",
-      "svg_sha256": "529d77087091f8279548d9a2df64c0a44fc4a25a94b954ab4d6a1e7d08b1ca0c",
+      "svg_sha256": "b709e8d37609e8cd9e1736b1279b7f216ae1422e9aed8f326b5db77e240cedb7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_xychart_jison_spec_184": {
       "input_sha256": "7068173027edf7cd3157a1d061b48d92df4a0f4724225e8073bb3195d43056cd",
-      "svg_sha256": "3561e23af0b6c10af0255696e5998e01db5da6e2295cc038d7372629b64b391a",
+      "svg_sha256": "35bfb322b557e35ea9506f795feb3082837dc0f99de37c5a0e9c62175ebff704",
       "renderer_profile": "mmdc-default"
     },
     "upstream_pkgtests_xychart_jison_spec_192": {
@@ -334,7 +334,7 @@
     },
     "upstream_pkgtests_xychart_jison_spec_213": {
       "input_sha256": "aa1b960c08021c182bc4433d39c3bd64232bdb6a2fff480140742df9d58b9954",
-      "svg_sha256": "f9bbec0623f1f02b1ce745dedc18174affb6d68662e3ba8e73a2bbd4def09455",
+      "svg_sha256": "9d9ea8532d7e6b9c51c06088cc6785425cdda7711b76ee10903f5fee528c61c5",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_autoderive_axes_db": {
@@ -344,7 +344,7 @@
     },
     "upstream_xychart_axes_titles_only_then_plots_jison_spec": {
       "input_sha256": "f248b6991b99619a837a8e2ce0b25d7b84f915289a04d5cd9878d3498fb81095",
-      "svg_sha256": "b9ba84d4008829dcb36f30aec9025d2bd77a6bcc1732148d9dbdbfd730020869",
+      "svg_sha256": "a28887f356ccca1b34a6be643e9166786d53c0df2d7db4c3ae11a196637ce018",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_axis_range_only_jison_spec": {
@@ -364,12 +364,12 @@
     },
     "upstream_xychart_orientation_and_axes_jison_spec": {
       "input_sha256": "93f0e9dadd2c5c259dd37c2b958989291f56faf604edfda183dbcff0d53e693a",
-      "svg_sha256": "0c0f86e7f2aff41ab81a7747f6de68684aafdde4f3526309d87e33b47462e157",
+      "svg_sha256": "260a68a83f5b1c6ace74661b37856189a1bab4be53941150e9969c2515cf387d",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_plot_numbers_and_titles_jison_spec": {
       "input_sha256": "1c6eefd22f3dc00ae3fc98cbb623b8c47f00734ff291d289f5c05d3e8a8c72ee",
-      "svg_sha256": "c6873910b480e66da79ace10f9002d2a55bc6b5934328fa50d0fe62acca41827",
+      "svg_sha256": "02234a14469cd947cd480a5f904f52207b680e33f9152d60b0c565c985c461b8",
       "renderer_profile": "mmdc-default"
     },
     "upstream_xychart_xaxis_band_cat2asdf_jison_spec": {

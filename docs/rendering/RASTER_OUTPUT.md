@@ -128,7 +128,7 @@ The following example uses both `png` and `pdf`:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "pdf"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "pdf"] }
 ```
 
 ```rust
@@ -192,9 +192,9 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.5", default-features = false }
-merman-render = { version = "=0.8.0-alpha.5", default-features = false }
-merman-export = { version = "=0.8.0-alpha.5", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-core = { version = "=0.8.0-alpha.6", default-features = false }
+merman-render = { version = "=0.8.0-alpha.6", default-features = false }
+merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
 
 ```rust

@@ -14,179 +14,180 @@
     "shapes": [
       {
         "alias": "customerA",
+        "parentBoundary": "b0",
+        "typeC4Shape": {
+          "text": "person"
+        },
         "label": {
           "text": "Banking Customer A"
         },
+        "wrap": false,
         "descr": {
           "text": "A customer of the bank, with personal bank accounts."
         },
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "parentBoundary": "b0",
-        "wrap": false,
-        "fontColor": "red",
         "bgColor": "grey",
-        "borderColor": "red"
+        "borderColor": "red",
+        "fontColor": "red"
       },
       {
         "alias": "customerB",
+        "parentBoundary": "b0",
+        "typeC4Shape": {
+          "text": "person"
+        },
         "label": {
           "text": "Banking Customer B"
         },
+        "wrap": false,
         "descr": {
           "text": ""
-        },
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "parentBoundary": "b0",
-        "wrap": false
+        }
       },
       {
         "alias": "customerC",
-        "label": {
-          "text": "Banking Customer C"
-        },
-        "descr": {
-          "text": "desc"
-        },
+        "parentBoundary": "b0",
         "typeC4Shape": {
           "text": "external_person"
         },
-        "parentBoundary": "b0",
-        "wrap": false
+        "label": {
+          "text": "Banking Customer C"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "desc"
+        }
       },
       {
         "alias": "customerD",
-        "label": {
-          "text": "Banking Customer D"
-        },
-        "descr": {
-          "text": "A customer of the bank, <br/> with personal bank accounts."
-        },
+        "parentBoundary": "b0",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "b0",
-        "wrap": false
+        "label": {
+          "text": "Banking Customer D"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank, <br/> with personal bank accounts."
+        }
       },
       {
         "alias": "SystemAA",
+        "parentBoundary": "b0",
+        "typeC4Shape": {
+          "text": "system"
+        },
         "label": {
           "text": "Internet Banking System"
         },
+        "wrap": false,
         "descr": {
           "text": "Allows customers to view information about their bank accounts, and make payments."
-        },
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "parentBoundary": "b0",
-        "wrap": false
+        }
       },
       {
         "alias": "SystemE",
-        "label": {
-          "text": "Mainframe Banking System"
-        },
-        "descr": {
-          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "external_system_db"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "Mainframe Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
+        }
       },
       {
         "alias": "SystemA",
+        "parentBoundary": "b2",
+        "typeC4Shape": {
+          "text": "system"
+        },
         "label": {
           "text": "Banking System A"
         },
+        "wrap": false,
         "descr": {
           "text": ""
-        },
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "parentBoundary": "b2",
-        "wrap": false
+        }
       },
       {
         "alias": "SystemB",
-        "label": {
-          "text": "Banking System B"
-        },
-        "descr": {
-          "text": "A system of the bank, with personal bank accounts. next line."
-        },
+        "parentBoundary": "b2",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "b2",
-        "wrap": false
+        "label": {
+          "text": "Banking System B"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A system of the bank, with personal bank accounts. next line."
+        }
       },
       {
         "alias": "SystemC",
-        "label": {
-          "text": "E-mail system"
-        },
-        "descr": {
-          "text": "The internal Microsoft Exchange e-mail system."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "E-mail system"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        }
       },
       {
         "alias": "SystemD",
-        "label": {
-          "text": "Banking System D Database"
-        },
-        "descr": {
-          "text": "A system of the bank, with personal bank accounts."
-        },
+        "parentBoundary": "b1",
         "typeC4Shape": {
           "text": "system_db"
         },
-        "parentBoundary": "b1",
-        "wrap": false
+        "label": {
+          "text": "Banking System D Database"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A system of the bank, with personal bank accounts."
+        }
       },
       {
         "alias": "SystemF",
-        "label": {
-          "text": "Banking System F Queue"
-        },
-        "descr": {
-          "text": "A system of the bank."
-        },
+        "parentBoundary": "b3",
         "typeC4Shape": {
           "text": "system_queue"
         },
-        "parentBoundary": "b3",
-        "wrap": false
+        "label": {
+          "text": "Banking System F Queue"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A system of the bank."
+        }
       },
       {
         "alias": "SystemG",
-        "label": {
-          "text": "Banking System G Queue"
-        },
-        "descr": {
-          "text": "A system of the bank, with personal bank accounts."
-        },
+        "parentBoundary": "b3",
         "typeC4Shape": {
           "text": "external_system_queue"
         },
-        "parentBoundary": "b3",
-        "wrap": false
+        "label": {
+          "text": "Banking System G Queue"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A system of the bank, with personal bank accounts."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -194,59 +195,58 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       },
       {
         "alias": "b0",
+        "parentBoundary": "global",
         "label": {
           "text": "BankBoundary0"
         },
         "type": {
           "text": "ENTERPRISE"
         },
-        "parentBoundary": "global",
         "wrap": false
       },
       {
         "alias": "b1",
+        "parentBoundary": "b0",
         "label": {
           "text": "BankBoundary"
         },
         "type": {
           "text": "ENTERPRISE"
         },
-        "parentBoundary": "b0",
         "wrap": false
       },
       {
         "alias": "b2",
+        "parentBoundary": "b1",
         "label": {
           "text": "BankBoundary2"
         },
         "type": {
           "text": "SYSTEM"
         },
-        "parentBoundary": "b1",
         "wrap": false
       },
       {
         "alias": "b3",
+        "parentBoundary": "b1",
         "label": {
           "text": "BankBoundary3"
         },
         "type": {
           "text": "boundary"
         },
-        "parentBoundary": "b1",
         "wrap": false
       }
     ],
     "rels": [
       {
-        "type": "birel",
         "from": "customerA",
         "to": "SystemAA",
+        "type": "birel",
         "label": {
           "text": "Uses"
         },
@@ -257,14 +257,14 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "blue",
+        "offsetX": 5,
         "lineColor": "blue",
-        "offsetX": 5
+        "textColor": "blue"
       },
       {
-        "type": "birel",
         "from": "SystemAA",
         "to": "SystemE",
+        "type": "birel",
         "label": {
           "text": "Uses"
         },
@@ -275,14 +275,14 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "blue",
+        "offsetY": -10,
         "lineColor": "blue",
-        "offsetY": -10
+        "textColor": "blue"
       },
       {
-        "type": "rel",
         "from": "SystemAA",
         "to": "SystemC",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails"
         },
@@ -293,15 +293,15 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "blue",
-        "lineColor": "blue",
         "offsetX": -50,
-        "offsetY": -40
+        "offsetY": -40,
+        "lineColor": "blue",
+        "textColor": "blue"
       },
       {
-        "type": "rel",
         "from": "SystemC",
         "to": "customerA",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails to"
         },
@@ -312,10 +312,10 @@
           "text": ""
         },
         "wrap": false,
-        "textColor": "red",
-        "lineColor": "red",
         "offsetX": -50,
-        "offsetY": 20
+        "offsetY": 20,
+        "lineColor": "red",
+        "textColor": "red"
       }
     ]
   }

@@ -1482,7 +1482,7 @@ fn generated_authoring_root_and_typography_reach_terminal_witnesses() {
     let typography_output =
         render_authoring_svg_output(&renderer, &AUTHORING_RENDER_WITNESSES[1], &typography_theme);
     assert!(typography_output.evidence().theme_evidence().is_verified());
-    assert_single_family_route_verified(&typography_output, "generated State base typography");
+    assert_family_routes_verified(&typography_output, 3, "generated State base typography");
     let typography_document =
         roxmltree::Document::parse(typography_output.svg()).expect("valid typography witness SVG");
     let label = find_element_with_class_and_text(
@@ -1502,6 +1502,12 @@ fn generated_authoring_root_and_typography_reach_terminal_witnesses() {
 }
 
 fn assert_single_family_route_verified(output: &merman::SvgOutput, context: &str) {
+    assert_family_routes_verified(output, 1, context);
+}
+
+fn assert_family_routes_verified(output: &merman::SvgOutput, expected_count: usize, context: &str) {
+    #[cfg(not(feature = "internal-theme-acceptance"))]
+    let _ = expected_count;
     assert!(
         output.evidence().theme_evidence().is_verified(),
         "{context} must retain verified theme evidence",
@@ -1510,9 +1516,9 @@ fn assert_single_family_route_verified(output: &merman::SvgOutput, context: &str
     {
         let family =
             merman::__theme_acceptance::theme_acceptance_evidence(output.evidence()).family();
-        assert_eq!(family.required_count(), 1, "{context}");
-        assert_eq!(family.accounted_count(), 1, "{context}");
-        assert_eq!(family.applied_count(), 1, "{context}");
+        assert_eq!(family.required_count(), expected_count, "{context}");
+        assert_eq!(family.accounted_count(), expected_count, "{context}");
+        assert_eq!(family.applied_count(), expected_count, "{context}");
         assert_eq!(family.not_applicable_count(), 0, "{context}");
         assert_eq!(family.residual_count(), 0, "{context}");
         assert!(family.is_verified(), "{context}");

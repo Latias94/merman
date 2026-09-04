@@ -208,6 +208,7 @@ pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
+#[cfg(test)]
 pub(crate) fn parse_class_typed_with_render_context(
     code: &str,
     meta: &ParseMetadata,
@@ -218,6 +219,31 @@ pub(crate) fn parse_class_typed_with_render_context(
     Ok(parse_class_semantic_source(code, meta)?
         .db
         .into_typed_model_with_style_facts(meta))
+}
+
+pub(crate) fn parse_class_typed_with_render_context_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &OperationControl,
+) -> OperationControlResult<
+    Result<(
+        class_typed::ClassDiagram,
+        class_typed::ClassStylePrecedenceFacts,
+    )>,
+> {
+    let construction = construct_class_semantic_source(code, meta, control)?;
+    match construction {
+        Ok(source) => Ok(Ok(source.db.into_typed_model_with_style_facts(meta))),
+        Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn parse_class_typed(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<class_typed::ClassDiagram> {
+    parse_class_typed_with_render_context(code, meta).map(|(model, _)| model)
 }
 
 pub(crate) fn parse_class_json_and_editor_facts(

@@ -118,7 +118,7 @@ pub(super) fn compare_gantt_request(
             report.push('\n');
         },
         |_, stem, _| {
-            crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem).map(str::to_string)
+            crate::cmd::upstream_svg_compare_skip_reason(fact.diagram, stem).map(str::to_string)
         },
         |state, input| {
             let fixture_renderer = match input.site_config.clone() {

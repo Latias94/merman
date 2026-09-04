@@ -75,6 +75,7 @@
         "layout-base-v1",
         "layout-base-v2",
         "mermaid",
+        "non-layered-tidy-tree-layout",
         "rough-rs",
         "roughjs",
         "sanitize-url",
@@ -157,6 +158,7 @@
         "dompurify",
         "elkjs",
         "mermaid",
+        "non-layered-tidy-tree-layout",
         "roughjs",
         "sanitize-url",
         "venn-js",
@@ -624,11 +626,11 @@
     {
       "id": "mermaid",
       "name": "Mermaid",
-      "version": "11.16.1",
+      "version": "11.17.2",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "ref": "mermaid@11.16.1",
-        "commit": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+        "ref": "mermaid@11.17.2",
+        "commit": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
         "path": "packages/mermaid"
       },
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
@@ -643,7 +645,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
           "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
-          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/7ecca0cd7f1658ef74f4e7e91f925724ef403bbf/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/dcb694ddb58dc5ad3502e7e903cac05fd812eac3/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -700,6 +702,33 @@
       ],
       "locks": [{"type": "repository", "repository_id": "mermaid-rs-renderer"}],
       "notice": "This Rust renderer is retained as an ASCII and headless rendering behavior reference."
+    },
+    {
+      "id": "non-layered-tidy-tree-layout",
+      "name": "non-layered-tidy-tree-layout",
+      "version": "2.0.2",
+      "source": {
+        "repository": "https://github.com/stetrevor/non-layered-tidy-tree-layout.git",
+        "ref": "v2.0.2",
+        "commit": "63852fb7646eb079ce0e1976044d54545de273e8",
+        "path": "src"
+      },
+      "relationships": ["modified", "translated"],
+      "local_paths": ["crates/merman-render/src/mindmap/tidy_tree.rs"],
+      "license_expression": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/non-layered-tidy-tree-layout/LICENSE",
+          "sha256": "9e618475934f16f1966a1f47cacea53ec0e8fbf7cb0054a5063b9446794a25df",
+          "source_url": "https://raw.githubusercontent.com/stetrevor/non-layered-tidy-tree-layout/63852fb7646eb079ce0e1976044d54545de273e8/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {"type": "repository", "repository_id": "non-layered-tidy-tree-layout"}
+      ],
+      "notice": "Merman's Mindmap tidy-tree layout is a modified Rust translation of the non-layered tidy-tree contour and threading algorithm bundled by Mermaid's tidy-tree adapter."
     },
     {
       "id": "ratex",

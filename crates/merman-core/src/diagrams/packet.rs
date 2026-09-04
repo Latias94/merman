@@ -146,6 +146,7 @@ fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> R
     }
 }
 
+#[cfg(test)]
 pub(crate) fn parse_packet_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -154,6 +155,23 @@ pub(crate) fn parse_packet_model_for_render(
         PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::empty_compatibility_output()),
         PacketParseOutput::Model(model) => Ok(model),
     }
+}
+
+pub(crate) fn parse_packet_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<PacketDiagramRenderModel>> {
+    let construction = construct_packet_semantic_source_controlled(code, meta, control)?;
+    let source = match construction {
+        Ok(source) => source,
+        Err(failure) => return Ok(Err(failure.into_error())),
+    };
+    let model = match source.output {
+        PacketParseOutput::Empty => PacketDiagramRenderModel::empty_compatibility_output(),
+        PacketParseOutput::Model(model) => model,
+    };
+    Ok(Ok(model))
 }
 
 fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PacketSemanticSource> {

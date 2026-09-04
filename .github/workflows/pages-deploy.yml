@@ -18,6 +18,8 @@ on:
       - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
+      - "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm"
+      - "distribution/tree-sitter-mermaid/queries/portable/highlights.scm"
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"
@@ -55,4 +57,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5.0.0
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "TB",
     "accTitle": "Demo Class Diagram",
     "accDescr": "This class diagram show the abstract Animal class, and 3 classes that inherit from it: Duck, Fish, and Zebra.",
@@ -255,7 +255,6 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {},
-    "styleClasses": {},
     "constants": {
       "lineType": {
         "line": 0,
@@ -269,6 +268,7 @@
         "dependency": 3,
         "lollipop": 4
       }
-    }
+    },
+    "styleClasses": {}
   }
 }

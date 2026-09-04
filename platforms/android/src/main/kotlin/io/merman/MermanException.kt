@@ -46,6 +46,10 @@ data class MermanDiagnosticErrorDetails(
     val span: MermanDiagnosticSpan?,
     val field: String?,
     val diagramType: String?,
+    val requestedMaxWidth: Long? = null,
+    val actualWidth: Long? = null,
+    val widthProfile: String? = null,
+    val fallbackReason: String? = null,
 )
 
 data class MermanIconRegistryErrorDetails(
@@ -396,7 +400,46 @@ class MermanException private constructor(
                 } else {
                     null
                 }
-                MermanDiagnosticErrorDetails(code, span, field, diagramType)
+                val requestedMaxWidth = if (
+                    diagnostic.has("requested_max_width") &&
+                    !diagnostic.isNull("requested_max_width")
+                ) {
+                    diagnostic.strictLong("requested_max_width")?.takeIf { it >= 0 } ?: return null
+                } else {
+                    null
+                }
+                val actualWidth = if (
+                    diagnostic.has("actual_width") && !diagnostic.isNull("actual_width")
+                ) {
+                    diagnostic.strictLong("actual_width")?.takeIf { it >= 0 } ?: return null
+                } else {
+                    null
+                }
+                val widthProfile = if (
+                    diagnostic.has("width_profile") && !diagnostic.isNull("width_profile")
+                ) {
+                    diagnostic.strictString("width_profile") ?: return null
+                } else {
+                    null
+                }
+                val fallbackReason = if (
+                    diagnostic.has("fallback_reason") &&
+                    !diagnostic.isNull("fallback_reason")
+                ) {
+                    diagnostic.strictString("fallback_reason") ?: return null
+                } else {
+                    null
+                }
+                MermanDiagnosticErrorDetails(
+                    code = code,
+                    span = span,
+                    field = field,
+                    diagramType = diagramType,
+                    requestedMaxWidth = requestedMaxWidth,
+                    actualWidth = actualWidth,
+                    widthProfile = widthProfile,
+                    fallbackReason = fallbackReason,
+                )
             }.getOrNull()
 
         private fun parseIconRegistryDetails(payload: JSONObject): MermanIconRegistryErrorDetails? =

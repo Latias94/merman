@@ -30,6 +30,7 @@ png = [
     "dep:thiserror",
     "dep:tiny-skia",
     "dep:ttf-parser",
+    "dep:unicase",
     "dep:usvg",
 ]
 jpeg = [
@@ -44,6 +45,7 @@ jpeg = [
     "dep:thiserror",
     "dep:tiny-skia",
     "dep:ttf-parser",
+    "dep:unicase",
     "dep:usvg",
 ]
 pdf = [
@@ -56,6 +58,7 @@ pdf = [
     "dep:svgtypes",
     "dep:thiserror",
     "dep:ttf-parser",
+    "dep:unicase",
     "dep:usvg",
 ]
 
@@ -74,6 +77,7 @@ svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 ttf-parser = { workspace = true, optional = true }
+unicase = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }
 
 [dev-dependencies]

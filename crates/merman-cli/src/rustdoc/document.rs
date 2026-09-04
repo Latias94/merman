@@ -1210,7 +1210,7 @@ mod tests {
     }
 
     #[test]
-    fn complete_c4_person_output_keeps_bounded_inline_raster_icons() {
+    fn complete_c4_person_output_keeps_unified_vector_shape() {
         let root = tempfile::tempdir().unwrap();
         let config = write_config(
             root.path(),
@@ -1221,7 +1221,12 @@ mod tests {
         let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
-        assert!(output.contains("data:image/png;base64,"), "{output}");
+        assert!(
+            output.contains(r#"class="node c4-shape c4-person""#),
+            "{output}"
+        );
+        assert!(output.contains("<circle"), "{output}");
+        assert!(!output.contains("data:image/png;base64,"), "{output}");
         assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 1);
     }
 

@@ -97,6 +97,10 @@ impl SvgArtifactReceipt {
     }
 
     fn observe_verified_svg(svg: &str, artifact_digest: [u8; 32]) -> Option<Self> {
+        let max_tree_depth = svg_max_tree_depth(svg)?;
+        if max_tree_depth > crate::resources::MAX_RESVG_TREE_DEPTH {
+            return None;
+        }
         let document = Document::parse(svg).ok()?;
         let root = document.root_element();
         let view_box = parse_view_box(root.attribute("viewBox")?)?;
@@ -284,6 +288,36 @@ impl SvgArtifactReceipt {
             }
         }
         hasher.finalize().into()
+    }
+}
+
+/// Performs the bounded, iterative XML depth check before handing the document to `roxmltree`.
+///
+/// `roxmltree` is useful for the rich receipt projection, but its recursive tree construction can
+/// exhaust the default test/thread stack on an otherwise well-formed SVG that is already beyond
+/// the renderer's structural depth budget. Keep this preflight iterative and fail closed before
+/// invoking the recursive parser.
+fn svg_max_tree_depth(svg: &str) -> Option<usize> {
+    let mut reader = quick_xml::Reader::from_str(svg);
+    reader.config_mut().enable_all_checks(true);
+    let mut depth = 0usize;
+    let mut max_tree_depth = 0usize;
+
+    loop {
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(_)) => {
+                depth = depth.checked_add(1)?;
+                max_tree_depth = max_tree_depth.max(depth.saturating_sub(1));
+            }
+            Ok(quick_xml::events::Event::End(_)) => {
+                depth = depth.checked_sub(1)?;
+            }
+            Ok(quick_xml::events::Event::Eof) => {
+                return (depth == 0).then_some(max_tree_depth);
+            }
+            Ok(_) => {}
+            Err(_) => return None,
+        }
     }
 }
 

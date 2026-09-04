@@ -331,10 +331,10 @@ fn run_flowchart_compare(
                 svg_request(environment.clone(), layout_opts.clone(), None),
             )?;
             if requires_math {
-                return Err(format!(
-                    "cannot compare math fixture {}: external host math backend injection is disabled; use the browser qualification lane",
-                    input.fixture_path.display()
-                ));
+                return Ok(CompareFixtureResult::Skipped {
+                    reason: "external host math backend injection is disabled; use the browser qualification lane"
+                        .to_string(),
+                });
             }
 
             let rendered = match render_semantic_svg(
@@ -1109,48 +1109,62 @@ mod tests {
     }
 
     #[test]
-    fn math_only_flowchart_compare_fails_without_a_backend() {
+    fn math_only_flowchart_compare_is_deferred_without_a_backend() {
         let temp = tempfile::tempdir().expect("temporary compare root");
         let fact = flowchart_fact();
         let source = "flowchart LR\n  A[\"$$x + y$$\"] --> B\n";
         write_flowchart_compare_fixture(temp.path(), "math_only", source, "<svg/>");
 
         let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
-            .expect_err("math fixtures must require a browser qualification lane");
+            .expect_err("an all-deferred selection has no canonical comparison evidence");
         let evidence = failure.evidence();
         let message = failure.to_string();
 
         assert_eq!(evidence.selected_fixtures(), 1);
         assert_eq!(evidence.rendered_fixtures(), 0);
         assert_eq!(evidence.comparisons(), 0);
-        assert!(message.contains("math_only.mmd"));
-        assert!(message.contains("external host math backend injection is disabled"));
+        assert!(message.contains("no canonical typed render evidence for flowchart"));
+
+        let report = std::fs::read_to_string(temp.path().join("report.md"))
+            .expect("deferred math report should be written");
+        assert!(
+            report.contains("skipped math_only: external host math backend injection is disabled")
+        );
     }
 
     #[test]
-    fn mixed_flowchart_selection_cannot_hide_a_missing_math_backend() {
+    fn mixed_flowchart_selection_records_math_as_deferred() {
         let temp = tempfile::tempdir().expect("temporary compare root");
         let fact = flowchart_fact();
         let plain_source = "flowchart LR\n  A --> B\n";
-        let plain_upstream = render_plain_flowchart(fact, "a_plain", plain_source);
-        write_flowchart_compare_fixture(temp.path(), "a_plain", plain_source, &plain_upstream);
+        let plain_upstream = render_plain_flowchart(fact, "deferred_test_plain", plain_source);
         write_flowchart_compare_fixture(
             temp.path(),
-            "b_math",
+            "deferred_test_plain",
+            plain_source,
+            &plain_upstream,
+        );
+        write_flowchart_compare_fixture(
+            temp.path(),
+            "deferred_test_math",
             "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
             "<svg/>",
         );
 
-        let failure = run_flowchart_compare(fact, flowchart_compare_request(temp.path()))
-            .expect_err("a plain fixture's DOM evidence must not hide a math residual");
-        let evidence = failure.evidence();
-        let message = failure.to_string();
+        let mut request = flowchart_compare_request(temp.path());
+        request.common.filter = Some("deferred_test".to_string());
+        let evidence = run_flowchart_compare(fact, request)
+            .expect("plain evidence and an explicit deferred math fixture should coexist");
 
         assert_eq!(evidence.selected_fixtures(), 2);
         assert_eq!(evidence.rendered_fixtures(), 1);
         assert_eq!(evidence.comparisons(), 1);
-        assert!(message.contains("b_math.mmd"));
-        assert!(message.contains("external host math backend injection is disabled"));
+
+        let report = std::fs::read_to_string(temp.path().join("report.md"))
+            .expect("mixed compare report should be written");
+        assert!(report.contains(
+            "skipped deferred_test_math: external host math backend injection is disabled"
+        ));
     }
 
     #[test]

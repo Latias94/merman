@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 932.0,
-        "max_y": 836.0
+        "max_y": 939.793
       },
       "width": 982.0,
-      "height": 846.0,
+      "height": 949.793,
       "use_max_width": true,
       "container_width": 800.0,
       "container_height": 600.0,
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 782.0,
-          "height": 720.0,
+          "height": 823.793,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -50,7 +50,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 254.0,
+          "height": 305.896,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -78,7 +78,7 @@
           "x": 516.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 254.0,
+          "height": 305.896,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -104,9 +104,9 @@
           "alias": "nd",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 482.0,
+          "y": 533.896,
           "width": 316.0,
-          "height": 254.0,
+          "height": 305.896,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -137,25 +137,25 @@
           "x": 200.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "P1",
-            "y": 86.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -169,25 +169,25 @@
           "x": 566.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "P2",
-            "y": 86.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,
@@ -199,27 +199,27 @@
           "parent_boundary": "nd",
           "type_c4_shape": "person",
           "x": 200.0,
-          "y": 582.0,
+          "y": 633.896,
           "width": 216.0,
-          "height": 104.0,
+          "height": 155.896,
           "margin": 50.0,
           "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
           },
           "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
+            "text": "[Person]",
+            "y": 44.175,
+            "width": 35.805,
+            "height": 11.55,
             "line_count": 1.0
           },
           "label": {
             "text": "P3",
-            "y": 86.0,
-            "width": 19.0,
-            "height": 18.0,
+            "y": 27.7,
+            "width": 16.24,
+            "height": 15.4,
             "line_count": 1.0
           },
           "ty": null,

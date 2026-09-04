@@ -80,7 +80,7 @@
           "stroke_dasharray": null
         },
         {
-          "id": "test_req-test_req2-0",
+          "id": "test_req-test_req2-1",
           "from": "test_req",
           "to": "test_req2",
           "from_cluster": null,
@@ -114,7 +114,7 @@
           "stroke_dasharray": null
         },
         {
-          "id": "test_req-test_req3-0",
+          "id": "test_req-test_req3-2",
           "from": "test_req",
           "to": "test_req3",
           "from_cluster": null,
@@ -148,7 +148,7 @@
           "stroke_dasharray": null
         },
         {
-          "id": "test_entity2-test_req-0",
+          "id": "test_entity2-test_req-3",
           "from": "test_entity2",
           "to": "test_req",
           "from_cluster": null,

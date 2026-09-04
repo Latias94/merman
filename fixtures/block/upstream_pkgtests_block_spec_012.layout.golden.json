@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "block1",
-          "x": 29.44,
+          "x": 41.44,
           "y": -20.0,
-          "width": 58.88,
+          "width": 82.88,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "block2",
-          "x": 29.44,
+          "x": 41.44,
           "y": 20.0,
-          "width": 58.88,
+          "width": 82.88,
           "height": 32.0,
           "is_cluster": false
         }
@@ -25,14 +25,14 @@
         {
           "id": "block1",
           "allocated": {
-            "x": 29.44,
+            "x": 41.44,
             "y": -20.0,
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -41,14 +41,14 @@
         {
           "id": "block2",
           "allocated": {
-            "x": 29.44,
+            "x": 41.44,
             "y": 20.0,
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 58.88,
+            "width": 82.88,
             "height": 32.0,
             "radius": 0.0,
             "kind": "basic"
@@ -58,7 +58,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -36.0,
-        "max_x": 58.88,
+        "max_x": 82.88,
         "max_y": 36.0
       }
     }

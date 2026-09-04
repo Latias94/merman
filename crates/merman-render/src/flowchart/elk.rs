@@ -75,7 +75,7 @@ pub(crate) fn layout_flowchart_elk_typed(
         measurer,
         math_renderer,
     )?;
-    bind_flowchart_elk_transport_ids(model, &mut graph)?;
+    bind_flowchart_elk_transport_ids(model, &render_label_sources, &mut graph)?;
     let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
@@ -142,7 +142,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     // The graph builder is a public diagnostic seam and therefore preserves Mermaid's raw edge
     // ids. The operation-local ELK adapter binds occurrence-safe transport ids only after that
     // seam, using the linear work tranche charged at graph preparation.
-    bind_flowchart_elk_transport_ids(model, &mut graph)?;
+    bind_flowchart_elk_transport_ids(model, render_label_sources, &mut graph)?;
     let layout = match elk::layout_with_operation_seed_and_work_control(
         &graph,
         execution.operation_seed,
@@ -161,34 +161,72 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     )
 }
 
-fn bind_flowchart_elk_transport_ids(model: &FlowchartModel, graph: &mut elk::Graph) -> Result<()> {
-    if graph.edges.len() != model.edges.len() {
+fn projected_flowchart_edges(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+) -> Vec<(usize, FlowEdge)> {
+    model
+        .edges
+        .iter()
+        .enumerate()
+        .filter_map(|(semantic_index, edge)| {
+            super::project_flowchart_edge(edge, render_label_sources)
+                .map(|projected| (semantic_index, projected))
+        })
+        .collect()
+}
+
+struct ProjectedFlowchartModel {
+    model: FlowchartModel,
+    node_owner_indices: Vec<usize>,
+    edge_owner_indices: Vec<usize>,
+}
+
+fn bind_flowchart_elk_transport_ids(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+    graph: &mut elk::Graph,
+) -> Result<()> {
+    let projected_edges = projected_flowchart_edges(model, render_label_sources);
+    if graph.edges.len() != projected_edges.len() {
         return Err(Error::InvalidModel {
             message: format!(
-                "ELK graph edge count {} does not match semantic edge count {}",
+                "ELK graph edge count {} does not match projected edge count {}",
                 graph.edges.len(),
-                model.edges.len()
+                projected_edges.len()
             ),
         });
     }
 
-    let transport_plan =
-        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
-    for (semantic_index, (transport, semantic)) in
-        graph.edges.iter_mut().zip(&model.edges).enumerate()
+    let transport_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
+        projected_edges.iter().map(|(semantic_index, edge)| {
+            (
+                crate::flowchart::FlowchartEdgeKey::new(*semantic_index),
+                edge,
+            )
+        }),
+    );
+    for (transport, (semantic_index, projected)) in
+        graph.edges.iter_mut().zip(projected_edges.iter())
     {
-        if transport.id != semantic.id
-            || transport.source != semantic.from
-            || transport.target != semantic.to
+        if transport.id != projected.id
+            || transport.source != projected.from
+            || transport.target != projected.to
         {
             return Err(Error::InvalidModel {
                 message: format!(
                     "ELK graph edge `{}` is not bound to semantic owner {} (`{}`)",
-                    transport.id, semantic_index, semantic.id
+                    transport.id,
+                    semantic_index,
+                    model
+                        .edges
+                        .get(*semantic_index)
+                        .map(|edge| edge.id.as_str())
+                        .unwrap_or("<missing>")
                 ),
             });
         }
-        let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+        let key = crate::flowchart::FlowchartEdgeKey::new(*semantic_index);
         transport.id = transport_plan
             .id(key)
             .ok_or_else(|| Error::InvalidModel {
@@ -278,20 +316,29 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    if graph.edges.len() != model.edges.len() {
+    let projected_edges = projected_flowchart_edges(model, render_label_sources);
+    if graph.edges.len() != projected_edges.len() {
         return Err(Error::InvalidModel {
             message: format!(
-                "ELK transport edge count {} does not match semantic edge count {}",
+                "ELK transport edge count {} does not match projected edge count {}",
                 graph.edges.len(),
-                model.edges.len()
+                projected_edges.len()
             ),
         });
     }
     let mut source_edge_by_transport_id = HashMap::with_capacity(graph.edges.len());
-    for (semantic_index, edge) in graph.edges.iter().enumerate() {
-        let owner = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
+    for (edge, (semantic_index, projected)) in graph.edges.iter().zip(&projected_edges) {
+        let owner = crate::flowchart::FlowchartEdgeKey::new(*semantic_index);
+        if edge.source != projected.from || edge.target != projected.to {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "ELK transport edge {} endpoints do not match projected owner {}",
+                    edge.id, semantic_index
+                ),
+            });
+        }
         if source_edge_by_transport_id
-            .insert(edge.id.as_str(), (edge, owner))
+            .insert(edge.id.as_str(), (edge, owner, projected))
             .is_some()
         {
             return Err(Error::InvalidModel {
@@ -330,6 +377,11 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     let canonical_subgraphs = canonical_subgraphs(model);
     let mut clusters = Vec::with_capacity(canonical_subgraphs.len());
     for (_, sg) in canonical_subgraphs {
+        if model.collapsed_replacement(sg.id.as_str()).is_some()
+            || model.is_subgraph_collapsed(sg.id.as_str())
+        {
+            continue;
+        }
         let Some(node) = layout_node_by_id.get(sg.id.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("missing ELK layout cluster {}", sg.id),
@@ -393,7 +445,8 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     let mut out_edges = Vec::with_capacity(layout.edges.len());
     let mut edge_owners = Vec::with_capacity(layout.edges.len());
     for edge in layout.edges {
-        let Some((source, owner)) = source_edge_by_transport_id.get(edge.id.as_str()).copied()
+        let Some((source, owner, projected_edge)) =
+            source_edge_by_transport_id.get(edge.id.as_str()).copied()
         else {
             return Err(Error::InvalidModel {
                 message: format!("ELK layout returned unknown edge {}", edge.id),
@@ -408,7 +461,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
                 ),
             });
         };
-        if source.source != semantic_edge.from || source.target != semantic_edge.to {
+        if source.source != projected_edge.from || source.target != projected_edge.to {
             return Err(Error::InvalidModel {
                 message: format!(
                     "ELK transport edge {} endpoints do not match semantic owner {}",
@@ -433,10 +486,10 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         });
         out_edges.push(LayoutEdge {
             id: semantic_edge.id.clone(),
-            from: semantic_edge.from.clone(),
-            to: semantic_edge.to.clone(),
-            from_cluster: endpoint_cluster(semantic_edge.from.as_str(), &layout_node_by_id),
-            to_cluster: endpoint_cluster(semantic_edge.to.as_str(), &layout_node_by_id),
+            from: projected_edge.from.clone(),
+            to: projected_edge.to.clone(),
+            from_cluster: endpoint_cluster(projected_edge.from.as_str(), &layout_node_by_id),
+            to_cluster: endpoint_cluster(projected_edge.to.as_str(), &layout_node_by_id),
             points,
             label,
             start_label_left: None,
@@ -464,13 +517,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     let bounds_work = checked_adapter_mul(&work_control, bounds_points, 2)?;
     charge_adapter_work(&mut work_control, bounds_work)?;
     let bounds = compute_bounds(&out_nodes, &out_edges);
-    let dom_work = checked_adapter_add(
-        &work_control,
-        checked_adapter_mul(&work_control, graph.nodes.len(), 2)?,
-        1,
-    )?;
-    charge_adapter_work(&mut work_control, dom_work)?;
-    let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph);
+    let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph, &mut work_control)?;
 
     Ok(FlowchartLayout {
         nodes: out_nodes,
@@ -483,34 +530,134 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     })
 }
 
-fn flowchart_elk_dom_node_order_by_root(graph: &elk::Graph) -> HashMap<String, Vec<String>> {
-    let ids = mermaid_elk_adapter_dom_order(graph);
-    std::iter::once((String::new(), ids)).collect()
+fn flowchart_elk_dom_node_order_by_root(
+    graph: &elk::Graph,
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<HashMap<String, Vec<String>>> {
+    // Mermaid 11.17.2 sorts this flat list after ELK finishes: groups first, groups by parent
+    // depth, and leaves in their original FlowDB order. The existing adapter charge covered the
+    // node index/depth scan; reserve the additional stable-sort tranche before constructing the
+    // output so a tight layout budget fails before retaining the ordered ids.
+    let sort_work = comparison_sort_work_units(graph.nodes.len(), work_control)?;
+    let dom_work = checked_adapter_add(
+        work_control,
+        checked_adapter_mul(work_control, graph.nodes.len(), 2)?,
+        checked_adapter_add(work_control, 1, sort_work)?,
+    )?;
+    charge_adapter_work(work_control, dom_work)?;
+
+    let ids = mermaid_elk_paint_order(graph);
+    Ok(std::iter::once((String::new(), ids)).collect())
 }
 
-fn mermaid_elk_adapter_dom_order(graph: &elk::Graph) -> Vec<String> {
-    let mut children_by_parent: HashMap<Option<&str>, Vec<&elk::Node>> = HashMap::new();
-    for node in &graph.nodes {
-        children_by_parent
-            .entry(node.parent.as_deref())
-            .or_default()
-            .push(node);
-    }
-    let mut out = Vec::with_capacity(graph.nodes.len());
-    let mut stack = children_by_parent
-        .get(&None)
+/// Returns Mermaid 11.17.2's post-layout ELK paint order.
+///
+/// The upstream renderer receives a flat `data4Layout.nodes` array. Its `orderNodesForElkPaint`
+/// helper uses a stable sort: every group precedes every leaf, groups are ordered by the number
+/// of group parents, and otherwise the input order is preserved. In particular, it does not
+/// recursively emit a parent followed by its descendants; SVG sibling order is observable paint
+/// order, so reproducing that distinction is part of the renderer contract.
+fn mermaid_elk_paint_order(graph: &elk::Graph) -> Vec<String> {
+    let node_index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let group_depths = mermaid_elk_group_depths(graph, &node_index_by_id);
+    let mut indices = (0..graph.nodes.len()).collect::<Vec<_>>();
+    indices.sort_by(|left, right| {
+        let left_node = &graph.nodes[*left];
+        let right_node = &graph.nodes[*right];
+        match (left_node.kind, right_node.kind) {
+            (elk::NodeKind::Group, elk::NodeKind::Leaf) => std::cmp::Ordering::Less,
+            (elk::NodeKind::Leaf, elk::NodeKind::Group) => std::cmp::Ordering::Greater,
+            (elk::NodeKind::Group, elk::NodeKind::Group) => {
+                group_depths[*left].cmp(&group_depths[*right])
+            }
+            (elk::NodeKind::Leaf, elk::NodeKind::Leaf) => std::cmp::Ordering::Equal,
+        }
+    });
+    indices
         .into_iter()
-        .flat_map(|children| children.iter().rev().copied())
-        .collect::<Vec<_>>();
-    while let Some(node) = stack.pop() {
-        out.push(node.id.clone());
-        if node.kind == elk::NodeKind::Group
-            && let Some(children) = children_by_parent.get(&Some(node.id.as_str()))
-        {
-            stack.extend(children.iter().rev().copied());
+        .map(|index| graph.nodes[index].id.clone())
+        .collect()
+}
+
+/// Computes group-parent depth without recursion.
+///
+/// Valid ELK graphs are acyclic because the adapter validates parent assignments before layout.
+/// The active-generation guard still makes this helper bounded for diagnostic or malformed graphs,
+/// matching Mermaid's visited-set behavior instead of risking an infinite walk.
+fn mermaid_elk_group_depths(
+    graph: &elk::Graph,
+    node_index_by_id: &HashMap<&str, usize>,
+) -> Vec<usize> {
+    let mut depths = vec![0usize; graph.nodes.len()];
+    let mut state = vec![0u8; graph.nodes.len()];
+    let mut active_generation = vec![usize::MAX; graph.nodes.len()];
+    let mut active_position = vec![0usize; graph.nodes.len()];
+    let mut generation = 0usize;
+
+    for start in 0..graph.nodes.len() {
+        if graph.nodes[start].kind != elk::NodeKind::Group || state[start] == 2 {
+            continue;
+        }
+
+        generation = generation.saturating_add(1);
+        let mut path = Vec::new();
+        let mut current = start;
+        let terminal_depth = loop {
+            if state[current] == 2 {
+                break Some(depths[current].saturating_add(1));
+            }
+            if active_generation[current] == generation {
+                let cycle_start = active_position[current];
+                let cycle_len = path.len().saturating_sub(cycle_start);
+                for &index in &path[cycle_start..] {
+                    depths[index] = cycle_len;
+                    state[index] = 2;
+                }
+
+                // A node entering an invalid cycle sees the cycle once, then stops at the first
+                // repeated parent. Preserve that bounded depth for the acyclic prefix as well.
+                let mut prefix_depth = cycle_len;
+                for &index in path[..cycle_start].iter().rev() {
+                    depths[index] = prefix_depth;
+                    state[index] = 2;
+                    prefix_depth = prefix_depth.saturating_add(1);
+                }
+                break None;
+            }
+
+            active_generation[current] = generation;
+            active_position[current] = path.len();
+            state[current] = 1;
+            path.push(current);
+
+            let Some(parent_id) = graph.nodes[current].parent.as_deref() else {
+                break Some(0);
+            };
+            let Some(&parent_index) = node_index_by_id.get(parent_id) else {
+                break Some(0);
+            };
+            if graph.nodes[parent_index].kind != elk::NodeKind::Group {
+                break Some(0);
+            }
+            current = parent_index;
+        };
+
+        let Some(mut depth) = terminal_depth else {
+            continue;
+        };
+        for &index in path.iter().rev() {
+            depths[index] = depth;
+            state[index] = 2;
+            depth = depth.saturating_add(1);
         }
     }
-    out
+
+    depths
 }
 
 fn normalize_flow_direction(dir: &str) -> String {
@@ -751,7 +898,139 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     mut work_control: Option<&mut ElkOperationWorkControl>,
 ) -> Result<elk::Graph> {
-    charge_adapter_work(&mut work_control, model.edges.len())?;
+    // Mermaid's FlowDB projects collapsed subgraphs before handing data to any layout backend.
+    // Keep the public typed model lossless, but give ELK the same visible graph. The projected
+    // model retains subgraph declaration ordinals so source-backed title bindings remain valid.
+    if let Some(projected_model) =
+        project_collapsed_flowchart_model(model, render_label_sources, &mut work_control)?
+    {
+        return build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+            &projected_model.model,
+            render_label_sources,
+            effective_config,
+            measurer,
+            math_renderer,
+            None,
+            edge_style_plan,
+            Some(&projected_model.node_owner_indices),
+            Some(&projected_model.edge_owner_indices),
+            work_control,
+        );
+    }
+
+    build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+        model,
+        render_label_sources,
+        effective_config,
+        measurer,
+        math_renderer,
+        svg_label_sidecar,
+        edge_style_plan,
+        None,
+        None,
+        work_control,
+    )
+}
+
+fn project_collapsed_flowchart_model(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+    work_control: &mut Option<&mut ElkOperationWorkControl>,
+) -> Result<Option<ProjectedFlowchartModel>> {
+    let has_collapsed_projection = model.subgraphs.iter().any(|subgraph| {
+        render_label_sources.is_subgraph_collapsed(subgraph.id.as_str())
+            || render_label_sources
+                .collapsed_replacement(subgraph.id.as_str())
+                .is_some()
+    });
+    if !has_collapsed_projection {
+        return Ok(None);
+    }
+
+    let projection_work = checked_adapter_add(
+        work_control,
+        model.nodes.len(),
+        checked_adapter_add(
+            work_control,
+            model.edges.len(),
+            checked_adapter_add(
+                work_control,
+                model.subgraphs.len(),
+                model.vertex_calls.len(),
+            )?,
+        )?,
+    )?;
+    charge_adapter_work(work_control, projection_work)?;
+
+    let mut projected = model.clone();
+    let mut node_owner_indices = Vec::with_capacity(model.nodes.len());
+    projected.nodes = model
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(owner_index, node)| {
+            render_label_sources
+                .collapsed_replacement(node.id.as_str())
+                .is_none()
+                .then(|| {
+                    node_owner_indices.push(owner_index);
+                    node.clone()
+                })
+        })
+        .collect();
+    let mut edge_owner_indices = Vec::with_capacity(model.edges.len());
+    projected.edges = model
+        .edges
+        .iter()
+        .enumerate()
+        .filter_map(|(owner_index, edge)| {
+            super::project_flowchart_edge(edge, render_label_sources).map(|projected| {
+                edge_owner_indices.push(owner_index);
+                projected
+            })
+        })
+        .collect();
+    // Keep the original subgraph vector length/order. Render-label sources are keyed by the
+    // declaration ordinal, and filtering hidden descendants here would make later titles read
+    // the wrong source-backed spelling (especially for nested collapsed subgraphs).
+    projected.subgraphs = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| {
+            let mut projected = subgraph.clone();
+            projected.nodes.retain(|id| {
+                render_label_sources
+                    .collapsed_replacement(id.as_str())
+                    .is_none()
+            });
+            projected
+        })
+        .collect();
+    projected.vertex_calls.retain(|id| {
+        render_label_sources
+            .collapsed_replacement(id.as_str())
+            .is_none()
+    });
+
+    Ok(Some(ProjectedFlowchartModel {
+        model: projected,
+        node_owner_indices,
+        edge_owner_indices,
+    }))
+}
+
+fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
+    model: &FlowchartModel,
+    render_label_sources: &FlowchartRenderContext,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
+    edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+    node_owner_indices: Option<&[usize]>,
+    edge_owner_indices: Option<&[usize]>,
+    mut work_control: Option<&mut ElkOperationWorkControl>,
+) -> Result<elk::Graph> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
     // Shape validation only walks nodes. Charge that tranche before the validation scan; the
@@ -859,7 +1138,15 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     // sibling lists by filtering that canonical array without sorting. Preserve that order here.
     for &(subgraph_index, sg) in canonical_subgraphs.iter().rev() {
         charge_adapter_work(&mut work_control, 1)?;
-        inserted_ids.insert(sg.id.as_str());
+        if render_label_sources
+            .collapsed_replacement(sg.id.as_str())
+            .is_some()
+        {
+            continue;
+        }
+        if !inserted_ids.insert(sg.id.as_str()) {
+            continue;
+        }
         graph.nodes.push(subgraph_to_elk_node(
             subgraph_index,
             sg,
@@ -874,10 +1161,13 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
         if subgraph_ids.contains(node.id.as_str()) || !inserted_ids.insert(node.id.as_str()) {
             continue;
         }
+        let owner_index = node_owner_indices
+            .and_then(|indices| indices.get(node_index).copied())
+            .unwrap_or(node_index);
         graph.nodes.push(flow_node_to_elk_node(
             node,
             parent_by_id.get(&node.id).cloned(),
-            FlowchartSvgLabelOwner::Node(node_index),
+            FlowchartSvgLabelOwner::Node(owner_index),
             node_measure_ctx,
         ));
     }
@@ -893,10 +1183,13 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     charge_adapter_work(&mut work_control, model.edges.len())?;
     let mut edges = Vec::with_capacity(model.edges.len());
     for (edge_index, edge) in model.edges.iter().enumerate() {
+        let owner_index = edge_owner_indices
+            .and_then(|indices| indices.get(edge_index).copied())
+            .unwrap_or(edge_index);
         let label = edge_label(
             edge,
-            crate::flowchart::FlowchartEdgeKey::new(edge_index),
-            FlowchartSvgLabelOwner::Edge(edge_index),
+            crate::flowchart::FlowchartEdgeKey::new(owner_index),
+            FlowchartSvgLabelOwner::Edge(owner_index),
             EdgeMeasureContext {
                 model: render_model,
                 effective_config,
@@ -1907,6 +2200,24 @@ fn subgraph_to_elk_node(
     include_children_groups: &HashSet<&str>,
     ctx: &ElkMeasureContext<'_>,
 ) -> elk::Node {
+    if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
+        let label = subgraph_label(declaration_ordinal, sg, ctx);
+        let (width, height) = label
+            .map(|label| ((label.width + 16.0).max(80.0), label.height + 46.0))
+            .unwrap_or((80.0, 44.0));
+        return elk::Node {
+            id: sg.id.clone(),
+            kind: elk::NodeKind::Leaf,
+            width,
+            height,
+            parent,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label,
+        };
+    }
+
     elk::Node {
         id: sg.id.clone(),
         kind: elk::NodeKind::Group,
@@ -2614,8 +2925,8 @@ mod tests {
     #[test]
     fn flowchart_elk_projection_work_has_an_independent_exact_budget() {
         // 3 source-index rows + 2 projected nodes + 2 layout-index rows + 7 edge units
-        // + 12 bounds units + 5 DOM-order units.
-        const EXPECTED_PROJECTION_WORK: usize = 31;
+        // + 12 bounds units + 7 DOM-order units (including the stable-sort tranche).
+        const EXPECTED_PROJECTION_WORK: usize = 33;
 
         let (model, graph, layout) = projection_fixture();
         let meter = Arc::new(OperationWorkMeter::new(
@@ -2678,7 +2989,7 @@ mod tests {
             panic!("expected ResourceLimitExceeded");
         };
         assert_eq!(limit.max, WORK_BEFORE_DOM_ORDER);
-        assert_eq!(limit.actual, WORK_BEFORE_DOM_ORDER + 5);
+        assert_eq!(limit.actual, WORK_BEFORE_DOM_ORDER + 7);
         assert_eq!(work_control.adapter_work(), WORK_BEFORE_DOM_ORDER);
         assert!(work_control.charge_adapter(1).is_err());
         assert_eq!(work_control.adapter_work(), WORK_BEFORE_DOM_ORDER);
@@ -3065,7 +3376,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_dom_order_matches_mermaid_add_vertices_recursion() {
+    fn flowchart_elk_paint_order_matches_mermaid_1172_flat_sort() {
         let mut model = model(
             vec![
                 node("A", Some("A"), None),
@@ -3107,11 +3418,120 @@ mod tests {
         )
         .unwrap();
 
-        let ids = mermaid_elk_adapter_dom_order(&graph);
+        let ids = mermaid_elk_paint_order(&graph);
         let actual: Vec<&str> = ids.iter().map(String::as_str).collect();
         assert_eq!(
             actual,
-            vec!["bar", "E", "F", "foo", "C", "D", "A", "B", "G"]
+            vec!["bar", "foo", "A", "B", "C", "D", "E", "F", "G"]
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_paint_order_sorts_nested_groups_by_depth_and_leaves_stably() {
+        let node = |id: &str, kind: elk::NodeKind, parent: Option<&str>| elk::Node {
+            id: id.to_string(),
+            kind,
+            width: 0.0,
+            height: 0.0,
+            parent: parent.map(str::to_owned),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        };
+        let graph = elk::Graph {
+            nodes: vec![
+                node("leaf-before", elk::NodeKind::Leaf, None),
+                node("outer", elk::NodeKind::Group, None),
+                node("sibling", elk::NodeKind::Group, None),
+                node("inner", elk::NodeKind::Group, Some("outer")),
+                node("outer-leaf", elk::NodeKind::Leaf, Some("outer")),
+                node("inner-leaf", elk::NodeKind::Leaf, Some("inner")),
+                node("leaf-after", elk::NodeKind::Leaf, None),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            mermaid_elk_paint_order(&graph),
+            vec![
+                "outer",
+                "sibling",
+                "inner",
+                "leaf-before",
+                "outer-leaf",
+                "inner-leaf",
+                "leaf-after",
+            ]
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_paint_order_keeps_collapsed_groups_in_leaf_input_order() {
+        let node = |id: &str, kind: elk::NodeKind| elk::Node {
+            id: id.to_string(),
+            kind,
+            width: 0.0,
+            height: 0.0,
+            parent: None,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        };
+        // Mermaid represents a collapsed subgraph as a synthetic leaf. Its hidden descendants do
+        // not enter this flat ELK list, so the visible collapsed node follows ordinary leaf order.
+        let graph = elk::Graph {
+            nodes: vec![
+                node("before", elk::NodeKind::Leaf),
+                node("expanded", elk::NodeKind::Group),
+                node("collapsed", elk::NodeKind::Leaf),
+                node("after", elk::NodeKind::Leaf),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            mermaid_elk_paint_order(&graph),
+            vec!["expanded", "before", "collapsed", "after"]
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_paint_order_cycle_guard_is_bounded() {
+        let node = |id: &str, parent: &str| elk::Node {
+            id: id.to_string(),
+            kind: elk::NodeKind::Group,
+            parent: Some(parent.to_string()),
+            width: 0.0,
+            height: 0.0,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: None,
+        };
+        let graph = elk::Graph {
+            nodes: vec![
+                node("first", "second"),
+                elk::Node {
+                    id: "leaf".to_string(),
+                    kind: elk::NodeKind::Leaf,
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: None,
+                    hierarchy_handling: None,
+                    layer_constraint: None,
+                    label: None,
+                },
+                node("second", "first"),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            mermaid_elk_paint_order(&graph),
+            vec!["first", "second", "leaf"]
         );
     }
 

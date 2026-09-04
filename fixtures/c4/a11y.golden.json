@@ -1,46 +1,46 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": "line1\nline2",
-    "accTitle": null,
-    "boundaries": [
-      {
-        "alias": "global",
-        "label": {
-          "text": "global"
-        },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
-        }
-      }
-    ],
+    "type": "c4",
     "c4Type": "C4Context",
+    "title": "A11y title",
+    "accTitle": null,
+    "accDescr": "line1\nline2",
+    "wrap": false,
     "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
     },
-    "rels": [],
     "shapes": [
       {
         "alias": "a",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "A"
-        },
         "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "wrap": false
+        "label": {
+          "text": "A"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
       }
     ],
-    "title": "A11y title",
-    "type": "c4",
-    "wrap": false
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      }
+    ],
+    "rels": []
   }
 }

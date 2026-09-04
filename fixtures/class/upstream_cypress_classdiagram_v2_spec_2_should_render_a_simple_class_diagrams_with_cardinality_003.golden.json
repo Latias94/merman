@@ -424,7 +424,6 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {},
-    "styleClasses": {},
     "constants": {
       "lineType": {
         "line": 0,
@@ -438,6 +437,7 @@
         "dependency": 3,
         "lollipop": 4
       }
-    }
+    },
+    "styleClasses": {}
   }
 }

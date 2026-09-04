@@ -684,16 +684,17 @@ mod tests {
             .expected_browser_text_layout_receipt_keys()
             .expect("receipt catalog should load")
             .expect("full explicit suite should require receipt coverage");
-        assert_eq!(expected.len(), 250);
+        let expected_count = expected.len();
 
         let failures = CompareAllFailures::new(&options, Some(expected));
         let failure = failures
             .browser_text_layout_receipt_coverage_failure()
             .expect("missing receipt comparisons must fail");
-        assert!(
-            failure.contains("expected=250 encountered=0 missing=250"),
-            "{failure}"
+        let expected_failure = format!(
+            "expected={} encountered=0 missing={}",
+            expected_count, expected_count
         );
+        assert!(failure.contains(&expected_failure), "{failure}");
     }
 
     #[test]

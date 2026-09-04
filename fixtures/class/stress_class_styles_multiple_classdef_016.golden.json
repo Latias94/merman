@@ -1,7 +1,7 @@
 {
-  "diagramType": "class",
+  "diagramType": "classDiagram",
   "model": {
-    "type": "class",
+    "type": "classDiagram",
     "direction": "LR",
     "accTitle": null,
     "accDescr": null,
@@ -156,6 +156,20 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    },
     "styleClasses": {
       "client": {
         "id": "client",
@@ -183,20 +197,6 @@
           "stroke-width:2px"
         ],
         "textStyles": []
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
       }
     }
   }

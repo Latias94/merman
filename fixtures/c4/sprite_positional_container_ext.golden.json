@@ -14,59 +14,60 @@
     "shapes": [
       {
         "alias": "p1",
-        "label": {
-          "text": "Customer"
-        },
-        "descr": {
-          "text": "A customer of the bank."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "person"
         },
-        "parentBoundary": "global",
-        "wrap": false
+        "label": {
+          "text": "Customer"
+        },
+        "wrap": false,
+        "descr": {
+          "text": "A customer of the bank."
+        }
       },
       {
         "alias": "web",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "container"
+        },
         "label": {
           "text": "Web App"
         },
+        "wrap": false,
         "techn": {
           "text": "React"
         },
         "descr": {
           "text": "Provides Internet banking functionality."
-        },
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "parentBoundary": "global",
-        "wrap": false
+        }
       },
       {
         "alias": "mobile",
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_container"
+        },
         "label": {
           "text": "Mobile App"
         },
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/mobile",
         "techn": {
           "text": "C#, Xamarin"
         },
         "descr": {
           "text": "Provides a limited subset of the functionality."
-        },
-        "typeC4Shape": {
-          "text": "external_container"
-        },
-        "parentBoundary": "global",
-        "wrap": false,
-        "sprite": "users",
-        "tags": "external",
-        "link": "https://example.com/mobile"
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -74,15 +75,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "p1",
         "to": "web",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },
@@ -95,9 +95,9 @@
         "wrap": false
       },
       {
-        "type": "rel",
         "from": "p1",
         "to": "mobile",
+        "type": "rel",
         "label": {
           "text": "Uses"
         },

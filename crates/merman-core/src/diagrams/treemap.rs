@@ -94,7 +94,6 @@ struct NodeRecord {
     name: String,
     value: Option<Value>,
     class_selector: Option<String>,
-    css_compiled_styles: Option<Vec<String>>,
     children: Option<Vec<usize>>,
 }
 
@@ -166,14 +165,15 @@ impl TreemapParseOutcome {
                 treemap_error(meta, issue.message, issue.span),
                 parsed.editor_facts,
             )),
-            None => Ok(treemap_semantic_source_from_parsed_controlled(
-                parsed, control,
-            )?),
+            None => {
+                let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+                let model = source.render_model_controlled(control)?;
+                Ok((source, model))
+            }
         };
         let combined = family::CombinedSemanticParse::from_construction(
             construction,
-            |source| {
-                let model = source.render_model();
+            |(source, model)| {
                 (
                     render_model_to_compat_json(&model, meta),
                     source.editor_facts,
@@ -316,11 +316,27 @@ pub(crate) fn parse_treemap_json_and_editor_facts(
     Ok(parsed)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_treemap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
     Ok(parse_treemap_semantic_source(code, meta)?.render_model())
+}
+
+pub(crate) fn parse_treemap_model_for_render_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<TreemapDiagramRenderModel>> {
+    let parsed = parse_treemap_outcome_controlled(code, control)?;
+    let parsed = match parsed.into_strict(meta) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+    let model = source.render_model_controlled(control)?;
+    Ok(Ok(model))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -332,14 +348,17 @@ pub(crate) fn render_model_to_compat_json(
     }
 
     let mut nodes = Vec::new();
-    flatten_render_nodes(&model.root, &mut nodes);
+    flatten_render_nodes(&model.root, &model.classes, &mut nodes);
 
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("root".to_string(), render_node_to_value(&model.root));
+    out.insert(
+        "root".to_string(),
+        render_node_to_value(&model.root, &model.classes),
+    );
     out.insert("nodes".to_string(), Value::Array(nodes));
     out.insert("classes".to_string(), json!(&model.classes));
     out.insert(
@@ -352,6 +371,7 @@ pub(crate) fn render_model_to_compat_json(
 fn render_node_to_map(
     node: &TreemapNodeRenderModel,
     children: Option<Vec<Value>>,
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
 ) -> Map<String, Value> {
     let mut out = Map::new();
     out.insert("name".to_string(), Value::String(node.name.clone()));
@@ -369,11 +389,24 @@ fn render_node_to_map(
     }
     if let Some(styles) = &node.css_compiled_styles {
         out.insert("cssCompiledStyles".to_string(), json!(styles));
+    } else if let Some(selector) = node.class_selector.as_deref()
+        && let Some(class_def) = classes.get(selector)
+    {
+        let styles = class_def.styles.join(";");
+        if !styles.is_empty() {
+            out.insert(
+                "cssCompiledStyles".to_string(),
+                Value::Array(vec![Value::String(styles)]),
+            );
+        }
     }
     out
 }
 
-fn render_node_to_value(root: &TreemapNodeRenderModel) -> Value {
+fn render_node_to_value(
+    root: &TreemapNodeRenderModel,
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+) -> Value {
     let mut completed: std::collections::HashMap<*const TreemapNodeRenderModel, Value> =
         std::collections::HashMap::new();
     let mut stack = vec![(root, false)];
@@ -388,7 +421,7 @@ fn render_node_to_value(root: &TreemapNodeRenderModel) -> Value {
             });
             completed.insert(
                 node as *const TreemapNodeRenderModel,
-                Value::Object(render_node_to_map(node, children)),
+                Value::Object(render_node_to_map(node, children, classes)),
             );
         } else {
             stack.push((node, true));
@@ -402,10 +435,14 @@ fn render_node_to_value(root: &TreemapNodeRenderModel) -> Value {
 
     completed
         .remove(&(root as *const TreemapNodeRenderModel))
-        .unwrap_or_else(|| Value::Object(render_node_to_map(root, None)))
+        .unwrap_or_else(|| Value::Object(render_node_to_map(root, None, classes)))
 }
 
-fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
+fn flatten_render_nodes(
+    root: &TreemapNodeRenderModel,
+    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
+    out: &mut Vec<Value>,
+) {
     let mut stack = root
         .children
         .as_deref()
@@ -416,7 +453,7 @@ fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
         .collect::<Vec<_>>();
 
     while let Some((node, level)) = stack.pop() {
-        let mut value = render_node_to_map(node, None);
+        let mut value = render_node_to_map(node, None, classes);
         value.insert("level".to_string(), Value::Number(level.into()));
         out.push(Value::Object(value));
 
@@ -430,28 +467,72 @@ fn flatten_render_nodes(root: &TreemapNodeRenderModel, out: &mut Vec<Value>) {
 
 impl TreemapSemanticSource {
     fn render_model(&self) -> TreemapDiagramRenderModel {
-        if !self.present {
-            return TreemapDiagramRenderModel::default();
+        self.render_model_with_control(None)
+            .expect("an uncontrolled Treemap render-model conversion cannot be cancelled")
+    }
+
+    fn render_model_controlled(
+        &self,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
+        self.render_model_with_control(Some(control))
+    }
+
+    fn render_model_with_control(
+        &self,
+        control: Option<&crate::OperationControl>,
+    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
+        if let Some(control) = control {
+            control.checkpoint()?;
         }
-        TreemapDiagramRenderModel {
+        if !self.present {
+            return Ok(TreemapDiagramRenderModel::default());
+        }
+
+        let mut workspace: Vec<Option<TreemapNodeRenderModel>> = vec![None; self.arena.nodes.len()];
+        let root_children =
+            render_nodes_from_arena(&self.arena, &self.roots, &mut workspace, control)?;
+        let classes = clone_class_defs(&self.class_defs, control)?;
+
+        if let Some(control) = control {
+            control.checkpoint()?;
+        }
+
+        Ok(TreemapDiagramRenderModel {
             title: self.title.clone(),
             acc_title: self.acc_title.clone(),
             acc_descr: self.acc_descr.clone(),
             root: TreemapNodeRenderModel {
                 name: String::new(),
-                children: Some(
-                    self.roots
-                        .iter()
-                        .map(|&idx| node_to_render_model(&self.arena, idx))
-                        .collect(),
-                ),
+                children: Some(root_children),
                 value: None,
                 class_selector: None,
                 css_compiled_styles: None,
             },
-            classes: self.class_defs.clone().into_iter().collect(),
-        }
+            classes,
+        })
     }
+}
+
+fn render_nodes_from_arena(
+    arena: &Arena,
+    roots: &[usize],
+    workspace: &mut [Option<TreemapNodeRenderModel>],
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<Vec<TreemapNodeRenderModel>> {
+    let mut rendered_roots = Vec::with_capacity(roots.len());
+    for (root_index, &root) in roots.iter().enumerate() {
+        if root_index % 128 == 0 {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
+        }
+        rendered_roots.push(node_to_render_model(arena, root, workspace, control)?);
+    }
+    if let Some(control) = control {
+        control.checkpoint()?;
+    }
+    Ok(rendered_roots)
 }
 
 fn parse_treemap_semantic_source(
@@ -480,7 +561,7 @@ fn treemap_semantic_source_from_parsed_controlled(
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<TreemapSemanticSource> {
     let class_defs = class_defs_from_rows_controlled(&parsed.rows, control)?;
-    let flat_items = flat_items_from_rows_controlled(&parsed.rows, &class_defs, control)?;
+    let flat_items = flat_items_from_rows_controlled(&parsed.rows, control)?;
     let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
     control.checkpoint()?;
     Ok(TreemapSemanticSource {
@@ -688,7 +769,6 @@ fn class_defs_from_rows_controlled(
 
 fn flat_items_from_rows_controlled(
     rows: &[TreemapRow],
-    class_defs: &std::collections::HashMap<String, StyleClassDef>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Vec<FlatItem>> {
     let mut flat_items: Vec<FlatItem> = Vec::new();
@@ -700,18 +780,6 @@ fn flat_items_from_rows_controlled(
             continue;
         };
 
-        let styles = item
-            .class_selector
-            .as_ref()
-            .map(|cls| get_styles_for_class(class_defs, &cls.text))
-            .unwrap_or_default();
-        let compiled = if !styles.is_empty() {
-            Some(styles.join(";"))
-        } else {
-            None
-        };
-        let css_compiled_styles = compiled.and_then(|s| if s.is_empty() { None } else { Some(s) });
-
         flat_items.push(FlatItem {
             level: item.indent,
             name: item.name.text.clone(),
@@ -721,7 +789,6 @@ fn flat_items_from_rows_controlled(
                 .class_selector
                 .as_ref()
                 .map(|selector| selector.text.clone()),
-            css_compiled_styles,
         });
     }
 
@@ -736,7 +803,6 @@ struct FlatItem {
     item_type: ItemType,
     value: Option<Value>,
     class_selector: Option<String>,
-    css_compiled_styles: Option<String>,
 }
 
 #[cfg(test)]
@@ -765,7 +831,6 @@ fn build_hierarchy_controlled(
             name: item.name.clone(),
             value: None,
             class_selector: item.class_selector.clone(),
-            css_compiled_styles: item.css_compiled_styles.as_ref().map(|s| vec![s.clone()]),
             children: match item.item_type {
                 ItemType::Leaf => None,
                 ItemType::Section => Some(Vec::new()),
@@ -821,12 +886,6 @@ fn node_to_value(arena: &Arena, idx: usize) -> Value {
             if let Some(cls) = &node.class_selector {
                 obj.insert("classSelector".to_string(), Value::String(cls.clone()));
             }
-            if let Some(css) = &node.css_compiled_styles {
-                obj.insert(
-                    "cssCompiledStyles".to_string(),
-                    Value::Array(css.iter().cloned().map(Value::String).collect()),
-                );
-            }
             if let Some(children) = &node.children {
                 obj.insert(
                     "children".to_string(),
@@ -857,11 +916,22 @@ fn node_to_value(arena: &Arena, idx: usize) -> Value {
         .unwrap_or_else(|| json!({ "name": "" }))
 }
 
-fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
-    let mut models: Vec<Option<TreemapNodeRenderModel>> = vec![None; arena.nodes.len()];
+fn node_to_render_model(
+    arena: &Arena,
+    idx: usize,
+    models: &mut [Option<TreemapNodeRenderModel>],
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<TreemapNodeRenderModel> {
     let mut stack = vec![(idx, false)];
+    let mut steps = 0usize;
 
     while let Some((node_idx, visited)) = stack.pop() {
+        if steps % 128 == 0 {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
+        }
+        steps = steps.saturating_add(1);
         let Some(node) = arena.nodes.get(node_idx) else {
             continue;
         };
@@ -878,7 +948,7 @@ fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
                 children,
                 value: node.value.clone(),
                 class_selector: node.class_selector.clone(),
-                css_compiled_styles: node.css_compiled_styles.clone(),
+                css_compiled_styles: None,
             });
         } else {
             stack.push((node_idx, true));
@@ -890,10 +960,29 @@ fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
         }
     }
 
-    models
+    Ok(models
         .get_mut(idx)
         .and_then(Option::take)
-        .unwrap_or_default()
+        .unwrap_or_default())
+}
+
+fn clone_class_defs(
+    class_defs: &std::collections::HashMap<String, StyleClassDef>,
+    control: Option<&crate::OperationControl>,
+) -> crate::OperationControlResult<std::collections::BTreeMap<String, StyleClassDef>> {
+    let mut classes = std::collections::BTreeMap::new();
+    for (index, (id, class_def)) in class_defs.iter().enumerate() {
+        if index % 128 == 0 {
+            if let Some(control) = control {
+                control.checkpoint()?;
+            }
+        }
+        classes.insert(id.clone(), class_def.clone());
+    }
+    if let Some(control) = control {
+        control.checkpoint()?;
+    }
+    Ok(classes)
 }
 
 fn add_class(
@@ -947,16 +1036,6 @@ fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
     }
 
     Ok(())
-}
-
-fn get_styles_for_class(
-    classes: &std::collections::HashMap<String, StyleClassDef>,
-    class_selector: &str,
-) -> Vec<String> {
-    classes
-        .get(class_selector)
-        .map(|c| c.styles.clone())
-        .unwrap_or_default()
 }
 
 fn is_label_style_bug_compatible(s: &str) -> bool {
@@ -1464,6 +1543,56 @@ accDescr: Treemap accDescr
     }
 
     #[test]
+    fn treemap_render_model_preserves_a_wide_root_forest() {
+        const ROOT_COUNT: usize = 512;
+        let mut input = String::from("treemap\n");
+        for index in 0..ROOT_COUNT {
+            input.push_str(&format!("\"root-{index}\": 1\n"));
+        }
+
+        let model = parse_treemap_model_for_render(&input, &meta()).unwrap();
+        let roots = model.root.children.as_ref().expect("root forest");
+        assert_eq!(roots.len(), ROOT_COUNT);
+        assert_eq!(roots.first().map(|root| root.name.as_str()), Some("root-0"));
+        assert_eq!(
+            roots.last().map(|root| root.name.as_str()),
+            Some("root-511")
+        );
+    }
+
+    #[test]
+    fn treemap_render_model_conversion_observes_cancellation() {
+        const ROOT_COUNT: usize = 512;
+        let arena = Arena {
+            nodes: (0..ROOT_COUNT)
+                .map(|index| NodeRecord {
+                    name: format!("root-{index}"),
+                    value: Some(json!(1)),
+                    class_selector: None,
+                    children: None,
+                })
+                .collect(),
+        };
+        let source = TreemapSemanticSource {
+            present: true,
+            title: None,
+            acc_title: None,
+            acc_descr: None,
+            class_defs: std::collections::HashMap::new(),
+            roots: (0..ROOT_COUNT).collect(),
+            arena,
+            editor_facts: EditorSemanticFacts::new(),
+        };
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            source.render_model_controlled(&control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
     fn treemap_errors_on_trailing_whitespace_only_line() {
         let msg = parse_error("treemap\n\"A\": 1\n    \n");
         assert!(
@@ -1580,7 +1709,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 4,
@@ -1588,7 +1716,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1596,7 +1723,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(10)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1604,7 +1730,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(15)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 4,
@@ -1612,7 +1737,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Section,
                 value: None,
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1620,7 +1744,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(20)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1628,7 +1751,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(25)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
             FlatItem {
                 level: 8,
@@ -1636,7 +1758,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 item_type: ItemType::Leaf,
                 value: Some(json!(30)),
                 class_selector: None,
-                css_compiled_styles: None,
             },
         ];
 
@@ -1742,7 +1863,15 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));
-        assert_eq!(compat["root"], serde_json::to_value(&typed.root).unwrap());
+        assert!(
+            typed.root.children.as_ref().unwrap()[0]
+                .css_compiled_styles
+                .is_none()
+        );
+        assert_eq!(
+            compat["root"]["children"][0]["cssCompiledStyles"][0],
+            json!("fill:#f96;stroke:#333")
+        );
         assert_eq!(compat["type"], json!("treemap"));
         assert!(compat["config"].is_object());
         assert_eq!(compat["accTitle"], Value::Null);

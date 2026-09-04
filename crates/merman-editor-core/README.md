@@ -8,12 +8,11 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-Use the facade from the repository's default branch. Pin a reviewed full commit for reproducible
-unreleased integrations:
+The alpha.6 workspace candidate is not a registry release yet. Check out the exact commit accepted by release preflight and use the local facade for reproducible candidate integrations:
 
 ```toml
 [dependencies]
-merman = { git = "https://github.com/Latias94/merman", rev = "FULL_COMMIT_SHA", default-features = false, features = ["analysis", "editor"] }
+merman = { path = "/path/to/merman/crates/merman", default-features = false, features = ["analysis", "editor"] }
 ```
 
 ```rust

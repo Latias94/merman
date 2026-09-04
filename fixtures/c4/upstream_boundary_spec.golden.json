@@ -1,27 +1,93 @@
 {
   "diagramType": "c4",
   "model": {
-    "accDescr": null,
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": "System Context diagram for Internet Banking System",
     "accTitle": null,
-    "boundaries": [
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
       {
-        "alias": "global",
-        "label": {
-          "text": "global"
+        "alias": "SystemAA",
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "system"
         },
-        "link": null,
-        "parentBoundary": "",
-        "tags": null,
-        "type": {
-          "text": "global"
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
         }
       },
       {
+        "alias": "s1",
+        "parentBoundary": "bType",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "label": {
+          "text": "S1"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
+      },
+      {
+        "alias": "s2",
+        "parentBoundary": "bLink",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "label": {
+          "text": "S2"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
+      },
+      {
+        "alias": "s3",
+        "parentBoundary": "bTags",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "label": {
+          "text": "S3"
+        },
+        "wrap": false,
+        "descr": {
+          "text": ""
+        }
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "parentBoundary": "",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null
+      },
+      {
         "alias": "b1",
+        "parentBoundary": "global",
         "label": {
           "text": "BankBoundary"
         },
-        "parentBoundary": "global",
         "type": {
           "text": "system"
         },
@@ -29,10 +95,10 @@
       },
       {
         "alias": "bType",
+        "parentBoundary": "global",
         "label": {
           "text": ""
         },
-        "parentBoundary": "global",
         "type": {
           "text": "company"
         },
@@ -40,12 +106,12 @@
       },
       {
         "alias": "bLink",
+        "parentBoundary": "global",
         "label": {
           "text": {
             "link": "https://github.com/mermaidjs"
           }
         },
-        "parentBoundary": "global",
         "type": {
           "text": "system"
         },
@@ -53,84 +119,18 @@
       },
       {
         "alias": "bTags",
+        "parentBoundary": "global",
         "label": {
           "text": {
             "tags": "tag1,tag2"
           }
         },
-        "parentBoundary": "global",
         "type": {
           "text": "system"
         },
         "wrap": false
       }
     ],
-    "c4Type": "C4Context",
-    "layout": {
-      "c4BoundaryInRow": 2,
-      "c4ShapeInRow": 4
-    },
-    "rels": [],
-    "shapes": [
-      {
-        "alias": "SystemAA",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "parentBoundary": "b1",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "s1",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "S1"
-        },
-        "parentBoundary": "bType",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "s2",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "S2"
-        },
-        "parentBoundary": "bLink",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
-      },
-      {
-        "alias": "s3",
-        "descr": {
-          "text": ""
-        },
-        "label": {
-          "text": "S3"
-        },
-        "parentBoundary": "bTags",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "wrap": false
-      }
-    ],
-    "title": "System Context diagram for Internet Banking System",
-    "type": "c4",
-    "wrap": false
+    "rels": []
   }
 }

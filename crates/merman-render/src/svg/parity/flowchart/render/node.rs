@@ -314,15 +314,45 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         dy: 0.0,
     };
 
-    let (shape_outcome, no_label) =
-        if let Some(outcome) = shapes::try_render_flowchart_no_label(out, ctx, &common, details) {
-            (outcome, true)
-        } else {
-            (
-                shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)?,
-                false,
+    let (shape_outcome, no_label) = if shape == "collapsedGroup" {
+        // Mermaid's collapsedGroup appends its separator and ellipsis after the labelHelper
+        // output. The dedicated renderer currently writes into String, so keep the bounded output
+        // seam here and retain the upstream child order (body → label → indicators).
+        let mut collapsed_body = String::new();
+        let geometry = shapes::render_collapsed_group_body(
+            &mut collapsed_body,
+            ctx,
+            &common,
+            &mut label,
+            details,
+        );
+        out.push_str(&collapsed_body);
+        let label_receipt =
+            label::render_flowchart_node_label_before_tail(out, ctx, &common, &label, details);
+        let mut collapsed_tail = String::new();
+        shapes::render_collapsed_group_indicators(&mut collapsed_tail, geometry);
+        out.push_str(&collapsed_tail);
+        out.push_str("</g>");
+        if common.wrapped_in_a {
+            out.push_str("</a>");
+        }
+        (
+            crate::svg::parity::flowchart::render::node::emission::FlowchartNodeShapeRenderOutcome::new(
+                true,
+                crate::svg::parity::flowchart::render::node::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
             )
-        };
+            .with_label(label_receipt),
+            false,
+        )
+    } else if let Some(outcome) = shapes::try_render_flowchart_no_label(out, ctx, &common, details)
+    {
+        (outcome, true)
+    } else {
+        (
+            shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)?,
+            false,
+        )
+    };
     let label_receipt = if no_label {
         out.push_str("</g>");
         if common.wrapped_in_a {

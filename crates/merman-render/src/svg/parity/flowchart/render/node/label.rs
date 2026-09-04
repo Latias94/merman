@@ -181,6 +181,27 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     label: &super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
 ) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+    render_flowchart_node_label_with_wrapper(out, ctx, common, label, details, true)
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label_before_tail(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    label: &super::FlowchartNodeLabelState<'_>,
+    details: &mut FlowchartRenderDetails,
+) -> super::emission::FlowchartNodeLabelEmissionReceipt {
+    render_flowchart_node_label_with_wrapper(out, ctx, common, label, details, false)
+}
+
+fn render_flowchart_node_label_with_wrapper(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    label: &super::FlowchartNodeLabelState<'_>,
+    details: &mut FlowchartRenderDetails,
+    close_node_wrapper: bool,
+) -> super::emission::FlowchartNodeLabelEmissionReceipt {
     let node_text_style = common.label_emission.text_style(ctx);
     let owner = ctx
         .svg_label_sidecar
@@ -314,7 +335,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 true,
             );
         }
-        out.push_str("</g></g></g>");
+        out.push_str("</g></g>");
     } else {
         let prepared_math = ctx
             .svg_label_sidecar
@@ -405,7 +426,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         let _ = write!(
             out,
-            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g>"#,
             label_group_class,
             escape_xml_display(&final_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
@@ -419,8 +440,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             label_html
         );
     }
-    if common.wrapped_in_a {
-        out.push_str("</a>");
+    if close_node_wrapper {
+        out.push_str("</g>");
+        if common.wrapped_in_a {
+            out.push_str("</a>");
+        }
     }
     super::emission::FlowchartNodeLabelEmissionReceipt::verified()
         .with_prepared_typography_reach(

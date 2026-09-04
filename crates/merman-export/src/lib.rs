@@ -3221,7 +3221,292 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
     }
 }
 
-/// Returns whether native output compositing can interpret a solid color.
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
+    usvg::FontResolver {
+        select_font: Box::new(move |font, fontdb| {
+            select_font_case_insensitively(font, fontdb.as_ref())
+                .or_else(|| query_browser_like_fallback_font(font, fontdb.as_ref()))
+                .or_else(|| fontdb.faces().next().map(|face| face.id))
+        }),
+        select_fallback: usvg::FontResolver::default_fallback_selector(),
+    }
+}
+
+#[cfg(feature = "pdf")]
+fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
+    usvg::FontResolver {
+        select_font: Box::new(move |font, fontdb| {
+            select_font_case_insensitively(font, fontdb.as_ref())
+                .or_else(|| query_browser_like_pdf_fallback_font(font, fontdb.as_ref()))
+                .or_else(|| fontdb.faces().next().map(|face| face.id))
+        }),
+        select_fallback: usvg::FontResolver::default_fallback_selector(),
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn select_font_case_insensitively(
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
+    let weight = usvg::fontdb::Weight(font.weight());
+    let stretch = font.stretch().into();
+    let style = font.style().into();
+
+    for family in font.families() {
+        let selected = match family {
+            usvg::FontFamily::Named(name) => {
+                query_named_font_family_case_insensitively(fontdb, name, weight, stretch, style)
+            }
+            usvg::FontFamily::Serif => {
+                query_font_family(fontdb, usvg::fontdb::Family::Serif, weight, stretch, style)
+            }
+            usvg::FontFamily::SansSerif => query_font_family(
+                fontdb,
+                usvg::fontdb::Family::SansSerif,
+                weight,
+                stretch,
+                style,
+            ),
+            usvg::FontFamily::Cursive => query_font_family(
+                fontdb,
+                usvg::fontdb::Family::Cursive,
+                weight,
+                stretch,
+                style,
+            ),
+            usvg::FontFamily::Fantasy => query_font_family(
+                fontdb,
+                usvg::fontdb::Family::Fantasy,
+                weight,
+                stretch,
+                style,
+            ),
+            usvg::FontFamily::Monospace => query_font_family(
+                fontdb,
+                usvg::fontdb::Family::Monospace,
+                weight,
+                stretch,
+                style,
+            ),
+        };
+        if selected.is_some() {
+            return selected;
+        }
+    }
+
+    // Preserve usvg's default final family fallback after the complete requested CSS stack.
+    query_font_family(fontdb, usvg::fontdb::Family::Serif, weight, stretch, style)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn query_named_font_family_case_insensitively(
+    fontdb: &usvg::fontdb::Database,
+    requested_name: &str,
+    weight: usvg::fontdb::Weight,
+    stretch: usvg::fontdb::Stretch,
+    style: usvg::fontdb::Style,
+) -> Option<usvg::fontdb::ID> {
+    query_font_family(
+        fontdb,
+        usvg::fontdb::Family::Name(requested_name),
+        weight,
+        stretch,
+        style,
+    )
+    .or_else(|| {
+        let canonical_name = fontdb
+            .faces()
+            .flat_map(|face| face.families.iter())
+            .map(|(name, _)| name)
+            .find(|name| unicase::eq(name.as_str(), requested_name))?;
+
+        query_font_family(
+            fontdb,
+            usvg::fontdb::Family::Name(canonical_name),
+            weight,
+            stretch,
+            style,
+        )
+    })
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn query_font_family(
+    fontdb: &usvg::fontdb::Database,
+    family: usvg::fontdb::Family<'_>,
+    weight: usvg::fontdb::Weight,
+    stretch: usvg::fontdb::Stretch,
+    style: usvg::fontdb::Style,
+) -> Option<usvg::fontdb::ID> {
+    let families = [family];
+    fontdb.query(&usvg::fontdb::Query {
+        families: &families,
+        weight,
+        stretch,
+        style,
+    })
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
+    let sans = first_font_family(fontdb, |face| !face.monospaced)
+        .or_else(|| first_font_family(fontdb, |_| true));
+    let mono = first_font_family(fontdb, |face| face.monospaced).or_else(|| sans.clone());
+
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none()
+        && let Some(family) = sans.as_ref()
+    {
+        fontdb.set_sans_serif_family(family.clone());
+    }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none()
+        && let Some(family) = sans.as_ref()
+    {
+        fontdb.set_serif_family(family.clone());
+    }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none()
+        && let Some(family) = mono.as_ref()
+    {
+        fontdb.set_monospace_family(family.clone());
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn raster_default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
+    query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
+        .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
+        .or_else(|| first_font_family(fontdb, |_| true))
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn query_browser_like_fallback_font(
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
+    let mut families = Vec::with_capacity(3);
+    if font_requests_monospace(font) {
+        families.push(usvg::fontdb::Family::Monospace);
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+    } else {
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+        families.push(usvg::fontdb::Family::Monospace);
+    }
+
+    let query = usvg::fontdb::Query {
+        families: &families,
+        weight: usvg::fontdb::Weight(font.weight()),
+        stretch: font.stretch().into(),
+        style: font.style().into(),
+    };
+    fontdb.query(&query)
+}
+
+#[cfg(feature = "pdf")]
+fn query_browser_like_pdf_fallback_font(
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
+    let mut families = Vec::with_capacity(3);
+    if pdf_font_requests_monospace(font) {
+        families.push(usvg::fontdb::Family::Monospace);
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+    } else {
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+        families.push(usvg::fontdb::Family::Monospace);
+    }
+
+    let query = usvg::fontdb::Query {
+        families: &families,
+        weight: usvg::fontdb::Weight(font.weight()),
+        stretch: font.stretch().into(),
+        style: font.style().into(),
+    };
+    fontdb.query(&query)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn query_normal_font_family(
+    fontdb: &usvg::fontdb::Database,
+    family: usvg::fontdb::Family<'_>,
+) -> Option<String> {
+    let families = [family];
+    let query = usvg::fontdb::Query {
+        families: &families,
+        weight: usvg::fontdb::Weight::NORMAL,
+        stretch: usvg::fontdb::Stretch::Normal,
+        style: usvg::fontdb::Style::Normal,
+    };
+    fontdb
+        .query(&query)
+        .and_then(|id| fontdb.face(id))
+        .and_then(face_family_name)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
+where
+    F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
+{
+    fontdb
+        .faces()
+        .find(|face| predicate(face))
+        .and_then(face_family_name)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
+    face.families
+        .iter()
+        .find(|(_, lang)| *lang == usvg::fontdb::Language::English_UnitedStates)
+        .or_else(|| face.families.first())
+        .map(|(family, _)| family.clone())
+}
+
+#[cfg(any(feature = "png", feature = "jpeg"))]
+fn font_requests_monospace(font: &usvg::Font) -> bool {
+    font.families().iter().any(|family| match family {
+        usvg::FontFamily::Monospace => true,
+        usvg::FontFamily::Named(name) => {
+            let name = name.to_ascii_lowercase();
+            name.contains("mono")
+                || name.contains("courier")
+                || name.contains("consolas")
+                || name.contains("menlo")
+        }
+        _ => false,
+    })
+}
+
+#[cfg(feature = "pdf")]
+fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
+    font.families().iter().any(|family| match family {
+        usvg::FontFamily::Monospace => true,
+        usvg::FontFamily::Named(name) => {
+            let name = name.to_ascii_lowercase();
+            name.contains("mono")
+                || name.contains("courier")
+                || name.contains("consolas")
+                || name.contains("menlo")
+        }
+        _ => false,
+    })
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy)]
+struct RgbaColor {
+    red: u8,
+    green: u8,
+    blue: u8,
+    alpha: u8,
+}
+
+/// Returns whether the native exporters can interpret a background color.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[must_use]
 pub fn is_valid_export_color(text: &str) -> bool {
@@ -3303,6 +3588,113 @@ fn parse_export_color(text: &str) -> std::result::Result<ExportRgbaColor, ()> {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn tiny_skia_color(color: ExportRgbaColor) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(color.red(), color.green(), color.blue(), color.alpha())
+}
+
+#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+mod font_resolver_tests {
+    use super::*;
+    use crate::font_environment::shared_system_fontdb;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn browser_font_resolver_matches_named_families_case_insensitively() {
+        let (fontdb, expected_id) = controlled_fontdb();
+
+        assert_eq!(
+            selected_font_id(Arc::clone(&fontdb), "'Maße Test Sans'"),
+            expected_id,
+            "the installed family spelling must select its named face"
+        );
+        assert_eq!(
+            selected_font_id(Arc::clone(&fontdb), "'maße test sans'"),
+            expected_id,
+            "CSS family matching must ignore ASCII case"
+        );
+        assert_eq!(
+            selected_font_id(Arc::clone(&fontdb), "'MASSE TEST SANS'"),
+            expected_id,
+            "CSS family matching must use Unicode default case folding"
+        );
+        assert_eq!(
+            selected_font_id(
+                Arc::clone(&fontdb),
+                "'__merman_missing_font__', 'masse test sans'"
+            ),
+            expected_id,
+            "case-insensitive matching must preserve CSS family stack order"
+        );
+    }
+
+    fn controlled_fontdb() -> (Arc<usvg::fontdb::Database>, usvg::fontdb::ID) {
+        let source_face = shared_system_fontdb()
+            .faces()
+            .next()
+            .cloned()
+            .expect("native export tests require one valid system font face");
+
+        let mut fontdb = usvg::fontdb::Database::new();
+        let mut fallback = source_face.clone();
+        fallback.families = vec![(
+            "Merman Fallback Serif".to_string(),
+            usvg::fontdb::Language::English_UnitedStates,
+        )];
+        fallback.weight = usvg::fontdb::Weight::NORMAL;
+        fallback.stretch = usvg::fontdb::Stretch::Normal;
+        fallback.style = usvg::fontdb::Style::Normal;
+
+        let mut target = source_face;
+        target.families = vec![(
+            "Maße Test Sans".to_string(),
+            usvg::fontdb::Language::English_UnitedStates,
+        )];
+        target.weight = usvg::fontdb::Weight::NORMAL;
+        target.stretch = usvg::fontdb::Stretch::Normal;
+        target.style = usvg::fontdb::Style::Normal;
+
+        fontdb.set_serif_family("Merman Fallback Serif");
+        fontdb.set_sans_serif_family("Merman Fallback Serif");
+        fontdb.set_monospace_family("Merman Fallback Serif");
+        let _fallback_id = fontdb.push_face_info(fallback);
+        let target_id = fontdb.push_face_info(target);
+        (Arc::new(fontdb), target_id)
+    }
+
+    fn selected_font_id(
+        fontdb: Arc<usvg::fontdb::Database>,
+        font_family: &str,
+    ) -> usvg::fontdb::ID {
+        let selected = Arc::new(Mutex::new(Vec::new()));
+        let selected_for_resolver = Arc::clone(&selected);
+        let resolver = browser_like_font_resolver();
+        let select_font = resolver.select_font;
+        let mut options = usvg::Options::default();
+        options.fontdb = fontdb;
+        options.font_resolver = usvg::FontResolver {
+            select_font: Box::new(move |font, fontdb| {
+                let id = select_font(font, fontdb);
+                if let Some(id) = id {
+                    selected_for_resolver
+                        .lock()
+                        .expect("selected-font recorder lock")
+                        .push(id);
+                }
+                id
+            }),
+            select_fallback: resolver.select_fallback,
+        };
+
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><text x="10" y="40" font-size="24" style="font-family: {font_family};">A</text></svg>"#
+        );
+        usvg::Tree::from_str(&svg, &options).expect("parse test SVG with native font resolver");
+
+        selected
+            .lock()
+            .expect("selected-font recorder lock")
+            .first()
+            .copied()
+            .expect("text parsing must select a primary font")
+    }
 }
 
 #[cfg(all(test, feature = "png"))]

@@ -14,40 +14,41 @@
     "shapes": [
       {
         "alias": "s1",
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "descr": {
-          "text": "Allows customers to view account data."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "system"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "Internet Banking System"
+        },
         "wrap": false,
         "sprite": "",
-        "tags": "internal"
+        "tags": "internal",
+        "descr": {
+          "text": "Allows customers to view account data."
+        }
       },
       {
         "alias": "s2",
-        "label": {
-          "text": "E-mail system"
-        },
-        "descr": {
-          "text": "The internal Microsoft Exchange e-mail system."
-        },
+        "parentBoundary": "global",
         "typeC4Shape": {
           "text": "external_system"
         },
-        "parentBoundary": "global",
+        "label": {
+          "text": "E-mail system"
+        },
         "wrap": false,
         "sprite": "",
-        "tags": "external"
+        "tags": "external",
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        }
       }
     ],
     "boundaries": [
       {
         "alias": "global",
+        "parentBoundary": "",
         "label": {
           "text": "global"
         },
@@ -55,15 +56,14 @@
           "text": "global"
         },
         "tags": null,
-        "link": null,
-        "parentBoundary": ""
+        "link": null
       }
     ],
     "rels": [
       {
-        "type": "rel",
         "from": "s1",
         "to": "s2",
+        "type": "rel",
         "label": {
           "text": "Sends e-mails"
         },
@@ -73,9 +73,9 @@
         "descr": {
           "text": ""
         },
+        "wrap": false,
         "sprite": "",
-        "tags": "notif",
-        "wrap": false
+        "tags": "notif"
       }
     ]
   }

@@ -5,14 +5,14 @@ status: active
 
 # Current State
 
-- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.1. The primary SVG matrix
+- Active Mermaid parity focus: the repository is pinned to Mermaid 11.17.2. The primary SVG matrix
   contains 35 source-backed families; `zenuml` remains the sole compatibility-only family. The
-  11.16 TreeView, Ishikawa, EventModeling, Venn, Swimlane, four Railroad dialects, Wardley, and
+  TreeView, Ishikawa, EventModeling, Venn, Swimlane, four Railroad dialects, Wardley, and
   Cynefin families now have typed semantics, editor facts where upstream provides them, layout,
   SVG rendering, pinned baselines, and executable comparison facts. Shared frontmatter/config
-  parsing follows the 11.16 same-indent delimiter rule and projects configuration namespaces from
+  parsing follows the pinned same-indent delimiter rule and projects configuration namespaces from
   the family catalog.
-- Golden refresh focus: regenerate 11.16 baselines after source-backed code changes. Known upstream
+- Golden refresh focus: regenerate 11.17.2 baselines after source-backed code changes. Known upstream
   regressions such as Mermaid issue #7954 must be classified separately from local drift.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
   contracts, editor snapshot memory use, and release-gate coverage.

@@ -113,6 +113,7 @@ pub(crate) fn flowchart_text_surface_fills(effective_config: &Value) -> [String;
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
     pub(crate) title_color: String,
+    pub(crate) legend_text_color: String,
     pub(crate) x_axis_title_color: String,
     pub(crate) x_axis_label_color: String,
     pub(crate) x_axis_tick_color: String,

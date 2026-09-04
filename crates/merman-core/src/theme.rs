@@ -33,7 +33,7 @@ impl From<ThemeResolutionError> for crate::Error {
     }
 }
 
-// Source: Mermaid 11.16.1 `packages/mermaid/src/themes/index.js`.
+// Source: Mermaid 11.17.2 `packages/mermaid/src/themes/index.js`.
 macro_rules! define_mermaid_theme_ids {
     ($(($variant:ident, $name:literal)),+ $(,)?) => {
         /// A theme identifier from the pinned Mermaid theme catalog.
@@ -1101,7 +1101,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn generated_theme_artifact() -> &'static GeneratedThemeArtifact {
     GENERATED_THEME_ARTIFACT.get_or_init(|| {
         let artifact: GeneratedThemeArtifact =
-            serde_json::from_str(include_str!("generated/theme_variables_11_16_1.json"))
+            serde_json::from_str(include_str!("generated/theme_variables_11_17_2.json"))
                 .expect("generated Mermaid theme artifact JSON is valid");
         assert_generated_theme_provenance(artifact.schema_version, &artifact.provenance);
         for program in THEME_PROGRAMS {
@@ -1149,9 +1149,10 @@ fn assert_generated_theme_provenance(schema_version: u32, provenance: &Generated
 #[cfg(test)]
 fn generated_theme_oracles() -> &'static GeneratedThemeOracles {
     GENERATED_THEME_ORACLES.get_or_init(|| {
-        let artifact: GeneratedThemeOracles =
-            serde_json::from_str(include_str!("generated/theme_oracles_11_16_1.json"))
-                .expect("generated Mermaid theme oracle JSON is valid");
+        let artifact: GeneratedThemeOracles = serde_json::from_str(include_str!(
+            "../../../fixtures/_verification/theme_variables_oracle_11_17_2.json"
+        ))
+        .expect("generated Mermaid theme oracle JSON is valid");
         assert_generated_theme_provenance(artifact.schema_version, &artifact.provenance);
         assert_eq!(
             &artifact.provenance,
@@ -1296,6 +1297,7 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
     for key in [
         "titleColor",
         "dataLabelColor",
+        "legendTextColor",
         "xAxisTitleColor",
         "xAxisLabelColor",
         "xAxisTickColor",

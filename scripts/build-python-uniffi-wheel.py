@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 from email.parser import Parser
+import os
 import shutil
 import subprocess
 import sys
@@ -163,6 +164,31 @@ def run(
     subprocess.run(args, cwd=cwd, check=True)
 
 
+def source_date_epoch() -> str:
+    """Return the reproducible archive timestamp for the checked-out source."""
+    configured = os.environ.get("SOURCE_DATE_EPOCH")
+    if configured is not None:
+        try:
+            value = int(configured)
+        except ValueError as exc:
+            raise RuntimeError("SOURCE_DATE_EPOCH must be a non-negative integer") from exc
+        if value < 0:
+            raise RuntimeError("SOURCE_DATE_EPOCH must be a non-negative integer")
+        return str(value)
+
+    completed = subprocess.run(
+        ["git", "show", "-s", "--format=%ct", "HEAD"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    value = completed.stdout.strip()
+    if not value.isdigit():
+        raise RuntimeError("git did not return a valid commit timestamp")
+    return value
+
+
 def verify_generated_python_support_files(package_dir: Path, staged: Path) -> None:
     repository_paths: list[str] = []
     for relative in PYTHON_GENERATED_SUPPORT_FILES:
@@ -270,6 +296,7 @@ def require_native_platform_wheel(wheel: Path) -> None:
 
 def main() -> int:
     args = parse_args()
+    os.environ.setdefault("SOURCE_DATE_EPOCH", source_date_epoch())
     package_source = Path(args.package_dir).expanduser().resolve()
     wheel_dir = Path(args.wheel_dir).expanduser().resolve()
 

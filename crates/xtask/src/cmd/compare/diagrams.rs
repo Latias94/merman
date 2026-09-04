@@ -205,7 +205,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Default,
         Standard,
         RawStem,
-        None,
+        UpstreamCompare,
         Dom,
         Summary,
         RootDelta,

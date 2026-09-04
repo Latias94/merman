@@ -514,6 +514,66 @@ fn first_er_entity_rect_size(svg: &str) -> (f64, f64) {
     )
 }
 
+fn er_entity_rect_size(svg: &str, entity_id: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid ER SVG");
+    let entity = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(entity_id))
+        .unwrap_or_else(|| panic!("missing ER entity {entity_id}: {svg}"));
+    let rect = entity
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|token| token == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("missing shell rectangle for ER entity {entity_id}: {svg}"));
+    (
+        rect.attribute("width")
+            .expect("ER entity width")
+            .parse()
+            .expect("ER entity width number"),
+        rect.attribute("height")
+            .expect("ER entity height")
+            .parse()
+            .expect("ER entity height number"),
+    )
+}
+
+fn er_relationship_label_background_size(svg: &str, label_text: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid ER SVG");
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class") == Some("edgeLabel")
+                && node
+                    .descendants()
+                    .filter_map(|descendant| descendant.text())
+                    .any(|text| text == label_text)
+        })
+        .unwrap_or_else(|| panic!("missing ER relationship label {label_text}: {svg}"));
+    let background = label
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("background"))
+        .unwrap_or_else(|| panic!("missing ER relationship background for {label_text}: {svg}"));
+    (
+        background
+            .attribute("width")
+            .expect("ER relationship label width")
+            .parse()
+            .expect("ER relationship label width number"),
+        background
+            .attribute("height")
+            .expect("ER relationship label height")
+            .parse()
+            .expect("ER relationship label height number"),
+    )
+}
+
 #[test]
 fn er_svg_renders_entities_and_relationships() {
     let path = workspace_root()
@@ -557,7 +617,7 @@ fn er_svg_renders_entities_and_relationships() {
 }
 
 #[test]
-fn er_svg_recursive_relationship_keeps_three_segments_and_one_label() {
+fn er_svg_recursive_relationship_is_one_logical_edge_and_one_label() {
     let path = workspace_root()
         .join("fixtures")
         .join("er")
@@ -568,20 +628,12 @@ fn er_svg_recursive_relationship_keeps_three_segments_and_one_label() {
 
     let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
 
-    for edge_id in [
-        "entity-CUSTOMER-0-cyclic-special-1",
-        "entity-CUSTOMER-0-cyclic-special-mid",
-        "entity-CUSTOMER-0-cyclic-special-2",
-    ] {
-        assert!(
-            svg.contains(&format!(r#"data-id="{edge_id}""#)),
-            "missing recursive ER edge segment {edge_id}: {svg}"
-        );
-    }
+    assert!(svg.contains(r#"data-id="id_entity-CUSTOMER-0_entity-CUSTOMER-0_0""#));
+    assert!(!svg.contains("cyclic-special"));
     assert_eq!(
         svg.matches(">refers<").count(),
         1,
-        "only the middle recursive segment should own the relationship label: {svg}"
+        "the logical recursive relationship should own one relationship label: {svg}"
     );
 }
 
@@ -700,6 +752,163 @@ erDiagram
             && edge_labels.contains(r#"text-anchor="middle""#)
             && !edge_labels.contains("<foreignObject"),
         "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
+    );
+}
+
+#[test]
+fn er_svg_flowchart_htmllabels_only_changes_relationship_labels() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("er")
+        .join(
+            "upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019.mmd",
+        );
+    let text = std::fs::read_to_string(path).expect("ER flowchart htmlLabels fixture");
+
+    let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
+    let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+    let edge_labels = edge_labels_group(&svg);
+
+    assert!(
+        edge_labels.contains(">places</tspan>") && !edge_labels.contains("<foreignObject"),
+        "flowchart.htmlLabels=false must switch only relationship labels: {svg}"
+    );
+
+    let relationship_labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel"))
+        .collect::<Vec<_>>();
+    assert_eq!(relationship_labels.len(), 5);
+    assert!(relationship_labels.iter().all(|label| {
+        label.descendants().any(|node| node.has_tag_name("text"))
+            && !label
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+    }));
+
+    let (label_width, label_height) = er_relationship_label_background_size(&svg, "places");
+    assert!(label_width > 0.0);
+    assert!(label_height > 0.0);
+
+    let entities = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with("merman-entity-"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(entities.len(), 5);
+    assert!(
+        entities.iter().all(|entity| entity
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))),
+        "root htmlLabels unset must keep ER entity labels as foreignObject: {svg}"
+    );
+    for entity_id in [
+        "merman-entity-CUSTOMER-0",
+        "merman-entity-ORDER-1",
+        "merman-entity-LINE-ITEM-2",
+        "merman-entity-ADDRESS-3",
+        "merman-entity-INVOICE-4",
+    ] {
+        let (_, height) = er_entity_rect_size(&svg, entity_id);
+        assert_eq!(height, 84.0, "unexpected height for {entity_id}");
+    }
+}
+
+#[test]
+fn er_svg_html_labels_false_uses_svg_text_for_entity_and_attribute_labels() {
+    let text = r#"%%{init: {"htmlLabels": false}}%%
+erDiagram
+subgraph Orders [Order Domain]
+  CUSTOMER {
+    string id PK
+    string name
+  }
+end
+CUSTOMER ||--|| ORDER : owns
+"#;
+
+    let html_text = r#"%%{init: {"htmlLabels": true}}%%
+erDiagram
+subgraph Orders [Order Domain]
+  CUSTOMER {
+    string id PK
+    string name
+  }
+end
+CUSTOMER ||--|| ORDER : owns
+"#;
+
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
+    let html_svg = render_er_svg_from_text(html_text, &SvgRenderOptions::default());
+    let document = roxmltree::Document::parse(&svg).expect("valid ER SVG");
+
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject")),
+        "htmlLabels=false must not emit foreignObject labels: {svg}"
+    );
+
+    let label_text = |class_name: &str| {
+        let label = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some(class_name))
+            .unwrap_or_else(|| panic!("missing ER label group {class_name}: {svg}"));
+        assert!(
+            label.descendants().any(|node| node.has_tag_name("text")),
+            "ER label {class_name} must use an SVG text terminal: {svg}"
+        );
+        label
+            .descendants()
+            .filter_map(|node| node.text())
+            .find(|text| !text.is_empty())
+            .unwrap_or_default()
+            .to_owned()
+    };
+
+    assert_eq!(label_text("label name"), "CUSTOMER");
+    assert_eq!(label_text("label attribute-type"), "string");
+    assert_eq!(label_text("label attribute-name"), "id");
+
+    let edge_labels = edge_labels_group(&svg);
+    assert!(
+        edge_labels.contains(">owns</tspan>") && !edge_labels.contains("<foreignObject"),
+        "root htmlLabels=false must switch relationship labels to SVG text: {svg}"
+    );
+    let (label_width, label_height) = er_relationship_label_background_size(&svg, "owns");
+    assert!(label_width > 0.0);
+    assert!(label_height > 0.0);
+
+    let svg_entity_size = er_entity_rect_size(&svg, "merman-entity-ORDER-1");
+    let html_entity_size = er_entity_rect_size(&html_svg, "merman-entity-ORDER-1");
+    assert_ne!(
+        svg_entity_size, html_entity_size,
+        "root htmlLabels=false must feed SVG text metrics into ER entity geometry"
+    );
+    assert!((svg_entity_size.1 - 77.6).abs() < 1e-9);
+    assert!((html_entity_size.1 - 84.0).abs() < 1e-9);
+
+    let cluster_label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("cluster-label"))
+        .expect("missing ER cluster label");
+    assert!(
+        cluster_label
+            .descendants()
+            .any(|node| node.has_tag_name("text")),
+        "ER cluster labels must use SVG text when htmlLabels=false: {svg}"
+    );
+    assert!(
+        cluster_label
+            .descendants()
+            .filter_map(|node| node.text())
+            .collect::<String>()
+            .contains("Order Domain"),
+        "ER cluster title must be emitted as SVG text: {svg}"
     );
 }
 
@@ -1883,7 +2092,10 @@ fn er_static_relation_stroke_binds_all_recursive_segments_and_terminal_markers()
     );
     let svg = render_er_svg_from_text_with_theme("erDiagram\n  A ||--o{ A : refers\n", &theme);
     let paths = relationship_path_tags(&svg);
-    assert_eq!(paths.len(), 3, "recursive ER path count: {svg}");
+    // Dagre keeps three helper segments in the layout model, while Mermaid's common SVG painter
+    // publishes one merged logical self-loop path. The layout test covers the helper segments;
+    // this SVG test must assert the visible terminal instead of the internal projection.
+    assert_eq!(paths.len(), 1, "recursive ER path count: {svg}");
     assert!(
         paths.iter().all(|path| path.contains("stroke:#123456")),
         "every recursive ER path segment must own the direct stroke: {paths:?}"

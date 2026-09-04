@@ -270,6 +270,66 @@ fn xychart_horizontal_line_point_label_offsets_from_the_screen_point() {
 }
 
 #[test]
+fn xychart_named_plots_render_a_configurable_legend() {
+    let text = r##"---
+config:
+  themeVariables:
+    xyChart:
+      legendTextColor: "#123456"
+---
+xychart
+  x-axis [Q1, Q2]
+  y-axis 0 --> 100
+  line "avg" [40, 50]
+  bar "p95" [80, 90]
+  line [30, 35]
+"##;
+    let layout = layout_xychart_from_text(text);
+
+    let legend_labels = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Text { group_texts, data }
+                if group_texts == &["legend".to_string(), "label".to_string()] =>
+            {
+                Some(data)
+            }
+            _ => None,
+        })
+        .expect("legend labels");
+    assert_eq!(
+        legend_labels
+            .iter()
+            .map(|label| label.text.as_str())
+            .collect::<Vec<_>>(),
+        ["avg", "p95"]
+    );
+    assert!(legend_labels.iter().all(|label| label.fill == "#123456"));
+
+    let disabled = layout_xychart_from_text(
+        r#"---
+config:
+  xyChart:
+    showLegend: false
+---
+xychart
+  x-axis [Q1, Q2]
+  y-axis 0 --> 100
+  line "avg" [40, 50]
+  bar "p95" [80, 90]
+"#,
+    );
+    assert!(!disabled.drawables.iter().any(|drawable| match drawable {
+        XyChartDrawableElem::Rect { group_texts, .. }
+        | XyChartDrawableElem::Text { group_texts, .. }
+        | XyChartDrawableElem::Path { group_texts, .. } => {
+            group_texts.first().is_some_and(|group| group == "legend")
+        }
+    }));
+}
+
+#[test]
 fn xychart_vertical_bar_data_label_can_render_outside_with_configured_color() {
     let svg = render_xychart_svg_from_text(
         r##"---
@@ -415,8 +475,8 @@ config:
 xychart
   x-axis [A]
   y-axis 0 --> 10
-  bar [4]
-  line [7 "Trend"]
+  bar "Bars" [4]
+  line "Trend" [7 "Trend point"]
 "##,
         &theme,
         Engine::new(),
@@ -448,9 +508,42 @@ xychart
     assert_eq!(line_path.attribute("stroke"), Some("#abcdef"));
     let point_label = line
         .descendants()
-        .find(|node| node.has_tag_name("text") && node.text() == Some("Trend"))
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Trend point"))
         .expect("themed XY Chart line point label");
     assert_eq!(point_label.attribute("fill"), Some("#abcdef"));
+
+    let legend = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("legend"))
+        .expect("XY Chart legend");
+    let legend_markers = legend
+        .children()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("markers"))
+        .expect("XY Chart legend markers");
+    let legend_bar = legend_markers
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("themed XY Chart legend bar marker");
+    assert_eq!(legend_bar.attribute("fill"), Some("#123456"));
+    assert_eq!(legend_bar.attribute("stroke"), Some("#123456"));
+    let legend_line = legend_markers
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("themed XY Chart legend line marker");
+    assert_eq!(legend_line.attribute("stroke"), Some("#abcdef"));
+
+    let legend_labels = legend
+        .children()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+        .expect("XY Chart legend labels");
+    assert_eq!(
+        legend_labels
+            .children()
+            .filter(|node| node.has_tag_name("text"))
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>(),
+        ["Bars", "Trend"]
+    );
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());

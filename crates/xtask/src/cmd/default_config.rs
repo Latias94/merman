@@ -10,8 +10,6 @@
 use super::{sort_json_value_keys, write_pretty_json};
 use crate::XtaskError;
 use serde::Deserialize;
-#[cfg(test)]
-use serde_json::Map as JsonMap;
 use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeSet;
 #[cfg(test)]
