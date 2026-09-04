@@ -148,6 +148,14 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      - name: Pin single-target macOS wheel platform
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "arm64"
+          printf '_PYTHON_HOST_PLATFORM=%s\n' 'macosx-11.0-arm64' >> "$GITHUB_ENV"
+
       - name: Build wheel
         run: python scripts/build-python-uniffi-wheel.py
 

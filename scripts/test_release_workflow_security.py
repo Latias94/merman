@@ -420,6 +420,17 @@ jobs:
         self.assertIn("--require-exact", publish)
         self.assertIn("PyPI did not expose the exact wheel set", publish)
 
+    def test_python_release_pins_single_target_macos_wheel_tag(self) -> None:
+        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
+        self.assertIn("Pin single-target macOS wheel platform", build)
+        self.assertIn("if: runner.os == 'macOS'", build)
+        self.assertIn('test "$(uname -m)" = "arm64"', build)
+        self.assertIn("macosx-11.0-arm64", build)
+        self.assertLess(
+            build.index("Pin single-target macOS wheel platform"),
+            build.index("- name: Build wheel"),
+        )
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)
