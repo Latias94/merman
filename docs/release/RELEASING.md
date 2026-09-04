@@ -441,7 +441,7 @@ manifest remains private to `target/typst-wasm-artifacts/`; the package transact
 verified artifact to an in-memory frozen wrapper/license source snapshot and must fail before
 replacing the prior version if live source or any staged byte changes.
 
-These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.3.0` are separate publication surfaces; publishing the crate does not publish the wrapper. After the exact source SHA passes preflight, a maintainer must separately authorize manual Typst Universe submission. The submission operator must retain the generated package and private artifact receipt, verify the registry's exact package version after acceptance, and only then change current installation guidance from the local `--package-path` candidate to the registry package.
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.3.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.3.0 wrapper was published on 2026-09-01 after the exact alpha.6 source candidate passed its owner gates. For a later version, retain the generated package and private artifact receipt, verify the registry's exact package version after acceptance, and only then change current installation guidance from a local `--package-path` candidate to the registry package.
 
 ## Tag And Push
 

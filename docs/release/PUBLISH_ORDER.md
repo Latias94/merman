@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ## Version Decision
 
@@ -50,11 +50,11 @@ their own tags and version identities.
 
 ## Typst Package Surface
 
-The Typst wrapper is an independent publication surface. The current candidate is `@preview/merman:0.3.0`, built from the prepared Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the published Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
+The Typst wrapper is an independent publication surface. `@preview/merman:0.3.0` was published to Typst Universe on 2026-09-01 from the Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and the existing ABI 2 exports. The package version changes because the shipped implementation closure and size characteristics are materially different, while the wrapper protocol remains compatible.
 
-Before a Typst registry submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. These are prepare/preflight checks only; manual Typst Universe submission requires explicit channel authorization. After submission, query the registry for the exact `0.3.0` package and update the package README and this file with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. The 0.3.0 submission is complete; after any future submission, query the registry for the exact package and update the package README and this file with observed publication evidence.
 
 ## Publish Order
 

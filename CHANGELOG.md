@@ -14,7 +14,7 @@ Alpha.6 is a deliberately breaking prerelease and the first 0.8 release aligned 
 - Rust and the first-party bindings now share one operation-scoped execution model with explicit cancellation, deadlines, resource policies, and structured failure details.
 - Terminal rendering now supports grapheme-aware plans, terminal-width profiles, styled encodings, broader family coverage, structured-text fallbacks, and configurable Flowchart label wrapping.
 - Editor workflows now combine parser-backed semantic snapshots with Tree-sitter syntax highlighting, including incremental native LSP and browser-worker paths that avoid full analysis on every keystroke.
-- New delivery surfaces include a Node-targeted WASM package for the experimental Node.js 22+ group, checked rustdoc SVG fragments, richer Playground exports and sharing, and an independently versioned Typst `0.3.0` candidate.
+- New delivery surfaces include a Node-targeted WASM package for the experimental Node.js 22+ group, checked rustdoc SVG fragments, richer Playground exports and sharing, and the independently versioned Typst `0.3.0` package.
 
 ### Looking ahead
 
@@ -53,7 +53,7 @@ The detailed contracts remain in **Breaking changes** below. Before mixing alpha
 - Added grapheme-aware ASCII plans, canonical/compact Flowchart and Sequence layouts, ANSI16 semantic roles, schema-2 output encoding, structured-text projections for non-diagrammatic families, and configurable Flowchart label wrapping for Issue #53.
 - Added `merman-cli rustdoc build/check` for checked static SVG fragments that can be committed, freshness-checked, and included by Rust documentation without adding a renderer or proc macro to the consumer graph. #65
 - Added Playground export previews for SVG/raster/document outputs, reproducible share URLs, and an infinite-canvas viewport that keeps editor pan/zoom state separate from exported geometry. #66 #67 #68
-- Prepared independently versioned Typst package `0.3.0` with Typst plugin ABI `2` and a smaller deterministic WASM closure after removing ICU collation data and generated font-metric tables; the Typst channel remains separate from the workspace release.
+- Published independently versioned Typst package `0.3.0` with Typst plugin ABI `2` and a smaller deterministic WASM closure after removing ICU collation data and generated font-metric tables; the Typst channel remains separate from the workspace release.
 
 ### Changed
 
@@ -77,9 +77,9 @@ The detailed contracts remain in **Breaking changes** below. Before mixing alpha
 
 ### Availability and known limitations
 
-- The workspace crates and CLI/LSP archives are published as `0.8.0-alpha.6` from immutable tag `v0.8.0-alpha.6`. Web, Node.js, Flutter, Python, Apple, Android, and Typst are independent channels and may still target alpha.5 or require a separate authorized publication; verify each channel before installing it.
+- The workspace crates and CLI/LSP archives are published as `0.8.0-alpha.6` from immutable tag `v0.8.0-alpha.6`. The Typst `0.3.0` package is published independently from the alpha.6 source line; Web, Node.js, Flutter, Python, Apple, and Android still require separate channel verification before installation.
 - The default Android, Apple, Python, and Flutter profiles intentionally omit math, PNG, JPEG, PDF, and native runtime adapters. Use the runtime catalog or a custom artifact when those capabilities are required; ELK requires `complete-svg-elk` or `layout-elk`.
-- The Node.js package group and Typst `0.3.0` package remain experimental and follow independent publication tracks. Their channels may lag the workspace release and must not be inferred from the alpha.6 version alone.
+- The Node.js package group remains experimental and follows an independent publication track. The Typst `0.3.0` package is also independently versioned; neither channel should be inferred from the workspace version alone.
 
 ## [0.8.0-alpha.5] - 2026-08-09
 
