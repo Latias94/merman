@@ -176,7 +176,7 @@ B -->|No| D[Debug]
 }
 
 #[test]
-fn mmdc_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallback() {
+fn mmdc_quadrant_pipeline_resolves_browser_only_color_and_materializes_resvg_fallback() {
     let diagram = "quadrantChart\n  title Reach and engagement\n  x-axis Low --> High\n  y-axis Low --> High\n  Campaign A: [0.3, 0.6]\n";
     let parity = run_with_stdin(&["mmdc", "-i", "-", "-o", "-"], diagram);
     let resvg_safe = run_with_stdin(
@@ -194,8 +194,12 @@ fn mmdc_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallback() 
     let parity_svg = String::from_utf8(parity.stdout).expect("parity stdout should be utf8");
     let safe_svg = String::from_utf8(resvg_safe.stdout).expect("resvg-safe stdout should be utf8");
     assert!(
-        parity_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
-        "raw/source output must preserve the pinned Mermaid token:\n{parity_svg}"
+        parity_svg.contains(r##"fill="#000000" stroke="none""##),
+        "canonical SVG output must resolve the browser-only point color:\n{parity_svg}"
+    );
+    assert!(
+        !parity_svg.contains("NaN"),
+        "canonical SVG output:\n{parity_svg}"
     );
     assert!(
         safe_svg.contains(r##"fill="#000000" stroke="none""##),

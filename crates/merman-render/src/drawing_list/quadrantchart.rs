@@ -20,8 +20,8 @@ use crate::model::{
     QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::quadrantchart::{
-    QUADRANT_BROWSER_POINT_FILL, QUADRANT_BROWSER_POINT_STROKE, QuadrantTextAnchor,
-    QuadrantTextBaseline, is_mermaid_missing_amount_hsl, quadrant_text_anchor,
+    QUADRANT_BROWSER_POINT_FILL, QUADRANT_BROWSER_POINT_STROKE, QuadrantChartConfigView,
+    QuadrantTextAnchor, QuadrantTextBaseline, is_mermaid_missing_amount_hsl, quadrant_text_anchor,
     quadrant_text_baseline,
 };
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
@@ -63,6 +63,8 @@ struct QuadrantChartBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    svg_semantic_classes: BTreeMap<String, String>,
+    use_max_width: bool,
 }
 
 impl<'a> QuadrantChartBuilder<'a> {
@@ -87,6 +89,9 @@ impl<'a> QuadrantChartBuilder<'a> {
         let layout = pair.layout();
         validate_layout(layout)?;
         let font_family_css = config_font_family_css(config);
+        let use_max_width = QuadrantChartConfigView::new(config)
+            .render_settings()
+            .use_max_width;
         Ok(Self {
             metadata,
             session,
@@ -105,46 +110,53 @@ impl<'a> QuadrantChartBuilder<'a> {
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "quadrantchart.document".to_string(),
-                },
-            ],
+            commands: vec![DrawingCommand::Save],
             semantics: Vec::new(),
+            svg_semantic_classes: BTreeMap::new(),
+            use_max_width,
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        self.begin_group("quadrantchart.document");
         self.semantics.push(SemanticAnnotation {
             id: "quadrantchart.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| self.layout.title.as_ref().map(|title| title.text.clone()))
-                .or_else(|| self.metadata.title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            // Body/frontmatter titles are visible chart labels.  Only an explicit `accTitle`
+            // belongs in the root accessibility metadata.
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
 
+        self.begin_group("quadrantchart.quadrants");
         for index in 0..self.layout.quadrants.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let quadrant = self.layout.quadrants[index].clone();
             self.emit_quadrant(index, &quadrant)?;
         }
+        self.end_group();
+        self.push_structural_semantic("quadrantchart.quadrants");
+
+        self.begin_group("quadrantchart.border");
         for index in 0..self.layout.border_lines.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let border = self.layout.border_lines[index].clone();
             self.emit_border(index, &border)?;
         }
+        self.end_group();
+        self.push_structural_semantic("quadrantchart.border");
+
+        self.begin_group("quadrantchart.data-points");
         for index in 0..self.layout.points.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let point = self.layout.points[index].clone();
             self.emit_point(index, &point)?;
         }
+        self.end_group();
+        self.push_structural_semantic("quadrantchart.data-points");
+
+        self.begin_group("quadrantchart.labels");
         for index in 0..self.layout.axis_labels.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let label = self.layout.axis_labels[index].clone();
@@ -155,6 +167,9 @@ impl<'a> QuadrantChartBuilder<'a> {
                 "axis label fill",
             )?;
         }
+        self.end_group();
+        self.push_structural_semantic("quadrantchart.labels");
+
         if let Some(title) = self.layout.title.clone() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_standalone_text(
@@ -192,16 +207,40 @@ impl<'a> QuadrantChartBuilder<'a> {
                 family: RenderFamilyKind::QuadrantChart,
                 body: SvgStructureBody::QuadrantChart(QuadrantChartSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.use_max_width,
+                    semantic_classes: self.svg_semantic_classes,
                 }),
             },
         })
     }
 
+    fn begin_group(&mut self, semantic_id: &str) {
+        if let Some(class) = quadrantchart_svg_group_class(semantic_id) {
+            self.svg_semantic_classes
+                .insert(semantic_id.to_string(), class.to_string());
+        }
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.to_string(),
+        });
+    }
+
+    fn end_group(&mut self) {
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+    }
+
+    fn push_structural_semantic(&mut self, semantic_id: &str) {
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id.to_string(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        });
+    }
+
     fn emit_quadrant(&mut self, index: usize, quadrant: &QuadrantChartQuadrantData) -> Result<()> {
         let semantic_id = format!("quadrantchart.quadrant.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.begin_group(&semantic_id);
         let styles = PortableStyleResolver::new("quadrantchart");
         if let Some(fill) = styles.optional_color("quadrant fill", &quadrant.fill)? {
             self.add_path(
@@ -220,7 +259,7 @@ impl<'a> QuadrantChartBuilder<'a> {
             )?;
         }
         self.emit_text(&quadrant.text, "quadrant text fill")?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.end_group();
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
@@ -260,9 +299,7 @@ impl<'a> QuadrantChartBuilder<'a> {
 
     fn emit_point(&mut self, index: usize, point: &QuadrantChartPointData) -> Result<()> {
         let semantic_id = format!("quadrantchart.point.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.begin_group(&semantic_id);
         let styles = PortableStyleResolver::new("quadrantchart");
         let fill_value = if is_mermaid_missing_amount_hsl(&point.fill) {
             QUADRANT_BROWSER_POINT_FILL
@@ -271,18 +308,14 @@ impl<'a> QuadrantChartBuilder<'a> {
         };
         let fill = styles.optional_color("point fill", fill_value)?;
         let stroke_width = styles.length("point stroke-width", &point.stroke_width)?;
-        let stroke = if stroke_width == 0.0 {
-            None
+        let stroke_value = if is_mermaid_missing_amount_hsl(&point.stroke_color) {
+            QUADRANT_BROWSER_POINT_STROKE
         } else {
-            let stroke_value = if is_mermaid_missing_amount_hsl(&point.stroke_color) {
-                QUADRANT_BROWSER_POINT_STROKE
-            } else {
-                &point.stroke_color
-            };
-            styles
-                .optional_color("point stroke", stroke_value)?
-                .map(|color| stroke(color, stroke_width))
+            &point.stroke_color
         };
+        let stroke = styles
+            .optional_color("point stroke", stroke_value)?
+            .map(|color| stroke(color, stroke_width));
         if point.radius > 0.0 && (fill.is_some() || stroke.is_some()) {
             self.add_path(
                 format!("{semantic_id}.shape"),
@@ -295,7 +328,7 @@ impl<'a> QuadrantChartBuilder<'a> {
             )?;
         }
         self.emit_text(&point.text, "point text fill")?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.end_group();
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
@@ -314,11 +347,9 @@ impl<'a> QuadrantChartBuilder<'a> {
         fill_property: &'static str,
     ) -> Result<()> {
         let title = visible_text(&text.text);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.begin_group(&semantic_id);
         self.emit_text(text, fill_property)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.end_group();
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role,
@@ -438,6 +469,21 @@ impl<'a> QuadrantChartBuilder<'a> {
 fn visible_text(text: &str) -> Option<String> {
     let text = svg_plain_text(text);
     (!text.is_empty()).then_some(text)
+}
+
+fn quadrantchart_svg_group_class(semantic_id: &str) -> Option<&'static str> {
+    match semantic_id {
+        "quadrantchart.document" => Some("main"),
+        "quadrantchart.quadrants" => Some("quadrants"),
+        "quadrantchart.border" => Some("border"),
+        "quadrantchart.data-points" => Some("data-points"),
+        "quadrantchart.labels" => Some("labels"),
+        "quadrantchart.title" => Some("title"),
+        id if id.starts_with("quadrantchart.quadrant.") => Some("quadrant"),
+        id if id.starts_with("quadrantchart.point.") => Some("data-point"),
+        id if id.starts_with("quadrantchart.axis-label.") => Some("label"),
+        _ => None,
+    }
 }
 
 fn text_transform(x: f64, y: f64, rotation_degrees: f64) -> Transform {

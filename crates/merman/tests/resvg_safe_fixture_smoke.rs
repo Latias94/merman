@@ -1017,7 +1017,7 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
 }
 
 #[test]
-fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
+fn quadrant_canonical_and_resvg_safe_outputs_keep_resolved_color_contracts() {
     let source = r#"quadrantChart
   title Reach and engagement
   x-axis Low Reach --> High Reach
@@ -1028,14 +1028,22 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
         .with_deterministic_text_measurer()
         .with_diagram_id("quadrant-artifact-lanes");
 
-    let raw_svg = renderer
+    let canonical_svg = renderer
         .render_svg(source)
-        .expect("raw/source render should succeed")
+        .expect("canonical render should succeed")
         .expect("quadrant should be detected");
     assert!(
-        raw_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
-        "raw/source output must preserve the pinned Mermaid token: {raw_svg}"
+        !canonical_svg.contains("NaN"),
+        "canonical SVG should resolve invalid browser-only colors: {canonical_svg}"
     );
+    let canonical_document =
+        roxmltree::Document::parse(&canonical_svg).expect("valid canonical SVG XML");
+    let canonical_point = canonical_document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("canonical quadrant point circle");
+    assert_eq!(canonical_point.attribute("fill"), Some("#000000"));
+    assert_eq!(canonical_point.attribute("stroke"), Some("none"));
 
     let resvg_safe_svg = renderer
         .render_resvg_safe(source)

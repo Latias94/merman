@@ -40,7 +40,7 @@ inventory row fails at test time.  The current inventory is:
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
-| QuadrantChart | yes | legacy bridge |
+| QuadrantChart | yes | canonical |
 | XYChart | yes | canonical |
 | GitGraph | yes | legacy bridge |
 | TreeView | yes | legacy bridge |

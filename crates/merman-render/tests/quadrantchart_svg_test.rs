@@ -6,6 +6,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use roxmltree::Document;
 
 fn render_quadrantchart_svg_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
@@ -90,10 +91,18 @@ fn quadrantchart_default_point_fill_matches_mermaid_11_16_theme_output() {
 "#,
     );
 
-    assert_contains(
-        &svg,
-        r#"<circle cx="31" cy="469" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)" stroke-width="0px"/>"#,
-    );
+    let document = Document::parse(&svg).expect("canonical QuadrantChart SVG is XML");
+    let point = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("circle")
+                && node.attribute("cx") == Some("31")
+                && node.attribute("cy") == Some("469")
+        })
+        .expect("boundary point circle");
+    assert_eq!(point.attribute("fill"), Some("#000000"));
+    assert_eq!(point.attribute("stroke"), Some("none"));
+    assert_eq!(point.attribute("stroke-width"), None);
 }
 
 #[test]
@@ -110,11 +119,31 @@ quadrantChart
     );
 
     assert!(!svg.contains("NaN"), "SVG leaked invalid color: {svg}");
-    assert_contains(
-        &svg,
-        r##"<circle cx="355.79999999999995" cy="129.79999999999995" r="5" fill="#facc15" stroke="#facc15" stroke-width="0px"/>"##,
-    );
-    assert_contains(&svg, r##"fill="#111827" font-size="12""##);
+    let document = Document::parse(&svg).expect("canonical QuadrantChart SVG is XML");
+    let point_group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-merman-semantic-id") == Some("quadrantchart.point.0")
+        })
+        .expect("styled point group");
+    let point = point_group
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("circle")
+                && node.attribute("cx") == Some("355.79999999999995")
+                && node.attribute("cy") == Some("129.79999999999995")
+        })
+        .expect("styled point circle");
+    assert_eq!(point.attribute("fill"), Some("#facc15"));
+    assert_eq!(point.attribute("stroke"), Some("#facc15"));
+    assert_eq!(point.attribute("stroke-width"), Some("0"));
+    let point_label = point_group
+        .descendants()
+        .find(|node| node.has_tag_name("text"))
+        .expect("styled point label");
+    assert_eq!(point_label.attribute("fill"), Some("#111827"));
+    assert_eq!(point_label.attribute("font-size"), Some("12"));
 }
 
 #[test]

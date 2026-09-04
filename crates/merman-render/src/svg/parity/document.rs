@@ -226,6 +226,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::QuadrantChart(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -284,6 +288,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::QuadrantChart(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -319,6 +327,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::packet::packet_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::QuadrantChart(_) => Some((
+                false,
+                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -339,7 +351,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("</style>");
         if matches!(
             self.svg_body,
-            SvgStructureBody::Packet(_) | SvgStructureBody::XyChart(_)
+            SvgStructureBody::Packet(_)
+                | SvgStructureBody::QuadrantChart(_)
+                | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
         }
@@ -355,7 +369,9 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn accessibility_id(&self, suffix: &str) -> String {
         match self.svg_body {
-            SvgStructureBody::Packet(_) | SvgStructureBody::XyChart(_) => {
+            SvgStructureBody::Packet(_)
+            | SvgStructureBody::QuadrantChart(_)
+            | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
                     other => other,
@@ -774,6 +790,9 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn semantic_extra_class(&self, semantic_id: &str) -> Option<&str> {
         match self.svg_body {
+            SvgStructureBody::QuadrantChart(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -801,6 +820,27 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::QuadrantChart(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id.starts_with("quadrantchart.quadrant.") && raw_id.ends_with(".shape") {
+                let path = self.path_resource(path_id)?;
+                if let Some(bounds) = rectangle_from_path(path) {
+                    return self.emit_rect(path_id, bounds, style);
+                }
+            }
+            if raw_id.starts_with("quadrantchart.point.") && raw_id.ends_with(".shape") {
+                let path = self.path_resource(path_id)?;
+                if let Some((center, radius)) = circle_from_path(path) {
+                    return self.emit_circle(path_id, center, radius, style);
+                }
+            }
+            if raw_id.starts_with("quadrantchart.border.") {
+                let path = self.path_resource(path_id)?;
+                if let Some((start, end)) = line_from_path(path) {
+                    return self.emit_line(path_id, start, end, style);
+                }
+            }
+        }
         if matches!(self.svg_body, SvgStructureBody::XyChart(_))
             && path_id.as_str() == "xychart.background"
         {
@@ -877,6 +917,63 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_circle(
+        &mut self,
+        path_id: &ResourceId,
+        center: Point,
+        radius: f64,
+        style: &PathStyle,
+    ) -> Result<()> {
+        write!(
+            self.output,
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"",
+            fmt(center.x),
+            fmt(center.y),
+            fmt(radius),
+        )
+        .map_err(|_| invalid("failed to write SVG circle"))?;
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push('"');
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_line(
+        &mut self,
+        path_id: &ResourceId,
+        start: Point,
+        end: Point,
+        style: &PathStyle,
+    ) -> Result<()> {
+        write!(
+            self.output,
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"",
+            fmt(start.x),
+            fmt(start.y),
+            fmt(end.x),
+            fmt(end.y),
+        )
+        .map_err(|_| invalid("failed to write SVG line"))?;
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push('"');
         }
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -1192,11 +1289,17 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_transform_and_blend(&mut self) {
-        let xychart_text = matches!(self.svg_body, SvgStructureBody::XyChart(_))
-            && self
-                .current_semantic_id()
-                .is_some_and(|id| id.starts_with("xychart.text."));
-        if xychart_text && is_rigid_transform(self.state.transform) {
+        let family_text = self
+            .current_semantic_id()
+            .is_some_and(|id| match self.svg_body {
+                SvgStructureBody::QuadrantChart(_) => id.starts_with("quadrantchart."),
+                SvgStructureBody::XyChart(_) => id.starts_with("xychart.text."),
+                _ => false,
+            });
+        if family_text
+            && self.state.transform != Transform::IDENTITY
+            && is_rigid_transform(self.state.transform)
+        {
             let transform = self.state.transform;
             let rotation = transform.b.atan2(transform.a).to_degrees();
             write!(
@@ -1298,6 +1401,7 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Flowchart
         | RenderFamilyKind::Swimlane
         | RenderFamilyKind::Error => "merman",
+        RenderFamilyKind::QuadrantChart => "quadrantchart",
         _ => family.as_str(),
     }
 }
@@ -1346,6 +1450,68 @@ fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
     let max_y = first.y.max(second.y).max(third.y).max(fourth.y);
     let bounds = Rect::new(x, y, max_x - x, max_y - y);
     (bounds.width > 0.0 && bounds.height > 0.0).then_some(bounds)
+}
+
+fn line_from_path(path: &PathResource) -> Option<(Point, Point)> {
+    let [
+        PathSegment::MoveTo { to: start },
+        PathSegment::LineTo { to: end },
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+    Some((*start, *end))
+}
+
+fn circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
+    let [
+        PathSegment::MoveTo { to: start },
+        PathSegment::ArcTo {
+            radius_x,
+            radius_y,
+            x_axis_rotation_degrees,
+            large_arc,
+            sweep_clockwise,
+            to: opposite,
+        },
+        PathSegment::ArcTo {
+            radius_x: second_radius_x,
+            radius_y: second_radius_y,
+            x_axis_rotation_degrees: second_rotation,
+            large_arc: second_large_arc,
+            sweep_clockwise: second_sweep_clockwise,
+            to: end,
+        },
+        PathSegment::Close,
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+
+    let epsilon = f64::EPSILON * 32.0;
+    let approx_eq = |left: f64, right: f64| (left - right).abs() <= epsilon;
+    if !radius_x.is_finite()
+        || !radius_y.is_finite()
+        || *radius_x <= 0.0
+        || (*radius_x - *radius_y).abs() > epsilon
+        || (*radius_x - *second_radius_x).abs() > epsilon
+        || (*radius_y - *second_radius_y).abs() > epsilon
+        || *x_axis_rotation_degrees != 0.0
+        || *second_rotation != 0.0
+        || *large_arc
+        || *second_large_arc
+        || !*sweep_clockwise
+        || !*second_sweep_clockwise
+        || !approx_eq(start.x, end.x)
+        || !approx_eq(start.y, end.y)
+    {
+        return None;
+    }
+    let center = Point::new((start.x + opposite.x) / 2.0, (start.y + opposite.y) / 2.0);
+    if !center.x.is_finite() || !center.y.is_finite() {
+        return None;
+    }
+    Some((center, *radius_x))
 }
 
 fn scoped_id(prefix: &str, index: usize, raw: &str) -> String {

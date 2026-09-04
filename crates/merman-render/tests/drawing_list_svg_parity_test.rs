@@ -195,3 +195,49 @@ fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
             .any(|node| { node.attribute("data-merman-semantic-id") == Some("xychart.text.0.0") })
     );
 }
+
+#[test]
+fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
+    let svg = render_svg(
+        "quadrantChart\n  accTitle: Quadrant parity\n  title Portfolio\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
+        "quadrantchart-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical QuadrantChart SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("viewBox"), Some("0 0 500 500"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 500px; background-color: white;")
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-quadrantchart-parity")
+    );
+    for class in [
+        "main",
+        "quadrants",
+        "border",
+        "data-points",
+        "labels",
+        "title",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical QuadrantChart class {class:?}"
+        );
+    }
+    assert!(document.descendants().any(|node| node.has_tag_name("rect")));
+    assert!(document.descendants().any(|node| node.has_tag_name("line")));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("circle"))
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("quadrantchart.point.0")
+    }));
+}

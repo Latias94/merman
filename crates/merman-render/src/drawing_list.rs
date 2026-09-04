@@ -284,6 +284,8 @@ pub(crate) struct PacketSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct QuadrantChartSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public Radar document.
