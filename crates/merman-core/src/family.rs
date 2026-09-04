@@ -174,6 +174,37 @@ impl CombinedSemanticParse {
         }
     }
 
+    /// Builds a semantic parse while allowing the compatibility projection to observe the
+    /// operation's cancellation channel. The uncontrolled constructor remains useful for the
+    /// older family parsers; controlled families should use this variant so a cancellation that
+    /// arrives after semantic construction is not converted into a successful parse result.
+    pub(crate) fn from_construction_controlled<S, F>(
+        construction: std::result::Result<S, F>,
+        control: &OperationControl,
+        success: impl FnOnce(S) -> OperationControlResult<(Result<Value>, EditorSemanticFacts)>,
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> OperationControlResult<Self> {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts) = success(source)?;
+                Ok(Self {
+                    model,
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                })
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                control.checkpoint()?;
+                Ok(Self {
+                    model: Err(error),
+                    editor_facts,
+                    warning_facts: Vec::new(),
+                })
+            }
+        }
+    }
+
     pub(crate) fn from_construction_with_warning_facts<S, F>(
         construction: std::result::Result<S, F>,
         success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts, Vec<DiagramWarningFact>),
