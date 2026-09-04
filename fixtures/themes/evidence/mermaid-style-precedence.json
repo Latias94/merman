@@ -1,7 +1,7 @@
 {
   "snapshotVersion": 1,
   "sourceId": "source-mermaid",
-  "revision": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+  "revision": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
   "evidenceFiles": [
     {
       "path": "packages/mermaid/src/config.ts",
@@ -17,23 +17,23 @@
     },
     {
       "path": "packages/mermaid/src/diagrams/class/shapeUtil.ts",
-      "sha256": "c06007902cf3b72c6a96603984ae47d4c63bd421b2c5a7681e7857a0fffaf9a9"
+      "sha256": "ed768affadef0163dce386f6bbeffdc0b49d0e8188d23d4c72a5132da581ed43"
     },
     {
       "path": "packages/mermaid/src/diagrams/er/erDb.ts",
-      "sha256": "46c0f437890f74436e0b5e511969b57c1c115df9a200c14b90f7fc38b95f516d"
+      "sha256": "c048254a2fe1f3a294f41b901d8b9f73d0f6bbb1b999e8c9f82f7ba5b736aa69"
     },
     {
       "path": "packages/mermaid/src/diagrams/er/parser/erDiagram.jison",
-      "sha256": "a0cc3baeb25cefa0f64663cd1c1868107e6da1506318592c35c45b099a8598bb"
+      "sha256": "4f7c96b05d15bcc9c0e753bb106a5b8a67cfa4c8b2e13faab1d7098b92f9e5be"
     },
     {
       "path": "packages/mermaid/src/diagrams/er/styles.ts",
-      "sha256": "a24bbbf64e744267413a4f3a490a61c0af79bf28786a423a0269e6d8e958a8e8"
+      "sha256": "57a9e8892bdaf6feea153af07b1cac55c0e56ba8ed7f2a0ee21755a47dafabc2"
     },
     {
       "path": "packages/mermaid/src/diagrams/flowchart/flowDb.ts",
-      "sha256": "d32d6cff636c62e2b7678db5920295ce30c3dd5198acdb11d0ff3f2bd073c79c"
+      "sha256": "a37c7ec0fe29343e22b5785e7d8c3cf5f595d827e3a62ecaacfb159b617872a4"
     },
     {
       "path": "packages/mermaid/src/diagrams/flowchart/parser/flow.jison",
@@ -41,7 +41,7 @@
     },
     {
       "path": "packages/mermaid/src/diagrams/state/dataFetcher.ts",
-      "sha256": "f25f08c34c418015a80f1cf4b5238af6d95e71d12375106a65e26c70d67d8be9"
+      "sha256": "96ade1b450d6843a7ac42b59f9d803aadeb66b087bb93da9685e72ce07441c92"
     },
     {
       "path": "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison",
@@ -49,11 +49,11 @@
     },
     {
       "path": "packages/mermaid/src/diagrams/state/stateDb.ts",
-      "sha256": "8ff26e886a4a607f8507b818fdf2b512eea0f5baa863bb3152295dba485c7924"
+      "sha256": "f135a0c6753d4656437b3ffa091f93bde7002f0213178f5546032f1e27e601cc"
     },
     {
       "path": "packages/mermaid/src/mermaidAPI.ts",
-      "sha256": "87626fb17af931a56db29f5e88165e3a845002c843dd0e4188145d69c7a0c2b1"
+      "sha256": "1908ef06ddf59b37dfb7664b44112d4e4c7f3ea0bb6ccdf22f94cf16acabcf3a"
     },
     {
       "path": "packages/mermaid/src/preprocess.ts",
@@ -61,7 +61,7 @@
     },
     {
       "path": "packages/mermaid/src/rendering-util/rendering-elements/edges.js",
-      "sha256": "fbc35af88cac2b247a58a560be2abb9f951417b328f248f137ff962b6372ffed"
+      "sha256": "c65b94839cded66fc155279bc120df9e7efa0e342f34a4afc12743aa16a4b9ec"
     },
     {
       "path": "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts",
@@ -73,7 +73,7 @@
     },
     {
       "path": "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts",
-      "sha256": "404f88cb90b70c7d38d79b726aaf9b1e6a415eaecf675861de43d9cd7fd84cc4"
+      "sha256": "1ac5256a670bf956fe46bb4df1fbdd2f67fa1eedce5e1b3ca3868404c32872d6"
     },
     {
       "path": "packages/mermaid/src/styles.ts",
@@ -104,7 +104,7 @@
       "encounterOrder": false,
       "evidence": [
         "packages/mermaid/src/config.ts:29-47",
-        "packages/mermaid/src/mermaidAPI.ts:469-473"
+        "packages/mermaid/src/mermaidAPI.ts:474-478"
       ],
       "note": "Init directives overlay prior configuration in source encounter order."
     },
@@ -131,7 +131,7 @@
       "encounterOrder": false,
       "evidence": [
         "packages/mermaid/src/styles.ts:34-46",
-        "packages/mermaid/src/mermaidAPI.ts:218-309,311-325,565-581"
+        "packages/mermaid/src/mermaidAPI.ts:219-310,312-326,572-588"
       ],
       "note": "Generated root font-family and font-size CSS is installed before browser layout, but no portable family adapter currently resolves that cascade before measurement."
     },
@@ -144,7 +144,7 @@
       "admission": "source-compatibility",
       "rank": 1,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/mermaidAPI.ts:104-200,218-309,565-581"],
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:105-201,219-310,572-588"],
       "note": "Raw themeCSS is a compatibility origin whose selector cascade is not portable."
     },
     {
@@ -156,7 +156,7 @@
       "admission": "paint-only",
       "rank": 2,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/mermaidAPI.ts:128-200,311-325,565-581"],
+      "evidence": ["packages/mermaid/src/mermaidAPI.ts:129-201,312-326,572-588"],
       "note": "Generated classDef rules are emitted after resolved themeCSS."
     },
     {
@@ -231,7 +231,7 @@
       "admission": "typed",
       "rank": 0,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178"],
+      "evidence": ["packages/mermaid/src/diagrams/flowchart/flowDb.ts:1224-1274"],
       "note": "Default linkStyle is copied before edge-specific style."
     },
     {
@@ -244,8 +244,8 @@
       "rank": 1,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178",
-        "packages/mermaid/src/rendering-util/rendering-elements/edges.js:751-807"
+        "packages/mermaid/src/diagrams/flowchart/flowDb.ts:1224-1274",
+        "packages/mermaid/src/rendering-util/rendering-elements/edges.js:773-829"
       ],
       "note": "Edge-specific linkStyle overlays copied default linkStyle."
     },
@@ -296,7 +296,7 @@
       "encounterOrder": true,
       "evidence": [
         "packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts:34-39",
-        "packages/mermaid/src/diagrams/class/shapeUtil.ts:13-26",
+        "packages/mermaid/src/diagrams/class/shapeUtil.ts:14-27",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts:236-267"
       ],
       "note": "Class style typography is not reliably available before ClassDiagram text measurement."
@@ -324,8 +324,8 @@
       "encounterOrder": false,
       "evidence": [
         "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison:291-345",
-        "packages/mermaid/src/diagrams/state/dataFetcher.ts:181-227,284-301",
-        "packages/mermaid/src/diagrams/state/stateDb.ts:625-645"
+        "packages/mermaid/src/diagrams/state/dataFetcher.ts:181-227,279-296",
+        "packages/mermaid/src/diagrams/state/stateDb.ts:624-644"
       ],
       "note": "Assigned StateDiagram classes overlay theme defaults in stored class order."
     },
@@ -338,7 +338,7 @@
       "admission": "typed",
       "rank": 2,
       "encounterOrder": false,
-      "evidence": ["packages/mermaid/src/diagrams/state/stateDb.ts:686-695"],
+      "evidence": ["packages/mermaid/src/diagrams/state/stateDb.ts:685-694"],
       "note": "Inline StateDiagram style replaces the stored node style list after class resolution."
     },
     {
@@ -352,10 +352,10 @@
       "encounterOrder": false,
       "evidence": [
         "packages/mermaid/src/diagrams/er/styles.ts:42-49,79-96",
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-204",
-        "packages/mermaid/src/diagrams/er/erDb.ts:54-65,143-187,207-218",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:229-231",
+        "packages/mermaid/src/diagrams/er/erDb.ts:61-72,168-227,377-427",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:25-27,48-50,320-333",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-51,75-103"
       ],
       "note": "Within the admitted paint subset, every ER entity starts with the implicit default class and compiles that class before entity-specific declarations."
     },
@@ -369,10 +369,10 @@
       "rank": 1,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/er/erDb.ts:143-187,189-198,207-218",
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:121-180,202-215",
+        "packages/mermaid/src/diagrams/er/erDb.ts:168-227,303-364,377-427",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:121-187,229-242",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,320-333",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-51,75-103"
       ],
       "note": "Within the admitted paint subset, named ER classes compile in entity cssClasses order and overlay the implicit default class."
     },
@@ -386,10 +386,10 @@
       "rank": 2,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/er/erDb.ts:157-167,207-218",
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:217-224",
+        "packages/mermaid/src/diagrams/er/erDb.ts:182-207,377-427",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:244-251",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,320-333",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-38,61-89"
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-51,75-103"
       ],
       "note": "Within the admitted paint subset, ER inline declarations append after compiled class styles, so later duplicate properties win."
     },
@@ -403,9 +403,9 @@
       "rank": 0,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-204",
-        "packages/mermaid/src/diagrams/er/erDb.ts:54-65,143-187,207-218",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:229-231",
+        "packages/mermaid/src/diagrams/er/erDb.ts:61-72,168-227,377-427",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-72",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
       ],
       "note": "Default-class typography reaches ER labelStyles before text measurement, but no portable family adapter currently resolves it before layout."
@@ -420,9 +420,9 @@
       "rank": 1,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:202-215",
-        "packages/mermaid/src/diagrams/er/erDb.ts:143-198,207-218",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:229-242",
+        "packages/mermaid/src/diagrams/er/erDb.ts:168-364,377-427",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-72",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
       ],
       "note": "Assigned-class typography overlays default typography before ER text measurement and remains an explicit portability residual."
@@ -437,9 +437,9 @@
       "rank": 2,
       "encounterOrder": false,
       "evidence": [
-        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:217-224",
-        "packages/mermaid/src/diagrams/er/erDb.ts:157-167,207-218",
-        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-58",
+        "packages/mermaid/src/diagrams/er/parser/erDiagram.jison:244-251",
+        "packages/mermaid/src/diagrams/er/erDb.ts:182-207,377-427",
+        "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-72",
         "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:48-50,92-127,343-398"
       ],
       "note": "Inline typography wins after compiled ER classes and affects measurement, but the typed adapter has not yet admitted it."

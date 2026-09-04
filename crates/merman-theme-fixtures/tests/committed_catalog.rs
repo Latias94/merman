@@ -77,6 +77,37 @@ fn committed_catalog_is_hash_bound_licensed_and_complete() {
 }
 
 #[test]
+fn mermaid_style_precedence_tracks_selected_upstream_revision() {
+    let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
+    let lock_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("tools")
+        .join("upstreams")
+        .join("REPOS.lock.json");
+    let lock: Value = serde_json::from_str(
+        &std::fs::read_to_string(lock_path).expect("read upstream lock"),
+    )
+    .expect("parse upstream lock");
+    let selected_revision = lock
+        .get("repos")
+        .and_then(Value::as_object)
+        .and_then(|repos| repos.get("mermaid"))
+        .and_then(Value::as_object)
+        .and_then(|repo| repo.get("commit"))
+        .and_then(Value::as_str)
+        .expect("selected Mermaid commit");
+
+    assert_eq!(
+        catalog
+            .source("source-mermaid")
+            .expect("Mermaid source")
+            .revision(),
+        selected_revision
+    );
+}
+
+#[test]
 fn sequence_proof_fixture_registers_the_closed_family_and_source_inventory() {
     let catalog = ThemeFixtureCatalog::load(themes_root()).expect("load committed theme corpus");
     let fixture = catalog

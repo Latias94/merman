@@ -1,8 +1,8 @@
 # Mermaid Theme Style Precedence
 
 This note records the source-backed style origins that the portable theme compiler must preserve.
-The evidence is pinned to Mermaid `11.16.1` at commit
-`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf` in `repo-ref/mermaid`.
+The evidence is pinned to Mermaid `11.17.2` at commit
+`dcb694ddb58dc5ad3502e7e903cac05fd812eac3` in `repo-ref/mermaid`.
 
 ## Configuration Origins
 
@@ -43,7 +43,7 @@ resolved themeCSS
 generated classDef CSS
 ```
 
-The stylesheet is installed before the renderer starts layout and measurement. Mermaid 11.16.1
+The stylesheet is installed before the renderer starts layout and measurement. Mermaid 11.17.2
 also preserves the generated root `font-family`, `font-size`, and `fill` declarations as inheritable
 root rules instead of forcing another descendant namespace. That means browser CSS can affect
 measurements, but native exporters do not necessarily implement the same selector or computed-style
@@ -164,11 +164,11 @@ All paths below are relative to `repo-ref/mermaid` at the pinned commit.
 
 | Contract | Source evidence |
 | --- | --- |
-| Built-in, site, frontmatter, and directive config order | `packages/mermaid/src/defaultConfig.ts:18-34`; `packages/mermaid/src/mermaidAPI.ts:71-75,636-659`; `packages/mermaid/src/preprocess.ts:19-63`; `packages/mermaid/src/config.ts:29-47`; `packages/mermaid/src/mermaidAPI.spec.ts:804-824` |
-| `themeCSS`, generated root typography, and generated `classDef` CSS order | `packages/mermaid/src/mermaidAPI.ts:104-200,218-325,565-581`; `packages/mermaid/src/styles.ts:34-46,115-163` |
-| Flowchart default/node/assigned/inline node styles | `packages/mermaid/src/diagrams/flowchart/parser/flow.jison:533-570`; `packages/mermaid/src/diagrams/flowchart/flowDb.ts:207-215,406-429,462-476,1026-1093`; `packages/mermaid/src/rendering-util/rendering-elements/handDrawnShapeStyles.ts:18-89` |
-| Flowchart default and edge-specific link styles | `packages/mermaid/src/diagrams/flowchart/flowDb.ts:1141-1178`; `packages/mermaid/src/rendering-util/rendering-elements/edges.js:64-120,751-807` |
-| ClassDiagram asymmetric encounter-order copying and late style application | `packages/mermaid/src/diagrams/class/classDb.ts:122-134,192-194,331-367,684-695`; `packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts:34-39`; `packages/mermaid/src/diagrams/class/shapeUtil.ts:13-26`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts:13-33,236-267` |
-| State assigned-class and inline order, without implicit default | `packages/mermaid/src/diagrams/state/parser/stateDiagram.jison:291-345`; `packages/mermaid/src/diagrams/state/stateDb.ts:294-307,625-645,686-695`; `packages/mermaid/src/diagrams/state/dataFetcher.ts:145-227,284-301`; `packages/mermaid/src/diagrams/state/stateCommon.ts:47-59` |
-| ER implicit default, assigned-class order, inline paint, and pre-layout typography residuals | `packages/mermaid/src/diagrams/er/parser/erDiagram.jison:121-180,202-224`; `packages/mermaid/src/diagrams/er/erDb.ts:54-65,143-198,207-218`; `packages/mermaid/src/diagrams/er/styles.ts:42-49,74-96`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:25-27,48-50,92-127,318-333,343-398`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:18-89` |
+| Built-in, site, frontmatter, and directive config order | `packages/mermaid/src/defaultConfig.ts:18-34`; `packages/mermaid/src/mermaidAPI.ts:72-76,663-686`; `packages/mermaid/src/preprocess.ts:19-63`; `packages/mermaid/src/config.ts:29-47`; `packages/mermaid/src/mermaidAPI.spec.ts:804-824` |
+| `themeCSS`, generated root typography, and generated `classDef` CSS order | `packages/mermaid/src/mermaidAPI.ts:105-201,219-326,572-588`; `packages/mermaid/src/styles.ts:34-46,115-163` |
+| Flowchart default/node/assigned/inline node styles | `packages/mermaid/src/diagrams/flowchart/parser/flow.jison:533-570`; `packages/mermaid/src/diagrams/flowchart/flowDb.ts:216-224,415-438,471-485,1026-1093`; `packages/mermaid/src/rendering-util/rendering-elements/handDrawnShapeStyles.ts:31-103` |
+| Flowchart default and edge-specific link styles | `packages/mermaid/src/diagrams/flowchart/flowDb.ts:1224-1274`; `packages/mermaid/src/rendering-util/rendering-elements/edges.js:64-120,773-829` |
+| ClassDiagram asymmetric encounter-order copying and late style application | `packages/mermaid/src/diagrams/class/classDb.ts:122-134,192-194,331-367,684-695`; `packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts:34-39`; `packages/mermaid/src/diagrams/class/shapeUtil.ts:14-27`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts:13-33,236-267` |
+| State assigned-class and inline order, without implicit default | `packages/mermaid/src/diagrams/state/parser/stateDiagram.jison:291-345`; `packages/mermaid/src/diagrams/state/stateDb.ts:293-306,624-644,685-694`; `packages/mermaid/src/diagrams/state/dataFetcher.ts:145-227,279-296`; `packages/mermaid/src/diagrams/state/stateCommon.ts:47-59` |
+| ER implicit default, assigned-class order, inline paint, and pre-layout typography residuals | `packages/mermaid/src/diagrams/er/parser/erDiagram.jison:121-187,229-251`; `packages/mermaid/src/diagrams/er/erDb.ts:61-72,168-227,303-317,377-427`; `packages/mermaid/src/diagrams/er/styles.ts:42-49,74-96`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts:25-27,48-50,92-127,318-333,343-398`; `packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts:31-103` |
 | Sequence typography and dedicated rect/box paint channels | `packages/mermaid/src/diagrams/sequence/sequenceDiagram.ts:10-16`; `packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts:375-413,469-479,875-887,1181-1201,2144-2150`; `packages/mermaid/src/diagrams/sequence/sequenceDb.ts:145-152,391-418`; `packages/mermaid/src/diagrams/sequence/svgDraw.js:379-410`; `packages/mermaid/src/diagrams/common/svgDrawCommon.ts:54-65` |

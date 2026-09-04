@@ -64,12 +64,12 @@
     {
       "id": "source-mermaid",
       "project": "mermaid-js/mermaid",
-      "revision": "7ecca0cd7f1658ef74f4e7e91f925724ef403bbf",
+      "revision": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
       "upstreamLicensePath": "LICENSE",
       "licensePath": "licenses/mermaid-MIT.txt",
       "licenseSha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
       "snapshotPath": "evidence/mermaid-style-precedence.json",
-      "snapshotSha256": "d4fa92bac03b1bf9ef134221a63c0b9b24c2ee6a1f6a05e6880ee3d76507023a",
+      "snapshotSha256": "5656d4de20e42e925914ec6e010f05a93e22662a6316bc7dda10415fe6903c76",
       "evidence": [
         {
           "sourcePath": "packages/mermaid/src/config.ts",
@@ -85,23 +85,23 @@
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/class/shapeUtil.ts",
-          "sha256": "c06007902cf3b72c6a96603984ae47d4c63bd421b2c5a7681e7857a0fffaf9a9"
+          "sha256": "ed768affadef0163dce386f6bbeffdc0b49d0e8188d23d4c72a5132da581ed43"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/er/erDb.ts",
-          "sha256": "46c0f437890f74436e0b5e511969b57c1c115df9a200c14b90f7fc38b95f516d"
+          "sha256": "c048254a2fe1f3a294f41b901d8b9f73d0f6bbb1b999e8c9f82f7ba5b736aa69"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/er/parser/erDiagram.jison",
-          "sha256": "a0cc3baeb25cefa0f64663cd1c1868107e6da1506318592c35c45b099a8598bb"
+          "sha256": "4f7c96b05d15bcc9c0e753bb106a5b8a67cfa4c8b2e13faab1d7098b92f9e5be"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/er/styles.ts",
-          "sha256": "a24bbbf64e744267413a4f3a490a61c0af79bf28786a423a0269e6d8e958a8e8"
+          "sha256": "57a9e8892bdaf6feea153af07b1cac55c0e56ba8ed7f2a0ee21755a47dafabc2"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/flowchart/flowDb.ts",
-          "sha256": "d32d6cff636c62e2b7678db5920295ce30c3dd5198acdb11d0ff3f2bd073c79c"
+          "sha256": "a37c7ec0fe29343e22b5785e7d8c3cf5f595d827e3a62ecaacfb159b617872a4"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/flowchart/parser/flow.jison",
@@ -109,7 +109,7 @@
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/state/dataFetcher.ts",
-          "sha256": "f25f08c34c418015a80f1cf4b5238af6d95e71d12375106a65e26c70d67d8be9"
+          "sha256": "96ade1b450d6843a7ac42b59f9d803aadeb66b087bb93da9685e72ce07441c92"
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison",
@@ -117,11 +117,11 @@
         },
         {
           "sourcePath": "packages/mermaid/src/diagrams/state/stateDb.ts",
-          "sha256": "8ff26e886a4a607f8507b818fdf2b512eea0f5baa863bb3152295dba485c7924"
+          "sha256": "f135a0c6753d4656437b3ffa091f93bde7002f0213178f5546032f1e27e601cc"
         },
         {
           "sourcePath": "packages/mermaid/src/mermaidAPI.ts",
-          "sha256": "87626fb17af931a56db29f5e88165e3a845002c843dd0e4188145d69c7a0c2b1"
+          "sha256": "1908ef06ddf59b37dfb7664b44112d4e4c7f3ea0bb6ccdf22f94cf16acabcf3a"
         },
         {
           "sourcePath": "packages/mermaid/src/preprocess.ts",
@@ -129,7 +129,7 @@
         },
         {
           "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/edges.js",
-          "sha256": "fbc35af88cac2b247a58a560be2abb9f951417b328f248f137ff962b6372ffed"
+          "sha256": "c65b94839cded66fc155279bc120df9e7efa0e342f34a4afc12743aa16a4b9ec"
         },
         {
           "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts",
@@ -141,7 +141,7 @@
         },
         {
           "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts",
-          "sha256": "404f88cb90b70c7d38d79b726aaf9b1e6a415eaecf675861de43d9cd7fd84cc4"
+          "sha256": "1ac5256a670bf956fe46bb4df1fbdd2f67fa1eedce5e1b3ca3868404c32872d6"
         },
         {
           "sourcePath": "packages/mermaid/src/styles.ts",
