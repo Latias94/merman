@@ -312,8 +312,10 @@ impl DrawingListDocument {
 
         let mut referenced_fallbacks = BTreeSet::new();
         let mut state_depth = 0usize;
+        let mut state_scopes = Vec::new();
         let mut semantic_depth = 0usize;
         let mut layer_depth = 0usize;
+        let mut clip_depth = 0usize;
         let mut text_bytes = 0usize;
         let mut glyph_count = 0usize;
         for command in &self.commands {
@@ -324,8 +326,30 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("state depth overflows usize"))?;
                     validate_count("nesting_depth", state_depth, limits.max_nesting_depth)?;
+                    state_scopes.push((semantic_depth, layer_depth, clip_depth));
                 }
                 DrawingCommand::Restore => {
+                    let Some((saved_semantic_depth, saved_layer_depth, saved_clip_depth)) =
+                        state_scopes.pop()
+                    else {
+                        return Err(DrawingListError::invalid("restore without matching save"));
+                    };
+                    if semantic_depth != saved_semantic_depth {
+                        return Err(DrawingListError::invalid(
+                            "restore cannot cross an open semantic group",
+                        ));
+                    }
+                    if layer_depth != saved_layer_depth {
+                        return Err(DrawingListError::invalid(
+                            "restore cannot cross an open layer",
+                        ));
+                    }
+                    if clip_depth < saved_clip_depth {
+                        return Err(DrawingListError::invalid(
+                            "clip scope cannot end before its save scope",
+                        ));
+                    }
+                    clip_depth = saved_clip_depth;
                     state_depth = state_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("restore without matching save")
                     })?;
@@ -354,12 +378,21 @@ impl DrawingListDocument {
                     }
                 }
                 DrawingCommand::ClipPath { path, .. } => {
+                    if state_depth == 0 {
+                        return Err(DrawingListError::invalid(
+                            "clip_path must be scoped by save/restore",
+                        ));
+                    }
                     if !path_ids.contains(path) {
                         return Err(DrawingListError::invalid(format!(
                             "clip_path references unknown path {}",
                             path.as_str()
                         )));
                     }
+                    clip_depth = clip_depth
+                        .checked_add(1)
+                        .ok_or_else(|| DrawingListError::invalid("clip depth overflows usize"))?;
+                    validate_count("nesting_depth", clip_depth, limits.max_nesting_depth)?;
                 }
                 DrawingCommand::DrawImage { image, .. } => {
                     if !image_ids.contains(image) {
@@ -443,6 +476,14 @@ impl DrawingListDocument {
             return Err(DrawingListError::invalid(
                 "save/restore state is unbalanced",
             ));
+        }
+        if !state_scopes.is_empty() {
+            return Err(DrawingListError::invalid(
+                "save/restore scopes are unbalanced",
+            ));
+        }
+        if clip_depth != 0 {
+            return Err(DrawingListError::invalid("clip scopes are unbalanced"));
         }
         if semantic_depth != 0 {
             return Err(DrawingListError::invalid("semantic groups are unbalanced"));

@@ -38,6 +38,55 @@ fn validator_rejects_unbalanced_state_and_wrong_resource_kind() {
 }
 
 #[test]
+fn validator_enforces_save_scopes_for_clips_and_groups() {
+    let mut document = sample_document();
+    let path_id = ResourceId::new("path.node-a");
+
+    let restore = document
+        .commands
+        .pop()
+        .expect("sample document has a final restore");
+    document.commands.insert(
+        0,
+        DrawingCommand::ClipPath {
+            path: path_id.clone(),
+            fill_rule: FillRule::NonZero,
+        },
+    );
+    document.commands.push(restore);
+    assert!(document.validate().is_err(), "clip paths need a save scope");
+
+    let mut document = sample_document();
+    document.commands.insert(
+        1,
+        DrawingCommand::BeginSemanticGroup {
+            semantic_id: "node.a".into(),
+        },
+    );
+    assert!(
+        document.validate().is_err(),
+        "a restore must not cross an open semantic group"
+    );
+
+    let mut document = sample_document();
+    let restore = document
+        .commands
+        .pop()
+        .expect("sample document has a final restore");
+    document.commands.insert(
+        3,
+        DrawingCommand::ClipPath {
+            path: path_id,
+            fill_rule: FillRule::EvenOdd,
+        },
+    );
+    document.commands.push(restore);
+    document
+        .validate()
+        .expect("a clip path inside the sample save scope is valid");
+}
+
+#[test]
 fn validator_enforces_exact_command_and_numeric_boundaries() {
     let document = sample_document();
     let exact = DrawingListLimits {
