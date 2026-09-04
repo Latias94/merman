@@ -18,6 +18,7 @@ use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle as MeasurementTextStyle, split_html_br_lines};
+use crate::zenuml::DEFAULT_STARTER;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
@@ -670,8 +671,8 @@ impl<'a> ZenUmlBuilder<'a> {
         message: &ZenumlMessageLayout,
         creation: bool,
     ) -> Result<()> {
-        self.require_participant(&message.from)?;
-        self.require_participant(&message.to)?;
+        self.validate_endpoint(&message.from)?;
+        self.validate_endpoint(&message.to)?;
         let id = format!(
             "zenuml.{}message.{index}",
             if creation { "creation-" } else { "" }
@@ -926,8 +927,8 @@ impl<'a> ZenUmlBuilder<'a> {
     fn emit_returns(&mut self) -> Result<()> {
         for (index, returned) in self.layout.returns.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            self.require_participant(&returned.from)?;
-            self.require_participant(&returned.to)?;
+            self.validate_endpoint(&returned.from)?;
+            self.validate_endpoint(&returned.to)?;
             let id = format!("zenuml.return.{index}");
             self.begin_semantic(
                 &id,
@@ -1442,6 +1443,13 @@ impl<'a> ZenUmlBuilder<'a> {
         })
     }
 
+    fn validate_endpoint(&self, name: &str) -> Result<()> {
+        if name == DEFAULT_STARTER {
+            return Ok(());
+        }
+        self.require_participant(name).map(|_| ())
+    }
+
     fn measure_width(&self, text: &str, size: f64, weight: u16, style: FontStyle) -> f64 {
         let measurement_style = MeasurementTextStyle {
             font_family: Some(self.font.families.join(", ")),
@@ -1766,8 +1774,8 @@ fn validate_model_and_layout(
             [returned.from_x, returned.to_x, returned.y],
             "ZenUML return geometry",
         )?;
-        if !layout_names.contains(returned.from.as_str())
-            || !layout_names.contains(returned.to.as_str())
+        if !is_virtual_endpoint(&returned.from, &layout_names)
+            || !is_virtual_endpoint(&returned.to, &layout_names)
         {
             return Err(invalid(format!(
                 "ZenUML return `{}` references missing participant",
@@ -1832,8 +1840,8 @@ fn validate_message_layout(
         [message.from_x, message.to_x, message.y],
         "ZenUML message geometry",
     )?;
-    if !participant_names.contains(message.from.as_str())
-        || !participant_names.contains(message.to.as_str())
+    if !is_virtual_endpoint(&message.from, participant_names)
+        || !is_virtual_endpoint(&message.to, participant_names)
     {
         return Err(invalid(format!(
             "ZenUML message `{}` references missing participant",
@@ -1841,6 +1849,10 @@ fn validate_message_layout(
         )));
     }
     Ok(())
+}
+
+fn is_virtual_endpoint(name: &str, participant_names: &HashSet<&str>) -> bool {
+    name == "_STARTER_" || participant_names.contains(name)
 }
 
 fn validate_layout_statement_coverage(

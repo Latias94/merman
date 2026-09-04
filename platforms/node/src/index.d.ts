@@ -187,6 +187,12 @@ export declare class MermanEngine {
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;
   /** Synchronous rendering is intended only for explicit SSG build paths. */
   renderSvgSync(source: string, options?: Omit<RenderSvgOptions, "signal">): string;
+  renderDrawingList(source: string, options?: RenderSvgOptions): Promise<string>;
+  /** Synchronous rendering is intended only for explicit SSG build paths. */
+  renderDrawingListSync(
+    source: string,
+    options?: Omit<RenderSvgOptions, "signal">,
+  ): string;
   svgPlanJson(source: string, options?: RenderSvgOptions): Promise<string>;
   svgPlanJsonSync(
     source: string,

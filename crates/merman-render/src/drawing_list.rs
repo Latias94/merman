@@ -69,6 +69,13 @@ pub(crate) struct SvgStructureSidecar {
     pub(crate) body: SvgStructureBody,
 }
 
+impl SvgStructureSidecar {
+    /// Returns the stable Mermaid-like diagram role used by the SVG root.
+    pub(crate) fn diagram_type(&self) -> &'static str {
+        self.family.as_str()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum SvgStructureBody {
     Error(ErrorSvgBody),

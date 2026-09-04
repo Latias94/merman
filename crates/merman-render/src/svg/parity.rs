@@ -30,6 +30,7 @@ mod class;
 mod css;
 mod curve;
 mod cynefin;
+mod document;
 mod edge_label_geometry;
 mod emitted_bounds;
 mod er;
@@ -82,6 +83,8 @@ pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
+
+pub(crate) use document::render_document_svg;
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
 use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect};
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};

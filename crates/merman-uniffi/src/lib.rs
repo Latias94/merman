@@ -758,6 +758,18 @@ impl Merman {
         )))
     }
 
+    pub fn render_drawing_list(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::DrawingListJson,
+            source,
+            options_json,
+        )))
+    }
+
     pub fn render_png(
         &self,
         source: String,
@@ -1102,6 +1114,18 @@ impl MermanEngine {
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
             OperationKey::Svg,
+            source,
+            options_json,
+        )))
+    }
+
+    pub fn render_drawing_list(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::DrawingListJson,
             source,
             options_json,
         )))

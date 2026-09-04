@@ -1739,6 +1739,50 @@ mod tests {
     }
 
     #[test]
+    fn zenuml_complexity_includes_participant_and_body_comments() {
+        let plain = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\n@Actor A\nA.m()\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let commented = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                concat!(
+                    "zenuml\n",
+                    "// participant note\n",
+                    "@Actor A\n",
+                    "A.m() {\n",
+                    "  // body note\n",
+                    "  B.work()\n",
+                    "  // close note\n",
+                    "}\n",
+                ),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Zenuml(plain_model) = plain.model() else {
+            panic!("expected plain ZenUML model");
+        };
+        let RenderSemanticModel::Zenuml(commented_model) = commented.model() else {
+            panic!("expected commented ZenUML model");
+        };
+
+        let without_comments = ZenumlComplexity::from_model(plain_model);
+        let with_comments = ZenumlComplexity::from_model(commented_model);
+        let comment_bytes = [" participant note ", " body note ", " close note "]
+            .into_iter()
+            .map(str::len)
+            .sum::<usize>();
+        assert!(
+            with_comments.label_bytes >= without_comments.label_bytes + comment_bytes,
+            "participant and body comments must contribute to the model budget"
+        );
+    }
+
+    #[test]
     fn zenuml_uses_the_shared_model_budget() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(

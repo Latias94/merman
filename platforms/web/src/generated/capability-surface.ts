@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -14,6 +14,13 @@ export const WEB_CAPABILITIES = [
     "id": "ascii",
     "kind": "output",
     "implications": []
+  },
+  {
+    "id": "drawing-list",
+    "kind": "output",
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "editor",
@@ -52,6 +59,10 @@ export const WEB_OUTPUTS = [
   {
     "id": "ascii",
     "capability": "ascii"
+  },
+  {
+    "id": "drawing-list",
+    "capability": "drawing-list"
   },
   {
     "id": "svg",
@@ -101,6 +112,14 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": true
   },
   {
+    "id": "drawing-list-json",
+    "capability": "drawing-list",
+    "output": "drawing-list",
+    "compiled_prerequisites": [],
+    "media_type": "application/vnd.merman.drawing-list+json;version=1",
+    "requires_uri": false
+  },
+  {
     "id": "layout-json",
     "capability": "svg",
     "output": null,
@@ -145,6 +164,7 @@ export const WEB_BINDING_OPERATIONS = [
 export const WEB_CAPABILITY_IDS = [
   "analysis",
   "ascii",
+  "drawing-list",
   "editor",
   "layout-cytoscape",
   "layout-elk",
@@ -156,6 +176,7 @@ export type WebCapabilityId = (typeof WEB_CAPABILITY_IDS)[number];
 
 export const WEB_OUTPUT_IDS = [
   "ascii",
+  "drawing-list",
   "svg"
 ] as const;
 
@@ -167,6 +188,7 @@ export const WEB_BINDING_OPERATION_IDS = [
   "ascii",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "drawing-list-json",
   "layout-json",
   "semantic-json",
   "svg",

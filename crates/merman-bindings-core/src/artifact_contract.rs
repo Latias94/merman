@@ -84,6 +84,8 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "png")]
             $crate::OperationKey::Png,
             $crate::OperationKey::SemanticJson,
+            #[cfg(feature = "drawing-list")]
+            $crate::OperationKey::DrawingListJson,
             #[cfg(feature = "svg")]
             $crate::OperationKey::Svg,
             #[cfg(feature = "svg")]

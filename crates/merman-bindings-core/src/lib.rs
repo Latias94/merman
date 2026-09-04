@@ -45,8 +45,9 @@ pub use catalog_contract::{
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
-    BindingError, BindingErrorKind, BindingIconRegistryErrorDetails, BindingResourceErrorDetails,
-    BindingResourceLimitCause, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
+    BindingDrawingListErrorDetails, BindingError, BindingErrorKind,
+    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingResourceLimitCause,
+    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
     binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
     render_resource_options_unavailable, resource_options_json,
 };

@@ -29,6 +29,7 @@ native-runtime = [
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
 svg = ["merman/svg"]
+drawing-list = ["svg"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]

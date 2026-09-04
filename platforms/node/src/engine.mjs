@@ -211,6 +211,28 @@ export class MermanEngine {
     ).data;
   }
 
+  renderDrawingList(source, options = {}) {
+    return this.executeOperation(
+      {
+        operationId: "drawing-list-json",
+        source,
+        optionsJson: options.optionsJson,
+      },
+      { signal: options.signal, timeoutMs: options.timeoutMs },
+    ).then((result) => result.data);
+  }
+
+  renderDrawingListSync(source, options = {}) {
+    return this.executeOperationSync(
+      {
+        operationId: "drawing-list-json",
+        source,
+        optionsJson: options.optionsJson,
+      },
+      { timeoutMs: options.timeoutMs },
+    ).data;
+  }
+
   svgPlanJson(source, options = {}) {
     return this.executeOperation(
       { operationId: "svg-plan-json", source, optionsJson: options.optionsJson },

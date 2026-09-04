@@ -27,6 +27,8 @@ const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Native
 };
 const NODE_OPERATIONS: &[OperationKey] = &[
+    #[cfg(feature = "drawing-list")]
+    OperationKey::DrawingListJson,
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     OperationKey::SemanticJson,

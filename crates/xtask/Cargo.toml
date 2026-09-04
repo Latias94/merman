@@ -23,6 +23,7 @@ merman-analysis.workspace = true
 merman-bindings-core = { workspace = true, features = [
     "analysis",
     "ascii",
+    "drawing-list",
     "jpeg",
     "layout-cytoscape",
     "layout-elk",

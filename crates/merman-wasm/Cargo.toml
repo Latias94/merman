@@ -27,6 +27,7 @@ default = []
 analysis = ["merman-bindings-core/analysis"]
 ascii = ["merman-bindings-core/ascii"]
 svg = ["dep:js-sys", "merman-bindings-core/svg"]
+drawing-list = ["svg", "merman-bindings-core/drawing-list"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 editor = [

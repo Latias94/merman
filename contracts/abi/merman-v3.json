@@ -5,7 +5,7 @@
   "result_schema_version": 1,
   "minimum_prefix": {
     "status_code_count": 17,
-    "operation_code_count": 14,
+    "operation_code_count": 15,
     "error_kind_count": 5,
     "callback_count": 1,
     "function_slot_count": 7,
@@ -179,7 +179,8 @@
     { "id": "validation_json", "c_name": "MERMAN_NATIVE_OPERATION_VALIDATION_JSON", "code": 10, "executable": true },
     { "id": "document_analysis_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON", "code": 11, "executable": true },
     { "id": "document_analysis_facts_json", "c_name": "MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON", "code": 12, "executable": true },
-    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true }
+    { "id": "svg_plan_json", "c_name": "MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON", "code": 13, "executable": true },
+    { "id": "drawing_list_json", "c_name": "MERMAN_NATIVE_OPERATION_DRAWING_LIST_JSON", "code": 14, "executable": true }
   ],
   "callbacks": [
     {

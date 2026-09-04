@@ -22,7 +22,8 @@ use merman_ascii::{
 };
 #[cfg(feature = "svg")]
 use merman_display_list::{
-    DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListLimits, DrawingListPolicy,
+    DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListError, DrawingListLimits,
+    DrawingListPolicy,
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_export::ExportError;
@@ -348,6 +349,14 @@ pub enum RenderError {
     #[cfg(feature = "svg")]
     #[error(transparent)]
     Svg(merman_render::Error),
+    /// Renderer-neutral DrawingList construction or validation failed.
+    ///
+    /// Keeping this target-specific wrapper separate from [`Self::Svg`] lets callers distinguish
+    /// an unsupported/invalid DrawingList document from a failure in the SVG serializer without
+    /// changing the closed C ABI error vocabulary.
+    #[cfg(feature = "svg")]
+    #[error(transparent)]
+    DrawingList(merman_render::Error),
     #[cfg(feature = "ascii")]
     #[error(transparent)]
     Ascii(AsciiError),
@@ -387,6 +396,20 @@ impl From<merman_render::Error> for RenderError {
             merman_render::Error::OperationResourceTerminal(error) => {
                 crate::operation_runner::operation_terminal_error(error)
             }
+            merman_render::Error::DrawingListContract(DrawingListError::ResourceLimit {
+                resource,
+                actual,
+                maximum,
+            }) => Self::ResourceLimitExceeded(ResourceLimitExceeded {
+                id: resource,
+                phase: "drawing-list-validation",
+                actual: actual as u64,
+                maximum: maximum as u64,
+                cause: ResourceLimitCause::Ceiling,
+                provenance: None,
+            }),
+            error @ (merman_render::Error::DrawingListUnavailable { .. }
+            | merman_render::Error::DrawingListContract(_)) => Self::DrawingList(error),
             other => Self::Svg(other),
         }
     }

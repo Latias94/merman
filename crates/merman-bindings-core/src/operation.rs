@@ -100,7 +100,7 @@ impl BindingOperationKind {
             OperationKey::SemanticJson | OperationKey::SvgPlanJson => BindingResourceScope::Model,
             OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
-            OperationKey::Svg => BindingResourceScope::Svg,
+            OperationKey::DrawingListJson | OperationKey::Svg => BindingResourceScope::Svg,
             OperationKey::Png => BindingResourceScope::Png,
             OperationKey::Jpeg => BindingResourceScope::Jpeg,
             OperationKey::Pdf => BindingResourceScope::Pdf,
@@ -1149,6 +1149,9 @@ impl BindingEngine {
             OperationKey::Svg => self
                 .render_svg_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
+            OperationKey::DrawingListJson => self
+                .render_drawing_list_data(source, control.clone())
+                .map(BindingOperationOutput::plain),
             OperationKey::SvgPlanJson => self
                 .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
@@ -1348,7 +1351,7 @@ mod tests {
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 13);
+        assert_eq!(operations.len(), 14);
         for operation in operations {
             assert_eq!(
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),

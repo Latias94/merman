@@ -19,6 +19,12 @@ export const CAPABILITY_SPECS = [
     "implication_ids": []
   },
   {
+    "id": "drawing-list",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "editor",
     "implication_ids": []
   },

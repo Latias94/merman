@@ -128,6 +128,12 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
     id: "ascii",
     implicationIds: <String>{},
   ),
+  "drawing-list": MermanBindingCapabilitySpec(
+    id: "drawing-list",
+    implicationIds: <String>{
+      "svg",
+    },
+  ),
   "editor": MermanBindingCapabilitySpec(
     id: "editor",
     implicationIds: <String>{},
@@ -654,6 +660,14 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: true,
     availabilityCapabilityId: "analysis",
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "drawing-list-json",
+    outputId: "drawing-list",
+    mediaType: "application/vnd.merman.drawing-list+json;version=1",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "drawing-list",
   ),
   MermanBindingOperationExpectation(
     operationId: "jpeg",

@@ -1054,6 +1054,44 @@ fn render_family_artifact_svg(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
+
+    // The canonical document serializer is admitted family-by-family.  This keeps the existing
+    // source-backed SVG parity contract green while a family cohort is being migrated; the
+    // private renderer remains a bridge only for families/effects that do not yet have a
+    // source-backed canonical SVG serializer.  A failed document build is never converted into
+    // an empty SVG.
+    let document = match crate::drawing_list::build_for_family(
+        &artifact.family,
+        &artifact.metadata,
+        DrawingListPolicy::AllowRasterSubtree,
+        &artifact.session,
+    ) {
+        Ok(document) => Some(document),
+        Err(Error::DrawingListUnavailable { .. }) => {
+            // A family may still contain a browser-only effect that the SVG adapter can emit
+            // faithfully while the renderer-neutral contract is not yet able to represent it.
+            // Keep this as an explicit, measurable migration bridge rather than hiding a partial
+            // DrawingList behind the SVG target.
+            None
+        }
+        Err(error) => return Err(error),
+    };
+
+    let use_legacy_bridge = debug.include_timing_diagnostics
+        || debug.flowchart_edge_trace().is_some()
+        || !canonical_svg_family_enabled(artifact.family.kind());
+    if !use_legacy_bridge {
+        if let Some(document) = document.as_ref() {
+            return crate::svg::render_document_svg(
+                document,
+                &options,
+                debug,
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            );
+        }
+    }
+
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
@@ -1071,6 +1109,13 @@ fn render_family_artifact_svg(
         &options,
         debug,
     )
+}
+
+/// Returns the family cohort whose SVG output is currently emitted by the canonical document
+/// serializer.  The list is intentionally explicit: adding a family requires a focused SVG
+/// parity fixture and a review of every effect that the public document can carry.
+fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
+    matches!(family, RenderFamilyKind::Error | RenderFamilyKind::Info)
 }
 
 #[inline(never)]
@@ -1885,7 +1930,32 @@ mod tests {
     #[test]
     fn requested_diagram_id_fanout_is_admitted_per_output_occurrence() {
         let diagram_id = "d".repeat(256);
-        let maximum = diagram_id.len() * 4;
+        let baseline = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .expect("parse info diagram")
+            .expect("detect info diagram");
+        let baseline_session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin baseline render session");
+        let baseline_svg = prepare(baseline, &LayoutOptions::default(), baseline_session)
+            .expect("prepare baseline info diagram")
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(diagram_id.clone()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render baseline info diagram");
+        let baseline_len = baseline_svg.svg().len();
+        assert!(baseline_len > diagram_id.len());
+        assert!(baseline_svg.svg().matches(&diagram_id).count() >= 1);
+
+        // Keep this assertion about the output admission contract, not about the number of
+        // diagram-id occurrences in one particular SVG DOM shape.  The canonical serializer and
+        // the source-backed bridge are both allowed to carry the ID in different structural
+        // attributes as their migration progresses.
+        let maximum = baseline_len - diagram_id.len();
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, maximum)
             .unwrap();

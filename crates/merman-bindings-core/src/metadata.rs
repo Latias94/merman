@@ -523,7 +523,7 @@ fn runtime_output_contract(
     output: &capability_descriptor::OutputDescriptor,
 ) -> RuntimeOutputContract {
     match output.id {
-        "ascii" | "svg" => RuntimeOutputContract {
+        "ascii" | "drawing-list" | "svg" => RuntimeOutputContract {
             id: output.id,
             media_type: output.media_type,
             system_fonts: None,
@@ -1157,7 +1157,7 @@ mod tests {
         );
         for output in &catalog.output_contracts {
             match output.id {
-                "ascii" | "svg" => {
+                "ascii" | "drawing-list" | "svg" => {
                     assert!(output.system_fonts.is_none());
                     assert!(output.embedded_images.is_none());
                 }
@@ -1276,10 +1276,17 @@ mod tests {
             .find(|limit| limit.id == "max_layout_work_units");
         #[cfg(feature = "svg")]
         {
-            let expected_operation_ids = ["jpeg", "layout-json", "pdf", "png", "svg"]
-                .into_iter()
-                .filter(|operation_id| catalog.capabilities.has_operation(operation_id))
-                .collect::<Vec<_>>();
+            let expected_operation_ids = [
+                "drawing-list-json",
+                "jpeg",
+                "layout-json",
+                "pdf",
+                "png",
+                "svg",
+            ]
+            .into_iter()
+            .filter(|operation_id| catalog.capabilities.has_operation(operation_id))
+            .collect::<Vec<_>>();
             assert_eq!(
                 layout.expect("layout descriptor").operation_ids,
                 expected_operation_ids
@@ -1417,7 +1424,10 @@ mod tests {
     fn every_descriptor_output_has_an_explicit_runtime_contract_owner() {
         for output in capability_descriptor::OUTPUTS {
             assert!(
-                matches!(output.id, "ascii" | "jpeg" | "pdf" | "png" | "svg"),
+                matches!(
+                    output.id,
+                    "ascii" | "drawing-list" | "jpeg" | "pdf" | "png" | "svg"
+                ),
                 "descriptor output `{}` needs an explicit runtime output-contract owner",
                 output.id
             );

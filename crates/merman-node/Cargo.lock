@@ -577,6 +577,7 @@ name = "merman"
 version = "0.8.0-alpha.6"
 dependencies = [
  "merman-core",
+ "merman-display-list",
  "merman-render",
  "serde_json",
  "thiserror",
@@ -612,6 +613,16 @@ dependencies = [
  "unicode-width",
  "url",
  "web-time",
+]
+
+[[package]]
+name = "merman-display-list"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -656,6 +667,7 @@ dependencies = [
  "libm",
  "manatee",
  "merman-core",
+ "merman-display-list",
  "merman-layout-elk",
  "pulldown-cmark",
  "quick-xml",

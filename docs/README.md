@@ -15,6 +15,7 @@ owners rather than being duplicated across Markdown files.
 | Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |
 | Check diagram coverage and parity evidence | [Alignment dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
+| Consume the renderer-neutral DrawingList from a native host | [DrawingList host-integration contract](drawing-list-host-integration.md) and [ADR-0087](adr/0087-renderer-neutral-drawing-list.md) |
 | Understand architecture decisions | [Architecture decision records](adr/) and [alignment authority map](alignment/README.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |

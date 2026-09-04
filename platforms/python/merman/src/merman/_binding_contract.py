@@ -16,6 +16,10 @@ CAPABILITY_SPECS = (
         "implication_ids": (),
     },
     {
+        "id": "drawing-list",
+        "implication_ids": ("svg",),
+    },
+    {
         "id": "editor",
         "implication_ids": (),
     },
@@ -123,6 +127,12 @@ BINDING_OPERATION_RELATION_SPECS = (
         "operation_id": "document-analysis-json",
         "availability_capability_id": "analysis",
         "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
+        "operation_id": "drawing-list-json",
+        "availability_capability_id": "drawing-list",
+        "output_id": "drawing-list",
         "compiled_prerequisite_ids": (),
     },
     {

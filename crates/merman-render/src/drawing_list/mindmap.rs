@@ -141,6 +141,15 @@ impl<'a> MindmapBuilder<'a> {
                 "look `{look}` has no lossless DrawingList v1 adapter"
             )));
         }
+        if model
+            .nodes
+            .iter()
+            .any(|node| crate::math::contains_delimited_math(&node.label))
+        {
+            return Err(unavailable(
+                "Mindmap math labels require RaTeX outline/glyph resources or an explicit raster fallback; DrawingList v1 will not replace them with plain host text",
+            ));
+        }
         if look == "neo" {
             let drop_shadow = config_string(
                 metadata.effective_config.as_value(),

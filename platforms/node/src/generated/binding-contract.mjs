@@ -19,6 +19,12 @@ export const CAPABILITY_SPECS = [
     "implication_ids": []
   },
   {
+    "id": "drawing-list",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "editor",
     "implication_ids": []
   },
@@ -483,6 +489,21 @@ export const BINDING_OPERATION_EXPECTATIONS = [
       "status_name": "MERMAN_UNSUPPORTED_OPERATION",
       "error_kind": "missing-capability",
       "capability_id": "analysis"
+    }
+  },
+  {
+    "operation_id": "drawing-list-json",
+    "output_id": "drawing-list",
+    "media_type": "application/vnd.merman.drawing-list+json;version=1",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "drawing-list",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "drawing-list"
     }
   },
   {

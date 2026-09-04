@@ -64,6 +64,24 @@ flowchart LR
    are correctness evidence. Content hashes may be retained for diagnostics or fixture identity,
    but a hash is not a semantic correctness gate and cannot hide an unclassified visual effect.
 
+8. The host-facing contract is intentionally shaped like a retained paint list rather than an
+   editable scene graph. A host receives family-owned geometry, host-shaped text obligations,
+   stable semantic groups, and self-contained resources; it does not receive an instruction to
+   recompute Mermaid layout or manually place nodes. The integration details and current admitted
+   gaps are maintained in `docs/drawing-list-host-integration.md`.
+
+9. Text defaults to host-shaped runs with explicit origin, reserved bounds, anchor, baseline,
+   direction, style, and measurement provenance. Glyphs/outlines/raster are explicit obligations,
+   not silent substitutions. Per-line origins, an authoritative root-background field, and
+   ordered multi-link metadata are protocol evolution items, not `x-*` extensions, because they
+   affect layout or interaction semantics.
+
+10. Math integration, when admitted, must consume RaTeX's renderer-neutral display list directly
+    and lower glyph/path/line/rectangle items into DrawingList resources. Emitting KaTeX family
+    names or parsing generated SVG is not a portable host contract. Unsupported math, filters,
+    rich HTML, and hand-drawn effects remain explicit raster/error outcomes until their direct
+    representation is implemented.
+
 ## Consequences
 
 - Native and language-binding consumers can render a complete, self-contained document without

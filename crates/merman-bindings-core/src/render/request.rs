@@ -1,8 +1,8 @@
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
 use crate::common::{
-    BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
-    PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
+    BindingDrawingListErrorDetails, BindingError, BindingOptions, BindingResourceLimitCause,
+    BindingStatus, PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
     binding_site_config, css_declaration_value, finite_positive, internal_json_error,
     no_diagram_error, normalize_option, parse_error, runtime_policy_error,
 };
@@ -13,7 +13,10 @@ use merman::svg::{
     Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
+use merman::{
+    DrawingListRequest, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
+    SvgRequest,
+};
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
@@ -82,6 +85,27 @@ impl RenderRequestPlan {
             .ok_or_else(no_diagram_error)?;
 
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
+    }
+
+    pub(super) fn render_drawing_list(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let mut request = DrawingListRequest::default();
+        request.environment = self.svg.environment.clone();
+        request.layout = self.svg.layout.clone();
+        request.presentation = self.svg.presentation;
+        let output = self
+            .renderer
+            .render(self.request(source, merman::RenderTarget::DrawingList(request), control))
+            .map_err(|error| classify_render_error(error, self.resource_profile))?;
+        let RenderOutput::DrawingList(drawing_list) = output else {
+            return Err(unexpected_render_output("drawing-list-json"));
+        };
+        drawing_list
+            .map(|output| output.into_parts().1)
+            .ok_or_else(no_diagram_error)
     }
 
     pub(super) fn svg_plan_json(
@@ -681,6 +705,13 @@ fn classify_render_error(
         merman::RenderError::Svg(err @ merman::svg::RenderError::IconProcessing { .. }) => {
             BindingError::internal(err.to_string())
         }
+        merman::RenderError::DrawingList(err) => classify_drawing_list_error(err),
+        merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListUnavailable { .. }) => {
+            classify_drawing_list_error(err)
+        }
+        merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListContract(_)) => {
+            classify_drawing_list_error(err)
+        }
         merman::RenderError::Svg(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
@@ -701,6 +732,42 @@ fn classify_render_error(
             "renderer returned unsupported target `{target}` for an admitted binding operation"
         )),
         _ => BindingError::internal("unknown canonical renderer failure"),
+    }
+}
+
+fn classify_drawing_list_error(err: merman::svg::RenderError) -> BindingError {
+    match err {
+        merman::svg::RenderError::DrawingListUnavailable { family, reason } => {
+            let message =
+                format!("DrawingList is unavailable for render family `{family}`: {reason}");
+            BindingError::unsupported_operation(message).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "unavailable",
+                    family: Some(family),
+                    reason: Some(reason),
+                },
+            )
+        }
+        merman::svg::RenderError::DrawingListContract(error) => {
+            let reason = error.to_string();
+            BindingError::invalid_argument(reason.clone()).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "contract",
+                    family: None,
+                    reason: Some(reason),
+                },
+            )
+        }
+        other => {
+            let reason = other.to_string();
+            BindingError::new(BindingStatus::RenderError, reason.clone()).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "render",
+                    family: None,
+                    reason: Some(reason),
+                },
+            )
+        }
     }
 }
 
@@ -740,6 +807,38 @@ mod tests {
             details.span,
             Some(crate::common::BindingDiagnosticSpan::new(2, 7, "exact"))
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn drawing_list_errors_keep_target_specific_structured_context() {
+        let unavailable = classify_render_error(
+            merman::RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+                family: "pie".to_owned(),
+                reason: "hover effect is not representable".to_owned(),
+            }),
+            merman::resources::ResourceProfile::Interactive,
+        );
+        assert_eq!(unavailable.status(), BindingStatus::UnsupportedOperation);
+        let details = unavailable
+            .drawing_list_details()
+            .expect("DrawingList context must be retained");
+        assert_eq!(details.category, "unavailable");
+        assert_eq!(details.family.as_deref(), Some("pie"));
+        assert_eq!(
+            details.reason.as_deref(),
+            Some("hover effect is not representable")
+        );
+
+        let payload: serde_json::Value = serde_json::from_slice(
+            &crate::common::binding_error_payload_json_bytes(&unavailable),
+        )
+        .expect("structured DrawingList payload");
+        assert_eq!(
+            payload["details"]["drawing_list"]["category"],
+            "unavailable"
+        );
+        assert_eq!(payload["details"]["drawing_list"]["family"], "pie");
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

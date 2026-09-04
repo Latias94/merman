@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7"
+    "digest": "sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401"
   },
   "profiles": [
     {
@@ -16,7 +16,7 @@
         "manifest": "crates/merman-android-jni/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_android_jni",
           "kinds": ["cdylib"],
@@ -32,9 +32,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -46,7 +46,7 @@
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -65,9 +65,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -80,7 +80,7 @@
         "profile": "native-sdk",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
           "pdf", "png", "svg"
         ],
         "target": {
@@ -93,14 +93,14 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "outputs": ["ascii", "drawing-list", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
@@ -187,7 +187,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -204,9 +204,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -218,7 +218,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -237,9 +237,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -251,7 +251,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -268,9 +268,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -344,7 +344,7 @@
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -361,9 +361,9 @@
         }
       },
       "expected": {
-        "capabilities": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
-        "outputs": ["ascii", "svg"]
+        "capabilities": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "runtime_ids": ["analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -459,7 +459,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime",
           "pdf", "png", "svg"
         ],
         "target": {
@@ -472,14 +472,14 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+            "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "outputs": ["ascii", "drawing-list", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
@@ -943,6 +943,7 @@
         "features": [
           "analysis",
           "ascii",
+          "drawing-list",
           "editor",
           "layout-cytoscape",
           "layout-elk",
@@ -964,6 +965,7 @@
         "capabilities": [
           "analysis",
           "ascii",
+          "drawing-list",
           "editor",
           "layout-cytoscape",
           "layout-elk",
@@ -973,13 +975,14 @@
         "runtime_ids": [
           "analysis",
           "ascii",
+          "drawing-list",
           "editor",
           "layout-cytoscape",
           "layout-elk",
           "math",
           "svg"
         ],
-        "outputs": ["ascii", "svg"]
+        "outputs": ["ascii", "drawing-list", "svg"]
       }
     },
     {
@@ -991,7 +994,7 @@
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -1004,9 +1007,9 @@
         }
       },
       "expected": {
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "outputs": ["svg"]
+        "capabilities": ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "runtime_ids": ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "outputs": ["drawing-list", "svg"]
       }
     }
   ]

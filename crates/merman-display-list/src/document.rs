@@ -5,6 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{self, Write};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -191,6 +192,7 @@ impl DrawingListDocument {
         let mut paint_ids = BTreeSet::new();
         let mut font_ids = BTreeSet::new();
         let mut image_pixels = 0usize;
+        let mut path_segments = 0usize;
         for resource in &self.resources {
             if !resource_ids.insert(resource.id().clone()) {
                 return Err(DrawingListError::invalid(format!(
@@ -203,6 +205,15 @@ impl DrawingListDocument {
                 limits.max_image_bytes,
                 limits.max_font_bytes,
             )?;
+            if let DrawingResource::Path(path) = resource {
+                path_segments =
+                    path_segments
+                        .checked_add(path.segments.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid("path segment count overflows usize")
+                        })?;
+                validate_count("path_segments", path_segments, limits.max_path_segments)?;
+            }
             match resource {
                 DrawingResource::LinearGradient(gradient) => {
                     paint_ids.insert(gradient.id.clone());
@@ -471,10 +482,16 @@ impl DrawingListDocument {
         canonical
             .fallbacks
             .sort_by(|left, right| left.id.cmp(&right.id));
-        let bytes = serde_json::to_vec(&canonical)
-            .map_err(|error| DrawingListError::JsonEncode(error.to_string()))?;
-        validate_count("serialized_bytes", bytes.len(), limits.max_serialized_bytes)?;
-        Ok(bytes)
+        let mut writer = LimitedWriter::new(limits.max_serialized_bytes);
+        match serde_json::to_writer(&mut writer, &canonical) {
+            Ok(()) => Ok(writer.into_inner()),
+            Err(_error) if writer.exceeded() => Err(DrawingListError::ResourceLimit {
+                resource: "serialized_bytes",
+                actual: writer.attempted_bytes(),
+                maximum: limits.max_serialized_bytes,
+            }),
+            Err(error) => Err(DrawingListError::JsonEncode(error.to_string())),
+        }
     }
 
     pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, DrawingListError> {
@@ -516,6 +533,57 @@ fn validate_extensions(extensions: &BTreeMap<String, Value>) -> Result<(), Drawi
         ));
     }
     Ok(())
+}
+
+/// A bounded writer used by canonical serialization so the output buffer never grows beyond
+/// the caller-selected serialized-byte budget.
+struct LimitedWriter {
+    bytes: Vec<u8>,
+    maximum: usize,
+    attempted: usize,
+    exceeded: bool,
+}
+
+impl LimitedWriter {
+    fn new(maximum: usize) -> Self {
+        Self {
+            bytes: Vec::new(),
+            maximum,
+            attempted: 0,
+            exceeded: false,
+        }
+    }
+
+    fn exceeded(&self) -> bool {
+        self.exceeded
+    }
+
+    fn attempted_bytes(&self) -> usize {
+        self.attempted
+    }
+
+    fn into_inner(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+impl Write for LimitedWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.attempted = self.attempted.saturating_add(buffer.len());
+        if self.bytes.len().saturating_add(buffer.len()) > self.maximum {
+            self.exceeded = true;
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "serialized DrawingList exceeds the configured byte limit",
+            ));
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn validate_paint(

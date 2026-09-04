@@ -69,4 +69,33 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         .expect("extended fixture has a pattern");
     pattern["tile"]["width"] = json!(0.0);
     assert!(!validator.is_valid(&invalid_pattern));
+
+    let mut invalid_text = serde_json::to_value(sample_document()).expect("fixture serializes");
+    invalid_text["commands"][5]["run"]["language"] = json!("");
+    assert!(!validator.is_valid(&invalid_text));
+
+    let mut invalid_postscript =
+        serde_json::to_value(sample_document()).expect("fixture serializes");
+    invalid_postscript["commands"][5]["run"]["style"]["font"]["postscript_name"] = json!("");
+    assert!(!validator.is_valid(&invalid_postscript));
+
+    let mut invalid_font = serde_json::to_value(extended_document()).expect("fixture serializes");
+    let font = invalid_font["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "font")
+        .expect("extended fixture has a font");
+    font["font"]["media_type"] = json!("application/octet-stream");
+    assert!(!validator.is_valid(&invalid_font));
+
+    let mut uppercase_font = serde_json::to_value(extended_document()).expect("fixture serializes");
+    let font = uppercase_font["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "font")
+        .expect("extended fixture has a font");
+    font["font"]["media_type"] = json!("FONT/WoFf2; charset=binary");
+    assert!(validator.is_valid(&uppercase_font));
 }

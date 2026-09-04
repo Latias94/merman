@@ -15,6 +15,7 @@ use crate::drawing_list::support::{stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, C4BoundaryLayout, C4DiagramLayout, C4RelLayout, C4ShapeLayout};
+use crate::text::{TextMeasurer, TextStyle as MeasurementTextStyle};
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
@@ -201,6 +202,10 @@ impl<'a> C4Builder<'a> {
             self.emit_relation(index, relation)?;
         }
 
+        if let Some(title) = self.diagram_title() {
+            self.emit_title(&title)?;
+        }
+
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
         let bounds = self
@@ -213,11 +218,8 @@ impl<'a> C4Builder<'a> {
         let padding_x = settings.diagram_margin_x.max(0.0);
         let padding_y = settings.diagram_margin_y.max(0.0);
         let title_extra = self
-            .layout
-            .title
-            .as_deref()
-            .or(self.model.title.as_deref())
-            .is_some_and(|title| !title.trim().is_empty())
+            .diagram_title()
+            .is_some()
             .then_some(60.0)
             .unwrap_or(0.0);
         let document = DrawingListDocument {
@@ -254,6 +256,59 @@ impl<'a> C4Builder<'a> {
                 }),
             },
         })
+    }
+
+    fn diagram_title(&self) -> Option<String> {
+        self.metadata
+            .title
+            .as_deref()
+            .or(self.layout.title.as_deref())
+            .or(self.model.title.as_deref())
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    fn emit_title(&mut self, title: &str) -> Result<()> {
+        let title = plain_text(title).map_err(unavailable)?;
+        if title.trim().is_empty() {
+            return Ok(());
+        }
+        let bounds = self
+            .layout
+            .bounds
+            .as_ref()
+            .ok_or_else(|| invalid("C4 layout did not provide root bounds"))?;
+        let config = C4ConfigView::new(self.metadata.effective_config.as_value());
+        let settings = config.layout_settings();
+        let padding_x = settings.diagram_margin_x.max(0.0);
+        let width = (bounds.max_x - bounds.min_x + 2.0 * padding_x).max(1.0);
+        let origin = Point::new(
+            width / 2.0 - 4.0 * padding_x,
+            bounds.min_y + settings.diagram_margin_y.max(0.0),
+        );
+        let measurement_style = MeasurementTextStyle {
+            font_family: Some(self.font.families.join(", ")),
+            font_size: self.font_size,
+            font_weight: Some(self.font.weight.to_string()),
+            font_style: Some("normal".to_string()),
+        };
+        let measurement = self
+            .session
+            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit)
+            .measure(&title, &measurement_style);
+        let text_width = measurement.width.max(1.0);
+        let text_height = measurement.height.max(1.0);
+        self.draw_text(
+            &title,
+            origin,
+            Rect::new(origin.x, origin.y - text_height, text_width, text_height),
+            self.boundary_text,
+            self.font.clone(),
+            TextAnchor::Start,
+            TextBaseline::Alphabetic,
+        );
+        Ok(())
     }
 
     fn preflight(&self) -> Result<()> {

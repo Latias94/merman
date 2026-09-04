@@ -31,6 +31,7 @@ use merman_core::diagrams::sequence::{
     SequenceActor, SequenceControlKind, SequenceControlRole, SequenceDiagramRenderModel,
     SequenceMessage, SequenceMessageKind, SequenceMessageMarker, SequenceMessageStroke,
 };
+use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
@@ -226,6 +227,8 @@ impl<'a> SequenceBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        let navigation_security = self.navigation_security();
+        let actor_links = self.portable_actor_links(navigation_security)?;
         self.semantics.push(SemanticAnnotation {
             id: "sequence.document".to_string(),
             role: SemanticRole::Document,
@@ -285,9 +288,7 @@ impl<'a> SequenceBuilder<'a> {
                     "mirror_actors": self.settings.mirror_actors,
                     "right_angles": self.settings.right_angles,
                     "message_align": self.settings.message_align.as_str(),
-                    "links": self.model.actors.iter().filter_map(|(id, actor)| {
-                        (!actor.links.is_empty()).then(|| (id.clone(), actor.links.clone()))
-                    }).collect::<BTreeMap<_, _>>(),
+                    "links": actor_links,
                 }),
             )]),
         };
@@ -461,7 +462,7 @@ impl<'a> SequenceBuilder<'a> {
                     "Sequence actor order references missing actor {actor_id}"
                 ))
             })?;
-            let actor_link = portable_actor_link(actor)?;
+            let actor_link = portable_actor_link(actor, self.navigation_security())?;
             let top = (**self
                 .nodes_by_id
                 .get(format!("actor-top-{actor_id}").as_str())
@@ -1202,7 +1203,8 @@ impl<'a> SequenceBuilder<'a> {
             .as_ref()
             .ok_or_else(|| invalid("Sequence layout did not provide root bounds"))?;
         let width = bounds.max_x - bounds.min_x;
-        let x = width / 2.0 - 2.0 * self.settings.diagram_margin_x;
+        let content_width = (width - 2.0 * self.settings.diagram_margin_x).max(0.0);
+        let x = content_width / 2.0 - 2.0 * self.settings.diagram_margin_x;
         self.emit_text_lines(
             "sequence.title",
             &lines,
@@ -1221,6 +1223,45 @@ impl<'a> SequenceBuilder<'a> {
             link: None,
         });
         Ok(())
+    }
+
+    fn navigation_security(&self) -> MermaidNavigationSecurity {
+        MermaidNavigationSecurity::from_security_level_loose(
+            self.metadata
+                .effective_config
+                .as_value()
+                .get("securityLevel")
+                .and_then(Value::as_str)
+                == Some("loose"),
+        )
+    }
+
+    fn portable_actor_links(
+        &self,
+        security: MermaidNavigationSecurity,
+    ) -> Result<BTreeMap<String, BTreeMap<String, String>>> {
+        self.model
+            .actor_order
+            .iter()
+            .filter_map(|actor_id| {
+                self.model
+                    .actors
+                    .get(actor_id)
+                    .map(|actor| (actor_id, actor))
+            })
+            .filter(|(_, actor)| !actor.links.is_empty())
+            .map(|(actor_id, actor)| {
+                let Some(url) = portable_actor_link(actor, security)? else {
+                    return Ok(None);
+                };
+                let label =
+                    actor.links.keys().next().cloned().ok_or_else(|| {
+                        invalid("Sequence actor link map changed during rendering")
+                    })?;
+                Ok(Some((actor_id.clone(), BTreeMap::from([(label, url)]))))
+            })
+            .filter_map(|result| result.transpose())
+            .collect()
     }
 
     fn emit_text_lines(
@@ -1939,7 +1980,10 @@ fn unavailable(message: impl Into<String>) -> Error {
     }
 }
 
-fn portable_actor_link(actor: &SequenceActor) -> Result<Option<String>> {
+fn portable_actor_link(
+    actor: &SequenceActor,
+    security: MermaidNavigationSecurity,
+) -> Result<Option<String>> {
     let mut links = actor
         .links
         .iter()
@@ -1965,7 +2009,10 @@ fn portable_actor_link(actor: &SequenceActor) -> Result<Option<String>> {
             links.len()
         )));
     }
-    Ok(links.pop().map(|(_, url)| url))
+    Ok(links.pop().and_then(|(_, url)| {
+        let sanitized = merman_core::utils::sanitize_url(&url);
+        prepare_mermaid_navigation_uri(&sanitized, security)
+    }))
 }
 
 fn invalid(message: impl Into<String>) -> Error {
@@ -1978,6 +2025,7 @@ fn invalid(message: impl Into<String>) -> Error {
 mod tests {
     use super::portable_actor_link;
     use merman_core::diagrams::sequence::SequenceActor;
+    use merman_core::svg_security::MermaidNavigationSecurity;
     use serde_json::{Value, json, map::Map};
 
     fn actor(links: Map<String, Value>) -> SequenceActor {
@@ -1996,8 +2044,22 @@ mod tests {
         let mut links = Map::new();
         links.insert("Docs".into(), json!("https://example.invalid/docs"));
         assert_eq!(
-            portable_actor_link(&actor(links)).unwrap().as_deref(),
+            portable_actor_link(&actor(links), MermaidNavigationSecurity::Sanitized)
+                .unwrap()
+                .as_deref(),
             Some("https://example.invalid/docs")
+        );
+    }
+
+    #[test]
+    fn unsafe_sequence_actor_link_is_omitted_like_strict_svg_navigation() {
+        let mut links = Map::new();
+        links.insert("Script".into(), json!("javascript:alert(1)"));
+        assert_eq!(
+            portable_actor_link(&actor(links), MermaidNavigationSecurity::Sanitized)
+                .unwrap()
+                .as_deref(),
+            None
         );
     }
 
@@ -2006,10 +2068,10 @@ mod tests {
         let mut links = Map::new();
         links.insert("Docs".into(), json!("https://example.invalid/docs"));
         links.insert("Issues".into(), json!("https://example.invalid/issues"));
-        assert!(portable_actor_link(&actor(links)).is_err());
+        assert!(portable_actor_link(&actor(links), MermaidNavigationSecurity::Sanitized).is_err());
 
         let mut links = Map::new();
         links.insert("Docs".into(), json!(42));
-        assert!(portable_actor_link(&actor(links)).is_err());
+        assert!(portable_actor_link(&actor(links), MermaidNavigationSecurity::Sanitized).is_err());
     }
 }

@@ -17,6 +17,20 @@ export function renderSvg(source: string, options?: SvgBindingOptions | string):
   return getMerman().renderSvg(source, encodeOptions(options));
 }
 
+/**
+ * Renders a Mermaid diagram as renderer-neutral DrawingList JSON.
+ *
+ * The returned string is the versioned `application/vnd.merman.drawing-list+json;version=1`
+ * payload. Keeping it as JSON text matches the WASM transport and lets callers choose their own
+ * decoder without introducing a second browser-side model.
+ */
+export function renderDrawingList(
+  source: string,
+  options?: SvgBindingOptions | string
+): string {
+  return getMerman().renderDrawingList(source, encodeOptions(options));
+}
+
 export function svgPlanJson(
   source: string,
   options?: SvgBindingOptions | string

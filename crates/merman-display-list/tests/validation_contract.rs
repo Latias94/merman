@@ -76,6 +76,30 @@ fn validator_enforces_exact_command_and_numeric_boundaries() {
 }
 
 #[test]
+fn validator_enforces_document_wide_path_segment_budget() {
+    let mut document = sample_document();
+    document
+        .resources
+        .push(DrawingResource::Path(merman_display_list::PathResource {
+            id: ResourceId::new("path.unreferenced"),
+            segments: vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(1.0, 1.0),
+                },
+            ],
+        }));
+
+    let limits = DrawingListLimits {
+        max_path_segments: 5,
+        ..DrawingListLimits::default()
+    };
+    assert!(document.validate_with_limits(&limits).is_err());
+}
+
+#[test]
 fn extended_visual_vocabulary_validates_as_one_document() {
     let document = extended_document();
     document

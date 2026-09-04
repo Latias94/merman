@@ -954,6 +954,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   EditorSession?: WasmEditorSessionConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;
+  renderDrawingList: (source: string, optionsJson?: string | null) => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
   svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (

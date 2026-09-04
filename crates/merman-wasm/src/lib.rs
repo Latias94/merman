@@ -54,6 +54,8 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     OperationKey::SemanticJson,
+    #[cfg(feature = "drawing-list")]
+    OperationKey::DrawingListJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
     #[cfg(feature = "svg")]
@@ -116,6 +118,17 @@ pub fn package_version() -> String {
 pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
     string_result(execute_wasm_operation(
         "svg",
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[cfg(feature = "drawing-list")]
+#[wasm_bindgen(js_name = renderDrawingList)]
+pub fn render_drawing_list(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
+    string_result(execute_wasm_operation(
+        "drawing-list-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
         None,

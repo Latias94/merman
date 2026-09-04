@@ -176,6 +176,7 @@ struct BindingErrorDetails {
     diagnostic: Option<BindingDiagnosticErrorDetails>,
     cancellation: Option<BindingCancellationErrorDetails>,
     icon_registry: Option<BindingIconRegistryErrorDetails>,
+    drawing_list: Option<BindingDrawingListErrorDetails>,
 }
 
 /// Structured resource failure details carried by the additive error JSON payload.
@@ -345,6 +346,18 @@ pub struct BindingIconRegistryErrorDetails {
     pub registration_name: Option<String>,
 }
 
+/// Structured context for a renderer-neutral DrawingList failure.
+///
+/// The stable binding status remains intentionally small.  This additive detail identifies the
+/// producer phase and family/effect without introducing a new ABI error-kind value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+pub struct BindingDrawingListErrorDetails {
+    pub category: &'static str,
+    pub family: Option<String>,
+    pub reason: Option<String>,
+}
+
 impl BindingError {
     fn classified(
         status: BindingStatus,
@@ -472,6 +485,7 @@ impl BindingError {
                 diagnostic: None,
                 cancellation: None,
                 icon_registry: None,
+                drawing_list: None,
             }),
             message,
         )
@@ -532,6 +546,7 @@ impl BindingError {
                     pack_index: pack_index.and_then(|index| u64::try_from(index).ok()),
                     registration_name: None,
                 }),
+                drawing_list: None,
             }),
             message,
         )
@@ -585,6 +600,7 @@ impl BindingError {
                 diagnostic: None,
                 cancellation: Some(BindingCancellationErrorDetails::from_operation(error)),
                 icon_registry: None,
+                drawing_list: None,
             }),
             error.to_string(),
         )
@@ -594,6 +610,22 @@ impl BindingError {
         self.details
             .as_deref()
             .and_then(|details| details.icon_registry.as_ref())
+    }
+
+    pub fn drawing_list_details(&self) -> Option<&BindingDrawingListErrorDetails> {
+        self.details
+            .as_deref()
+            .and_then(|details| details.drawing_list.as_ref())
+    }
+
+    /// Attaches target-specific DrawingList context while preserving the existing status/kind
+    /// vocabulary used by ABI 3 transports.
+    #[must_use]
+    pub fn with_drawing_list_details(mut self, details: BindingDrawingListErrorDetails) -> Self {
+        self.details
+            .get_or_insert_with(|| Box::new(BindingErrorDetails::default()))
+            .drawing_list = Some(details);
+        self
     }
 
     pub fn message(&self) -> &str {
@@ -656,6 +688,7 @@ impl From<merman::svg::IconRegistryBuildError> for BindingError {
                 diagnostic: None,
                 cancellation: None,
                 icon_registry: Some(details),
+                drawing_list: None,
             }),
             message,
         )
@@ -702,6 +735,8 @@ struct ErrorDetails<'a, R, D> {
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cancellation: Option<&'a BindingCancellationErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    drawing_list: Option<&'a BindingDrawingListErrorDetails>,
 }
 
 #[derive(Debug, Serialize)]
@@ -951,6 +986,7 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
         diagnostic: None,
         icon_registry: None,
         cancellation: None,
+        drawing_list: None,
         message,
     })
 }
@@ -965,6 +1001,7 @@ pub fn binding_error_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
         icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
         cancellation: details.and_then(|details| details.cancellation.as_ref()),
+        drawing_list: details.and_then(|details| details.drawing_list.as_ref()),
         message: error.message(),
     })
 }
@@ -983,6 +1020,7 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
         diagnostic: details.and_then(|details| details.diagnostic.as_ref()),
         icon_registry: details.and_then(|details| details.icon_registry.as_ref()),
         cancellation: details.and_then(|details| details.cancellation.as_ref()),
+        drawing_list: details.and_then(|details| details.drawing_list.as_ref()),
         message: error.message(),
     })
 }
@@ -995,6 +1033,7 @@ struct ErrorPayloadInput<'a, R, D> {
     diagnostic: Option<D>,
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
     cancellation: Option<&'a BindingCancellationErrorDetails>,
+    drawing_list: Option<&'a BindingDrawingListErrorDetails>,
     message: &'a str,
 }
 
@@ -1011,6 +1050,7 @@ where
         diagnostic,
         icon_registry,
         cancellation,
+        drawing_list,
         message,
     } = input;
     let payload = ErrorPayload {
@@ -1023,12 +1063,14 @@ where
         details: (resource.is_some()
             || diagnostic.is_some()
             || icon_registry.is_some()
-            || cancellation.is_some())
+            || cancellation.is_some()
+            || drawing_list.is_some())
         .then_some(ErrorDetails {
             resource,
             diagnostic,
             icon_registry,
             cancellation,
+            drawing_list,
         }),
         message,
     };

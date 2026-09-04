@@ -41,6 +41,15 @@ impl CachedRenderEngine {
         self.plan.layout_json(source, control)
     }
 
+    pub(crate) fn render_drawing_list(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_drawing_list(source, control)
+    }
+
     pub(crate) fn svg_plan_json(
         &self,
         source: &[u8],

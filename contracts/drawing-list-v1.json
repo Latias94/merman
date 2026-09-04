@@ -265,6 +265,34 @@
         "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
       }
     },
+    "image_media_type": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/[^;\\s]+(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+    },
+    "font_media_type": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[\\t\\n\\r ]*(?:[Ff][Oo][Nn][Tt]/(?:[Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?)|[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]/(?:[Ff][Oo][Nn][Tt]-[Ss][Ff][Nn][Tt]|[Vv][Nn][Dd]\\.[Mm][Ss]-[Ff][Oo][Nn][Tt][Oo][Bb][Jj][Ee][Cc][Tt]))(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+    },
+    "image_asset": {
+      "type": "object",
+      "required": ["media_type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "media_type": { "$ref": "#/$defs/image_media_type" },
+        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+      }
+    },
+    "font_asset": {
+      "type": "object",
+      "required": ["media_type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "media_type": { "$ref": "#/$defs/font_media_type" },
+        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+      }
+    },
     "image_resource": {
       "type": "object",
       "required": ["kind", "id", "image", "pixel_width", "pixel_height", "has_alpha"],
@@ -273,7 +301,7 @@
         "kind": { "const": "image" },
         "id": { "$ref": "#/$defs/resource_id" },
         "image": {
-          "$ref": "#/$defs/encoded_asset",
+          "$ref": "#/$defs/image_asset",
           "$comment": "The media_type main type/subtype is validated by the runtime protocol validator; parameters and ASCII case are handled there."
         },
         "pixel_width": { "type": "integer", "minimum": 1 },
@@ -304,7 +332,7 @@
       "properties": {
         "kind": { "const": "font" },
         "id": { "$ref": "#/$defs/resource_id" },
-        "font": { "$ref": "#/$defs/encoded_asset" }
+        "font": { "$ref": "#/$defs/font_asset" }
       }
     },
     "resource": {
@@ -385,7 +413,10 @@
         },
         "weight": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "style": { "enum": ["normal", "italic", "oblique"] },
-        "postscript_name": { "type": ["string", "null"] },
+        "postscript_name": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "resource": {
           "anyOf": [{ "$ref": "#/$defs/resource_id" }, { "type": "null" }]
         }
@@ -517,7 +548,10 @@
           ]
         },
         "direction": { "enum": ["auto", "ltr", "rtl"] },
-        "language": { "type": ["string", "null"] },
+        "language": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "obligation": { "$ref": "#/$defs/text_obligation" }
       }
     },

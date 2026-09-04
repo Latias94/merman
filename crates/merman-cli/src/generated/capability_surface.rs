@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -13,6 +13,7 @@ pub const TARGET_IDS: &[&str] = &[
 pub const CAPABILITY_IDS: &[&str] = &[
     "analysis",
     "ascii",
+    "drawing-list",
     "editor",
     "icons",
     "jpeg",
@@ -35,6 +36,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
 
 pub const OUTPUT_IDS: &[&str] = &[
     "ascii",
+    "drawing-list",
     "jpeg",
     "pdf",
     "png",
@@ -47,6 +49,7 @@ pub const BINDING_OPERATION_IDS: &[&str] = &[
     "ascii",
     "document-analysis-facts-json",
     "document-analysis-json",
+    "drawing-list-json",
     "jpeg",
     "layout-json",
     "pdf",
@@ -99,6 +102,7 @@ impl TargetKey {
 pub enum CapabilityKey {
     Analysis,
     Ascii,
+    DrawingList,
     Editor,
     Icons,
     Jpeg,
@@ -123,6 +127,7 @@ impl CapabilityKey {
     pub const ALL: &'static [Self] = &[
         Self::Analysis,
         Self::Ascii,
+        Self::DrawingList,
         Self::Editor,
         Self::Icons,
         Self::Jpeg,
@@ -147,6 +152,7 @@ impl CapabilityKey {
         match id {
             "analysis" => Some(Self::Analysis),
             "ascii" => Some(Self::Ascii),
+            "drawing-list" => Some(Self::DrawingList),
             "editor" => Some(Self::Editor),
             "icons" => Some(Self::Icons),
             "jpeg" => Some(Self::Jpeg),
@@ -177,24 +183,25 @@ impl CapabilityKey {
         match self {
             Self::Analysis => &CAPABILITIES[0],
             Self::Ascii => &CAPABILITIES[1],
-            Self::Editor => &CAPABILITIES[2],
-            Self::Icons => &CAPABILITIES[3],
-            Self::Jpeg => &CAPABILITIES[4],
-            Self::LayoutCytoscape => &CAPABILITIES[5],
-            Self::LayoutElk => &CAPABILITIES[6],
-            Self::Markdown => &CAPABILITIES[7],
-            Self::Math => &CAPABILITIES[8],
-            Self::NetworkIcons => &CAPABILITIES[9],
-            Self::ParallelMarkdown => &CAPABILITIES[10],
-            Self::Pdf => &CAPABILITIES[11],
-            Self::Png => &CAPABILITIES[12],
-            Self::Rustdoc => &CAPABILITIES[13],
-            Self::ShellCompletions => &CAPABILITIES[14],
-            Self::Svg => &CAPABILITIES[15],
-            Self::SystemClock => &CAPABILITIES[16],
-            Self::SystemRandom => &CAPABILITIES[17],
-            Self::SystemTimezone => &CAPABILITIES[18],
-            Self::SystemTiming => &CAPABILITIES[19],
+            Self::DrawingList => &CAPABILITIES[2],
+            Self::Editor => &CAPABILITIES[3],
+            Self::Icons => &CAPABILITIES[4],
+            Self::Jpeg => &CAPABILITIES[5],
+            Self::LayoutCytoscape => &CAPABILITIES[6],
+            Self::LayoutElk => &CAPABILITIES[7],
+            Self::Markdown => &CAPABILITIES[8],
+            Self::Math => &CAPABILITIES[9],
+            Self::NetworkIcons => &CAPABILITIES[10],
+            Self::ParallelMarkdown => &CAPABILITIES[11],
+            Self::Pdf => &CAPABILITIES[12],
+            Self::Png => &CAPABILITIES[13],
+            Self::Rustdoc => &CAPABILITIES[14],
+            Self::ShellCompletions => &CAPABILITIES[15],
+            Self::Svg => &CAPABILITIES[16],
+            Self::SystemClock => &CAPABILITIES[17],
+            Self::SystemRandom => &CAPABILITIES[18],
+            Self::SystemTimezone => &CAPABILITIES[19],
+            Self::SystemTiming => &CAPABILITIES[20],
         }
     }
 }
@@ -203,6 +210,7 @@ impl CapabilityKey {
 #[non_exhaustive]
 pub enum OutputKey {
     Ascii,
+    DrawingList,
     Jpeg,
     Pdf,
     Png,
@@ -212,6 +220,7 @@ pub enum OutputKey {
 impl OutputKey {
     pub const ALL: &'static [Self] = &[
         Self::Ascii,
+        Self::DrawingList,
         Self::Jpeg,
         Self::Pdf,
         Self::Png,
@@ -221,6 +230,7 @@ impl OutputKey {
     pub fn from_id(id: &str) -> Option<Self> {
         match id {
             "ascii" => Some(Self::Ascii),
+            "drawing-list" => Some(Self::DrawingList),
             "jpeg" => Some(Self::Jpeg),
             "pdf" => Some(Self::Pdf),
             "png" => Some(Self::Png),
@@ -236,10 +246,11 @@ impl OutputKey {
     pub const fn spec(self) -> &'static OutputDescriptor {
         match self {
             Self::Ascii => &OUTPUTS[0],
-            Self::Jpeg => &OUTPUTS[1],
-            Self::Pdf => &OUTPUTS[2],
-            Self::Png => &OUTPUTS[3],
-            Self::Svg => &OUTPUTS[4],
+            Self::DrawingList => &OUTPUTS[1],
+            Self::Jpeg => &OUTPUTS[2],
+            Self::Pdf => &OUTPUTS[3],
+            Self::Png => &OUTPUTS[4],
+            Self::Svg => &OUTPUTS[5],
         }
     }
 }
@@ -252,6 +263,7 @@ pub enum OperationKey {
     Ascii,
     DocumentAnalysisFactsJson,
     DocumentAnalysisJson,
+    DrawingListJson,
     Jpeg,
     LayoutJson,
     Pdf,
@@ -269,6 +281,7 @@ impl OperationKey {
         Self::Ascii,
         Self::DocumentAnalysisFactsJson,
         Self::DocumentAnalysisJson,
+        Self::DrawingListJson,
         Self::Jpeg,
         Self::LayoutJson,
         Self::Pdf,
@@ -286,6 +299,7 @@ impl OperationKey {
             "ascii" => Some(Self::Ascii),
             "document-analysis-facts-json" => Some(Self::DocumentAnalysisFactsJson),
             "document-analysis-json" => Some(Self::DocumentAnalysisJson),
+            "drawing-list-json" => Some(Self::DrawingListJson),
             "jpeg" => Some(Self::Jpeg),
             "layout-json" => Some(Self::LayoutJson),
             "pdf" => Some(Self::Pdf),
@@ -309,14 +323,15 @@ impl OperationKey {
             Self::Ascii => &OPERATION_SPECS[2],
             Self::DocumentAnalysisFactsJson => &OPERATION_SPECS[3],
             Self::DocumentAnalysisJson => &OPERATION_SPECS[4],
-            Self::Jpeg => &OPERATION_SPECS[5],
-            Self::LayoutJson => &OPERATION_SPECS[6],
-            Self::Pdf => &OPERATION_SPECS[7],
-            Self::Png => &OPERATION_SPECS[8],
-            Self::SemanticJson => &OPERATION_SPECS[9],
-            Self::Svg => &OPERATION_SPECS[10],
-            Self::SvgPlanJson => &OPERATION_SPECS[11],
-            Self::ValidationJson => &OPERATION_SPECS[12],
+            Self::DrawingListJson => &OPERATION_SPECS[5],
+            Self::Jpeg => &OPERATION_SPECS[6],
+            Self::LayoutJson => &OPERATION_SPECS[7],
+            Self::Pdf => &OPERATION_SPECS[8],
+            Self::Png => &OPERATION_SPECS[9],
+            Self::SemanticJson => &OPERATION_SPECS[10],
+            Self::Svg => &OPERATION_SPECS[11],
+            Self::SvgPlanJson => &OPERATION_SPECS[12],
+            Self::ValidationJson => &OPERATION_SPECS[13],
         }
     }
 }
@@ -389,6 +404,17 @@ pub const OPERATION_SPECS: &[OperationSpec] = &[
         description: "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
         media_type: "application/json",
         requires_uri: true,
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+    },
+    OperationSpec {
+        key: OperationKey::DrawingListJson,
+        id: "drawing-list-json",
+        capability: Some(CapabilityKey::DrawingList),
+        output: Some(OutputKey::DrawingList),
+        compiled_prerequisites: &[],
+        description: "Render Mermaid input as renderer-neutral DrawingList v1 JSON.",
+        media_type: "application/vnd.merman.drawing-list+json;version=1",
+        requires_uri: false,
         targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OperationSpec {
@@ -522,6 +548,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Render supported Mermaid semantics as terminal text.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::DrawingList,
+        id: "drawing-list",
+        kind: "output",
+        description: "Render Mermaid input as a validated renderer-neutral DrawingList JSON document.",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {
         key: CapabilityKey::Editor,
@@ -687,6 +721,14 @@ pub const OUTPUTS: &[OutputDescriptor] = &[
         capability: CapabilityKey::Ascii,
         description: "Plain terminal text output.",
         media_type: "text/plain; charset=utf-8",
+        targets: &[TargetKey::Native, TargetKey::Web, ],
+    },
+    OutputDescriptor {
+        key: OutputKey::DrawingList,
+        id: "drawing-list",
+        capability: CapabilityKey::DrawingList,
+        description: "Renderer-neutral DrawingList v1 JSON output.",
+        media_type: "application/vnd.merman.drawing-list+json;version=1",
         targets: &[TargetKey::Native, TargetKey::Web, ],
     },
     OutputDescriptor {

@@ -667,6 +667,11 @@ impl<'a> FlowchartBuilder<'a> {
                         layout_node.id
                     )));
                 }
+            } else if is_self_loop_helper_node_id(layout_node.id.as_str()) {
+                // Dagre materializes two zero-sized helper label nodes for every self-loop.
+                // They are layout-only implementation details; the merged logical edge below is
+                // the canonical visual owner and must be the only public node/edge projection.
+                continue;
             } else if let Some(node) = self.nodes_by_id.get(layout_node.id.as_str()) {
                 if node.is_subgraph_anchor() {
                     continue;
@@ -925,7 +930,7 @@ impl<'a> FlowchartBuilder<'a> {
     }
 
     fn emit_node(&mut self, layout_node: &LayoutNode) -> Result<()> {
-        if layout_node.is_cluster {
+        if layout_node.is_cluster || is_self_loop_helper_node_id(layout_node.id.as_str()) {
             return Ok(());
         }
         let node = self
@@ -1283,6 +1288,19 @@ impl<'a> FlowchartBuilder<'a> {
             link: None,
         }
     }
+}
+
+fn is_self_loop_helper_node_id(id: &str) -> bool {
+    let Some((pair, suffix)) = id.rsplit_once("---") else {
+        return false;
+    };
+    if !matches!(suffix, "1" | "2") {
+        return false;
+    }
+    let Some((from, to)) = pair.split_once("---") else {
+        return false;
+    };
+    from == to
 }
 
 fn adapt_swimlane_layout(model: &FlowchartModel, layout: &SwimlaneLayout) -> FlowchartLayout {

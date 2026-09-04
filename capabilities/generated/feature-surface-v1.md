@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7`
+Semantic digest: `sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401`
 
 ## Public Leaves
 
@@ -10,6 +10,7 @@ Semantic digest: `sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847
 | --- | --- | --- | --- | --- |
 | `analysis` | `Api` | `native`, `web`, `typst` | none | Expose diagnostics and semantic analysis APIs. |
 | `ascii` | `Output` | `native`, `web` | none | Render supported Mermaid semantics as terminal text. |
+| `drawing-list` | `Output` | `native`, `web` | `svg` | Render Mermaid input as a validated renderer-neutral DrawingList JSON document. |
 | `editor` | `Api` | `native`, `web` | none | Expose parser-backed editor intelligence APIs. |
 | `icons` | `Tool` | `native` | none | Compile CLI local Iconify pack loading. |
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
@@ -34,6 +35,7 @@ Semantic digest: `sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847
 | ID | Capability | Media type | Targets |
 | --- | --- | --- | --- |
 | `ascii` | `ascii` | `text/plain; charset=utf-8` | `native`, `web` |
+| `drawing-list` | `drawing-list` | `application/vnd.merman.drawing-list+json;version=1` | `native`, `web` |
 | `jpeg` | `jpeg` | `image/jpeg` | `native` |
 | `pdf` | `pdf` | `application/pdf` | `native` |
 | `png` | `png` | `image/png` | `native` |
@@ -48,6 +50,7 @@ Semantic digest: `sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847
 | `ascii` | `ascii` | `ascii` | none | `text/plain; charset=utf-8` | no | `native`, `web` |
 | `document-analysis-facts-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
 | `document-analysis-json` | `analysis` | none | none | `application/json` | yes | `native`, `web` |
+| `drawing-list-json` | `drawing-list` | `drawing-list` | none | `application/vnd.merman.drawing-list+json;version=1` | no | `native`, `web` |
 | `jpeg` | `jpeg` | `jpeg` | `svg` | `image/jpeg` | no | `native` |
 | `layout-json` | `svg` | none | none | `application/json` | no | `native`, `web` |
 | `pdf` | `pdf` | `pdf` | `svg` | `application/pdf` | no | `native` |

@@ -28,6 +28,17 @@
       }
     },
     {
+      "id": "drawing-list",
+      "kind": "output",
+      "description": "Render Mermaid input as a validated renderer-neutral DrawingList JSON document.",
+      "targets": ["native", "web"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "DrawingList requests return a typed missing-capability error when the DrawingList output is not compiled."
+      }
+    },
+    {
       "id": "analysis",
       "kind": "api",
       "description": "Expose diagnostics and semantic analysis APIs.",
@@ -246,6 +257,13 @@
       "targets": ["native", "web", "typst"]
     },
     {
+      "id": "drawing-list",
+      "capability": "drawing-list",
+      "description": "Renderer-neutral DrawingList v1 JSON output.",
+      "media_type": "application/vnd.merman.drawing-list+json;version=1",
+      "targets": ["native", "web"]
+    },
+    {
       "id": "ascii",
       "capability": "ascii",
       "description": "Plain terminal text output.",
@@ -284,6 +302,16 @@
       "media_type": "image/svg+xml",
       "requires_uri": false,
       "targets": ["native", "web", "typst"]
+    },
+    {
+      "id": "drawing-list-json",
+      "capability": "drawing-list",
+      "output": "drawing-list",
+      "compiled_prerequisites": [],
+      "description": "Render Mermaid input as renderer-neutral DrawingList v1 JSON.",
+      "media_type": "application/vnd.merman.drawing-list+json;version=1",
+      "requires_uri": false,
+      "targets": ["native", "web"]
     },
     {
       "id": "png",
