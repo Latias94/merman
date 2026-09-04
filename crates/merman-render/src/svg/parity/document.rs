@@ -405,6 +405,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::GitGraph(_) => {
+                Ok(root_svg::RootViewportSpec::responsive(viewport_bounds)
+                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width)))
+            }
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -513,6 +517,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
                 Some((false, css))
             }
+            SvgStructureBody::GitGraph(_) => Some((
+                false,
+                super::gitgraph::canonical_gitgraph_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -550,6 +561,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::TreeView(_)
                 | SvgStructureBody::Gantt(_)
+                | SvgStructureBody::GitGraph(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -561,6 +573,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         match self.svg_body {
             SvgStructureBody::Info(_) | SvgStructureBody::Error(_) => Some(self.family.as_str()),
             SvgStructureBody::Railroad(_) => Some("railroad-diagram"),
+            SvgStructureBody::GitGraph(_) => Some("gitGraph"),
             _ => None,
         }
     }
@@ -579,6 +592,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::TreeView(_)
             | SvgStructureBody::Gantt(_)
+            | SvgStructureBody::GitGraph(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -994,15 +1008,32 @@ impl<'a> DocumentSvgEncoder<'a> {
             escape_attr_into(&mut self.output, body.look.as_str());
             self.output.push('"');
         }
-        write!(
-            self.output,
-            " class=\"merman-semantic {}{}\" role=\"group\" data-merman-semantic-id=\"{}\"",
-            role_class,
-            self.semantic_extra_class(semantic_id)
-                .map_or_else(String::new, |class| format!(" {class}")),
-            escaped_attr(semantic.id.as_str()),
-        )
-        .map_err(|_| invalid("failed to write semantic group"))?;
+        let semantic_extra_class = self.semantic_extra_class(semantic_id).map(str::to_owned);
+        if matches!(self.svg_body, SvgStructureBody::Timeline(_))
+            && let Some(class) = semantic_extra_class.as_deref()
+        {
+            // Timeline's current Mermaid DOM uses the family class as the complete group class;
+            // retain that stable selector while the semantic identity remains explicit in the
+            // data attribute and ARIA role.
+            write!(
+                self.output,
+                " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
+                escaped_attr(semantic.id.as_str()),
+                class,
+            )
+            .map_err(|_| invalid("failed to write Timeline semantic group"))?;
+        } else {
+            write!(
+                self.output,
+                " class=\"merman-semantic {}{}\" role=\"group\" data-merman-semantic-id=\"{}\"",
+                role_class,
+                semantic_extra_class
+                    .as_deref()
+                    .map_or_else(String::new, |class| format!(" {class}")),
+                escaped_attr(semantic.id.as_str()),
+            )
+            .map_err(|_| invalid("failed to write semantic group"))?;
+        }
         if let SvgStructureBody::Venn(body) = self.svg_body
             && let Some(sets) = body.semantic_data_sets.get(semantic_id)
         {
@@ -1073,6 +1104,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::XyChart(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::GitGraph(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             _ => None,
@@ -1283,6 +1317,42 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_line(path_id, start, end, style);
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::GitGraph(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if (raw_id.ends_with(".line") || raw_id.ends_with(".stem"))
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if (raw_id.ends_with(".circle")
+                || raw_id.ends_with(".outer")
+                || raw_id.ends_with(".inner")
+                || raw_id.ends_with(".left")
+                || raw_id.ends_with(".right")
+                || raw_id.ends_with(".hole"))
+                && let Some((center, radius)) = cubic_circle_from_path(path)
+            {
+                return self.emit_circle(path_id, center, radius, style);
+            }
+            if (raw_id.ends_with(".background")
+                || raw_id.ends_with(".highlight.outer")
+                || raw_id.ends_with(".highlight.inner"))
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                if radius > 0.0 {
+                    return self.emit_rounded_rect(path_id, bounds, radius, style);
+                }
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if (raw_id.ends_with(".background")
+                || raw_id.ends_with(".highlight.outer")
+                || raw_id.ends_with(".highlight.inner"))
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
@@ -1292,6 +1362,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("\"");
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1365,6 +1436,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("\"");
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1407,6 +1479,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         .map_err(|_| invalid("failed to write SVG rectangle"))?;
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1441,6 +1514,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         .map_err(|_| invalid("failed to write rounded SVG rectangle"))?;
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1469,6 +1543,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(radius),
         )
         .map_err(|_| invalid("failed to write SVG circle"))?;
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1500,6 +1575,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         .map_err(|_| invalid("failed to write SVG line"))?;
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
+        self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1535,17 +1611,11 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
-        self.output.push_str("<text x=\"");
-        write!(
-            self.output,
-            "{}\" y=\"{}\"",
-            fmt(run.origin.x),
-            fmt(run.origin.y)
-        )
-        .map_err(|_| invalid("failed to write text origin"))?;
+        self.output.push_str("<text");
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id);
+            self.write_sidecar_dom_id(semantic_id);
         }
         let text_index = self.record_text_index();
         if let Some(class) = self.text_class(run, text_index) {
@@ -1564,16 +1634,38 @@ impl<'a> DocumentSvgEncoder<'a> {
         } else {
             text_baseline(run.baseline)
         };
-        write!(
-            self.output,
-            " text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
-            text_anchor(run.anchor),
-            baseline,
-            text_direction(run.direction),
-            font_size,
-            fmt(run.style.letter_spacing),
-        )
-        .map_err(|_| invalid("failed to write text style"))?;
+        let gitgraph_branch_label = matches!(self.svg_body, SvgStructureBody::GitGraph(body)
+        if self.current_semantic_id().is_some_and(|id| {
+            body.text_classes
+                .get(id)
+                .is_some_and(|class| class.split_whitespace().any(|token| token.starts_with("branch-label")))
+        }));
+        if gitgraph_branch_label {
+            write!(
+                self.output,
+                " x=\"0\" y=\"{}\" transform=\"translate({}, 0)\" text-anchor=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
+                fmt(run.origin.y - run.style.line_height),
+                fmt(run.origin.x),
+                text_anchor(run.anchor),
+                text_direction(run.direction),
+                font_size,
+                fmt(run.style.letter_spacing),
+            )
+            .map_err(|_| invalid("failed to write GitGraph branch label style"))?;
+        } else {
+            write!(
+                self.output,
+                " x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
+                fmt(run.origin.x),
+                fmt(run.origin.y),
+                text_anchor(run.anchor),
+                baseline,
+                text_direction(run.direction),
+                font_size,
+                fmt(run.style.letter_spacing),
+            )
+            .map_err(|_| invalid("failed to write text style"))?;
+        }
         let families = self.font_families(&run.style.font);
         self.output.push_str(" font-family=\"");
         escape_attr_into(&mut self.output, families.as_str());
@@ -1612,19 +1704,38 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push('>');
 
         let mut lines = run.text.split('\n');
-        if let Some(first) = lines.next() {
-            escape_xml_into(&mut self.output, first);
-        }
-        for line in lines {
-            write!(
-                self.output,
-                "<tspan x=\"{}\" dy=\"{}\">",
-                fmt(run.origin.x),
-                fmt(run.style.line_height),
-            )
-            .map_err(|_| invalid("failed to write multiline text"))?;
-            escape_xml_into(&mut self.output, line);
-            self.output.push_str("</tspan>");
+        if gitgraph_branch_label {
+            if let Some(first) = lines.next() {
+                self.output
+                    .push_str(r#"<tspan xml:space="preserve" dy="1em" x="0" class="row">"#);
+                escape_xml_into(&mut self.output, first);
+                self.output.push_str("</tspan>");
+            }
+            for line in lines {
+                write!(
+                    self.output,
+                    "<tspan x=\"0\" dy=\"{}\" class=\"row\">",
+                    fmt(run.style.line_height),
+                )
+                .map_err(|_| invalid("failed to write GitGraph multiline text"))?;
+                escape_xml_into(&mut self.output, line);
+                self.output.push_str("</tspan>");
+            }
+        } else {
+            if let Some(first) = lines.next() {
+                escape_xml_into(&mut self.output, first);
+            }
+            for line in lines {
+                write!(
+                    self.output,
+                    "<tspan x=\"{}\" dy=\"{}\">",
+                    fmt(run.origin.x),
+                    fmt(run.style.line_height),
+                )
+                .map_err(|_| invalid("failed to write multiline text"))?;
+                escape_xml_into(&mut self.output, line);
+                self.output.push_str("</tspan>");
+            }
         }
         self.output.push_str("</text>");
         Ok(())
@@ -1691,6 +1802,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::GitGraph(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1741,6 +1857,21 @@ impl<'a> DocumentSvgEncoder<'a> {
             _ => None,
         })
         .cloned() else {
+            return;
+        };
+        self.output.push_str(" id=\"");
+        escape_attr_into(&mut self.output, self.diagram_id.as_str());
+        self.output.push('-');
+        escape_attr_into(&mut self.output, raw_id.as_str());
+        self.output.push('"');
+    }
+
+    fn write_sidecar_dom_id(&mut self, key: &str) {
+        let raw_id = match self.svg_body {
+            SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
+            _ => None,
+        };
+        let Some(raw_id) = raw_id else {
             return;
         };
         self.output.push_str(" id=\"");
@@ -1801,6 +1932,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Kanban(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::GitGraph(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
@@ -1970,6 +2105,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 SvgStructureBody::Pie(_) => id.starts_with("pie."),
                 SvgStructureBody::QuadrantChart(_) => id.starts_with("quadrantchart."),
                 SvgStructureBody::XyChart(_) => id.starts_with("xychart.text."),
+                SvgStructureBody::GitGraph(_) => id.starts_with("gitgraph."),
                 _ => false,
             });
         if family_text
@@ -2046,6 +2182,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn svg_resource_id(&self, id: &str) -> Result<String> {
+        if matches!(self.svg_body, SvgStructureBody::GitGraph(_)) && id == "gitgraph.gradient" {
+            return Ok(format!("{}-gradient", self.diagram_id));
+        }
         self.resource_svg_ids
             .get(id)
             .cloned()
@@ -2297,6 +2436,86 @@ fn circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
         return None;
     }
     Some((center, *radius_x))
+}
+
+fn cubic_circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
+    let [
+        PathSegment::MoveTo { to: start },
+        PathSegment::CubicTo {
+            control1,
+            control2,
+            to: first,
+        },
+        PathSegment::CubicTo {
+            control1: second_control1,
+            control2: second_control2,
+            to: second,
+        },
+        PathSegment::CubicTo {
+            control1: third_control1,
+            control2: third_control2,
+            to: third,
+        },
+        PathSegment::CubicTo {
+            control1: fourth_control1,
+            control2: fourth_control2,
+            to: end,
+        },
+        PathSegment::Close,
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+
+    let points = [
+        *start,
+        *control1,
+        *control2,
+        *first,
+        *second_control1,
+        *second_control2,
+        *second,
+        *third_control1,
+        *third_control2,
+        *third,
+        *fourth_control1,
+        *fourth_control2,
+        *end,
+    ];
+    if points
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
+        return None;
+    }
+    let min_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = points
+        .iter()
+        .map(|point| point.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::INFINITY, f64::min);
+    let max_y = points
+        .iter()
+        .map(|point| point.y)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let width = max_x - min_x;
+    let height = max_y - min_y;
+    let epsilon = 1e-8_f64.max(width.max(height) * 1e-8);
+    if width <= epsilon || (width - height).abs() > epsilon {
+        return None;
+    }
+    let center = Point::new((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+    let radius = width / 2.0;
+    if (start.x - end.x).abs() > epsilon || (start.y - end.y).abs() > epsilon {
+        return None;
+    }
+    Some((center, radius))
 }
 
 fn scoped_id(prefix: &str, index: usize, raw: &str) -> String {

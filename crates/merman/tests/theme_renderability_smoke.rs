@@ -1104,10 +1104,9 @@ journey
         "Journey's current plain line DOM is visibly driven by themeVariables.textColor: {svg}"
     );
     assert!(
-        svg.contains(
-            r#"stroke-width="4" stroke="black" marker-end="url(#journey-line-audit-arrowhead)""#
-        ),
-        "Mermaid 11.15 still emits a black presentation attribute on the activity line: {svg}"
+        svg.contains(r##"fill="none" stroke="#f8fafc" stroke-width="4""##)
+            && svg.contains(r#"data-merman-resource="journey.activity.line""#),
+        "canonical Journey should emit the resolved activity line style and resource: {svg}"
     );
     assert!(
         svg.contains(r#"#journey-line-audit .flowchart-link{stroke:#22c55e;fill:none;}"#),
@@ -1204,8 +1203,9 @@ timeline
         "Timeline redux lineWrapper CSS should consume nodeBorder/strokeWidth with matching DOM: {svg}"
     );
     assert!(
-        svg.contains(r#"class="lineWrapper"><line"#),
-        "Timeline redux lineWrapper CSS should only be counted when line DOM exists: {svg}"
+        svg.contains(r#"class="lineWrapper""#)
+            && svg.contains(r#"data-merman-resource="timeline.activity.line""#),
+        "Timeline redux lineWrapper CSS should only be counted when the canonical line resource is rendered: {svg}"
     );
     assert!(
         svg.contains(r#"class="timeline-node section--1""#),

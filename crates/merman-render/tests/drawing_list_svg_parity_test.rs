@@ -837,3 +837,71 @@ kanban
     assert!(!svg.contains("<foreignObject"));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
+    let svg = render_svg(
+        r##"gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+  checkout main
+  merge dev
+"##,
+        "gitgraph-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical GitGraph SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("gitGraph"));
+    assert_eq!(root.attribute("aria-roledescription"), Some("gitGraph"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    for class in [
+        "branch",
+        "branchLabelBkg",
+        "branch-label0",
+        "commit-bullets",
+        "commit-merge",
+        "arrow",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical GitGraph class {class:?}"
+        );
+    }
+    for semantic_id in [
+        "gitgraph.document",
+        "gitgraph.branch.0",
+        "gitgraph.arrow.0",
+        "gitgraph.commit.0",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("data-merman-semantic-id") == Some(semantic_id)),
+            "expected canonical GitGraph semantic id {semantic_id:?}"
+        );
+    }
+    assert!(document.descendants().any(|node| node.has_tag_name("line")));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("circle"))
+    );
+    assert!(document.descendants().any(|node| node.has_tag_name("rect")));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node
+                .descendants()
+                .any(|child| child.has_tag_name("tspan") && child.text() == Some("dev"))
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

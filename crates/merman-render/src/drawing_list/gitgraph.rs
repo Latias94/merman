@@ -348,6 +348,11 @@ struct GitGraphBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
+    gradient_resource: Option<ResourceId>,
 }
 
 impl<'a> GitGraphBuilder<'a> {
@@ -396,6 +401,11 @@ impl<'a> GitGraphBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
+            gradient_resource: None,
         })
     }
 
@@ -459,6 +469,10 @@ impl<'a> GitGraphBuilder<'a> {
                 family: RenderFamilyKind::GitGraph,
                 body: SvgStructureBody::GitGraph(GitGraphSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -691,12 +705,20 @@ impl<'a> GitGraphBuilder<'a> {
         }
         for (index, branch) in self.layout.branches.iter().enumerate() {
             let semantic_id = format!("gitgraph.branch.{index}");
+            let branch_class_index = theme_class_index(branch.index);
+            self.semantic_classes
+                .insert(semantic_id.clone(), "branchLabel".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
             let branch_line = branch_line(self.layout, branch, self.theme.use_redux_geometry);
+            let branch_line_id = format!("{semantic_id}.line");
+            self.path_classes.insert(
+                branch_line_id.clone(),
+                format!("branch branch{branch_class_index}"),
+            );
             self.add_path(
-                format!("{semantic_id}.line"),
+                branch_line_id,
                 line_path(branch_line),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
@@ -721,16 +743,23 @@ impl<'a> GitGraphBuilder<'a> {
             );
             let (fill, border, border_width) = self.theme.branch_background(branch.index);
             let branch_path_id = format!("{semantic_id}.label.background");
+            self.path_classes.insert(
+                branch_path_id.clone(),
+                format!("branchLabelBkg label{branch_class_index}"),
+            );
             let gradient_id = if self.theme.use_neo && self.theme.use_gradient {
-                let gradient_id = ResourceId::new(format!("{branch_path_id}.gradient"));
-                self.resources
-                    .push(DrawingResource::LinearGradient(gradient_resource(
-                        gradient_id.clone(),
-                        rect,
-                        self.theme.gradient_start,
-                        self.theme.gradient_stop,
-                    )));
-                Some(gradient_id)
+                let gradient_id = self.gradient_resource.get_or_insert_with(|| {
+                    let gradient_id = ResourceId::new("gitgraph.gradient");
+                    self.resources
+                        .push(DrawingResource::LinearGradient(gradient_resource(
+                            gradient_id.clone(),
+                            rect,
+                            self.theme.gradient_start,
+                            self.theme.gradient_stop,
+                        )));
+                    gradient_id
+                });
+                Some(gradient_id.clone())
             } else {
                 None
             };
@@ -778,6 +807,14 @@ impl<'a> GitGraphBuilder<'a> {
                 TextBaseline::Alphabetic,
                 None,
             )?;
+            self.text_classes.insert(
+                format!("{semantic_id}.label"),
+                format!("label branch-label{branch_class_index}"),
+            );
+            self.semantic_classes.insert(
+                format!("{semantic_id}.label"),
+                format!("label branch-label{branch_class_index}"),
+            );
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
                 id: semantic_id,
@@ -793,12 +830,20 @@ impl<'a> GitGraphBuilder<'a> {
     fn emit_arrows(&mut self) -> Result<()> {
         for (index, arrow) in self.layout.arrows.iter().enumerate() {
             let semantic_id = format!("gitgraph.arrow.{index}");
+            let arrow_class_index = theme_class_index(arrow.class_index);
+            self.semantic_classes
+                .insert(semantic_id.clone(), "commit-arrows".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
             let segments = parse_svg_path(&arrow.d)?;
+            let arrow_path_id = format!("{semantic_id}.path");
+            self.path_classes.insert(
+                arrow_path_id.clone(),
+                format!("arrow arrow{arrow_class_index}"),
+            );
             self.add_path(
-                format!("{semantic_id}.path"),
+                arrow_path_id,
                 segments,
                 PathStyle {
                     fill_rule: FillRule::NonZero,
@@ -829,6 +874,8 @@ impl<'a> GitGraphBuilder<'a> {
     fn emit_commits(&mut self) -> Result<()> {
         for (index, commit) in self.layout.commits.iter().enumerate() {
             let semantic_id = format!("gitgraph.commit.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "commit-bullets".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -858,6 +905,7 @@ impl<'a> GitGraphBuilder<'a> {
             .theme
             .commit_color(branch_index_for_commit(self.layout, commit));
         let symbol_type = commit.custom_type.unwrap_or(commit.commit_type);
+        let class_index = theme_class_index(branch_index_for_commit(self.layout, commit));
         let radius = if self.theme.use_redux_geometry {
             7.0
         } else {
@@ -875,8 +923,13 @@ impl<'a> GitGraphBuilder<'a> {
                 } else {
                     6.0
                 };
+                let outer_id = format!("{semantic_id}.highlight.outer");
+                self.path_classes.insert(
+                    outer_id.clone(),
+                    format!("commit commit{class_index} commit-highlight commit-highlight-outer"),
+                );
                 self.add_rect_path(
-                    format!("{semantic_id}.highlight.outer"),
+                    outer_id,
                     Rect::new(commit.x - outer, commit.y - outer, outer * 2.0, outer * 2.0),
                     Some(
                         self.theme
@@ -888,16 +941,26 @@ impl<'a> GitGraphBuilder<'a> {
                         1.0,
                     )),
                 )?;
+                let inner_id = format!("{semantic_id}.highlight.inner");
+                self.path_classes.insert(
+                    inner_id.clone(),
+                    format!("commit commit{class_index} commit-highlight commit-highlight-inner"),
+                );
                 self.add_rect_path(
-                    format!("{semantic_id}.highlight.inner"),
+                    inner_id,
                     Rect::new(commit.x - inner, commit.y - inner, inner * 2.0, inner * 2.0),
                     Some(self.theme.state_fill),
                     Some(stroke(self.theme.state_fill, 1.0)),
                 )?;
             }
             1 => {
+                let circle_id = format!("{semantic_id}.reverse.circle");
+                self.path_classes.insert(
+                    circle_id.clone(),
+                    format!("commit commit{class_index} commit-reverse"),
+                );
                 self.add_circle(
-                    format!("{semantic_id}.reverse.circle"),
+                    circle_id,
                     Point::new(commit.x, commit.y),
                     radius,
                     Some(branch_color),
@@ -908,8 +971,13 @@ impl<'a> GitGraphBuilder<'a> {
                 } else {
                     5.0
                 };
+                let cross_id = format!("{semantic_id}.reverse.cross");
+                self.path_classes.insert(
+                    cross_id.clone(),
+                    format!("commit commit{class_index} commit-reverse"),
+                );
                 self.add_path(
-                    format!("{semantic_id}.reverse.cross"),
+                    cross_id,
                     vec![
                         PathSegment::MoveTo {
                             to: Point::new(commit.x - cross, commit.y - cross),
@@ -940,15 +1008,25 @@ impl<'a> GitGraphBuilder<'a> {
                 )?;
             }
             3 => {
+                let outer_id = format!("{semantic_id}.merge.outer");
+                self.path_classes.insert(
+                    outer_id.clone(),
+                    format!("commit commit{class_index} commit-merge"),
+                );
                 self.add_circle(
-                    format!("{semantic_id}.merge.outer"),
+                    outer_id,
                     Point::new(commit.x, commit.y),
                     radius,
                     Some(branch_color),
                     Some(stroke(branch_color, 1.0)),
                 )?;
+                let inner_id = format!("{semantic_id}.merge.inner");
+                self.path_classes.insert(
+                    inner_id.clone(),
+                    format!("commit commit{class_index} commit-merge"),
+                );
                 self.add_circle(
-                    format!("{semantic_id}.merge.inner"),
+                    inner_id,
                     Point::new(commit.x, commit.y),
                     if self.theme.use_redux_geometry {
                         5.0
@@ -961,8 +1039,13 @@ impl<'a> GitGraphBuilder<'a> {
             }
             4 => self.emit_cherry_pick_symbol(semantic_id, commit, branch_color, radius)?,
             _ => {
+                let circle_id = format!("{semantic_id}.circle");
+                self.path_classes.insert(
+                    circle_id.clone(),
+                    format!("commit commit{class_index} commit-normal"),
+                );
                 self.add_circle(
-                    format!("{semantic_id}.circle"),
+                    circle_id,
                     Point::new(commit.x, commit.y),
                     radius,
                     Some(branch_color),
@@ -985,16 +1068,27 @@ impl<'a> GitGraphBuilder<'a> {
         } else {
             Color::rgba(255, 255, 255, 255)
         };
+        let class_index = theme_class_index(branch_index_for_commit(self.layout, commit));
+        let outer_id = format!("{semantic_id}.cherry-pick.outer");
+        self.path_classes.insert(
+            outer_id.clone(),
+            format!("commit commit{class_index} commit-cherry-pick"),
+        );
         self.add_circle(
-            format!("{semantic_id}.cherry-pick.outer"),
+            outer_id,
             Point::new(commit.x, commit.y),
             radius,
             Some(branch_color),
             Some(stroke(branch_color, 1.0)),
         )?;
         for (suffix, dx, dy) in [("left", -3.0, 2.0), ("right", 3.0, 2.0)] {
+            let circle_id = format!("{semantic_id}.cherry-pick.{suffix}");
+            self.path_classes.insert(
+                circle_id.clone(),
+                format!("commit commit{class_index} commit-cherry-pick"),
+            );
             self.add_circle(
-                format!("{semantic_id}.cherry-pick.{suffix}"),
+                circle_id,
                 Point::new(commit.x + dx, commit.y + dy),
                 if self.theme.use_redux_geometry {
                     2.5
@@ -1009,8 +1103,13 @@ impl<'a> GitGraphBuilder<'a> {
             ("left-stem", 3.0, 1.0, 0.0, -5.0),
             ("right-stem", -3.0, 1.0, 0.0, -5.0),
         ] {
+            let stem_id = format!("{semantic_id}.cherry-pick.{suffix}");
+            self.path_classes.insert(
+                stem_id.clone(),
+                format!("commit commit{class_index} commit-cherry-pick"),
+            );
             self.add_path(
-                format!("{semantic_id}.cherry-pick.{suffix}"),
+                stem_id,
                 line_path(Line {
                     x1: commit.x + x1,
                     y1: commit.y + y1,
@@ -1048,15 +1147,23 @@ impl<'a> GitGraphBuilder<'a> {
             .measure_svg_simple_text_bbox_height_px(&commit.id, &style)
             .max(1.0);
         let (rect, origin, rotation) = commit_label_geometry(self.layout, commit, width, height);
+        let background_id = format!("{semantic_id}.label.background");
+        self.path_classes
+            .insert(background_id.clone(), "commit-label-bkg".to_string());
         self.emit_label_background(
-            &format!("{semantic_id}.label.background"),
+            &background_id,
             rect,
             self.theme.commit_label_background,
             self.theme.commit_label_background_opacity,
             rotation,
         )?;
+        let text_id = format!("{semantic_id}.label");
+        self.text_classes
+            .insert(text_id.clone(), "commit-label".to_string());
+        self.semantic_classes
+            .insert(text_id.clone(), "commit-label".to_string());
         self.emit_text(
-            &format!("{semantic_id}.label"),
+            &text_id,
             &commit.id,
             origin,
             self.theme.commit_label_font_size,
@@ -1112,6 +1219,8 @@ impl<'a> GitGraphBuilder<'a> {
             let y_offset = index as f64 * 20.0;
             let geometry = tag_geometry(self.layout, commit, max_width, max_height, y_offset);
             let tag_id = format!("{semantic_id}.tag.{index}");
+            self.semantic_classes
+                .insert(tag_id.clone(), "tag".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: tag_id.clone(),
             });
@@ -1120,8 +1229,11 @@ impl<'a> GitGraphBuilder<'a> {
                 self.commands
                     .push(DrawingCommand::ConcatTransform { transform });
             }
+            let background_id = format!("{tag_id}.background");
+            self.path_classes
+                .insert(background_id.clone(), "tag-label-bkg".to_string());
             self.add_path(
-                format!("{tag_id}.background"),
+                background_id,
                 polygon_path(&geometry.polygon),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
@@ -1129,8 +1241,11 @@ impl<'a> GitGraphBuilder<'a> {
                     stroke: Some(stroke(self.theme.tag_label_border, 1.0)),
                 },
             )?;
+            let hole_id = format!("{tag_id}.hole");
+            self.path_classes
+                .insert(hole_id.clone(), "tag-hole".to_string());
             self.add_circle(
-                format!("{tag_id}.hole"),
+                hole_id,
                 geometry.hole,
                 1.5,
                 Some(self.theme.text_color),
@@ -1139,8 +1254,11 @@ impl<'a> GitGraphBuilder<'a> {
             if geometry.shape_transform.is_some() {
                 self.commands.push(DrawingCommand::Restore);
             }
+            let label_id = format!("{tag_id}.label");
+            self.text_classes
+                .insert(label_id.clone(), "tag-label".to_string());
             self.emit_text(
-                &format!("{tag_id}.label"),
+                &label_id,
                 tag,
                 geometry.origin,
                 self.theme.tag_label_font_size,
@@ -1169,6 +1287,10 @@ impl<'a> GitGraphBuilder<'a> {
             (bounds.min_x + bounds.max_x) / 2.0,
             -title_top_margin(self.metadata.effective_config.as_value()),
         );
+        self.text_classes
+            .insert("gitgraph.title".to_string(), "gitTitleText".to_string());
+        self.semantic_classes
+            .insert("gitgraph.title".to_string(), "gitTitleText".to_string());
         self.emit_text(
             "gitgraph.title",
             title,
@@ -1865,6 +1987,10 @@ fn branch_index_for_commit(layout: &GitGraphDiagramLayout, commit: &GitGraphComm
         .find(|branch| branch.name == commit.branch)
         .map(|branch| branch.index)
         .unwrap_or(0)
+}
+
+fn theme_class_index(raw: i64) -> usize {
+    raw.rem_euclid(GITGRAPH_NAMED_COLOR_COUNT as i64) as usize
 }
 
 fn gradient_resource(

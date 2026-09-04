@@ -504,6 +504,17 @@ where
     }
 }
 
+/// Returns the source-backed GitGraph stylesheet for the canonical document serializer.
+///
+/// The canonical path owns geometry and paint in the DrawingList.  Reusing this stylesheet keeps
+/// the Mermaid-facing class/theme vocabulary stable without making CSS a second geometry source.
+pub(crate) fn canonical_gitgraph_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> String {
+    gitgraph_css(diagram_id, effective_config).css
+}
+
 fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
     let raw = raw.trim().trim_end_matches(';').trim();
     let raw = raw.trim_end_matches("!important").trim();

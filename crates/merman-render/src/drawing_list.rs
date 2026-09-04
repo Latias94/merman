@@ -424,6 +424,10 @@ pub(crate) struct GanttSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct GitGraphSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral Timeline document.

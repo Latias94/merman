@@ -269,7 +269,7 @@ impl<'a> KanbanBuilder<'a> {
             let (fill, border) = self.section_colors(section.index)?;
             self.semantic_classes.insert(
                 semantic_id.clone(),
-                format!("cluster undefined section-{}", section.index),
+                format!("cluster section-{}", section.index),
             );
             self.dom_ids.insert(semantic_id.clone(), section.id.clone());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
@@ -352,7 +352,7 @@ impl<'a> KanbanBuilder<'a> {
 
             let semantic_id = format!("kanban.item.{index}");
             self.semantic_classes
-                .insert(semantic_id.clone(), "node undefined".to_string());
+                .insert(semantic_id.clone(), "node".to_string());
             self.dom_ids.insert(semantic_id.clone(), item.id.clone());
             self.path_classes.insert(
                 format!("{semantic_id}.background"),
