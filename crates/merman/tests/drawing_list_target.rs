@@ -216,7 +216,9 @@ fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
     let source = r#"C4Context
         Person(user, "User")
         System(api, "API", "Service")
+        System(web, "Web", "Frontend")
         Rel(user, api, "uses")
+        Rel(api, web, "serves")
     "#;
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
@@ -241,6 +243,25 @@ fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
         merman_display_list::DrawingResource::Path(path)
             if path.id.as_str().contains("c4.relation.0.marker.end")
     )));
+    let second_relation = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str() == "c4.relation.1.route" =>
+            {
+                Some(path)
+            }
+            _ => None,
+        })
+        .expect("second C4 relationship has a route resource");
+    assert!(matches!(
+        second_relation.segments.as_slice(),
+        [
+            merman_display_list::PathSegment::MoveTo { .. },
+            merman_display_list::PathSegment::QuadTo { control, .. }
+        ] if control.x.is_finite() && control.y.is_finite()
+    ));
     assert!(document.semantics.iter().any(|semantic| {
         semantic.role == merman_display_list::SemanticRole::Node
             && semantic.title.as_deref() == Some("User")
@@ -299,6 +320,7 @@ architecture-beta
     }));
 }
 
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
@@ -338,6 +360,7 @@ fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     }));
 }
 
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn mindmap_rejects_styled_markdown_instead_of_flattening_it_silently() {
     let error = Renderer::new()

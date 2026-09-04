@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://merman.dev/contracts/drawing-list-v1.json",
   "title": "Merman DrawingList v1",
-  "description": "Versioned renderer-neutral drawing instructions. Unknown visual commands and resources are invalid; x-* extensions are non-visual metadata only.",
+  "description": "Versioned renderer-neutral drawing instructions. Unknown visual commands and resources are invalid; x-* extensions are non-visual metadata only. This schema validates wire structure and local field constraints; the Rust/protocol validator additionally enforces cross-reference, ordering, stack-balance, policy, and caller-selected resource-limit semantics.",
   "type": "object",
   "required": [
     "version",
@@ -66,6 +66,17 @@
         "y": { "type": "number" },
         "width": { "type": "number", "minimum": 0 },
         "height": { "type": "number", "minimum": 0 }
+      }
+    },
+    "positive_rect": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
     "transform": {
@@ -189,6 +200,9 @@
         "segments": {
           "type": "array",
           "minItems": 1,
+          "prefixItems": [
+            { "$ref": "#/$defs/move_to" }
+          ],
           "items": { "$ref": "#/$defs/path_segment" }
         }
       }
@@ -260,7 +274,7 @@
         "id": { "$ref": "#/$defs/resource_id" },
         "image": {
           "$ref": "#/$defs/encoded_asset",
-          "contentMediaType": "image/*"
+          "$comment": "The media_type main type/subtype is validated by the runtime protocol validator; parameters and ASCII case are handled there."
         },
         "pixel_width": { "type": "integer", "minimum": 1 },
         "pixel_height": { "type": "integer", "minimum": 1 },
@@ -278,7 +292,7 @@
         "kind": { "const": "pattern" },
         "id": { "$ref": "#/$defs/resource_id" },
         "image": { "$ref": "#/$defs/resource_id" },
-        "tile": { "$ref": "#/$defs/rect" },
+        "tile": { "$ref": "#/$defs/positive_rect" },
         "transform": { "$ref": "#/$defs/transform" },
         "repetition": { "$ref": "#/$defs/pattern_repeat" }
       }

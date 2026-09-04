@@ -461,6 +461,7 @@ impl<'a> SequenceBuilder<'a> {
                     "Sequence actor order references missing actor {actor_id}"
                 ))
             })?;
+            let actor_link = portable_actor_link(actor)?;
             let top = (**self
                 .nodes_by_id
                 .get(format!("actor-top-{actor_id}").as_str())
@@ -509,7 +510,7 @@ impl<'a> SequenceBuilder<'a> {
                 role: SemanticRole::Node,
                 title: Some(actor.description.clone()),
                 description: Some(format!("Sequence participant {actor_id}")),
-                link: None,
+                link: actor_link,
             });
         }
         Ok(())
@@ -1938,8 +1939,77 @@ fn unavailable(message: impl Into<String>) -> Error {
     }
 }
 
+fn portable_actor_link(actor: &SequenceActor) -> Result<Option<String>> {
+    let mut links = actor
+        .links
+        .iter()
+        .map(|(label, value)| {
+            let url = value
+                .as_str()
+                .map(str::trim)
+                .filter(|url| !url.is_empty())
+                .ok_or_else(|| {
+                    unavailable(format!(
+                        "Sequence participant `{}` has a non-string or empty link for `{label}`",
+                        actor.name
+                    ))
+                })?;
+            Ok((label.as_str(), url.to_string()))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if links.len() > 1 {
+        links.sort_by(|left, right| left.0.cmp(right.0));
+        return Err(unavailable(format!(
+            "Sequence participant `{}` has {} links; DrawingList v1 supports one semantic link",
+            actor.name,
+            links.len()
+        )));
+    }
+    Ok(links.pop().map(|(_, url)| url))
+}
+
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::portable_actor_link;
+    use merman_core::diagrams::sequence::SequenceActor;
+    use serde_json::{Value, json, map::Map};
+
+    fn actor(links: Map<String, Value>) -> SequenceActor {
+        SequenceActor {
+            name: "alice".into(),
+            description: "Alice".into(),
+            actor_type: "participant".into(),
+            wrap: false,
+            links,
+            properties: Map::new(),
+        }
+    }
+
+    #[test]
+    fn one_sequence_actor_link_becomes_normative_semantic_link() {
+        let mut links = Map::new();
+        links.insert("Docs".into(), json!("https://example.invalid/docs"));
+        assert_eq!(
+            portable_actor_link(&actor(links)).unwrap().as_deref(),
+            Some("https://example.invalid/docs")
+        );
+    }
+
+    #[test]
+    fn multiple_or_malformed_sequence_actor_links_fail_closed() {
+        let mut links = Map::new();
+        links.insert("Docs".into(), json!("https://example.invalid/docs"));
+        links.insert("Issues".into(), json!("https://example.invalid/issues"));
+        assert!(portable_actor_link(&actor(links)).is_err());
+
+        let mut links = Map::new();
+        links.insert("Docs".into(), json!(42));
+        assert!(portable_actor_link(&actor(links)).is_err());
     }
 }

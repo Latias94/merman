@@ -2,7 +2,9 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::{
-    DrawingCommand, DrawingListLimits, FillRule, Paint, PathSegment, Point, ResourceId,
+    AlphaMode, DrawingCommand, DrawingListLimits, DrawingResource, EncodedImage, FallbackReason,
+    FillRule, ImageResource, Paint, PathSegment, Point, RasterFallback, RasterFormat, Rect,
+    ResourceId, VisualSource,
 };
 
 #[test]
@@ -85,4 +87,81 @@ fn extended_visual_vocabulary_validates_as_one_document() {
     let decoded = merman_display_list::DrawingListDocument::from_json_bytes(&bytes)
         .expect("extended document round-trips");
     assert_eq!(decoded.canonical_json_bytes().unwrap(), bytes);
+}
+
+#[test]
+fn fallback_validation_uses_indexed_images_for_large_resource_tables() {
+    let mut document = sample_document();
+    let fallback_count = 2_048;
+    let mut fallback_commands = Vec::with_capacity(fallback_count);
+    for index in 0..fallback_count {
+        let image = ResourceId::new(format!("image.fallback.{index:04}"));
+        let fallback_id = format!("fallback.{index:04}");
+        document
+            .resources
+            .push(DrawingResource::Image(ImageResource {
+                id: image.clone(),
+                image: EncodedImage::new("image/png", vec![0x89, b'P', b'N', b'G']),
+                pixel_width: 1,
+                pixel_height: 1,
+                has_alpha: true,
+            }));
+        document.fallbacks.push(RasterFallback {
+            id: fallback_id.clone(),
+            image,
+            bounds: Rect::new(0.0, 0.0, 1.0, 1.0),
+            pixel_width: 1,
+            pixel_height: 1,
+            scale: 1.0,
+            format: RasterFormat::Png,
+            alpha: AlphaMode::Straight,
+            reason: FallbackReason::UnsupportedEffect,
+            source: VisualSource {
+                family: "fixture".into(),
+                element_id: Some(fallback_id.clone()),
+                effect: "fixture_effect".into(),
+            },
+        });
+        fallback_commands.push(DrawingCommand::DrawRasterSubtree { fallback_id });
+    }
+    let restore = document
+        .commands
+        .pop()
+        .expect("sample document has a final restore");
+    document.commands.extend(fallback_commands);
+    document.commands.push(restore);
+
+    document
+        .validate()
+        .expect("large fallback/resource table remains bounded and valid");
+}
+
+#[test]
+fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
+    let mut document = extended_document();
+    document
+        .resources
+        .iter_mut()
+        .find_map(|resource| match resource {
+            DrawingResource::Image(image) => Some(image),
+            _ => None,
+        })
+        .expect("extended fixture has an image")
+        .image
+        .media_type = "IMAGE/PNG; charset=binary".into();
+    document
+        .validate()
+        .expect("image media type comparison should ignore case and parameters");
+
+    document
+        .resources
+        .iter_mut()
+        .find_map(|resource| match resource {
+            DrawingResource::Image(image) => Some(image),
+            _ => None,
+        })
+        .expect("extended fixture has an image")
+        .image
+        .media_type = "text/plain".into();
+    assert!(document.validate().is_err());
 }

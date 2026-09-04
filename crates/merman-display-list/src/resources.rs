@@ -3,6 +3,37 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
+/// Compares a media type's type/subtype while ignoring ASCII case and optional parameters.
+///
+/// The original wire spelling is intentionally preserved; this helper is only for validation.
+pub(crate) fn media_type_matches(
+    media_type: &str,
+    expected_type: &str,
+    expected_subtype: &str,
+) -> bool {
+    let Some((kind, subtype)) = media_type.split(';').next().and_then(|value| {
+        let (kind, subtype) = value.trim().split_once('/')?;
+        let kind = kind.trim();
+        let subtype = subtype.trim();
+        (!kind.is_empty() && !subtype.is_empty()).then_some((kind, subtype))
+    }) else {
+        return false;
+    };
+    kind.eq_ignore_ascii_case(expected_type) && subtype.eq_ignore_ascii_case(expected_subtype)
+}
+
+pub(crate) fn is_image_media_type(media_type: &str) -> bool {
+    let Some((kind, _subtype)) = media_type.split(';').next().and_then(|value| {
+        let (kind, subtype) = value.trim().split_once('/')?;
+        let kind = kind.trim();
+        let subtype = subtype.trim();
+        (!kind.is_empty() && !subtype.is_empty()).then_some((kind, subtype))
+    }) else {
+        return false;
+    };
+    kind.eq_ignore_ascii_case("image")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ResourceId(String);
@@ -391,15 +422,16 @@ impl FontResource {
 }
 
 fn is_font_media_type(media_type: &str) -> bool {
-    matches!(
-        media_type.to_ascii_lowercase().as_str(),
-        "font/ttf"
-            | "font/otf"
-            | "font/woff"
-            | "font/woff2"
-            | "application/font-sfnt"
-            | "application/vnd.ms-fontobject"
-    )
+    [
+        ("font", "ttf"),
+        ("font", "otf"),
+        ("font", "woff"),
+        ("font", "woff2"),
+        ("application", "font-sfnt"),
+        ("application", "vnd.ms-fontobject"),
+    ]
+    .into_iter()
+    .any(|(kind, subtype)| media_type_matches(media_type, kind, subtype))
 }
 
 impl ImageResource {
@@ -415,7 +447,7 @@ impl ImageResource {
                 self.id.as_str()
             )));
         }
-        if !self.image.media_type.starts_with("image/") {
+        if !is_image_media_type(&self.image.media_type) {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} must use an image media type",
                 self.id.as_str()

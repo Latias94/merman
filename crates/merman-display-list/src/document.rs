@@ -79,13 +79,13 @@ pub enum RasterFormat {
 impl RasterFormat {
     pub(crate) fn matches_media_type(self, media_type: &str) -> bool {
         match self {
-            Self::Png => media_type.eq_ignore_ascii_case("image/png"),
+            Self::Png => crate::resources::media_type_matches(media_type, "image", "png"),
             Self::Jpeg => {
-                media_type.eq_ignore_ascii_case("image/jpeg")
-                    || media_type.eq_ignore_ascii_case("image/jpg")
+                crate::resources::media_type_matches(media_type, "image", "jpeg")
+                    || crate::resources::media_type_matches(media_type, "image", "jpg")
             }
-            Self::Webp => media_type.eq_ignore_ascii_case("image/webp"),
-            Self::Avif => media_type.eq_ignore_ascii_case("image/avif"),
+            Self::Webp => crate::resources::media_type_matches(media_type, "image", "webp"),
+            Self::Avif => crate::resources::media_type_matches(media_type, "image", "avif"),
         }
     }
 }
@@ -187,6 +187,7 @@ impl DrawingListDocument {
         validate_extensions(&self.extensions)?;
 
         let mut resource_ids = BTreeSet::new();
+        let mut image_resources = BTreeMap::new();
         let mut paint_ids = BTreeSet::new();
         let mut font_ids = BTreeSet::new();
         let mut image_pixels = 0usize;
@@ -223,21 +224,15 @@ impl DrawingListDocument {
                     .ok_or_else(|| {
                         DrawingListError::invalid("image pixel count overflows usize")
                     })?;
+                image_resources.insert(image.id.clone(), image);
             }
         }
         validate_count("image_pixels", image_pixels, limits.max_image_pixels)?;
+        let image_ids = image_resources.keys().cloned().collect::<BTreeSet<_>>();
 
-        let image_ids = self
-            .resources
-            .iter()
-            .filter_map(|resource| match resource {
-                DrawingResource::Image(image) => Some(image.id.clone()),
-                _ => None,
-            })
-            .collect::<BTreeSet<_>>();
         for resource in &self.resources {
             if let DrawingResource::Pattern(pattern) = resource {
-                if !image_ids.contains(&pattern.image) {
+                if !image_resources.contains_key(&pattern.image) {
                     return Err(DrawingListError::invalid(format!(
                         "pattern {} references unknown image {}",
                         pattern.id.as_str(),
@@ -272,17 +267,7 @@ impl DrawingListDocument {
                     "fallback ids must be non-empty and unique",
                 ));
             }
-            if !image_ids.contains(&fallback.image) {
-                return Err(DrawingListError::invalid(format!(
-                    "fallback {} references a non-image resource",
-                    fallback.id
-                )));
-            }
-            let image = self.resources.iter().find_map(|resource| match resource {
-                DrawingResource::Image(image) if image.id == fallback.image => Some(image),
-                _ => None,
-            });
-            let Some(image) = image else {
+            let Some(image) = image_resources.get(&fallback.image).copied() else {
                 return Err(DrawingListError::invalid(format!(
                     "fallback {} references a non-image resource",
                     fallback.id

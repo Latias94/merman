@@ -527,8 +527,8 @@ impl<'a> C4Builder<'a> {
             ]
         } else {
             let control = Point::new(
-                (start.x + end.x) / 2.0 - (end.y - start.y) / 4.0,
-                (start.y + end.y) / 2.0 + (end.x - start.x) / 4.0,
+                start.x + (end.x - start.x) / 4.0,
+                start.y + (end.y - start.y) / 2.0,
             );
             vec![
                 PathSegment::MoveTo { to: start },

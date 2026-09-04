@@ -589,8 +589,8 @@ impl<'a> ArchitectureBuilder<'a> {
         let height = measurer
             .measure_svg_raw_text_bbox_height_px(text, &style)
             .max(self.font_size);
-        let vertical = matches!((lhs_dir, rhs_dir), ('T' | 'B', 'T' | 'B'));
-        let rotation = if vertical { -90.0 } else { 0.0 };
+        let rotation = architecture_edge_label_rotation(lhs_dir, rhs_dir);
+        let bounds = rotated_text_bounds(middle, width, height, rotation);
         self.commands.push(DrawingCommand::Save);
         if rotation != 0.0 {
             self.commands.push(DrawingCommand::ConcatTransform {
@@ -601,12 +601,7 @@ impl<'a> ArchitectureBuilder<'a> {
             run: TextRun {
                 text: text.to_string(),
                 origin: middle,
-                bounds: Rect::new(
-                    middle.x - width / 2.0,
-                    middle.y - height / 2.0,
-                    width,
-                    height,
-                ),
+                bounds,
                 style: TextStyle {
                     font: self.font.clone(),
                     font_size: self.font_size,
@@ -1639,6 +1634,35 @@ fn rotation_transform(degrees: f64, cx: f64, cy: f64) -> Transform {
     }
 }
 
+fn architecture_edge_label_rotation(lhs_dir: char, rhs_dir: char) -> f64 {
+    match (lhs_dir, rhs_dir) {
+        ('T' | 'B', 'T' | 'B') => -90.0,
+        ('L' | 'R', 'L' | 'R') => 0.0,
+        (lhs, rhs) => {
+            let (xf, yf) = match (lhs, rhs) {
+                ('L', 'T') | ('T', 'L') => (1.0, 1.0),
+                ('B', 'L') | ('L', 'B') => (1.0, -1.0),
+                ('B', 'R') | ('R', 'B') => (-1.0, -1.0),
+                _ => (-1.0, 1.0),
+            };
+            -xf * yf * 45.0
+        }
+    }
+}
+
+fn rotated_text_bounds(center: Point, width: f64, height: f64, degrees: f64) -> Rect {
+    let radians = degrees.to_radians();
+    let (sin, cos) = radians.sin_cos();
+    let rotated_width = cos.abs() * width + sin.abs() * height;
+    let rotated_height = sin.abs() * width + cos.abs() * height;
+    Rect::new(
+        center.x - rotated_width / 2.0,
+        center.y - rotated_height / 2.0,
+        rotated_width,
+        rotated_height,
+    )
+}
+
 fn expand_bounds(bounds: &Bounds, padding: f64) -> Bounds {
     Bounds {
         min_x: bounds.min_x - padding,
@@ -1691,5 +1715,34 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "architecture".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::architecture_edge_label_rotation;
+
+    #[test]
+    fn edge_label_rotation_matches_mermaid_axis_and_diagonal_rules() {
+        for (lhs, rhs, expected) in [
+            ('L', 'R', 0.0),
+            ('R', 'L', 0.0),
+            ('T', 'B', -90.0),
+            ('B', 'T', -90.0),
+            ('L', 'T', -45.0),
+            ('T', 'L', -45.0),
+            ('B', 'L', 45.0),
+            ('L', 'B', 45.0),
+            ('B', 'R', -45.0),
+            ('R', 'B', -45.0),
+            ('R', 'T', 45.0),
+            ('T', 'R', 45.0),
+        ] {
+            assert_eq!(
+                architecture_edge_label_rotation(lhs, rhs),
+                expected,
+                "unexpected rotation for {lhs}->{rhs}"
+            );
+        }
     }
 }

@@ -21,7 +21,9 @@ use merman_ascii::{
     AsciiError, AsciiOutput, AsciiRenderOptions, AsciiResourcePolicy, AsciiViewportPolicy,
 };
 #[cfg(feature = "svg")]
-use merman_display_list::{DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListPolicy};
+use merman_display_list::{
+    DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListLimits, DrawingListPolicy,
+};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
@@ -616,6 +618,11 @@ pub struct DrawingListRequest {
     pub environment: SvgEnvironment,
     pub layout: LayoutOptions,
     pub policy: DrawingListPolicy,
+    /// Protocol validation and serialization limits for this DrawingList operation.
+    ///
+    /// The effective serialized-byte ceiling is additionally clamped to the environment's
+    /// established `max_svg_bytes` render budget so a DrawingList cannot bypass caller policy.
+    pub limits: DrawingListLimits,
     pub presentation: PresentationRenderPolicy,
 }
 
@@ -626,6 +633,7 @@ impl Default for DrawingListRequest {
             environment: SvgEnvironment::deterministic(),
             layout: LayoutOptions::headless_svg_defaults(),
             policy: DrawingListPolicy::AllowRasterSubtree,
+            limits: DrawingListLimits::default(),
             presentation: PresentationRenderPolicy::default(),
         }
     }
@@ -1007,6 +1015,7 @@ fn render_drawing_list_target(
     let session = request
         .environment
         .begin_session_in_context(operation.context, operation.control);
+    let resource_policy = session.resource_policy();
     let artifact = merman_render::family::prepare_with_render_policy(
         parsed,
         &request.layout,
@@ -1014,8 +1023,14 @@ fn render_drawing_list_target(
         request.presentation,
     )
     .map_err(RenderError::from)?;
+    let mut limits = request.limits;
+    if let Some(max_output_bytes) =
+        resource_policy.value(merman_render::ResourceLimitId::MaxSvgBytes)
+    {
+        limits.max_serialized_bytes = limits.max_serialized_bytes.min(max_output_bytes);
+    }
     let rendered = artifact
-        .render_drawing_list(request.policy)
+        .render_drawing_list(request.policy, limits)
         .map_err(RenderError::from)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let (document, json, _, _, _, session) = rendered.into_parts();

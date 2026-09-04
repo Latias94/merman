@@ -54,4 +54,19 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         validator.is_valid(&extended),
         "published schema rejected extended runtime document: {extended}"
     );
+
+    let mut invalid_path = serde_json::to_value(sample_document()).expect("fixture serializes");
+    invalid_path["resources"][0]["segments"][0] =
+        json!({ "kind": "line_to", "to": { "x": 0.0, "y": 0.0 } });
+    assert!(!validator.is_valid(&invalid_path));
+
+    let mut invalid_pattern = extended.clone();
+    let pattern = invalid_pattern["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "pattern")
+        .expect("extended fixture has a pattern");
+    pattern["tile"]["width"] = json!(0.0);
+    assert!(!validator.is_valid(&invalid_pattern));
 }

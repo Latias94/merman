@@ -15,7 +15,9 @@ use merman_core::OperationPhase;
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
 use merman_core::{BuiltinRenderSemantic, ParseMetadata, ParsedDiagramRender, RenderSemanticModel};
-use merman_display_list::{DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListPolicy};
+use merman_display_list::{
+    DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListLimits, DrawingListPolicy,
+};
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -859,7 +861,11 @@ impl FamilyRenderArtifact {
     /// Construction is all-or-nothing: the family adapter must return a validated document
     /// before any bytes are exposed to a caller. Families that have not crossed the migration
     /// gate return a structured capability error instead of an incomplete list.
-    pub fn render_drawing_list(self, policy: DrawingListPolicy) -> Result<RenderedDrawingList> {
+    pub fn render_drawing_list(
+        self,
+        policy: DrawingListPolicy,
+        limits: DrawingListLimits,
+    ) -> Result<RenderedDrawingList> {
         self.session.checkpoint(OperationPhase::Emit)?;
         let document = crate::drawing_list::build_for_family(
             &self.family,
@@ -870,7 +876,7 @@ impl FamilyRenderArtifact {
         self.session.checkpoint(OperationPhase::Emit)?;
         let json = document
             .public
-            .canonical_json_bytes()
+            .canonical_json_bytes_with_limits(&limits)
             .map_err(Error::DrawingListContract)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         let public = document.into_public();
