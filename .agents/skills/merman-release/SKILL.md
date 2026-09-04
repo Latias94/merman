@@ -188,6 +188,11 @@ source SHA; the recovery path verifies the prior run identity, downloads its sin
 package-group artifact, and publishes only registry members whose exact version is still missing.
 If the existing integrity differs, stop and require an explicitly authorized maintainer decision.
 
+Apply the same recovery rule to Node package groups with `release-node.yml`: a new recovery run must
+use the prior run id and the artifact manifest's exact source SHA, verify the workflow/repository
+identity and unexpired package-group artifact, and publish only after the trusted verifier accepts
+all seven package tarballs. Never substitute a newly rebuilt Node group for the original artifact.
+
 When npm package-group code or its workflow changes, run the focused owner checks before dispatching:
 
 ```bash

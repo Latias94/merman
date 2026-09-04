@@ -516,13 +516,29 @@ jobs:
                 self.assertIn("commits/$RELEASE_TAG", job)
                 self.assertIn('test "$observed" = "$SOURCE_SHA"', job)
 
-    def test_node_publish_uses_only_the_same_run_package_group(self) -> None:
+    def test_node_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-node.yml")
+        validate = workflow_job(text, "validate-inputs")
+        loader = workflow_job(text, "loader")
+        wasm = workflow_job(text, "node-wasm-package")
+        platform = workflow_job(text, "platform")
+        package_group = workflow_job(text, "package-group")
         publish = workflow_job(text, "publish")
-        self.assertNotIn("recovery_run_id", text)
-        self.assertNotIn("run-id:", publish)
-        self.assertNotIn("github-token:", publish)
-        self.assertIn("needs:\n      - validate-inputs\n      - package-group", publish)
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", validate)
+        self.assertIn("recovery requires source_ref to be the exact 40-character source commit", validate)
+        for job in (loader, wasm, platform, package_group):
+            self.assertIn("needs.validate-inputs.outputs.recovery_run_id == ''", job)
+        self.assertIn("always() && inputs.publish_to_npm", publish)
+        self.assertIn("Verify recovery run identity", publish)
+        self.assertIn(".github/workflows/release-node.yml", publish)
+        self.assertIn("REPOSITORY: ${{ github.repository }}", publish)
+        self.assertNotIn("GITHUB_REPOSITORY: ${{ github.repository }}", publish)
+        self.assertIn("Download exact Node package group from recovery run", publish)
+        self.assertIn("run-id: ${{ needs.validate-inputs.outputs.recovery_run_id }}", publish)
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
+        self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
 
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")

@@ -186,8 +186,9 @@ WASM tarball, and then the loader directly under the requested final tag with a 
 record that the bootstrap version remains without npm provenance; Trusted Publishing cannot add an
 attestation to an existing tarball. From the next version onward, dispatch `release-node.yml` with
 `publish_to_npm=true`; that run builds, verifies, and publishes its own same-run package group. If
-its publish job fails, rerun that job within the same workflow run; a later run must build and verify
-a new package group from the reviewed source. Do not keep an npm token in GitHub Actions.
+its publish job fails, rerun that job within the same workflow run. When a new run is unavoidable,
+pass `recovery_run_id` with the exact source SHA so the workflow downloads and verifies the original
+package-group artifact instead of rebuilding it. Do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a

@@ -146,8 +146,11 @@ afterward. The bootstrap artifact is for that one manual publication only, and i
 remains without npm provenance; a later OIDC run cannot add provenance to an existing tarball. From
 the next version onward, start a publishing workflow run against the reviewed source so it builds,
 verifies, and publishes its own same-run package group. If publication fails, rerun the failed job
-in that workflow run rather than asking a later run to trust an older artifact. Do not add a
-persistent npm token to the repository workflow.
+in that workflow run; if the original artifact must be recovered in a new run, pass
+`recovery_run_id` together with the exact 40-character `source_ref` and let the workflow verify the
+prior run identity before downloading the single unexpired package-group artifact. Do not rebuild
+the group and assume npm bytes will match, and do not add a persistent npm token to the repository
+workflow.
 
 For an npm-only alpha test, `release-node.yml` treats `release_tag` as the package version label and
 `source_ref` as the build source. The source may be a reviewed full commit SHA newer than the
