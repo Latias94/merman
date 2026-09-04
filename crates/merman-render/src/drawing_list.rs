@@ -5,6 +5,7 @@
 //! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
 
 mod block;
+mod c4;
 mod class;
 mod cynefin;
 mod er;
@@ -68,6 +69,7 @@ pub(crate) enum SvgStructureBody {
     Flowchart(FlowchartSvgBody),
     Swimlane(SwimlaneSvgBody),
     Class(ClassSvgBody),
+    C4(C4SvgBody),
     Er(ErSvgBody),
     Info(InfoSvgBody),
     Ishikawa(IshikawaSvgBody),
@@ -118,6 +120,9 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Class, SvgStructureBody::Class(class)) => {
                 !class.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::C4, SvgStructureBody::C4(c4)) => {
+                !c4.diagram_type.is_empty()
             }
             (RenderFamilyKind::Er, SvgStructureBody::Er(er)) => {
                 !er.diagram_type.is_empty()
@@ -371,6 +376,12 @@ pub(crate) struct ClassSvgBody {
     pub(crate) diagram_type: String,
 }
 
+/// SVG-only metadata retained beside the renderer-neutral C4 document.
+#[derive(Debug, Clone)]
+pub(crate) struct C4SvgBody {
+    pub(crate) diagram_type: String,
+}
+
 /// SVG-only metadata retained beside the renderer-neutral ER document.
 #[derive(Debug, Clone)]
 pub(crate) struct ErSvgBody {
@@ -431,6 +442,7 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::Class(pair) => {
             class::build_class_document(pair, metadata, policy, session)
         }
+        BuiltinFamilyArtifact::C4(pair) => c4::build_c4_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Er(pair) => er::build_er_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Info(pair) => {
             info::build_info_document(pair, metadata, policy, session)

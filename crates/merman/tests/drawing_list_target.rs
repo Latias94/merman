@@ -172,6 +172,46 @@ fn er_emits_typed_entities_attribute_rows_relationships_and_cardinality() {
 }
 
 #[test]
+fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
+    let source = r#"C4Context
+        Person(user, "User")
+        System(api, "API", "Service")
+        Rel(user, api, "uses")
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable C4 diagram should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("c4.shape")
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("c4.relation.0.marker.end")
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("User")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("uses")
+    }));
+}
+
+#[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
         root((Merman))
