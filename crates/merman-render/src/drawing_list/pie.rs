@@ -74,6 +74,10 @@ struct PieBuilder<'a> {
     section_color: Color,
     legend_font_size: f64,
     legend_color: Color,
+    use_max_width: bool,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -148,6 +152,10 @@ impl<'a> PieBuilder<'a> {
             legend_font_size: styles
                 .positive_length("pieLegendTextSize", &theme.legend_text_size)?,
             legend_color: styles.color("pieLegendTextColor", &theme.legend_text_color)?,
+            use_max_width: settings.use_max_width,
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -167,12 +175,7 @@ impl<'a> PieBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "pie.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| self.layout.title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -184,20 +187,11 @@ impl<'a> PieBuilder<'a> {
         self.commands.push(DrawingCommand::Restore);
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
-        let bounds = self
-            .layout
-            .bounds
-            .as_ref()
-            .expect("validated in constructor");
+        let bounds = document_viewport_bounds(self.layout, self.model);
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x - bounds.min_x,
-                bounds.max_y - bounds.min_y,
-            )),
+            viewport: Viewport::new(bounds),
             policy: self.policy,
             resources: self.resources,
             commands: self.commands,
@@ -223,6 +217,16 @@ impl<'a> PieBuilder<'a> {
                 family: RenderFamilyKind::Pie,
                 body: SvgStructureBody::Pie(PieSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.use_max_width,
+                    max_width_px: self
+                        .layout
+                        .bounds
+                        .as_ref()
+                        .filter(|bounds| !bounds_is_finite(bounds))
+                        .map(|_| 225.0),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -248,17 +252,19 @@ impl<'a> PieBuilder<'a> {
             });
         }
 
-        if let Some(color) = self.outer_stroke {
-            self.add_path(
-                "pie.outer".to_string(),
-                ellipse_path(0.0, 0.0, self.layout.outer_radius, self.layout.outer_radius),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: None,
-                    stroke: Some(stroke(color, self.outer_stroke_width)),
-                },
-            )?;
-        }
+        self.path_classes
+            .insert("pie.outer".to_string(), "pieOuterCircle".to_string());
+        self.add_path(
+            "pie.outer".to_string(),
+            ellipse_path(0.0, 0.0, self.layout.outer_radius, self.layout.outer_radius),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: self
+                    .outer_stroke
+                    .map(|color| stroke(color, self.outer_stroke_width)),
+            },
+        )?;
 
         for (index, slice) in self.layout.slices.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -272,6 +278,13 @@ impl<'a> PieBuilder<'a> {
             });
             if fill.is_some() || stroke.is_some() {
                 let highlighted = self.highlight_slice.as_deref() == Some(slice.label.as_str());
+                let class = if highlighted {
+                    "pieCircle highlighted"
+                } else {
+                    "pieCircle"
+                };
+                self.path_classes
+                    .insert(format!("{semantic_id}.shape"), class.to_string());
                 self.commands.push(DrawingCommand::Save);
                 if highlighted {
                     self.commands.push(DrawingCommand::ConcatTransform {
@@ -319,6 +332,8 @@ impl<'a> PieBuilder<'a> {
             self.session.checkpoint(OperationPhase::Emit)?;
             let text = format!("{}%", slice.percent);
             let semantic_id = format!("pie.slice.{index}.percentage");
+            self.text_classes
+                .insert(semantic_id.clone(), "slice".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -350,7 +365,9 @@ impl<'a> PieBuilder<'a> {
         let Some(raw_title) = self.layout.title.as_deref() else {
             return Ok(());
         };
-        let title = svg_plain_text(raw_title);
+        // Mermaid keeps the title text node's boundary whitespace. Do not run it through the
+        // label-only whitespace normalizer used for legend content.
+        let title = raw_title.to_string();
         if title.is_empty() {
             return Ok(());
         }
@@ -358,6 +375,8 @@ impl<'a> PieBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: "pie.title".to_string(),
         });
+        self.text_classes
+            .insert("pie.title".to_string(), "pieTitleText".to_string());
         self.commands.push(DrawingCommand::DrawText {
             run: self.text_run(
                 title.clone(),
@@ -382,6 +401,8 @@ impl<'a> PieBuilder<'a> {
         for (index, item) in self.layout.legend_items.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("pie.legend.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "legend".to_string());
             let text = svg_plain_text(&pie_legend_text(
                 &item.label,
                 item.value,
@@ -506,7 +527,9 @@ fn validate_layout(layout: &PieDiagramLayout, model: &PieDiagramRenderModel) -> 
         .bounds
         .as_ref()
         .ok_or_else(|| invalid("Pie layout did not provide root bounds"))?;
-    validate_bounds(bounds)?;
+    if !(model.sections.is_empty() && !bounds_is_finite(bounds)) {
+        validate_bounds(bounds)?;
+    }
     if ![
         layout.center_x,
         layout.center_y,
@@ -563,6 +586,36 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
         return Err(invalid("Pie root bounds are invalid"));
     }
     Ok(())
+}
+
+fn bounds_is_finite(bounds: &Bounds) -> bool {
+    [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y]
+        .into_iter()
+        .all(f64::is_finite)
+        && bounds.max_x >= bounds.min_x
+        && bounds.max_y >= bounds.min_y
+}
+
+fn document_viewport_bounds(layout: &PieDiagramLayout, model: &PieDiagramRenderModel) -> Rect {
+    let Some(bounds) = layout.bounds.as_ref() else {
+        return Rect::new(0.0, 0.0, 450.0, 450.0);
+    };
+    if bounds_is_finite(bounds) {
+        Rect::new(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x - bounds.min_x,
+            bounds.max_y - bounds.min_y,
+        )
+    } else if model.sections.is_empty() {
+        // Mermaid's empty right-legend layout can expose -Infinity as the computed width. The
+        // SVG renderer repairs that root to its finite empty-chart viewport; keep the same
+        // bounded result in the canonical document instead of leaking non-finite JSON.
+        Rect::new(0.0, 0.0, 450.0, 450.0)
+    } else {
+        // Construction has already rejected non-finite bounds for non-empty charts.
+        Rect::new(0.0, 0.0, 1.0, 1.0)
+    }
 }
 
 fn translate(x: f64, y: f64) -> Transform {

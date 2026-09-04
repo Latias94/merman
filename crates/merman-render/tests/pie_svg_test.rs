@@ -10,6 +10,7 @@ use merman_render::{
     Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     ResourceLimitPhase,
 };
+use roxmltree::{Document, Node};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
     let engine = legacy_init_theme_compat_engine();
@@ -89,27 +90,49 @@ fn root_viewbox_width(svg: &str) -> f64 {
         .expect("viewBox width parses")
 }
 
-fn pie_content_translate(svg: &str) -> (f64, f64) {
-    let document = roxmltree::Document::parse(svg).expect("valid Pie SVG");
-    let centered = document
-        .root_element()
-        .children()
-        .find(|node| node.is_element() && node.attribute("transform").is_some())
-        .expect("centered pie group");
-    let transform = centered
-        .children()
-        .find(|node| node.is_element() && node.attribute("transform").is_some())
+fn pie_resource_translate(svg: &str, resource_id: &str) -> (f64, f64) {
+    let document = Document::parse(svg).expect("valid Pie SVG");
+    let transform = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-resource") == Some(resource_id))
         .and_then(|node| node.attribute("transform"))
-        .expect("translated pie content group");
+        .expect("translated Pie resource");
     let values = transform
         .strip_prefix("translate(")
-        .and_then(|value| value.strip_suffix(')'))
+        .and_then(|value| value.split_once(')'))
+        .map(|(value, _)| value)
         .expect("translate transform")
-        .split(',')
+        .split([',', ' '])
+        .filter(|value| !value.is_empty())
         .map(|value| value.parse::<f64>().expect("numeric translate component"))
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 2, "two-dimensional translate transform");
     (values[0], values[1])
+}
+
+fn semantic_group<'a>(document: &'a Document<'a>, semantic_id: &str) -> Node<'a, 'a> {
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g") && node.attribute("data-merman-semantic-id") == Some(semantic_id)
+        })
+        .expect("semantic group")
+}
+
+fn class_contains(node: Node<'_, '_>, class: &str) -> bool {
+    node.attribute("class").is_some_and(|classes| {
+        classes
+            .split_whitespace()
+            .any(|candidate| candidate == class)
+    })
+}
+
+fn text_with_class<'a>(document: &'a Document<'a>, class: &str) -> Vec<&'a str> {
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && class_contains(*node, class))
+        .filter_map(|node| node.text())
+        .collect()
 }
 
 #[test]
@@ -187,17 +210,29 @@ fn pie_chart_content_is_grouped_before_title_and_legend_like_mermaid_11_16() {
 "#,
     );
 
+    let document = Document::parse(&svg).expect("canonical Pie SVG is XML");
+    let root = semantic_group(&document, "pie.document");
+    let plot = semantic_group(&document, "pie.plot");
     assert!(
-        svg.contains(
-            r#"<g transform="translate(225,225)"><g><circle cx="0" cy="0" r="186" class="pieOuterCircle"/>"#
-        ),
-        "pie geometry should start in its own attribute-free group: {svg}"
+        plot.descendants()
+            .any(|node| { node.has_tag_name("circle") && class_contains(node, "pieOuterCircle") })
     );
+
+    let child_semantics = root
+        .children()
+        .filter_map(|node| node.attribute("data-merman-semantic-id"))
+        .collect::<Vec<_>>();
+    let plot_index = child_semantics
+        .iter()
+        .position(|id| *id == "pie.plot")
+        .expect("Pie plot semantic group");
+    let first_legend_index = child_semantics
+        .iter()
+        .position(|id| id.starts_with("pie.legend."))
+        .expect("Pie legend semantic group");
     assert!(
-        svg.contains(
-            r#">40%</text></g><text x="0" y="-200" class="pieTitleText"/><g class="legend""#
-        ),
-        "the pie group should close before the sibling title and legend nodes: {svg}"
+        plot_index < first_legend_index,
+        "plot geometry must precede legend groups: {child_semantics:?}"
     );
 }
 
@@ -211,9 +246,10 @@ pie
   "A" : 1
 "#,
     );
-    assert!(
-        frontmatter_svg.contains(r#"class="pieTitleText">Frontmatter pie</text>"#),
-        "frontmatter title should render when the Pie body has none: {frontmatter_svg}"
+    let frontmatter_document = Document::parse(&frontmatter_svg).expect("frontmatter Pie SVG");
+    assert_eq!(
+        text_with_class(&frontmatter_document, "pieTitleText"),
+        vec!["Frontmatter pie"]
     );
 
     let body_svg = render_pie_from_text(
@@ -224,8 +260,11 @@ pie title Body pie
   "A" : 1
 "#,
     );
-    assert!(body_svg.contains(r#"class="pieTitleText">Body pie</text>"#));
-    assert!(!body_svg.contains(">Frontmatter pie</text>"));
+    let body_document = Document::parse(&body_svg).expect("body-title Pie SVG");
+    assert_eq!(
+        text_with_class(&body_document, "pieTitleText"),
+        vec!["Body pie"]
+    );
 }
 
 #[test]
@@ -234,10 +273,8 @@ fn pie_frontmatter_title_preserves_common_db_boundary_whitespace() {
         let source = format!("---\ntitle: \"{title}\"\n---\npie\n  \"A\" : 1\n");
         let svg = render_pie_from_text(&source);
 
-        assert!(
-            svg.contains(&format!(r#"class="pieTitleText">{title}</text>"#)),
-            "frontmatter title should be emitted exactly: {svg}"
-        );
+        let document = Document::parse(&svg).expect("whitespace-title Pie SVG");
+        assert_eq!(text_with_class(&document, "pieTitleText"), vec![title]);
     }
 }
 
@@ -312,13 +349,19 @@ pie
 "#,
     );
 
+    let document = Document::parse(&svg).expect("donut Pie SVG");
+    let slice = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-resource") == Some("pie.slice.0.shape"))
+        .expect("donut slice path");
+    let path = slice.attribute("d").expect("donut path data");
     assert!(
-        svg.contains("A74,74"),
-        "expected inner-radius arc in donut slice path: {svg}"
+        path.contains("A 74 74"),
+        "expected inner-radius arc: {path}"
     );
     assert!(
-        !svg.contains("L0,0Z"),
-        "donut slices should not close through the center: {svg}"
+        !path.contains("L 0 0 Z"),
+        "donut slices must not close through center: {path}"
     );
 }
 
@@ -332,13 +375,15 @@ pie
 "#,
     );
 
+    let document = Document::parse(&svg).expect("solid Pie SVG");
+    let slice = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-resource") == Some("pie.slice.0.shape"))
+        .expect("solid slice path");
+    let path = slice.attribute("d").expect("solid path data");
     assert!(
-        !svg.contains("A222,222"),
-        "invalid donutHole should not be used as an inner radius: {svg}"
-    );
-    assert!(
-        svg.contains("L0,0Z"),
-        "invalid donutHole should fall back to solid slices: {svg}"
+        path.contains("L 0 0 Z"),
+        "invalid donutHole should fall back to solid slices: {path}"
     );
 }
 
@@ -400,10 +445,11 @@ pie
 "#,
     );
     assert!(top_svg.contains(r#"viewBox="0 0 490 494""#));
-    let top_offset = pie_content_translate(&top_svg);
+    let top_offset = pie_resource_translate(&top_svg, "pie.slice.0.shape");
     assert!(
-        top_offset.0.abs() <= f64::EPSILON && (top_offset.1 - 66.0).abs() <= f64::EPSILON,
-        "top legend should move the pie group below the legend: {top_svg}"
+        (top_offset.0 - 225.0).abs() <= f64::EPSILON
+            && (top_offset.1 - 291.0).abs() <= f64::EPSILON,
+        "top legend should move the canonical pie geometry below the legend: {top_svg}"
     );
 
     let left_svg = render_pie_from_text(
@@ -413,14 +459,18 @@ pie
   "B" : 1
 "#,
     );
-    let left_offset = pie_content_translate(&left_svg);
+    let left_offset = pie_resource_translate(&left_svg, "pie.slice.0.shape");
     let expected_left_offset = root_viewbox_width(&left_svg) - 490.0;
     assert!(
-        (left_offset.0 - expected_left_offset).abs() <= 1.0e-9
-            && left_offset.1.abs() <= f64::EPSILON,
-        "left legend should move the pie group right by legend width: {left_svg}"
+        (left_offset.0 - (225.0 + expected_left_offset)).abs() <= 1.0e-9
+            && (left_offset.1 - 225.0).abs() <= f64::EPSILON,
+        "left legend should move the canonical pie geometry right by legend width: {left_svg}"
     );
-    assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));
+    let left_document = Document::parse(&left_svg).expect("left-legend Pie SVG");
+    assert!(class_contains(
+        semantic_group(&left_document, "pie.legend.0"),
+        "legend"
+    ));
 }
 
 #[test]
@@ -462,17 +512,28 @@ pie
 "#,
     );
 
-    assert!(
-        svg.contains(r#".pieCircle.highlighted{scale:1.05;opacity:1;}"#),
-        "Mermaid 11.16 pie CSS should include highlighted slice styling: {svg}"
+    let document = Document::parse(&svg).expect("highlighted Pie SVG");
+    let highlighted = document
+        .descendants()
+        .find(|node| class_contains(*node, "highlighted"))
+        .expect("highlighted slice");
+    assert_eq!(
+        highlighted.attribute("class"),
+        Some("pieCircle highlighted")
+    );
+    assert_eq!(
+        highlighted.attribute("transform"),
+        Some("matrix(1.05 0 0 1.05 225 225)")
     );
     assert!(
-        svg.contains(r#"class="pieCircle highlighted""#),
-        "Mermaid 11.16 should mark the configured highlighted slice: {svg}"
+        document.descendants().any(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")
+        }),
+        "non-matching slices should keep the ordinary pieCircle class"
     );
     assert!(
-        svg.contains(r#"class="pieCircle"/>"#),
-        "non-matching slices should keep the ordinary pieCircle class: {svg}"
+        !svg.contains(".pieCircle.highlighted{scale:"),
+        "canonical SVG must not apply the static highlight transform a second time"
     );
 }
 

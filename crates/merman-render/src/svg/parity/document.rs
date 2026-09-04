@@ -230,6 +230,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -292,6 +296,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::Pie(body) => {
+                let max_width = body.max_width_px.map_or_else(
+                    || root_svg::RootMaxWidth::CssSixSignificant(viewport_bounds.width),
+                    root_svg::RootMaxWidth::SvgNumber,
+                );
+                Ok(
+                    root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
+                        .with_max_width(max_width),
+                )
+            }
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -331,6 +345,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Pie(_) => {
+                let mut css = String::new();
+                super::PieCss::new(self.effective_config)
+                    .write_for_canonical_id(&mut css, self.diagram_id.as_str())
+                    .map_err(|_| invalid("failed to write Pie stylesheet"))?;
+                Some((false, css))
+            }
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -347,12 +368,21 @@ impl<'a> DocumentSvgEncoder<'a> {
         } else {
             self.output.push_str("<style>");
         }
+        self.session
+            .work_meter()
+            .preflight_svg_byte_count(
+                css.len(),
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            )
+            .map_err(Error::from)?;
         self.output.push_str(&css);
         self.output.push_str("</style>");
         if matches!(
             self.svg_body,
             SvgStructureBody::Packet(_)
                 | SvgStructureBody::QuadrantChart(_)
+                | SvgStructureBody::Pie(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -371,6 +401,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         match self.svg_body {
             SvgStructureBody::Packet(_)
             | SvgStructureBody::QuadrantChart(_)
+            | SvgStructureBody::Pie(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -793,6 +824,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::QuadrantChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Pie(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -838,6 +872,21 @@ impl<'a> DocumentSvgEncoder<'a> {
                 let path = self.path_resource(path_id)?;
                 if let Some((start, end)) = line_from_path(path) {
                     return self.emit_line(path_id, start, end, style);
+                }
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id == "pie.outer" {
+                let path = self.path_resource(path_id)?;
+                if let Some((center, radius)) = circle_from_path(path) {
+                    return self.emit_circle(path_id, center, radius, style);
+                }
+            }
+            if raw_id.starts_with("pie.legend.") && raw_id.ends_with(".swatch") {
+                let path = self.path_resource(path_id)?;
+                if let Some(bounds) = rectangle_from_path(path) {
+                    return self.emit_rect(path_id, bounds, style);
                 }
             }
         }
@@ -1015,8 +1064,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         .map_err(|_| invalid("failed to write text origin"))?;
         let text_index = self.record_text_index();
         if let Some(class) = self.text_class(run, text_index) {
+            let class = class.into_owned();
             self.output.push_str(" class=\"");
-            self.output.push_str(class);
+            self.output.push_str(class.as_str());
             self.output.push_str("\"");
         }
         let font_size = if matches!(self.svg_body, SvgStructureBody::Error(_)) {
@@ -1088,6 +1138,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Borrowed("error-icon"));
         }
+        if let SvgStructureBody::Pie(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1117,24 +1172,30 @@ impl<'a> DocumentSvgEncoder<'a> {
         None
     }
 
-    fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<&'static str> {
+    fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<Cow<'_, str>> {
         match self.svg_body {
-            SvgStructureBody::Error(_) => Some("error-text"),
-            SvgStructureBody::Info(_) => Some("version"),
+            SvgStructureBody::Error(_) => Some(Cow::Borrowed("error-text")),
+            SvgStructureBody::Info(_) => Some(Cow::Borrowed("version")),
             SvgStructureBody::Packet(_) => match self.current_semantic_id() {
-                Some("packet.title") => Some("packetTitle"),
+                Some("packet.title") => Some(Cow::Borrowed("packetTitle")),
                 Some(id) if id.starts_with("packet.block.") => match text_index {
-                    Some(0) => Some("packetLabel"),
-                    Some(1) => Some("packetByte start"),
-                    Some(2) => Some("packetByte end"),
+                    Some(0) => Some(Cow::Borrowed("packetLabel")),
+                    Some(1) => Some(Cow::Borrowed("packetByte start")),
+                    Some(2) => Some(Cow::Borrowed("packetByte end")),
                     _ => None,
                 },
                 _ => None,
             },
+            SvgStructureBody::Pie(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Borrowed(class.as_str())),
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
-                Some(id) if id.starts_with("radar.axis.") => Some("radarAxisLabel"),
-                Some(id) if id.starts_with("radar.legend.") => Some("radarLegendText"),
-                Some("radar.title") => Some("radarTitle"),
+                Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
+                Some(id) if id.starts_with("radar.legend.") => {
+                    Some(Cow::Borrowed("radarLegendText"))
+                }
+                Some("radar.title") => Some(Cow::Borrowed("radarTitle")),
                 _ => None,
             },
             _ => None,
@@ -1292,6 +1353,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let family_text = self
             .current_semantic_id()
             .is_some_and(|id| match self.svg_body {
+                SvgStructureBody::Pie(_) => id.starts_with("pie."),
                 SvgStructureBody::QuadrantChart(_) => id.starts_with("quadrantchart."),
                 SvgStructureBody::XyChart(_) => id.starts_with("xychart.text."),
                 _ => false,
@@ -1402,6 +1464,7 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Swimlane
         | RenderFamilyKind::Error => "merman",
         RenderFamilyKind::QuadrantChart => "quadrantchart",
+        RenderFamilyKind::Pie => "merman",
         _ => family.as_str(),
     }
 }

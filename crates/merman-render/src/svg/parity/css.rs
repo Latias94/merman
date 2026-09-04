@@ -819,6 +819,47 @@ impl PieCss {
         )?;
         self.info.write_root(out, diagram_id)
     }
+
+    /// Writes the Pie stylesheet for the canonical document serializer.
+    ///
+    /// Static interaction effects are already carried by DrawingList commands (for example the
+    /// configured slice highlight uses an explicit scale transform). Keep the source-backed
+    /// paint and typography selectors, but omit CSS transforms/hover rules so the SVG encoder
+    /// cannot apply an effect a second time or invent host interaction state.
+    pub(super) fn write_for_canonical_id<I>(
+        &self,
+        out: &mut dyn std::fmt::Write,
+        diagram_id: I,
+    ) -> std::fmt::Result
+    where
+        I: Copy + std::fmt::Display,
+    {
+        self.info.write_prefix(out, diagram_id)?;
+        write!(
+            out,
+            r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+            diagram_id,
+            self.pie_stroke_color,
+            self.pie_stroke_width,
+            self.pie_opacity,
+            diagram_id,
+            self.pie_outer_stroke_color,
+            self.pie_outer_stroke_width,
+            diagram_id,
+            self.pie_title_text_size,
+            self.pie_title_text_color,
+            self.info.font_family,
+            diagram_id,
+            self.info.font_family,
+            self.pie_section_text_color,
+            self.pie_section_text_size,
+            diagram_id,
+            self.pie_legend_text_color,
+            self.info.font_family,
+            self.pie_legend_text_size
+        )?;
+        self.info.write_root(out, diagram_id)
+    }
 }
 
 pub(super) fn sankey_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String

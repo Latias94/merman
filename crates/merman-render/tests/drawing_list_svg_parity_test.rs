@@ -241,3 +241,45 @@ fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
         node.attribute("data-merman-semantic-id") == Some("quadrantchart.point.0")
     }));
 }
+
+#[test]
+fn pie_canonical_svg_keeps_root_profile_and_chart_roles() {
+    let svg = render_svg(
+        "pie\n  accTitle: Pie parity\n  title Releases\n  \"Stable\" : 3\n  \"Alpha\" : 1\n",
+        "pie-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Pie SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("viewBox"), Some("0 0 556.2 450"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 556.2px; background-color: white;")
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-pie-parity")
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("circle") && node.attribute("class") == Some("pieOuterCircle")
+    }));
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")
+        })
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.attribute("class") == Some("slice") })
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|token| token == "legend"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("class") == Some("pieTitleText")
+    }));
+    assert!(svg.contains("data-merman-resource=\"pie.slice.0.shape\""));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}
