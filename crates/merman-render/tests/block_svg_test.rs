@@ -101,6 +101,74 @@ fn root_view_box(document: &roxmltree::Document<'_>) -> (f64, f64, f64, f64) {
     (values[0], values[1], values[2], values[3])
 }
 
+fn parse_translate(raw: &str) -> (f64, f64) {
+    let captures = Regex::new(
+        r"^translate\(\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$",
+    )
+    .expect("valid transform regex")
+    .captures(raw)
+    .expect("translate(x, y) transform");
+    (
+        captures[1].parse().expect("numeric translate x"),
+        captures[2].parse().expect("numeric translate y"),
+    )
+}
+
+fn global_foreign_object_bounds(foreign_object: roxmltree::Node<'_, '_>) -> (f64, f64, f64, f64) {
+    let width = foreign_object
+        .attribute("width")
+        .expect("foreignObject width")
+        .parse::<f64>()
+        .expect("numeric foreignObject width");
+    let height = foreign_object
+        .attribute("height")
+        .expect("foreignObject height")
+        .parse::<f64>()
+        .expect("numeric foreignObject height");
+    let x = foreign_object
+        .attribute("x")
+        .unwrap_or("0")
+        .parse::<f64>()
+        .expect("numeric foreignObject x");
+    let y = foreign_object
+        .attribute("y")
+        .unwrap_or("0")
+        .parse::<f64>()
+        .expect("numeric foreignObject y");
+
+    let (mut tx, mut ty) = (x, y);
+    for ancestor in foreign_object.ancestors().filter(|node| node.is_element()) {
+        if let Some(transform) = ancestor.attribute("transform") {
+            let (ancestor_x, ancestor_y) = parse_translate(transform);
+            tx += ancestor_x;
+            ty += ancestor_y;
+        }
+    }
+    (tx, ty, tx + width, ty + height)
+}
+
+fn global_path_geometry_bounds(path: roxmltree::Node<'_, '_>) -> (f64, f64, f64, f64) {
+    let d = path.attribute("d").expect("path data");
+    let fragment = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="{d}"/></svg>"#);
+    let bounds = merman_render::svg::debug_svg_emitted_bounds(&fragment)
+        .expect("path geometry bounds")
+        .bounds;
+    let (mut tx, mut ty) = (0.0, 0.0);
+    for ancestor in path.ancestors().filter(|node| node.is_element()) {
+        if let Some(transform) = ancestor.attribute("transform") {
+            let (ancestor_x, ancestor_y) = parse_translate(transform);
+            tx += ancestor_x;
+            ty += ancestor_y;
+        }
+    }
+    (
+        bounds.min_x + tx,
+        bounds.min_y + ty,
+        bounds.max_x + tx,
+        bounds.max_y + ty,
+    )
+}
+
 fn deep_block_chain(depth: usize) -> String {
     let mut input = String::from("block\n");
     for level in 0..depth {
@@ -1277,6 +1345,90 @@ fn block_root_viewbox_uses_rendered_shape_bounds() {
     assert!(view_y <= center_y - radius - padding + 1e-9);
     assert!(view_x + view_width >= center_x + radius + padding - 1e-9);
     assert!(view_y + view_height >= center_y + radius + padding - 1e-9);
+}
+
+#[test]
+fn block_root_viewbox_contains_edge_label_foreign_object() {
+    let svg = render_block_svg_from_text(
+        r#"%%{init: {"block": {"diagramPadding": 0}}}%%
+block
+  A["A"] -- "A very long edge label" --> B["B"]
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let edge_label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class") == Some("edgeLabel")
+                && node
+                    .descendants()
+                    .any(|descendant| descendant.has_tag_name("foreignObject"))
+        })
+        .expect("rendered Block edge label group");
+    let foreign_object = edge_label
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .expect("rendered Block edge label foreignObject");
+    let (label_min_x, label_min_y, label_max_x, label_max_y) =
+        global_foreign_object_bounds(foreign_object);
+    let (view_x, view_y, view_width, view_height) = root_view_box(&document);
+    let view_max_x = view_x + view_width;
+    let view_max_y = view_y + view_height;
+
+    assert!(
+        label_min_x >= view_x - 1e-6
+            && label_min_y >= view_y - 1e-6
+            && label_max_x <= view_max_x + 1e-6
+            && label_max_y <= view_max_y + 1e-6,
+        "edge label foreignObject must be contained by the root viewBox: label=({label_min_x},{label_min_y})..({label_max_x},{label_max_y}), viewBox=({view_x},{view_y}) {view_width}x{view_height}, svg={svg}"
+    );
+}
+
+#[test]
+fn block_root_viewbox_contains_rough_stroke_bounds() {
+    let svg = render_block_svg_from_text(
+        r#"%%{init: {"block": {"diagramPadding": 0}}}%%
+block
+  A(["A"])
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let stadium = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("rendered stadium node");
+    let outer_path = stadium
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class == "basic label-container outer-path")
+        })
+        .expect("rendered stadium outer-path group");
+    let stroke_path = outer_path
+        .children()
+        .find(|node| node.has_tag_name("path") && node.attribute("fill") == Some("none"))
+        .expect("RoughJS stadium stroke path");
+    let (min_x, min_y, max_x, max_y) = global_path_geometry_bounds(stroke_path);
+    let stroke_width = stroke_path
+        .attribute("stroke-width")
+        .expect("RoughJS stroke width")
+        .parse::<f64>()
+        .expect("numeric RoughJS stroke width");
+    let (view_x, view_y, view_width, view_height) = root_view_box(&document);
+    let view_max_x = view_x + view_width;
+    let view_max_y = view_y + view_height;
+    let outset = stroke_width / 2.0;
+
+    assert!(
+        min_x - outset >= view_x - 1e-6
+            && min_y - outset >= view_y - 1e-6
+            && max_x + outset <= view_max_x + 1e-6
+            && max_y + outset <= view_max_y + 1e-6,
+        "root viewBox must contain the emitted RoughJS stroke envelope: path=({min_x},{min_y})..({max_x},{max_y}), stroke={stroke_width}, viewBox=({view_x},{view_y}) {view_width}x{view_height}, svg={svg}"
+    );
 }
 
 #[test]

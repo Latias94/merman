@@ -31,6 +31,268 @@ impl<'a> BlockLayoutEdgeIndex<'a> {
     }
 }
 
+/// Returns a conservative radius for one of the marker instances emitted by the shared Mermaid
+/// marker set.
+///
+/// Marker definitions live in `markers.rs` and use `userSpaceOnUse`.  The generic SVG bounds
+/// scanner intentionally ignores `<defs>`, so Block has to account for the referenced marker at
+/// its path endpoint.  These values mirror the source geometry and marker viewport attributes;
+/// the result is a geometric bound, not a tuned padding constant.
+fn block_marker_extent_radius(marker: &str) -> Option<f64> {
+    enum Shape<'a> {
+        Polygon(&'a [(f64, f64)]),
+        Circle { cx: f64, cy: f64, radius: f64 },
+    }
+
+    const POINT_END: &[(f64, f64)] = &[(0.0, 0.0), (10.0, 5.0), (0.0, 10.0)];
+    const POINT_START: &[(f64, f64)] = &[(0.0, 5.0), (10.0, 10.0), (10.0, 0.0)];
+
+    let (
+        view_box_width,
+        view_box_height,
+        marker_width,
+        marker_height,
+        ref_x,
+        ref_y,
+        stroke_width,
+        shape,
+    ) = match marker {
+        "pointEnd" => (
+            10.0,
+            10.0,
+            8.0,
+            8.0,
+            5.0,
+            5.0,
+            1.0,
+            Shape::Polygon(POINT_END),
+        ),
+        "pointStart" => (
+            10.0,
+            10.0,
+            8.0,
+            8.0,
+            4.5,
+            5.0,
+            1.0,
+            Shape::Polygon(POINT_START),
+        ),
+        "circleEnd" => (
+            10.0,
+            10.0,
+            11.0,
+            11.0,
+            11.0,
+            5.0,
+            1.0,
+            Shape::Circle {
+                cx: 5.0,
+                cy: 5.0,
+                radius: 5.0,
+            },
+        ),
+        "circleStart" => (
+            10.0,
+            10.0,
+            11.0,
+            11.0,
+            -1.0,
+            5.0,
+            1.0,
+            Shape::Circle {
+                cx: 5.0,
+                cy: 5.0,
+                radius: 5.0,
+            },
+        ),
+        "crossEnd" => (
+            11.0,
+            11.0,
+            11.0,
+            11.0,
+            12.0,
+            5.2,
+            2.0,
+            Shape::Polygon(&[(1.0, 1.0), (10.0, 10.0), (10.0, 1.0), (1.0, 10.0)]),
+        ),
+        "crossStart" => (
+            11.0,
+            11.0,
+            11.0,
+            11.0,
+            -1.0,
+            5.2,
+            2.0,
+            Shape::Polygon(&[(1.0, 1.0), (10.0, 10.0), (10.0, 1.0), (1.0, 10.0)]),
+        ),
+        _ => return None,
+    };
+
+    let scale_x = marker_width / view_box_width;
+    let scale_y = marker_height / view_box_height;
+    let radius = match shape {
+        Shape::Polygon(points) => points
+            .iter()
+            .map(|(x, y)| {
+                let dx = (x - ref_x) * scale_x;
+                let dy = (y - ref_y) * scale_y;
+                dx.hypot(dy)
+            })
+            .fold(0.0, f64::max),
+        Shape::Circle { cx, cy, radius } => {
+            let center_dx = (cx - ref_x) * scale_x;
+            let center_dy = (cy - ref_y) * scale_y;
+            // The axis-aligned envelope is deliberately conservative for a rotated marker.
+            center_dx.abs().hypot(center_dy.abs()) + radius * scale_x.max(scale_y)
+        }
+    };
+
+    Some(radius + stroke_width * scale_x.max(scale_y) / 2.0)
+}
+
+fn include_block_marker_bounds(
+    bounds: &mut Option<(f64, f64, f64, f64)>,
+    point: &LayoutPoint,
+    marker: &str,
+) {
+    let Some(radius) = block_marker_extent_radius(marker) else {
+        return;
+    };
+    let candidate = (
+        point.x - radius,
+        point.y - radius,
+        point.x + radius,
+        point.y + radius,
+    );
+    if let Some(existing) = bounds.as_mut() {
+        existing.0 = existing.0.min(candidate.0);
+        existing.1 = existing.1.min(candidate.1);
+        existing.2 = existing.2.max(candidate.2);
+        existing.3 = existing.3.max(candidate.3);
+    } else {
+        *bounds = Some(candidate);
+    }
+}
+
+fn union_block_bounds(bounds: &mut (f64, f64, f64, f64), candidate: (f64, f64, f64, f64)) {
+    bounds.0 = bounds.0.min(candidate.0);
+    bounds.1 = bounds.1.min(candidate.1);
+    bounds.2 = bounds.2.max(candidate.2);
+    bounds.3 = bounds.3.max(candidate.3);
+}
+
+fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
+    match arrow.unwrap_or("").trim() {
+        "arrow_point" => 4.5,
+        _ => 0.0,
+    }
+}
+
+fn block_edge_end_marker_inset(arrow: Option<&str>) -> f64 {
+    match arrow.unwrap_or("").trim() {
+        "arrow_point" => 4.0,
+        _ => 0.0,
+    }
+}
+
+fn move_point_towards(point: &LayoutPoint, target: &LayoutPoint, distance: f64) -> LayoutPoint {
+    if distance.abs() <= 1e-12 {
+        return point.clone();
+    }
+    let dx = target.x - point.x;
+    let dy = target.y - point.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 1e-12 {
+        return point.clone();
+    }
+    LayoutPoint {
+        x: point.x + dx / len * distance,
+        y: point.y + dy / len * distance,
+    }
+}
+
+fn edge_marker_end(arrow: Option<&str>) -> Option<&'static str> {
+    match arrow.unwrap_or("").trim() {
+        "arrow_point" => Some("pointEnd"),
+        "arrow_circle" => Some("circleEnd"),
+        "arrow_cross" => Some("crossEnd"),
+        "arrow_open" | "" => None,
+        _ => Some("pointEnd"),
+    }
+}
+
+fn edge_marker_start(arrow: Option<&str>) -> Option<&'static str> {
+    match arrow.unwrap_or("").trim() {
+        "arrow_point" => Some("pointStart"),
+        "arrow_circle" => Some("circleStart"),
+        "arrow_cross" => Some("crossStart"),
+        "arrow_open" | "" => None,
+        _ => None,
+    }
+}
+
+struct BlockEdgePoints {
+    /// Points before marker insets, matching Mermaid's `data-points` payload.
+    data_points: Vec<LayoutPoint>,
+    /// Points after marker insets, matching the emitted path and marker anchors.
+    rendered_points: Vec<LayoutPoint>,
+}
+
+fn block_render_edge_points(
+    edge: &merman_core::diagrams::block::BlockEdgeRenderModel,
+    layout_edge: &LayoutEdge,
+    shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
+) -> BlockEdgePoints {
+    let data_points = match (
+        shape_geometries_by_id.get(edge.start.as_str()),
+        shape_geometries_by_id.get(edge.end.as_str()),
+    ) {
+        (Some(from), Some(to)) => {
+            let mid = layout_edge.points.get(1).cloned().unwrap_or(LayoutPoint {
+                x: from.allocated.x + (to.allocated.x - from.allocated.x) / 2.0,
+                y: from.allocated.y + (to.allocated.y - from.allocated.y) / 2.0,
+            });
+            vec![from.intersect(&mid), mid.clone(), to.intersect(&mid)]
+        }
+        _ => layout_edge.points.clone(),
+    };
+    let mut rendered_points = data_points.clone();
+
+    if rendered_points.len() >= 2 {
+        let start_inset = block_edge_start_marker_inset(edge.arrow_type_start.as_deref());
+        if start_inset > 0.0 {
+            rendered_points[0] =
+                move_point_towards(&rendered_points[0], &rendered_points[1], start_inset);
+        }
+        let end_inset = block_edge_end_marker_inset(edge.arrow_type_end.as_deref());
+        if end_inset > 0.0 {
+            let last = rendered_points.len() - 1;
+            rendered_points[last] = move_point_towards(
+                &rendered_points[last],
+                &rendered_points[last - 1],
+                end_inset,
+            );
+        }
+    }
+
+    BlockEdgePoints {
+        data_points,
+        rendered_points,
+    }
+}
+
+fn block_css_length_px(raw: &str) -> Option<f64> {
+    let raw = raw
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .trim_end_matches("!important")
+        .trim();
+    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
+    let value = raw.parse::<f64>().ok()?;
+    value.is_finite().then_some(value)
+}
+
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
     let _ = write!(out, "{key}:{}!important;", escape_xml_display(value));
     out.checkpoint()
@@ -317,26 +579,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
     }
 
-    fn edge_marker_end(arrow: Option<&str>) -> Option<&'static str> {
-        match arrow.unwrap_or("").trim() {
-            "arrow_point" => Some("pointEnd"),
-            "arrow_circle" => Some("circleEnd"),
-            "arrow_cross" => Some("crossEnd"),
-            "arrow_open" | "" => None,
-            _ => Some("pointEnd"),
-        }
-    }
-
-    fn edge_marker_start(arrow: Option<&str>) -> Option<&'static str> {
-        match arrow.unwrap_or("").trim() {
-            "arrow_point" => Some("pointStart"),
-            "arrow_circle" => Some("circleStart"),
-            "arrow_cross" => Some("crossStart"),
-            "arrow_open" | "" => None,
-            _ => None,
-        }
-    }
-
     fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
         if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
             *value = raw.to_string();
@@ -410,36 +652,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             div_style_prefix: div_prefix,
             owns_fill,
             owns_stroke,
-        }
-    }
-
-    fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
-        match arrow.unwrap_or("").trim() {
-            "arrow_point" => 4.5,
-            _ => 0.0,
-        }
-    }
-
-    fn block_edge_end_marker_inset(arrow: Option<&str>) -> f64 {
-        match arrow.unwrap_or("").trim() {
-            "arrow_point" => 4.0,
-            _ => 0.0,
-        }
-    }
-
-    fn move_point_towards(point: &LayoutPoint, target: &LayoutPoint, distance: f64) -> LayoutPoint {
-        if distance.abs() <= 1e-12 {
-            return point.clone();
-        }
-        let dx = target.x - point.x;
-        let dy = target.y - point.y;
-        let len = (dx * dx + dy * dy).sqrt();
-        if len <= 1e-12 {
-            return point.clone();
-        }
-        LayoutPoint {
-            x: point.x + dx / len * distance,
-            y: point.y + dy / len * distance,
         }
     }
 
@@ -674,22 +886,16 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         ));
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_bounds = root_svg::DiagramBounds::from_extents(
-        rendered_bounds.0,
-        rendered_bounds.1,
-        rendered_bounds.2,
-        rendered_bounds.3,
-        diagram_padding,
-    );
-    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
-    let root_document = root_svg::RootViewportContext::new(
-        crate::DiagramFamilyId::BLOCK,
-        diagram_id,
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    let root_context =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::BLOCK, diagram_id)
+            .with_resource_policy(options.resource_policy());
+    let root_document = root_context.begin_document(
+        &mut out,
+        root_svg::DeferredRootSpec::responsive(),
+        root_chrome,
+    )?;
     options.checkpoint_emit()?;
     out.push_str("<style>");
     out.checkpoint()?;
@@ -712,6 +918,15 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
 
     out.push_str(r#"<g class="block">"#);
     out.checkpoint()?;
+
+    // The root viewport is finalized after the complete rendered group exists.  Keep the
+    // scanner range restricted to visible Block content so `<defs>` markers and the stylesheet
+    // do not become accidental contributors to the root bbox.
+    let bounds_scan_start = out.len();
+    let mut content_bounds = rendered_bounds;
+    let mut marker_bounds: Option<(f64, f64, f64, f64)> = None;
+    let mut has_rough_path = false;
+    let mut has_rendered_edge = false;
 
     for n in &layout.nodes {
         let Some(node) = nodes_by_id.get(&n.id) else {
@@ -826,7 +1041,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         .map(|point| (point.x, point.y))
                         .collect::<Vec<_>>(),
                 );
-                if !emit_rough_paths(
+                let rough_emitted = emit_rough_paths(
                     &mut out,
                     &path_data,
                     RoughPathRenderOptions {
@@ -837,7 +1052,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         randomness: &hand_drawn_seed,
                         transform: None,
                     },
-                ) {
+                );
+                if rough_emitted {
+                    has_rough_path = true;
+                } else {
                     let radius = height / 2.0;
                     let _ = write!(
                         &mut out,
@@ -889,7 +1107,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 let points_as_tuples: Vec<(f64, f64)> =
                     points.iter().map(|point| (point.x, point.y)).collect();
                 let path_data = closed_path_d_from_points(&points_as_tuples);
-                if odd_shape
+                let rough_emitted = odd_shape
                     && emit_rough_paths(
                         &mut out,
                         &path_data,
@@ -901,8 +1119,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                             randomness: &hand_drawn_seed,
                             transform: Some((translation.x, translation.y)),
                         },
-                    )
-                {
+                    );
+                if rough_emitted {
+                    has_rough_path = true;
                     // The odd shape is always emitted through RoughJS in Mermaid 11.17.2,
                     // including the default look (roughness is simply zero there).
                 } else {
@@ -961,6 +1180,17 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             };
             (label_dx - label_w / 2.0, -label_h / 2.0, label_w, label_h)
         };
+        if label_w > 0.0 && label_h > 0.0 {
+            union_block_bounds(
+                &mut content_bounds,
+                (
+                    geometry.allocated.x + label_tx,
+                    geometry.allocated.y + label_ty,
+                    geometry.allocated.x + label_tx + label_w,
+                    geometry.allocated.y + label_ty + label_h,
+                ),
+            );
+        }
         let span_style_attr = if node_text_style.is_empty() {
             String::new()
         } else {
@@ -992,34 +1222,25 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
-        let mut edge_points = match (
-            shape_geometries_by_id.get(e.start.as_str()),
-            shape_geometries_by_id.get(e.end.as_str()),
-        ) {
-            (Some(from), Some(to)) => {
-                let mid = le.points.get(1).cloned().unwrap_or(LayoutPoint {
-                    x: from.allocated.x + (to.allocated.x - from.allocated.x) / 2.0,
-                    y: from.allocated.y + (to.allocated.y - from.allocated.y) / 2.0,
-                });
-                vec![from.intersect(&mid), mid.clone(), to.intersect(&mid)]
-            }
-            _ => le.points.clone(),
-        };
-        let data_points =
-            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&edge_points));
-        if edge_points.len() >= 2 {
-            let start_inset = block_edge_start_marker_inset(e.arrow_type_start.as_deref());
-            if start_inset > 0.0 {
-                edge_points[0] = move_point_towards(&edge_points[0], &edge_points[1], start_inset);
-            }
-            let end_inset = block_edge_end_marker_inset(e.arrow_type_end.as_deref());
-            if end_inset > 0.0 {
-                let last = edge_points.len() - 1;
-                edge_points[last] =
-                    move_point_towards(&edge_points[last], &edge_points[last - 1], end_inset);
-            }
+        let edge_points = block_render_edge_points(e, le, &shape_geometries_by_id);
+        let data_points = base64::engine::general_purpose::STANDARD
+            .encode(json_stringify_points(&edge_points.data_points));
+        let (d, path_bounds) =
+            super::super::curve::curve_basis_path_d_and_bounds(&edge_points.rendered_points);
+        if let Some(path_bounds) = path_bounds {
+            union_block_bounds(
+                &mut content_bounds,
+                (
+                    path_bounds.min_x,
+                    path_bounds.min_y,
+                    path_bounds.max_x,
+                    path_bounds.max_y,
+                ),
+            );
         }
-        let d = curve_basis_path_d(&edge_points);
+        if !edge_points.rendered_points.is_empty() {
+            has_rendered_edge = true;
+        }
         let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
         let prefixed_edge_id = dom_id(diagram_id, &e.id);
         let path_id = dom_id(diagram_id, &prefixed_edge_id);
@@ -1034,6 +1255,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         );
 
         if let Some(m) = edge_marker_start(e.arrow_type_start.as_deref()) {
+            if let Some(point) = edge_points.rendered_points.first() {
+                include_block_marker_bounds(&mut marker_bounds, point, m);
+            }
             let _ = write!(
                 &mut out,
                 r#" marker-start="{}""#,
@@ -1041,6 +1265,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
         }
         if let Some(m) = edge_marker_end(e.arrow_type_end.as_deref()) {
+            if let Some(point) = edge_points.rendered_points.last() {
+                include_block_marker_bounds(&mut marker_bounds, point, m);
+            }
             let _ = write!(
                 &mut out,
                 r#" marker-end="{}""#,
@@ -1061,6 +1288,16 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         };
         typography_receipt.record_visible_label(&e.label);
 
+        union_block_bounds(
+            &mut content_bounds,
+            (
+                lbl.x - lbl.width / 2.0,
+                lbl.y - lbl.height / 2.0,
+                lbl.x + lbl.width / 2.0,
+                lbl.y + lbl.height / 2.0,
+            ),
+        );
+
         let _ = write!(
             &mut out,
             r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
@@ -1076,8 +1313,72 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
     }
 
+    let bounds_scan_end = out.len();
     out.push_str("</g></svg>\n");
     options.checkpoint_emit()?;
+    let mut final_bounds = content_bounds;
+    if let Some(emitted_bounds) =
+        svg_emitted_bounds_from_svg(&out.as_str()[bounds_scan_start..bounds_scan_end])
+    {
+        union_block_bounds(
+            &mut final_bounds,
+            (
+                emitted_bounds.min_x,
+                emitted_bounds.min_y,
+                emitted_bounds.max_x,
+                emitted_bounds.max_y,
+            ),
+        );
+    }
+    if let Some(marker_bounds) = marker_bounds {
+        union_block_bounds(&mut final_bounds, marker_bounds);
+    }
+
+    // SVG's geometric bbox excludes stroke width.  Expand by the largest stroke actually
+    // emitted by this renderer: ordinary node/edge CSS strokes and the explicit RoughJS stroke.
+    // The values come from the emitted CSS/RoughJS options rather than a family-specific padding
+    // constant, so custom theme stroke widths remain represented when they are numeric CSS px.
+    let node_stroke_outset: f64 = if layout.shape_geometries.is_empty() {
+        0.0
+    } else {
+        0.5
+    };
+    let rough_stroke_outset = if has_rough_path {
+        f64::from(node_stroke_width) / 2.0
+    } else {
+        0.0
+    };
+    let edge_stroke_outset = if has_rendered_edge {
+        block_css_length_px(node_theme.stroke_width.as_str())
+            .map(f64::abs)
+            .unwrap_or(1.0)
+            / 2.0
+    } else {
+        0.0
+    };
+    let stroke_outset = node_stroke_outset
+        .max(rough_stroke_outset)
+        .max(edge_stroke_outset);
+    if stroke_outset.is_finite() && stroke_outset > 0.0 {
+        final_bounds.0 -= stroke_outset;
+        final_bounds.1 -= stroke_outset;
+        final_bounds.2 += stroke_outset;
+        final_bounds.3 += stroke_outset;
+    }
+
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        final_bounds.0,
+        final_bounds.1,
+        final_bounds.2,
+        final_bounds.3,
+        diagram_padding,
+    );
+    let root_document = root_context.finish_document(
+        &mut out,
+        root_document,
+        root_svg::RootViewportSpec::responsive(root_bounds)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
+    )?;
     let rooted = root_document.complete(out.finish()?)?;
     if !node_paint_theme.record_terminal(node_paint_receipt) {
         return Err(Error::InvalidModel {
