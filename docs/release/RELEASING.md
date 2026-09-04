@@ -4,9 +4,9 @@ Status: maintained release operator guide.
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
-push a `v*` workspace tag for the ordinary release surfaces. Flutter uses its own
-`flutter-v<version>` tag because pub.dev requires a tag-triggered workflow and a Flutter package
-version may be published from a newer reviewed commit without moving an existing workspace tag.
+push a `v<version>` workspace tag only for the tag-triggered CLI/LSP and crates.io surfaces. Flutter
+uses its own `flutter-v<version>` tag because pub.dev requires a tag-triggered workflow; Python,
+Android, Apple, Web, Node, and VS Code remain owner-dispatched surfaces.
 
 Release classification follows SemVer syntax, not the major version number. Versions without a
 prerelease suffix, including `0.7.0` and `0.8.0`, are regular releases. Only versions with a
@@ -31,6 +31,24 @@ is zero.
 | `release-tree-sitter-mermaid.yml` | `tree-sitter-mermaid` crate, `@mermanjs/tree-sitter-mermaid`, language WASM, and source archive | crates.io, npm, and GitHub Release |
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
+
+The word "FFI" covers two different deliverables. `merman-bindings-core`, `merman-ffi`,
+`merman-uniffi`, and `merman-wasm` are source crates in the crates.io graph. Android AAR, Apple
+XCFramework, Python wheels, and Flutter Native Assets are separately built artifacts owned by their
+own workflows. `merman-android-jni` is intentionally `publish = false`; its public delivery is the
+AAR, not a crates.io package. A green preflight proves that those owner builds can succeed, but it
+does not publish them and it does not imply that every surface ran.
+
+Run the static, machine-readable FFI/native ownership check before dispatching any owner workflow:
+
+```bash
+VERSION="<version>"
+python3 scripts/release_surface_contract.py --version "$VERSION"
+```
+
+The check is a contract of workflow, artifact profile, and source-crate ownership for the five
+FFI/native surfaces above. It does not replace the complete workflow table, and it does not cache
+registry status; after publication, query each owning registry or GitHub Release directly.
 
 Most platform publish workflows are manual `workflow_dispatch` workflows. Python, Android, and
 Apple accept a `release_tag`, resolve the matching immutable tag commit and tree, and build all
@@ -184,7 +202,15 @@ Preparation or pre-apply validation failures leave the caller worktree unchanged
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
 
-The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests.
+The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.
+
+`cargo check --locked` is not sufficient evidence for a prerelease. The release gates also create
+fresh consumers without a copied lockfile and compile the candidate graph plus the previous facade
+against candidate sibling packages when both versions are on the same Cargo compatibility line. A
+failure in that same-line previous-facade lane means the release must restore compatibility or start
+a new release line; do not rely on downstream lockfiles to hide the mixed graph. Published registry
+tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this
+repository after publication; the next release must carry the corrected manifest and pass this gate.
 
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
@@ -246,7 +272,8 @@ SOURCE_SHA="$(git rev-parse HEAD)"
 gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref="$SOURCE_SHA"
 ```
 
-The preflight workflow verifies release versions, independent-crate Rust API compatibility,
+The preflight workflow verifies release versions, the static release-surface contract,
+prerelease fresh-resolution compatibility, independent-crate Rust API compatibility,
 package file lists, registry-independent Rust crate publish dry-runs, Python wheels, Android AAR
 builds, Apple XCFramework builds, the web npm package dry-run, Node native package-group
 build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --dry-run`. It does
@@ -262,7 +289,7 @@ prebuild recovery stays within the same workflow run.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
-Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds.
+Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds. A complete native release still requires explicit, successful owner workflow runs for every authorized artifact surface; absence of an owner run is incomplete delivery, not an implicit skip.
 
 For local spot checks, run the normal Rust and platform gates:
 

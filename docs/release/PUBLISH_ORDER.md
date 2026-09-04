@@ -34,6 +34,15 @@ separately published alpha.5 channels do not share a source snapshot with the wo
 implication. The independently versioned VS Code extension, Typst wrapper, and `roughr-merman`
 remain on their own release axes. The `tree-sitter-mermaid` language distribution also has an
 independent version axis.
+
+For every prerelease, coupled workspace dependency requirements are exact (`=X.Y.Z-alpha.N`,
+`=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`). This is a source-manifest rule, not a lockfile preference:
+fresh consumers must never be allowed to select a newer sibling package for an older facade. Stable
+workspace releases keep ordinary compatible requirements. The four binding source crates remain in
+the crates.io graph; native platform bytes are delivered by their owner workflows and are not
+implied by the presence of the source crates. Registry tarballs are immutable; if a published
+prerelease contains a moving sibling requirement, the correction takes effect only in a later
+release (or a new compatibility line), not by editing the already-published version in this tree.
 Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
 `34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
 deferred so it can be announced alongside the next Merman product release; the two releases retain
@@ -169,7 +178,8 @@ python3 tools/publish.py --list-crates-io-packages
 cargo semver-checks check-release -p roughr-merman --color always
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
-cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
+cargo check -p merman-wasm
+cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi -p merman-wasm
 ```
 
 The `roughr-merman` check uses the latest published compatible registry version as its baseline.
@@ -179,7 +189,8 @@ pin `cargo-semver-checks` so the result does not depend on a maintainer's local 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
 release workflow packages every member of a topological batch first and records the exact `.crate`
 digest. It then requires all missing members in that batch to pass this gate before the first real
-publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
+publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and
+`merman-wasm`.
 
 ```bash
 cargo publish -p merman-render --locked --dry-run --registry crates-io
@@ -187,6 +198,7 @@ cargo publish -p merman-export --locked --dry-run --registry crates-io
 cargo publish -p merman-bindings-core --locked --dry-run --registry crates-io
 cargo publish -p merman-ffi --locked --dry-run --registry crates-io
 cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
+cargo publish -p merman-wasm --locked --dry-run --registry crates-io
 ```
 
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package

@@ -62,6 +62,13 @@ class ReleaseProjectionError(ValueError):
     """The release projection graph is malformed or cannot be updated safely."""
 
 
+def workspace_dependency_requirement(release: ReleaseVersion) -> str:
+    """Return the Cargo requirement used between coupled workspace packages."""
+    if release.kind == "prerelease":
+        return f"={release.canonical}"
+    return release.canonical
+
+
 @dataclass(frozen=True)
 class VersionObservation:
     label: str
@@ -381,6 +388,7 @@ def _collect_workspace_dependency_versions(
     }
     inherited_by_package: dict[str, str] = {}
     projected_independent: dict[str, str] = {}
+    coupled_requirement = workspace_dependency_requirement(catalog.authority)
 
     for dependency_key, raw_spec in dependencies.items():
         if not isinstance(raw_spec, dict) or "path" not in raw_spec:
@@ -430,7 +438,7 @@ def _collect_workspace_dependency_versions(
             VersionObservation(
                 f"Cargo workspace dependency {dependency_key}",
                 ROOT_MANIFEST,
-                catalog.authority.canonical,
+                coupled_requirement,
                 actual,
             )
         )
@@ -1302,7 +1310,7 @@ def _prepare_cargo_versions(root: Path, release: ReleaseVersion) -> None:
                 "workspace.dependencies",
                 dependency_key,
                 "version",
-                release.canonical,
+                workspace_dependency_requirement(release),
             )
     _write_relative(root, ROOT_MANIFEST, root_text)
     _write_relative(

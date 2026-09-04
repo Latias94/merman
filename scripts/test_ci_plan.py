@@ -299,12 +299,29 @@ class PlannerTests(unittest.TestCase):
             "scripts/audit_plan.py": {"hygiene", "npm", "security"},
             "scripts/generate-rust-license-report.py": {"hygiene", "security"},
             "scripts/strict_json.py": {"hygiene", "security"},
+            "scripts/release_surface_contract.py": {
+                "core",
+                "hygiene",
+                "platform",
+                "python",
+            },
             "scripts/verify_artifact_dependency_closures.py": {
                 "hygiene",
                 "security",
                 "typst",
             },
+            "scripts/verify_prerelease_compatibility.py": {"core", "hygiene"},
             "scripts/release_projection.py": {"hygiene"},
+            "scripts/test_release_surface_contract.py": {
+                "core",
+                "hygiene",
+                "platform",
+                "python",
+            },
+            "scripts/test_verify_prerelease_compatibility.py": {
+                "core",
+                "hygiene",
+            },
         }
 
         for path, expected in fixtures.items():

@@ -136,6 +136,27 @@ jobs:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
+      - name: Verify static release surface contract
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release_surface_contract.py --version "$VERSION"
+
+      - name: Compile prerelease lanes from fresh Cargo resolutions
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            python3 scripts/verify_prerelease_compatibility.py \
+              --version "$VERSION" \
+              --previous-version "${previous_tag#v}"
+          else
+            python3 scripts/verify_prerelease_compatibility.py \
+              --version "$VERSION" \
+              --allow-missing-previous
+          fi
+
       - name: Verify release changelog projections
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}

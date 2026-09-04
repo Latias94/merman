@@ -304,6 +304,36 @@ jobs:
         self.assertNotIn("cargo yank", text)
         self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
 
+    def test_release_preflight_keeps_prerelease_and_surface_contract_gates(self) -> None:
+        preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
+        crates = read(WORKFLOW_ROOT / "release-crates.yml")
+        for workflow_name, text in (
+            ("release-preflight.yml", preflight),
+            ("release-crates.yml", crates),
+        ):
+            with self.subTest(workflow=workflow_name):
+                self.assertIn(
+                    "scripts/release_surface_contract.py --version \"$VERSION\"",
+                    text,
+                )
+                self.assertIn("scripts/verify_prerelease_compatibility.py", text)
+                self.assertIn("previous_tag=", text)
+
+    def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
+        self,
+    ) -> None:
+        contract = read(ROOT / "scripts" / "release_surface_contract.py")
+        for surface in (
+            "rust-crates-and-ffi-source",
+            "android-aar",
+            "apple-xcframework",
+            "python-wheel",
+            "flutter-pub",
+        ):
+            with self.subTest(surface=surface):
+                self.assertIn(surface, contract)
+        self.assertIn("merman-android-jni must remain publish = false", contract)
+
     def test_roughr_semver_gate_is_pinned_before_publication(self) -> None:
         workflows = {
             WORKFLOW_ROOT / "release-preflight.yml": (

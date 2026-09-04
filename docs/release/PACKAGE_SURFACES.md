@@ -22,6 +22,7 @@ installation command.
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
 | Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
+| Binding source integration | `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm` | crates.io source crates; native artifacts are separate owner surfaces |
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
 | VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
@@ -81,6 +82,11 @@ The repository-owned delivery routes are:
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
 11. Manual Typst Universe submission for `@preview/merman:0.3.0`; this wrapper has an independent
     version axis and is not published by the crates.io workflow or a workspace tag.
+
+The source-crate route and native-artifact routes must be audited separately. Publishing
+`merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,
+Python wheel, or Flutter package. Use `scripts/release_surface_contract.py` to enumerate the owner
+workflows and artifact profiles before treating a release as complete.
 
 ## CI Gates
 
