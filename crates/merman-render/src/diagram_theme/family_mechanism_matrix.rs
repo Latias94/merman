@@ -502,7 +502,10 @@ fn legacy_bridge_projections(
             Some(ThemeRouteCutoverProjectionSet::REPLACE_ACTIVATION_STROKE)
         }
         (
-            DiagramFamilyId::TREEMAP | DiagramFamilyId::VENN | DiagramFamilyId::ZENUML,
+            DiagramFamilyId::RAILROAD
+            | DiagramFamilyId::TREEMAP
+            | DiagramFamilyId::VENN
+            | DiagramFamilyId::ZENUML,
             ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
@@ -1862,21 +1865,21 @@ pub(super) fn classify_rule_facet(
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::PIE
-        && target == ThemeTarget::Title
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
+    if matches!(
+        (family, target),
+        (
+            DiagramFamilyId::PIE | DiagramFamilyId::RAILROAD,
+            ThemeTarget::Title
         )
-        && matches!(
-            facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
-        )
-    {
+    ) && matches!(
+        selector,
+        FamilyThemeSelectorShape::Static {
+            variant: None | Some(ThemeVariant::Default)
+        }
+    ) && matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid)
+    ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::PIE
@@ -4947,6 +4950,20 @@ mod tests {
                 vec!["slice.stroke"],
             ),
             (
+                DiagramFamilyId::RAILROAD,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::RAILROAD,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
+            (
                 DiagramFamilyId::REQUIREMENT,
                 ThemeTarget::Requirement,
                 Fill,
@@ -5377,7 +5394,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 42);
+        assert_eq!(qualified.len(), 44);
         assert_eq!(
             qualified
                 .iter()
@@ -5417,6 +5434,13 @@ mod tests {
             qualified
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::INFO)
+                .count(),
+            2
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::RAILROAD)
                 .count(),
             2
         );
@@ -6043,7 +6067,7 @@ mod tests {
     }
 
     #[test]
-    fn railroad_title_paint_remains_on_the_legacy_rule_name_route() {
+    fn railroad_title_paint_is_owned_by_the_typed_rule_name_route() {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,
             FamilyThemePaintKind::Solid,
@@ -6056,7 +6080,7 @@ mod tests {
                         FamilyThemeSelectorShape::Static { variant },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility,
+                    FamilyThemeDisposition::TypedAdapter,
                     "Railroad rule-name titleColor route drifted for {paint_kind:?}, variant={variant:?}"
                 );
             }

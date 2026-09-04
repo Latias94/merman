@@ -23,6 +23,14 @@ use serde_json::{Value, json};
 const RAILROAD_SOURCE: &str = r#"railroad-beta
 expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
+const RAILROAD_SOURCE_WITH_RULE_NAME_CONFIG: &str = r#"---
+config:
+  railroad:
+    ruleNameColor: '#be123c'
+---
+railroad-beta
+expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
+"#;
 
 fn render_railroad(site_config: Value) -> (String, Value) {
     render_railroad_with_id(site_config, "railroad-theme")
@@ -693,23 +701,21 @@ fn railroad_typed_typography_is_not_applicable_for_an_empty_diagram() {
 }
 
 #[test]
-fn railroad_title_fill_reaches_rule_name_through_legacy_compatibility() {
+fn railroad_title_fill_reaches_rule_name_through_typed_adapter() {
     for (case, variant) in [
         ("unqualified", None),
         ("default", Some(ThemeVariant::Default)),
     ] {
         let theme = railroad_title_fill_theme(variant);
-        let best_effort = RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort);
         let diagram_id = format!("railroad-title-fill-{case}");
         let (_, rendered) = try_render_railroad_source_with_theme(
             RAILROAD_SOURCE,
             &theme,
             Engine::new(),
-            &best_effort,
+            &portable_railroad_environment(),
             &diagram_id,
         )
-        .expect("BestEffort preserves the Railroad title compatibility route");
+        .expect("typed Railroad title fill remains portable");
 
         let style = railroad_style(rendered.svg());
         let rule_name_body = railroad_rule_body(style, &diagram_id, ".railroad-rule-name");
@@ -727,30 +733,88 @@ fn railroad_title_fill_reaches_rule_name_through_legacy_compatibility() {
 
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 0, "case={case}");
-        assert_eq!(evidence.accounted_count(), 0, "case={case}");
-        assert_eq!(evidence.applied_count(), 0, "case={case}");
+        assert_eq!(evidence.required_count(), 1, "case={case}");
+        assert_eq!(evidence.accounted_count(), 1, "case={case}");
+        assert_eq!(evidence.applied_count(), 1, "case={case}");
         assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
-        assert_eq!(evidence.compatibility_residual_count(), 1, "case={case}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
+    }
+}
 
-        let strict = try_render_railroad_source_with_theme(
+#[test]
+fn railroad_title_fill_respects_source_and_site_config_ownership() {
+    let theme = railroad_title_fill_theme(None);
+    let cases = [
+        (
+            "railroad-title-fill-site-rule-name",
             RAILROAD_SOURCE,
-            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "railroad": { "ruleNameColor": "#0f766e" }
+            }))),
+            "#0f766e",
+        ),
+        (
+            "railroad-title-fill-site-title",
+            RAILROAD_SOURCE,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": { "titleColor": "#1d4ed8" }
+            }))),
+            "#1d4ed8",
+        ),
+        (
+            "railroad-title-fill-site-text",
+            RAILROAD_SOURCE,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": { "textColor": "#b45309" }
+            }))),
+            "#b45309",
+        ),
+        (
+            "railroad-title-fill-source-rule-name",
+            RAILROAD_SOURCE_WITH_RULE_NAME_CONFIG,
             Engine::new(),
+            "#be123c",
+        ),
+        (
+            "railroad-title-fill-source-over-site-rule-name",
+            RAILROAD_SOURCE_WITH_RULE_NAME_CONFIG,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "railroad": { "ruleNameColor": "#0f766e" }
+            }))),
+            "#be123c",
+        ),
+    ];
+
+    for (diagram_id, source, engine, expected_fill) in cases {
+        let (_, rendered) = try_render_railroad_source_with_theme(
+            source,
+            &theme,
+            engine,
             &portable_railroad_environment(),
-            &format!("railroad-title-fill-{case}-strict"),
+            diagram_id,
+        )
+        .expect("explicit Railroad title color ownership remains portable");
+
+        let style = railroad_style(rendered.svg());
+        let rule_name_body = railroad_rule_body(style, diagram_id, ".railroad-rule-name");
+        assert!(
+            rule_name_body.contains(&format!("fill:{expected_fill};")),
+            "Railroad config owner did not win title fill: {rule_name_body}"
         );
-        match strict {
-            Ok(_) => panic!("strict Railroad {case} title.fill must retain compatibility"),
-            Err(merman_render::Error::LegacyFamilyThemeCompatibility {
-                family_id,
-                residual_count,
-            }) => {
-                assert_eq!(family_id, DiagramFamilyId::RAILROAD);
-                assert_eq!(residual_count, 1);
-            }
-            Err(error) => panic!("expected Railroad compatibility residual, got {error}"),
-        }
+        assert!(!rule_name_body.contains("#c026d3"));
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "case={diagram_id}");
+        assert_eq!(evidence.accounted_count(), 1, "case={diagram_id}");
+        assert_eq!(evidence.applied_count(), 0, "case={diagram_id}");
+        assert_eq!(evidence.not_applicable_count(), 1, "case={diagram_id}");
+        assert_eq!(evidence.theme_residual_count(), 0, "case={diagram_id}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "case={diagram_id}"
+        );
     }
 }

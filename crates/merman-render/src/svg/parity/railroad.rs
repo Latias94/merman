@@ -103,7 +103,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
             escape_xml_display(&rule.name)
         );
         out.checkpoint()?;
-        surface_receipt.record_rule_name_occurrence();
+        surface_receipt.record_rule_name_occurrence(&style.rule_name_color);
         let _ = write!(
             &mut out,
             r#"<g class="railroad-start"><circle cx="{}" cy="{}" r="{}"></circle></g><g class="railroad-end"><circle cx="{}" cy="{}" r="{}"></circle></g>"#,

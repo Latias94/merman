@@ -2470,9 +2470,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x20, 0x85, 0xb5, 0x83, 0xf2, 0x73, 0xa4, 0x2c, 0x65, 0x89, 0x06, 0x66, 0x51, 0x3a,
-            0xe9, 0xe8, 0xd1, 0x1c, 0x56, 0x6e, 0x8e, 0xd0, 0xc7, 0x72, 0xf0, 0xb0, 0x3c, 0x95,
-            0xd9, 0x65, 0xee, 0x16,
+            0xd5, 0x74, 0x65, 0x17, 0xd1, 0x1e, 0x55, 0xb7, 0xdc, 0x73, 0x0c, 0x06, 0x4c, 0x21,
+            0x18, 0xdf, 0x3f, 0x68, 0x66, 0x76, 0xe9, 0x46, 0x8f, 0xf8, 0x0c, 0x13, 0xd6, 0x9e,
+            0xec, 0x36, 0x82, 0x67,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0xde, 0x1d, 0xed, 0x0e, 0x2f, 0x87, 0x54, 0xf3, 0xb9, 0xcc, 0x65, 0x1b, 0xbf, 0xe4,
@@ -2487,7 +2487,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 404);
+        assert_eq!(status.matrix_route_count(), 400);
         assert_eq!(status.matrix_family_count(), 24);
         assert_eq!(status.dispatched_family_count(), 24);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
@@ -2632,7 +2632,7 @@ mod tests {
     }
 
     #[test]
-    fn railroad_title_fill_remains_a_real_legacy_projection() {
+    fn railroad_title_fill_is_no_longer_projected_through_the_legacy_bridge() {
         for variant in [None, Some(ThemeVariant::Default)] {
             let mut rule = ThemeRule::new(
                 ThemeTarget::Title,
@@ -2646,9 +2646,9 @@ mod tests {
             let bridge = bridge(&spec);
             let artifact = bridge.compile_for_family(DiagramFamilyId::RAILROAD);
 
-            assert!(!artifact.overlay.is_empty(), "variant={variant:?}");
+            assert!(artifact.overlay.is_empty(), "variant={variant:?}");
             assert!(
-                artifact
+                !artifact
                     .contribution_ids
                     .contains("merman.legacy-family-theme.v1.railroad.title.fill"),
                 "variant={variant:?}"
