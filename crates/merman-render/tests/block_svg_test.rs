@@ -1348,10 +1348,33 @@ fn block_root_viewbox_uses_rendered_shape_bounds() {
 }
 
 #[test]
+fn block_root_viewbox_ignores_non_schema_diagram_padding() {
+    let default_svg = render_block_svg_from_text(
+        r#"block
+  A["A"] --> B["B"]
+"#,
+    );
+    let opaque_config_svg = render_block_svg_from_text(
+        r#"%%{init: {"block": {"diagramPadding": 250}}}%%
+block
+  A["A"] --> B["B"]
+"#,
+    );
+    let default_document = roxmltree::Document::parse(&default_svg).expect("default Block SVG");
+    let opaque_config_document =
+        roxmltree::Document::parse(&opaque_config_svg).expect("configured Block SVG");
+
+    assert_eq!(
+        root_view_box(&default_document),
+        root_view_box(&opaque_config_document),
+        "Block viewBox padding is the fixed Mermaid 5px expansion, not an opaque config surface"
+    );
+}
+
+#[test]
 fn block_root_viewbox_contains_edge_label_foreign_object() {
     let svg = render_block_svg_from_text(
-        r#"%%{init: {"block": {"diagramPadding": 0}}}%%
-block
+        r#"block
   A["A"] -- "A very long edge label" --> B["B"]
 "#,
     );
@@ -1388,8 +1411,7 @@ block
 #[test]
 fn block_root_viewbox_contains_rough_stroke_bounds() {
     let svg = render_block_svg_from_text(
-        r#"%%{init: {"block": {"diagramPadding": 0}}}%%
-block
+        r#"block
   A(["A"])
 "#,
     );

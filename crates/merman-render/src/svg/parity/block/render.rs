@@ -11,6 +11,10 @@ use crate::svg::parity::roughjs_common::{
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
+// Mermaid's Block renderer expands the visible group bounds by a fixed five pixels. Block has no
+// `diagramPadding` configuration field, so this must not be driven by an opaque config key.
+const BLOCK_ROOT_VIEWBOX_PADDING: f64 = 5.0;
+
 struct BlockLayoutEdgeIndex<'a> {
     by_id: std::collections::HashMap<&'a str, &'a LayoutEdge>,
 }
@@ -856,10 +860,6 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         max_x: 100.0,
         max_y: 100.0,
     });
-    let diagram_padding = config_f64(effective_config, &["block", "diagramPadding"])
-        .unwrap_or(5.0)
-        .max(0.0);
-
     // Mermaid derives Block's root viewport from the rendered node group (`getBBox()`), not the
     // grid slots used during layout.  Use the shared shape geometry so circles, arrows, and
     // slanted shapes that extend beyond their slots remain inside the root viewBox.
@@ -1371,7 +1371,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         final_bounds.1,
         final_bounds.2,
         final_bounds.3,
-        diagram_padding,
+        BLOCK_ROOT_VIEWBOX_PADDING,
     );
     let root_document = root_context.finish_document(
         &mut out,
