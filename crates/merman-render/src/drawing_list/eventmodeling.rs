@@ -58,6 +58,9 @@ struct EventModelingBuilder<'a> {
     relation_stroke: Color,
     arrowhead_fill: Color,
     text_color: Color,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -117,6 +120,9 @@ impl<'a> EventModelingBuilder<'a> {
             relation_stroke: styles.color("emRelationStroke", &theme.relation_stroke)?,
             arrowhead_fill: styles.color("emArrowhead", &theme.arrowhead_fill)?,
             text_color: styles.color("textColor", &theme.text_color)?,
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             font,
             code_font,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
@@ -194,6 +200,10 @@ impl<'a> EventModelingBuilder<'a> {
                 family: RenderFamilyKind::EventModeling,
                 body: SvgStructureBody::EventModeling(EventModelingSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -223,6 +233,10 @@ impl<'a> EventModelingBuilder<'a> {
             .get(index)
             .ok_or_else(|| invalid(format!("missing EventModeling swimlane {index}")))?;
         let semantic_id = format!("eventmodeling.swimlane.{}", swimlane.index);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "em-swimlane".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "em-swimlane-label".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -294,6 +308,10 @@ impl<'a> EventModelingBuilder<'a> {
             .get(index)
             .ok_or_else(|| invalid(format!("missing EventModeling box {index}")))?;
         let semantic_id = format!("eventmodeling.box.{}", box_layout.index);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "em-box".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "em-box-label".to_string());
         let fill =
             PortableStyleResolver::new("eventmodeling").color("box.fill", &box_layout.fill)?;
         let stroke_color =
@@ -439,6 +457,14 @@ impl<'a> EventModelingBuilder<'a> {
             .get(index)
             .ok_or_else(|| invalid(format!("missing EventModeling relation {index}")))?;
         let semantic_id = format!("eventmodeling.relation.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "em-relation".to_string());
+        self.path_classes
+            .insert(format!("{semantic_id}.line"), "em-relation".to_string());
+        self.path_classes.insert(
+            format!("{semantic_id}.arrowhead"),
+            "em-arrowhead".to_string(),
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });

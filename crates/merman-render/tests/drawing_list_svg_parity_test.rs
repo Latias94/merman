@@ -463,3 +463,42 @@ fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
     );
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
+    let svg = render_svg(
+        "eventmodeling\ntf 01 ui Web.ShopCart\ntf 02 cmd Cart.AddItem ->> 01 { sku: \"SKU-1\" }\ntf 03 evt Cart.ItemAdded ->> 02\n",
+        "eventmodeling-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical EventModeling SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(
+        root.attribute("aria-roledescription"),
+        Some("eventmodeling")
+    );
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    for class in ["em-swimlane", "em-box", "em-relation", "em-arrowhead"] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical EventModeling class {class:?}"
+        );
+    }
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("eventmodeling.relation.0")
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("ShopCart") })
+    );
+    assert!(!svg.contains("<foreignObject"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

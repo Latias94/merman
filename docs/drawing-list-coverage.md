@@ -45,7 +45,7 @@ inventory row fails at test time.  The current inventory is:
 | GitGraph | yes | legacy bridge |
 | TreeView | yes | legacy bridge |
 | Ishikawa | yes | legacy bridge |
-| EventModeling | yes | legacy bridge |
+| EventModeling | yes | canonical |
 | Venn | yes | canonical |
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
