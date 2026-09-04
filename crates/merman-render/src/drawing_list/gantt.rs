@@ -9,7 +9,9 @@ use super::{
 };
 use crate::config::config_font_family_css;
 use crate::drawing_list::flowchart::rounded_rect_path;
-use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
+use crate::drawing_list::support::{
+    PortableStyleResolver, navigation_security, portable_navigation_uri, stroke, text_obligation,
+};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{GanttAxisTickLayout, GanttDiagramLayout, GanttRowLayout};
@@ -17,6 +19,7 @@ use crate::svg::render_theme::GanttTheme;
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
@@ -47,6 +50,7 @@ struct GanttBuilder<'a> {
     theme: GanttTheme,
     font: FontDescriptor,
     text_obligation: TextObligation,
+    navigation_security: MermaidNavigationSecurity,
     exclude_fill: Color,
     section_fill: Color,
     section_fill_alt: Color,
@@ -83,6 +87,7 @@ impl<'a> GanttBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
+        let navigation_security = navigation_security(config);
         if config
             .get("themeCSS")
             .and_then(Value::as_str)
@@ -149,6 +154,7 @@ impl<'a> GanttBuilder<'a> {
             theme,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            navigation_security,
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -447,7 +453,10 @@ impl<'a> GanttBuilder<'a> {
                 title: Some(source.task.clone()),
                 description: (!source.section.is_empty())
                     .then(|| format!("{} section", source.section)),
-                link: self.model.links.get(&source.id).cloned(),
+                link: portable_navigation_uri(
+                    self.model.links.get(&source.id).map(String::as_str),
+                    self.navigation_security,
+                ),
             });
         }
         Ok(())

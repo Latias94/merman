@@ -11,7 +11,9 @@ use super::{
 };
 use crate::c4::{C4ConfigView, C4NodeShape, c4_node_shape};
 use crate::config::{config_f64_explicit_css_px, config_string};
-use crate::drawing_list::support::{stroke, text_obligation};
+use crate::drawing_list::support::{
+    navigation_security, portable_navigation_uri, stroke, text_obligation,
+};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, C4BoundaryLayout, C4DiagramLayout, C4RelLayout, C4ShapeLayout};
@@ -20,6 +22,7 @@ use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::c4::{C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel};
+use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
     DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
@@ -56,6 +59,7 @@ struct C4Builder<'a> {
     font_size: f64,
     line_height: f64,
     text_obligation: TextObligation,
+    navigation_security: MermaidNavigationSecurity,
     boundary_fill: Color,
     boundary_stroke: Color,
     boundary_text: Color,
@@ -77,6 +81,7 @@ impl<'a> C4Builder<'a> {
         let model = pair.semantic();
         let layout = pair.layout();
         let config = metadata.effective_config.as_value();
+        let navigation_security = navigation_security(config);
         let look = crate::config::config_diagram_look(config);
         if look.as_str().eq_ignore_ascii_case("handDrawn") {
             return Err(unavailable(
@@ -155,6 +160,7 @@ impl<'a> C4Builder<'a> {
             font_size,
             line_height: layout_settings.message_font_size.max(1.0) * 1.25,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
+            navigation_security,
             boundary_fill,
             boundary_stroke,
             boundary_text,
@@ -440,6 +446,11 @@ impl<'a> C4Builder<'a> {
     }
 
     fn emit_boundary(&mut self, index: usize, boundary: &C4BoundaryLayout) -> Result<()> {
+        let meta = self
+            .model
+            .boundaries
+            .iter()
+            .find(|candidate| candidate.alias == boundary.alias);
         let semantic_id = format!("c4.boundary.{index}");
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
@@ -481,7 +492,10 @@ impl<'a> C4Builder<'a> {
             role: SemanticRole::Group,
             title: Some(title),
             description: Some(format!("C4 boundary {}", boundary.alias)),
-            link: None,
+            link: meta
+                .map(|meta| value_link(meta.link.as_ref(), self.navigation_security))
+                .transpose()?
+                .flatten(),
         });
         Ok(())
     }
@@ -558,7 +572,7 @@ impl<'a> C4Builder<'a> {
             role: SemanticRole::Node,
             title: Some(plain_text(&meta.label.as_str()).map_err(unavailable)?),
             description: Some(format!("C4 {}", shape.alias)),
-            link: value_link(meta.link.as_ref())?,
+            link: value_link(meta.link.as_ref(), self.navigation_security)?,
         });
         Ok(())
     }
@@ -673,7 +687,7 @@ impl<'a> C4Builder<'a> {
             role: SemanticRole::Edge,
             title: Some(plain_text(&meta.label.as_str()).map_err(unavailable)?),
             description: Some(format!("{} → {}", relation.from, relation.to)),
-            link: value_link(meta.link.as_ref())?,
+            link: value_link(meta.link.as_ref(), self.navigation_security)?,
         });
         Ok(())
     }
@@ -1005,14 +1019,17 @@ fn validate_c4_metadata(
     Ok(())
 }
 
-fn value_link(value: Option<&Value>) -> Result<Option<String>> {
+fn value_link(
+    value: Option<&Value>,
+    security: MermaidNavigationSecurity,
+) -> Result<Option<String>> {
     let Some(value) = value.filter(|value| !value.is_null()) else {
         return Ok(None);
     };
-    value
+    let value = value
         .as_str()
-        .map(|value| Some(value.to_string()))
-        .ok_or_else(|| unavailable("C4 link value is not a portable string"))
+        .ok_or_else(|| unavailable("C4 link value is not a portable string"))?;
+    Ok(portable_navigation_uri(Some(value), security))
 }
 
 fn parse_color(value: &str) -> Result<Color> {

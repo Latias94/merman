@@ -6,10 +6,12 @@
 
 use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
 use crate::{Error, Result};
+use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_display_list::{
     Color, LineCap, LineJoin, MeasurementProvenance, Paint, StrokeStyle, TextObligation,
 };
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PortableStyleResolver {
@@ -127,6 +129,27 @@ pub(super) fn stroke(color: Color, width: f64) -> StrokeStyle {
     }
 }
 
+/// Resolves Mermaid's root security setting for renderer-neutral navigation metadata.
+///
+/// The DrawingList stores logical URI values rather than serialized SVG attributes, so all
+/// family adapters must pass through the same security boundary before exposing a semantic link.
+pub(super) fn navigation_security(config: &Value) -> MermaidNavigationSecurity {
+    MermaidNavigationSecurity::from_security_level_loose(
+        config.get("securityLevel").and_then(Value::as_str) == Some("loose"),
+    )
+}
+
+/// Applies Mermaid's final navigation cleanup to a logical semantic link.
+pub(super) fn portable_navigation_uri(
+    value: Option<&str>,
+    security: MermaidNavigationSecurity,
+) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| prepare_mermaid_navigation_uri(value, security))
+}
+
 pub(super) fn svg_plain_text(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     let mut pending_space = false;
@@ -172,4 +195,52 @@ fn profile_identity(identity: &crate::environment::TextMeasurementProfileIdentit
         value.push_str(decorator);
     }
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{navigation_security, portable_navigation_uri};
+    use merman_core::svg_security::MermaidNavigationSecurity;
+    use serde_json::json;
+
+    #[test]
+    fn navigation_security_follows_the_root_config() {
+        assert_eq!(
+            navigation_security(&json!({"securityLevel": "strict"})),
+            MermaidNavigationSecurity::Sanitized
+        );
+        assert_eq!(
+            navigation_security(&json!({"securityLevel": "loose"})),
+            MermaidNavigationSecurity::Loose
+        );
+    }
+
+    #[test]
+    fn portable_navigation_uri_filters_empty_values_and_sanitizes_strict_links() {
+        assert_eq!(
+            portable_navigation_uri(Some("  "), MermaidNavigationSecurity::Sanitized),
+            None
+        );
+        assert_eq!(
+            portable_navigation_uri(
+                Some("javascript:alert(1)"),
+                MermaidNavigationSecurity::Sanitized,
+            ),
+            None
+        );
+        assert_eq!(
+            portable_navigation_uri(
+                Some("javascript:alert(1)"),
+                MermaidNavigationSecurity::Loose,
+            ),
+            Some("javascript:alert(1)".into())
+        );
+        assert_eq!(
+            portable_navigation_uri(
+                Some("https://example.test/docs"),
+                MermaidNavigationSecurity::Sanitized,
+            ),
+            Some("https://example.test/docs".into())
+        );
+    }
 }

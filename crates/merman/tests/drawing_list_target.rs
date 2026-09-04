@@ -272,6 +272,61 @@ fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
     }));
 }
 
+#[test]
+fn c4_links_use_the_shared_strict_and_loose_navigation_boundary() {
+    let source = r#"C4Context
+        Person(user, "User", "Description", "", "", "javascript:alert(1)")
+        System(api, "API", "Service", "", "", "https://example.test/api")
+        Rel(user, api, "uses", "", "", "", "", "javascript:alert(2)")
+        Boundary(boundary, "Boundary", "enterprise", "", "javascript:alert(3)") {
+            System(inner, "Inner", "Service")
+        }
+    "#;
+
+    let strict = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("strict C4 links should be represented safely");
+    let RenderOutput::DrawingList(Some(strict)) = strict else {
+        panic!("expected a DrawingList output");
+    };
+    let strict_links = strict
+        .document()
+        .semantics
+        .iter()
+        .filter_map(|semantic| semantic.link.as_deref())
+        .collect::<Vec<_>>();
+    assert_eq!(strict_links, vec!["https://example.test/api"]);
+
+    let loose_config = MermaidConfig::from_value(serde_json::json!({
+        "securityLevel": "loose"
+    }));
+    let loose = Renderer::new()
+        .with_engine(Engine::new().with_site_config(loose_config))
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("loose C4 links should preserve authored navigation");
+    let RenderOutput::DrawingList(Some(loose)) = loose else {
+        panic!("expected a DrawingList output");
+    };
+    let loose_links = loose
+        .document()
+        .semantics
+        .iter()
+        .filter_map(|semantic| semantic.link.as_deref())
+        .collect::<Vec<_>>();
+    assert!(loose_links.contains(&"javascript:alert(1)"));
+    assert!(loose_links.contains(&"javascript:alert(2)"));
+    assert!(loose_links.contains(&"javascript:alert(3)"));
+    assert!(loose_links.contains(&"https://example.test/api"));
+}
+
 #[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_emits_typed_icons_groups_edges_and_semantics() {

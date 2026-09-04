@@ -11,7 +11,9 @@ use super::{
 };
 use crate::class::class_member_create_text_input;
 use crate::config::{config_f64_explicit_css_px, config_string};
-use crate::drawing_list::support::{stroke, svg_plain_text, text_obligation};
+use crate::drawing_list::support::{
+    navigation_security, portable_navigation_uri, stroke, svg_plain_text, text_obligation,
+};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, ClassDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode};
@@ -20,6 +22,7 @@ use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
+use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
     DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
@@ -60,6 +63,7 @@ struct ClassBuilder<'a> {
     line_height: f64,
     class_padding: f64,
     text_obligation: TextObligation,
+    navigation_security: MermaidNavigationSecurity,
     node_fill: Color,
     node_stroke: Color,
     node_text: Color,
@@ -85,6 +89,7 @@ impl<'a> ClassBuilder<'a> {
         let model = pair.semantic();
         let layout = pair.layout();
         let config = metadata.effective_config.as_value();
+        let navigation_security = navigation_security(config);
         let look = crate::config::config_diagram_look(config);
         if look.as_str().eq_ignore_ascii_case("handDrawn") {
             return Err(unavailable(
@@ -181,6 +186,7 @@ impl<'a> ClassBuilder<'a> {
             line_height: (font_size * 1.35).max(DEFAULT_LINE_HEIGHT.min(font_size * 1.35)),
             class_padding,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
+            navigation_security,
             node_fill,
             node_stroke,
             node_text,
@@ -822,7 +828,7 @@ impl<'a> ClassBuilder<'a> {
             role: SemanticRole::Node,
             title: Some(svg_plain_text(&title)),
             description: Some(format!("Class {}", node.id)),
-            link: node.link.clone(),
+            link: portable_navigation_uri(node.link.as_deref(), self.navigation_security),
         });
         Ok(())
     }
