@@ -10,15 +10,20 @@ use super::{
 };
 use crate::config::config_diagram_look;
 use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
-use crate::family::FlowchartFamilyArtifact;
+use crate::family::{FlowchartFamilyArtifact, RenderFamilyKind};
 use crate::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartConfigView, FlowchartLabelMetricsRequest,
-    FlowchartRenderModelRef, FlowchartShape, flowchart_effective_edge_label_text_style,
-    flowchart_effective_node_class_names, flowchart_effective_text_style_for_node_classes,
-    flowchart_label_is_empty_for_render, flowchart_label_metrics_for_layout,
-    flowchart_label_plain_text_for_layout, flowchart_split_mermaid_style_decls,
+    FlowchartModel, FlowchartRenderContext, FlowchartRenderModelRef, FlowchartShape,
+    flowchart_effective_edge_label_text_style, flowchart_effective_node_class_names,
+    flowchart_effective_text_style_for_node_classes, flowchart_label_is_empty_for_render,
+    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+    flowchart_split_mermaid_style_decls,
 };
-use crate::model::{Bounds, FlowchartLayout, LayoutCluster, LayoutEdge, LayoutNode};
+use crate::model::{
+    Bounds, FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneDirection,
+    SwimlaneLayout,
+};
+use crate::presentation::FlowchartPresentationPolicy;
 use crate::render_geometry::{
     FlowchartCurveKind, flowchart_curve_segments as shared_flowchart_curve_segments,
 };
@@ -34,7 +39,7 @@ use merman_display_list::{
     DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, LineCap, LineJoin,
     MeasurementProvenance, Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId,
     SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle, Viewport,
+    TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -52,7 +57,39 @@ pub(crate) fn build_flowchart_document(
     policy: DrawingListPolicy,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = FlowchartBuilder::new(artifact, metadata, policy, session)?;
+    let mut builder = FlowchartBuilder::new(
+        artifact.pair().semantic(),
+        artifact.pair().layout(),
+        artifact.render_context(),
+        artifact.policy(),
+        RenderFamilyKind::Flowchart,
+        None,
+        metadata,
+        policy,
+        session,
+    )?;
+    builder.build()
+}
+
+pub(crate) fn build_swimlane_document(
+    artifact: &FlowchartFamilyArtifact<SwimlaneLayout>,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    let adapted_layout =
+        adapt_swimlane_layout(artifact.pair().semantic(), artifact.pair().layout());
+    let mut builder = FlowchartBuilder::new(
+        artifact.pair().semantic(),
+        &adapted_layout,
+        artifact.render_context(),
+        artifact.policy(),
+        RenderFamilyKind::Swimlane,
+        Some(artifact.pair().layout()),
+        metadata,
+        policy,
+        session,
+    )?;
     builder.build()
 }
 
@@ -60,8 +97,10 @@ struct FlowchartBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
     policy: DrawingListPolicy,
+    family_kind: RenderFamilyKind,
     model: FlowchartRenderModelRef<'a>,
     layout: &'a FlowchartLayout,
+    swimlane_layout: Option<&'a SwimlaneLayout>,
     config: FlowchartConfigView<'a>,
     node_style: RenderTextStyle,
     html_text_style: RenderTextStyle,
@@ -94,15 +133,18 @@ struct FlowchartBuilder<'a> {
 
 impl<'a> FlowchartBuilder<'a> {
     fn new(
-        artifact: &'a FlowchartFamilyArtifact<FlowchartLayout>,
+        semantic: &'a FlowchartModel,
+        layout: &'a FlowchartLayout,
+        render_context: &'a FlowchartRenderContext,
+        presentation: Option<FlowchartPresentationPolicy>,
+        family_kind: RenderFamilyKind,
+        swimlane_layout: Option<&'a SwimlaneLayout>,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
-        let semantic = artifact.pair().semantic();
-        let model = FlowchartRenderModelRef::new(semantic, artifact.render_context());
-        let layout = artifact.pair().layout();
+        let model = FlowchartRenderModelRef::new(semantic, render_context);
         let config = FlowchartConfigView::new(metadata.effective_config.as_value());
 
         let look = config_diagram_look(metadata.effective_config.as_value());
@@ -190,9 +232,7 @@ impl<'a> FlowchartBuilder<'a> {
                 .get("layout")
                 .and_then(Value::as_str)
                 .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
-        let default_curve = artifact
-            .pair()
-            .semantic()
+        let default_curve = semantic
             .edge_defaults
             .as_ref()
             .and_then(|defaults| defaults.interpolate.clone())
@@ -203,7 +243,7 @@ impl<'a> FlowchartBuilder<'a> {
             })
             .unwrap_or_else(|| "basis".to_string());
         ensure_curve_supported(&default_curve)?;
-        let presentation = artifact.policy().unwrap_or_default();
+        let presentation = presentation.unwrap_or_default();
 
         let nodes_by_id = semantic
             .nodes
@@ -217,8 +257,7 @@ impl<'a> FlowchartBuilder<'a> {
             .collect::<HashMap<_, _>>();
         let mut projected_edges_by_id = HashMap::with_capacity(model.edges.len());
         for edge in &model.edges {
-            if let Some(projected) =
-                crate::flowchart::project_flowchart_edge(edge, artifact.render_context())
+            if let Some(projected) = crate::flowchart::project_flowchart_edge(edge, render_context)
             {
                 projected_edges_by_id.insert(projected.id.clone(), projected);
             }
@@ -234,8 +273,10 @@ impl<'a> FlowchartBuilder<'a> {
             metadata,
             session,
             policy,
+            family_kind,
             model,
             layout,
+            swimlane_layout,
             config,
             node_style,
             html_text_style,
@@ -279,7 +320,7 @@ impl<'a> FlowchartBuilder<'a> {
             commands: vec![
                 DrawingCommand::Save,
                 DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "flowchart.document".to_string(),
+                    semantic_id: format!("{}.document", family_kind.as_str()),
                 },
             ],
             semantics: Vec::new(),
@@ -296,9 +337,13 @@ impl<'a> FlowchartBuilder<'a> {
 
         // Mermaid's stable Flowchart DOM partitions clusters, edge paths/labels, and nodes. The
         // same partition is useful to native consumers because node fills do not erase routes.
-        for (index, cluster) in self.layout.clusters.iter().enumerate() {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            self.emit_cluster(index, cluster)?;
+        if let Some(swimlane_layout) = self.swimlane_layout {
+            self.emit_swimlane_lanes(swimlane_layout)?;
+        } else {
+            for (index, cluster) in self.layout.clusters.iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_cluster(index, cluster)?;
+            }
         }
         for edge_layout in &self.layout.edges {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -311,12 +356,12 @@ impl<'a> FlowchartBuilder<'a> {
 
         if !self.interaction_nodes.is_empty() {
             self.extensions.insert(
-                "x-merman-flowchart-interactions".to_string(),
+                format!("x-merman-{}-interactions", self.family_prefix()),
                 Value::Array(std::mem::take(&mut self.interaction_nodes)),
             );
         }
         self.extensions.insert(
-            "x-merman-flowchart".to_string(),
+            format!("x-merman-{}", self.family_prefix()),
             json!({
                 "diagram_type": self.metadata.diagram_type,
                 "uses_elk_adapter_dom": self.layout.uses_elk_adapter_dom,
@@ -355,12 +400,156 @@ impl<'a> FlowchartBuilder<'a> {
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
-                family: crate::family::RenderFamilyKind::Flowchart,
-                body: SvgStructureBody::Flowchart(FlowchartSvgBody {
-                    diagram_type: self.metadata.diagram_type.clone(),
-                }),
+                family: self.family_kind,
+                body: if self.family_kind == RenderFamilyKind::Flowchart {
+                    SvgStructureBody::Flowchart(FlowchartSvgBody {
+                        diagram_type: self.metadata.diagram_type.clone(),
+                    })
+                } else {
+                    SvgStructureBody::Swimlane(super::SwimlaneSvgBody {
+                        diagram_type: self.metadata.diagram_type.clone(),
+                    })
+                },
             },
         })
+    }
+
+    fn family_prefix(&self) -> &'static str {
+        self.family_kind.as_str()
+    }
+
+    fn emit_swimlane_lanes(&mut self, layout: &SwimlaneLayout) -> Result<()> {
+        for (index, lane) in layout.lanes.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let (subgraph_index, subgraph) = self
+                .subgraphs_by_id
+                .get(lane.id.as_str())
+                .copied()
+                .map_or((None, None), |(index, subgraph)| {
+                    (Some(index), Some(subgraph))
+                });
+            let (classes, styles) = subgraph
+                .zip(subgraph_index)
+                .map(|(subgraph, subgraph_index)| {
+                    self.model.effective_subgraph_css(subgraph_index, subgraph)
+                })
+                .unwrap_or_default();
+            let style = self.resolve_style(
+                classes,
+                &[],
+                styles,
+                self.base_text_style(self.config.effective_html_labels()),
+                self.cluster_fill,
+                self.cluster_border,
+                self.cluster_text,
+                self.edge_stroke_width,
+            )?;
+            let semantic_id = format!("{}.group.{index}", self.family_prefix());
+            self.begin_group(&semantic_id, style.opacity, style.blend_mode);
+
+            let lane_width = lane.width.max(0.0);
+            let lane_height = lane.height.max(0.0);
+            let lane_left = lane.x - lane_width / 2.0;
+            let lane_top = lane.y - lane_height / 2.0;
+            let full_bounds = Rect::new(lane_left, lane_top, lane_width, lane_height);
+            let (title_bounds, body_bounds) = swimlane_band_bounds(
+                lane,
+                self.config.render_font_size(),
+                matches!(
+                    layout.direction,
+                    SwimlaneDirection::Lr | SwimlaneDirection::Rl
+                ),
+            );
+
+            let body_style = PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: style
+                    .stroke_color
+                    .map(|color| style.stroke_style(FlowEdgeStroke::Normal, color)),
+            };
+            self.add_path(
+                format!("{semantic_id}.body"),
+                rectangle_path_from_bounds(body_bounds)?,
+                body_style,
+            )?;
+            self.add_path(
+                format!("{semantic_id}.title"),
+                rectangle_path_from_bounds(title_bounds)?,
+                style.path_style(),
+            )?;
+
+            let render_title = subgraph.zip(subgraph_index).map_or_else(
+                || lane.title.clone(),
+                |(subgraph, subgraph_index)| {
+                    self.model
+                        .subgraph_title_for_render(subgraph_index, subgraph)
+                        .to_string()
+                },
+            );
+            if !flowchart_label_is_empty_for_render(&render_title) {
+                let label_type = subgraph
+                    .and_then(|subgraph| subgraph.label_type.as_deref())
+                    .unwrap_or("text");
+                let title_center = Point::new(
+                    title_bounds.x + title_bounds.width / 2.0,
+                    title_bounds.y + title_bounds.height / 2.0,
+                );
+                let label_bounds = Rect::new(
+                    title_center.x - title_bounds.width / 2.0,
+                    title_center.y - title_bounds.height / 2.0,
+                    title_bounds.width,
+                    title_bounds.height,
+                );
+                let run = self.label_run(
+                    &render_title,
+                    label_type,
+                    self.config.effective_html_labels(),
+                    title_center,
+                    label_bounds,
+                    &style,
+                )?;
+                if matches!(
+                    layout.direction,
+                    SwimlaneDirection::Lr | SwimlaneDirection::Rl
+                ) {
+                    self.commands.push(DrawingCommand::Save);
+                    self.commands.push(DrawingCommand::ConcatTransform {
+                        transform: rotate_about(title_center, -std::f64::consts::FRAC_PI_2),
+                    });
+                    self.commands.push(DrawingCommand::DrawText { run });
+                    self.commands.push(DrawingCommand::Restore);
+                } else {
+                    self.commands.push(DrawingCommand::DrawText { run });
+                }
+            }
+            self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal);
+            self.semantics.push(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Group,
+                title: Some(flowchart_label_plain_text_for_layout(
+                    &render_title,
+                    subgraph
+                        .and_then(|subgraph| subgraph.label_type.as_deref())
+                        .unwrap_or("text"),
+                    self.config.effective_html_labels(),
+                )),
+                description: Some(format!(
+                    "{} swimlane ({})",
+                    lane.id,
+                    layout.direction.as_str()
+                )),
+                link: None,
+            });
+
+            if !full_bounds.width.is_finite() || !full_bounds.height.is_finite() {
+                return Err(invalid(format!(
+                    "swimlane `{}` has invalid bounds",
+                    lane.id
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn preflight_sources(&self) -> Result<()> {
@@ -536,7 +725,7 @@ impl<'a> FlowchartBuilder<'a> {
             .or_else(|| self.metadata.title.clone())
             .or_else(|| Some(self.metadata.diagram_type.clone()));
         self.semantics.push(SemanticAnnotation {
-            id: "flowchart.document".to_string(),
+            id: format!("{}.document", self.family_prefix()),
             role: SemanticRole::Document,
             title,
             description: self.model.acc_descr.clone(),
@@ -566,7 +755,7 @@ impl<'a> FlowchartBuilder<'a> {
             self.cluster_text,
             1.0,
         )?;
-        let semantic_id = format!("flowchart.group.{index}");
+        let semantic_id = format!("{}.group.{index}", self.family_prefix());
         self.begin_group(&semantic_id, style.opacity, style.blend_mode);
         if style.has_paint()
             && let Some(path) =
@@ -644,7 +833,7 @@ impl<'a> FlowchartBuilder<'a> {
             self.node_text,
             self.edge_stroke_width,
         )?;
-        let semantic_id = format!("flowchart.edge.{}", edge.id);
+        let semantic_id = format!("{}.edge.{}", self.family_prefix(), edge.id);
         self.begin_group(&semantic_id, style.opacity, style.blend_mode);
         let curve = edge.interpolate.as_deref().unwrap_or(&self.default_curve);
         let segments = curve_segments(
@@ -752,7 +941,7 @@ impl<'a> FlowchartBuilder<'a> {
         if node.provenance == FlowNodeProvenance::SubgraphAnchor {
             return Ok(());
         }
-        let semantic_id = format!("flowchart.node.{}", node.id);
+        let semantic_id = format!("{}.node.{}", self.family_prefix(), node.id);
         let classes = flowchart_effective_node_class_names(&self.model.class_defs, &node.classes)
             .into_iter()
             .map(str::to_string)
@@ -1087,12 +1276,174 @@ impl<'a> FlowchartBuilder<'a> {
 
     fn edge_semantic(&self, edge: &FlowEdge, id: Option<String>) -> SemanticAnnotation {
         SemanticAnnotation {
-            id: id.unwrap_or_else(|| format!("flowchart.edge.{}", edge.id)),
+            id: id.unwrap_or_else(|| format!("{}.edge.{}", self.family_prefix(), edge.id)),
             role: SemanticRole::Edge,
             title: self.model.edge_label_for_render(edge).map(str::to_string),
             description: Some(format!("{} → {}", edge.from, edge.to)),
             link: None,
         }
+    }
+}
+
+fn adapt_swimlane_layout(model: &FlowchartModel, layout: &SwimlaneLayout) -> FlowchartLayout {
+    let label_nodes = layout
+        .nodes
+        .iter()
+        .filter(|node| node.is_edge_label)
+        .map(|node| (node.id.as_str(), node))
+        .collect::<HashMap<_, _>>();
+    let nodes = layout
+        .nodes
+        .iter()
+        .filter(|node| !node.is_edge_label)
+        .map(|node| LayoutNode {
+            id: node.id.clone(),
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            is_cluster: false,
+            label_width: Some(node.label_width),
+            label_height: Some(node.label_height),
+        })
+        .collect();
+    let edges = layout
+        .edges
+        .iter()
+        .map(|edge| LayoutEdge {
+            id: edge.id.clone(),
+            from: edge.from.clone(),
+            to: edge.to.clone(),
+            from_cluster: None,
+            to_cluster: None,
+            points: edge.points.clone(),
+            label: edge
+                .label_node_id
+                .as_deref()
+                .and_then(|id| label_nodes.get(id).copied())
+                .map(|node| LayoutLabel {
+                    x: node.x,
+                    y: node.y,
+                    width: node.label_width,
+                    height: node.label_height,
+                }),
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        })
+        .collect();
+    let dom_node_order_by_root = std::collections::HashMap::from([(
+        String::new(),
+        model.nodes.iter().map(|node| node.id.clone()).collect(),
+    )]);
+    FlowchartLayout {
+        nodes,
+        edges,
+        clusters: Vec::new(),
+        bounds: layout.bounds.clone(),
+        dom_node_order_by_root,
+        uses_elk_adapter_dom: false,
+    }
+}
+
+fn swimlane_band_bounds(
+    lane: &crate::model::SwimlaneLaneLayout,
+    font_size: f64,
+    horizontal_title: bool,
+) -> (Rect, Rect) {
+    let lane_left = lane.x - lane.width.max(0.0) / 2.0;
+    let lane_top = lane.y - lane.height.max(0.0) / 2.0;
+    let lane_right = lane_left + lane.width.max(0.0);
+    let lane_bottom = lane_top + lane.height.max(0.0);
+    if let Some(title) = &lane.title_rect {
+        let title_bounds = Rect::new(
+            title.left,
+            title.top,
+            (title.right - title.left).max(0.0),
+            (title.bottom - title.top).max(0.0),
+        );
+        let body_bounds = if horizontal_title {
+            if title.left <= lane_left + lane.width.max(0.0) / 2.0 {
+                Rect::new(
+                    title.right,
+                    lane_top,
+                    (lane_right - title.right).max(0.0),
+                    (lane_bottom - lane_top).max(0.0),
+                )
+            } else {
+                Rect::new(
+                    lane_left,
+                    lane_top,
+                    (title.left - lane_left).max(0.0),
+                    (lane_bottom - lane_top).max(0.0),
+                )
+            }
+        } else {
+            Rect::new(
+                lane_left,
+                title.bottom,
+                (lane_right - lane_left).max(0.0),
+                (lane_bottom - title.bottom).max(0.0),
+            )
+        };
+        return (title_bounds, body_bounds);
+    }
+
+    let title_extent = if horizontal_title {
+        (lane.title_label_height + 8.0).max(font_size * 1.5)
+    } else {
+        (lane.title_label_height + 8.0).max(font_size * 1.5)
+    };
+    if horizontal_title {
+        let title_width = title_extent.min((lane_right - lane_left).max(0.0));
+        (
+            Rect::new(lane_left, lane_top, title_width, lane_bottom - lane_top),
+            Rect::new(
+                lane_left + title_width,
+                lane_top,
+                (lane_right - lane_left - title_width).max(0.0),
+                lane_bottom - lane_top,
+            ),
+        )
+    } else {
+        let title_height = title_extent.min((lane_bottom - lane_top).max(0.0));
+        (
+            Rect::new(lane_left, lane_top, lane_right - lane_left, title_height),
+            Rect::new(
+                lane_left,
+                lane_top + title_height,
+                lane_right - lane_left,
+                (lane_bottom - lane_top - title_height).max(0.0),
+            ),
+        )
+    }
+}
+
+fn rectangle_path_from_bounds(bounds: Rect) -> Result<Vec<PathSegment>> {
+    rectangle_path(
+        bounds.x + bounds.width / 2.0,
+        bounds.y + bounds.height / 2.0,
+        bounds.width,
+        bounds.height,
+        0.0,
+    )
+    .ok_or_else(|| invalid("swimlane band bounds are invalid"))
+}
+
+fn rotate_about(center: Point, angle: f64) -> Transform {
+    let cosine = angle.cos();
+    let sine = angle.sin();
+    Transform {
+        a: cosine,
+        b: sine,
+        c: -sine,
+        d: cosine,
+        e: center.x - cosine * center.x + sine * center.y,
+        f: center.y - sine * center.x - cosine * center.y,
     }
 }
 

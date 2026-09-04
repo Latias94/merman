@@ -2371,3 +2371,60 @@ fn block_rejects_unmapped_visual_effects_instead_of_dropping_them() {
         .expect_err("Block filters must remain an explicit capability boundary");
     assert!(error.to_string().contains("style property `filter`"));
 }
+
+#[test]
+fn swimlane_emits_lane_bands_flowchart_shapes_routes_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"swimlane-beta LR
+                subgraph Customer
+                    request[Request service]
+                    receive[Receive update]
+                end
+                subgraph Support
+                    triage{Triage request}
+                    answer([Send answer])
+                end
+                request --> triage
+                triage -->|Known issue| answer
+                answer --> receive
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Swimlane should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    for path_id in ["swimlane.group.0.body", "swimlane.group.0.title"] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str() == path_id
+        )));
+    }
+    for text in [
+        "Customer",
+        "Support",
+        "Request service",
+        "Triage request",
+        "Known issue",
+    ] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("Customer")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.id.starts_with("swimlane.edge.")
+    }));
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.fallbacks.is_empty());
+}
