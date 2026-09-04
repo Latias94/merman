@@ -519,6 +519,12 @@ impl<'a> ClassBuilder<'a> {
             marker_type,
             start,
         )?;
+        if marker.is_empty() {
+            // Marker type zero is Mermaid's explicit "no marker" representation.  Do not add an
+            // empty path resource: the DrawingList contract requires every path to carry real
+            // geometry, and an empty marker must not make an otherwise valid class diagram fail.
+            return Ok(());
+        }
         let fill = if marker_type == 2 {
             Some(Paint::solid(self.line_color))
         } else {
