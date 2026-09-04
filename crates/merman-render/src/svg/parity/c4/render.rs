@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView};
+use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
 use merman_core::diagrams::c4::{
     C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
 };
@@ -416,7 +416,7 @@ fn c4_write_unified_shape(
             );
         }
         crate::c4::C4NodeShape::Framed => {
-            let frame_width = 8.0;
+            let frame_width = C4_FRAMED_FRAME_WIDTH;
             let points = format!(
                 "0,0 {},0 {},-{} 0,-{} 0,0 -8,0 {},0 {},-{} -8,-{} -8,0",
                 fmt(width - 2.0 * frame_width),
@@ -536,6 +536,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let diagram_id = options.diagram_id_or("merman");
 
     let c4_cfg = C4ConfigView::new(effective_config);
+    let look = c4_cfg.look();
     let diagram_margin_x = c4_cfg.diagram_margin_x();
     let diagram_margin_y = c4_cfg.diagram_margin_y();
     let use_max_width = layout.use_max_width;
@@ -699,11 +700,12 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
                 let _ = write!(
                     &mut out,
-                    r#"<g transform="translate({}, {})"><g id="{}" class="node {}">"#,
+                    r#"<g transform="translate({}, {})"><g id="{}" class="node {}" data-look="{}">"#,
                     fmt(s.x + s.width / 2.0),
                     fmt(s.y + s.height / 2.0),
                     escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
                     classes,
+                    escape_attr_display(look.as_str()),
                 );
                 out.checkpoint()?;
 

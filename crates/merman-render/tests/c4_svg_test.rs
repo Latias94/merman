@@ -17,19 +17,24 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
+    try_render_c4_svg_with_environment(source, environment).expect("render C4 SVG")
+}
+
+fn try_render_c4_svg_with_environment(
+    source: &str,
+    environment: &RenderEnvironment,
+) -> merman_render::Result<String> {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let session = environment.begin_session().unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("layout ok");
+    let session = environment.begin_session().expect("begin render session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
 
-    artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render svg")
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
         .svg()
-        .to_owned()
+        .to_owned())
 }
 
 fn c4_cluster_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
@@ -671,6 +676,122 @@ System(framed, "Framed", "A component-shaped system", $shape="component")
     assert!(!svg.contains("<<person>>"));
     assert!(!svg.contains("<<system>>"));
     assert!(!svg.contains("<<external_person>>"));
+}
+
+#[test]
+fn c4_neo_look_reaches_layout_and_svg_terminals() {
+    let classic_source = r#"C4Context
+ContainerDb(database, "Database", "PostgreSQL")
+"#;
+    let neo_source = r#"%%{init: {"look": "neo"}}%%
+C4Context
+ContainerDb(database, "Database", "PostgreSQL")
+"#;
+
+    let classic = layout_c4_with_options(classic_source, &LayoutOptions::default());
+    let neo = layout_c4_with_options(neo_source, &LayoutOptions::default());
+    let classic_shape = classic.shapes.first().expect("classic C4 shape");
+    let neo_shape = neo.shapes.first().expect("neo C4 shape");
+
+    // Mermaid's 11.17 cylinder handler increases the vertical label padding from 20px to
+    // 24px for Neo. Keep the assertion relational so host text metrics do not become a pixel
+    // oracle for this semantic difference.
+    assert!(
+        neo_shape.height > classic_shape.height + 3.0,
+        "Neo cylinder padding must affect layout height: classic={:?}, neo={:?}",
+        classic_shape,
+        neo_shape
+    );
+
+    let svg = render_c4_svg_with_environment(neo_source, &RenderEnvironment::deterministic());
+    let document = roxmltree::Document::parse(&svg).expect("valid Neo C4 SVG");
+    let shape_group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|c| c == "c4-shape"))
+        })
+        .expect("Neo C4 shape group");
+    assert_eq!(shape_group.attribute("data-look"), Some("neo"));
+    let style = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("C4 stylesheet");
+    assert!(
+        style.contains(r#"[data-look="neo"].node path"#),
+        "the common Neo selector must be reachable from C4 terminals"
+    );
+}
+
+#[test]
+fn c4_neo_component_uses_framed_rectangle_geometry() {
+    let source = r#"%%{init: {"look": "neo", "c4": {"width": 1}}}%%
+C4Context
+System(framed, "Framed", "Component description", $shape="component")
+"#;
+    let layout = layout_c4_with_options(source, &LayoutOptions::default());
+    let shape = layout.shapes.first().expect("Neo component shape");
+
+    let mut content_width = shape.label.width.max(shape.type_block.width);
+    let mut content_height = shape.label.height + shape.type_block.height;
+    let mut section_count = 2_usize;
+    if let Some(description) = shape.descr.as_ref() {
+        content_width = content_width.max(description.width);
+        content_height += description.height;
+        section_count += 1;
+    }
+    content_height += 3.0 * section_count.saturating_sub(1) as f64;
+
+    // Mermaid maps C4 `component` to `fr-rect`/subroutine. Its Neo geometry reserves two
+    // eight-pixel frames plus 28px horizontal label padding and 12px total vertical padding.
+    assert!((shape.width - (content_width + 44.0)).abs() < 1e-6);
+    assert!((shape.height - (content_height + 12.0)).abs() < 1e-6);
+
+    let svg = render_c4_svg_with_environment(source, &RenderEnvironment::deterministic());
+    let document = roxmltree::Document::parse(&svg).expect("valid Neo component SVG");
+    let shape_group = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-framed"))
+        .expect("Neo component group");
+    let label_group = shape_group
+        .children()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+        .expect("Neo component label group");
+    let transform = label_group
+        .attribute("transform")
+        .and_then(|value| value.strip_prefix("translate("))
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("translate transform");
+    let mut values = transform.split(',').map(|value| {
+        value
+            .trim()
+            .parse::<f64>()
+            .expect("numeric translate component")
+    });
+    let translate_x = values.next().expect("translate x");
+    let translate_y = values.next().expect("translate y");
+    assert!(values.next().is_none());
+    assert!((translate_x + content_width / 2.0).abs() < 1e-6);
+    assert!((translate_y + content_height / 2.0).abs() < 1e-6);
+}
+
+#[test]
+fn c4_hand_drawn_look_is_rejected_instead_of_emitting_classic_geometry() {
+    let source = r#"%%{init: {"look": "handDrawn"}}%%
+C4Context
+System(service, "Service")
+"#;
+
+    let error = try_render_c4_svg_with_environment(source, &RenderEnvironment::deterministic())
+        .expect_err("typed C4 must not silently downgrade handDrawn to classic");
+    assert!(matches!(
+        error,
+        merman_render::Error::InvalidModel { message }
+            if message.contains("look `handDrawn` is not supported")
+    ));
 }
 
 #[test]

@@ -8,12 +8,19 @@ mod config;
 mod theme;
 
 pub(crate) use config::{
-    C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView, C4LayoutSettings, default_use_max_width,
+    C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView, C4LayoutSettings, C4Look,
+    default_use_max_width,
 };
 pub(crate) use theme::C4ClusterThemePlan;
 
 type C4Model = C4DiagramRenderModel;
 type C4Conf = C4LayoutSettings;
+
+// Mermaid's unified `fr-rect` handler reserves an eight-pixel frame on each side. Neo changes
+// only the label padding; it does not use the separate `shadedProcess` geometry.
+pub(crate) const C4_FRAMED_FRAME_WIDTH: f64 = 8.0;
+pub(crate) const C4_NEO_FRAMED_LABEL_PADDING_X: f64 = 28.0;
+pub(crate) const C4_NEO_FRAMED_LABEL_PADDING_Y: f64 = 12.0;
 
 /// The unified Mermaid shape used to draw a C4 element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
