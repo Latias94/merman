@@ -63,6 +63,9 @@ struct RailroadBuilder<'a> {
     line_color: Option<Color>,
     marker_fill: Option<Color>,
     rule_name_color: Option<Color>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -124,6 +127,9 @@ impl<'a> RailroadBuilder<'a> {
             style,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -139,14 +145,7 @@ impl<'a> RailroadBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "railroad.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| self.model.title.clone())
-                .or_else(|| self.metadata.title.clone())
-                .or_else(|| self.model.rules.first().map(|rule| rule.name.clone()))
-                .or_else(|| Some(self.layout.diagram_type.clone())),
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -188,6 +187,10 @@ impl<'a> RailroadBuilder<'a> {
                 family: RenderFamilyKind::Railroad,
                 body: SvgStructureBody::Railroad(RailroadSvgBody {
                     diagram_type: self.layout.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -220,6 +223,8 @@ impl<'a> RailroadBuilder<'a> {
         model_rule: &RailroadRuleModel,
     ) -> Result<()> {
         let semantic_id = format!("railroad.rule.{rule_index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "railroad-rule".to_string());
         let (render_node, definition_up) = {
             let measurer = self
                 .session
@@ -385,6 +390,11 @@ impl<'a> RailroadBuilder<'a> {
             }
         };
 
+        self.semantic_classes
+            .insert(semantic_id.to_string(), format!("railroad-{kind}"));
+        self.text_classes
+            .insert(semantic_id.to_string(), "railroad-label".to_string());
+
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
@@ -478,6 +488,10 @@ impl<'a> RailroadBuilder<'a> {
 
     fn emit_rule_name(&mut self, rule_id: &str, rule: &RailroadRuleLayout) -> Result<()> {
         let semantic_id = format!("{rule_id}.name");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "railroad-rule-name-group".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "railroad-rule-name".to_string());
         let text = svg_plain_text(&format!("{} =", rule.name));
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
@@ -536,6 +550,22 @@ impl<'a> RailroadBuilder<'a> {
         radius: f64,
     ) -> Result<()> {
         validate_marker(x, y, radius)?;
+        self.semantic_classes.insert(
+            semantic_id.to_string(),
+            if semantic_id.ends_with(".start") {
+                "railroad-start".to_string()
+            } else {
+                "railroad-end".to_string()
+            },
+        );
+        self.path_classes.insert(
+            format!("{semantic_id}.shape"),
+            if semantic_id.ends_with(".start") {
+                "railroad-start".to_string()
+            } else {
+                "railroad-end".to_string()
+            },
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
@@ -576,6 +606,10 @@ impl<'a> RailroadBuilder<'a> {
                 "Railroad connector `{semantic_id}` has no geometry"
             )));
         }
+        self.path_classes
+            .insert(format!("{semantic_id}.path"), "railroad-line".to_string());
+        self.semantic_classes
+            .insert(semantic_id.to_string(), "railroad-line".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });

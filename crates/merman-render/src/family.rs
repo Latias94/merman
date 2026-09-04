@@ -1135,6 +1135,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Sankey
             | RenderFamilyKind::Timeline
             | RenderFamilyKind::Venn
+            | RenderFamilyKind::Railroad
             | RenderFamilyKind::XyChart
     )
 }

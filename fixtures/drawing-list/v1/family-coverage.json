@@ -13,7 +13,7 @@
     { "id": "c4", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "cynefin", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "wardley", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "railroad", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "railroad", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "kanban", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "gantt", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "pie", "document_adapter": "direct", "svg_serializer": "canonical" },

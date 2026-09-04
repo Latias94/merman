@@ -408,3 +408,58 @@ fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
     }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
+    let svg = render_svg(
+        "railroad-beta\naccTitle: Railroad parity\nexpr = sequence(nonterminal(\"term\"), terminal(\"+\"), special(\"guard\")) ;\n",
+        "railroad-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Railroad SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("railroad-diagram"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-railroad-parity")
+    );
+    assert!(svg.contains("#railroad-parity .railroad-terminal"));
+    for class in [
+        "railroad-rule",
+        "railroad-terminal",
+        "railroad-nonterminal",
+        "railroad-special",
+        "railroad-line",
+        "railroad-start",
+        "railroad-end",
+        "railroad-rule-name",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Railroad class {class:?}"
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("railroad.rule.0") })
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-resource")
+            .is_some_and(|id| id == "railroad.rule.0.connector.start.path")
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("text") && node.text() == Some("term"))
+    );
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

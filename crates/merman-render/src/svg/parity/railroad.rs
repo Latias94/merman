@@ -210,7 +210,15 @@ where
     }
 }
 
-fn railroad_css<I>(style: &crate::railroad::RailroadStyle, diagram_id: I) -> String
+pub(super) fn canonical_railroad_css(
+    diagram_id: impl Copy + std::fmt::Display,
+    effective_config: &serde_json::Value,
+) -> String {
+    let style = crate::railroad::railroad_style(effective_config);
+    railroad_css(&style, diagram_id)
+}
+
+pub(super) fn railroad_css<I>(style: &crate::railroad::RailroadStyle, diagram_id: I) -> String
 where
     I: Copy + std::fmt::Display,
 {

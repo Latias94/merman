@@ -246,6 +246,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::Railroad(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -334,6 +338,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::Railroad(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -396,6 +404,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)
                     .map_err(|_| invalid("failed to write Venn stylesheet"))?,
             )),
+            SvgStructureBody::Railroad(_) => Some((
+                false,
+                super::railroad::canonical_railroad_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -430,6 +445,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Timeline(_)
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Venn(_)
+                | SvgStructureBody::Railroad(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -440,6 +456,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn root_class(&self) -> Option<&'static str> {
         match self.svg_body {
             SvgStructureBody::Info(_) | SvgStructureBody::Error(_) => Some(self.family.as_str()),
+            SvgStructureBody::Railroad(_) => Some("railroad-diagram"),
             _ => None,
         }
     }
@@ -451,6 +468,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Timeline(_)
             | SvgStructureBody::Venn(_)
+            | SvgStructureBody::Railroad(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -892,6 +910,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Venn(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Railroad(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1234,6 +1255,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Railroad(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1282,6 +1308,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Borrowed(class.as_str())),
             SvgStructureBody::Venn(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Railroad(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
