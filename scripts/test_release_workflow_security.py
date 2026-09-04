@@ -454,6 +454,8 @@ jobs:
         self.assertIn("if: ${{ always() && inputs.publish_to_npm", publish)
         self.assertIn("Verify recovery run identity", publish)
         self.assertIn(".github/workflows/release-web.yml", publish)
+        self.assertIn("REPOSITORY: ${{ github.repository }}", publish)
+        self.assertNotIn("GITHUB_REPOSITORY: ${{ github.repository }}", publish)
         self.assertIn("Download exact Web package group from recovery run", publish)
         self.assertIn("run-id: ${{ needs.validate-inputs.outputs.recovery_run_id }}", publish)
         self.assertIn("github-token: ${{ github.token }}", publish)

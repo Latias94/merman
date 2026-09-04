@@ -243,15 +243,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECOVERY_RUN_ID: ${{ needs.validate-inputs.outputs.recovery_run_id }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVERY_RUN_ID")"
+          run_json="$(gh api "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID")"
           test "$(jq -r '.path' <<<"$run_json")" = ".github/workflows/release-web.yml"
-          test "$(jq -r '.repository.full_name' <<<"$run_json")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.repository.full_name' <<<"$run_json")" = "$REPOSITORY"
           test "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch"
           test "$(jq -r '.status' <<<"$run_json")" = "completed"
-          artifact_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "merman-web-npm-package-group" and .expired == false)] | length')"
+          artifact_count="$(gh api "repos/$REPOSITORY/actions/runs/$RECOVERY_RUN_ID/artifacts" --jq '[.artifacts[] | select(.name == "merman-web-npm-package-group" and .expired == false)] | length')"
           test "$artifact_count" = "1"
 
       - name: Download verified Web package group from current run
