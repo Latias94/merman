@@ -234,6 +234,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::Timeline(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -306,6 +310,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                         .with_max_width(max_width),
                 )
             }
+            SvgStructureBody::Timeline(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -352,6 +363,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                     .map_err(|_| invalid("failed to write Pie stylesheet"))?;
                 Some((false, css))
             }
+            SvgStructureBody::Timeline(_) => Some((
+                false,
+                super::timeline::canonical_timeline_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -383,6 +401,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Packet(_)
                 | SvgStructureBody::QuadrantChart(_)
                 | SvgStructureBody::Pie(_)
+                | SvgStructureBody::Timeline(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -402,6 +421,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Packet(_)
             | SvgStructureBody::QuadrantChart(_)
             | SvgStructureBody::Pie(_)
+            | SvgStructureBody::Timeline(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -827,6 +847,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Pie(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Timeline(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -888,6 +911,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                 if let Some(bounds) = rectangle_from_path(path) {
                     return self.emit_rect(path_id, bounds, style);
                 }
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Timeline(_))
+            && path_id.as_str().ends_with(".line")
+        {
+            let path = self.path_resource(path_id)?;
+            if let Some((start, end)) = line_from_path(path) {
+                return self.emit_line(path_id, start, end, style);
             }
         }
         if matches!(self.svg_body, SvgStructureBody::XyChart(_))
@@ -1139,6 +1170,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Some(Cow::Borrowed("error-icon"));
         }
         if let SvgStructureBody::Pie(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
+        if let SvgStructureBody::Timeline(body) = self.svg_body
             && let Some(class) = body.path_classes.get(path_id.as_str())
         {
             return Some(Cow::Owned(class.clone()));
@@ -1465,6 +1501,7 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Error => "merman",
         RenderFamilyKind::QuadrantChart => "quadrantchart",
         RenderFamilyKind::Pie => "merman",
+        RenderFamilyKind::Timeline => "merman",
         _ => family.as_str(),
     }
 }

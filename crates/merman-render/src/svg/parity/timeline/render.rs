@@ -3,7 +3,7 @@ use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
-fn timeline_css(
+pub(super) fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,

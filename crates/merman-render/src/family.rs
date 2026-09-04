@@ -1132,6 +1132,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Pie
             | RenderFamilyKind::QuadrantChart
             | RenderFamilyKind::Radar
+            | RenderFamilyKind::Timeline
             | RenderFamilyKind::XyChart
     )
 }

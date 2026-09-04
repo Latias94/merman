@@ -6,6 +6,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use roxmltree::Document;
 
 fn render_timeline_svg_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
@@ -82,8 +83,9 @@ timeline
         "expected redux Timeline lineWrapper CSS to consume nodeBorder/strokeWidth: {svg}"
     );
     assert!(
-        svg.contains(r#"stroke-width="2" stroke="black" marker-end="url(#merman-arrowhead)""#),
-        "expected current visible line DOM to keep Mermaid's presentational attributes while CSS overrides them: {svg}"
+        svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.line""#)
+            && svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.arrowhead""#),
+        "canonical Timeline output should retain connector and arrowhead geometry: {svg}"
     );
     assert!(
         !svg.contains(r#"class="node-line--1""#),
@@ -93,14 +95,19 @@ timeline
         !svg.contains(r#"q0,-5 5,-5"#),
         "redux Timeline node geometry should use sharp-corner paths instead of classic rounded corners: {svg}"
     );
-    assert!(
-        svg.contains(r#"transform="translate(195, 20)""#),
-        "redux Timeline non-event labels should use the Mermaid 11.15 vertical offset: {svg}"
-    );
-    assert!(
-        svg.contains(r#"transform="translate(95, 13)""#),
-        "redux Timeline event labels should use the Mermaid 11.15 event vertical offset: {svg}"
-    );
+    let document = Document::parse(&svg).expect("canonical Timeline SVG");
+    let plan = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Plan"))
+        .expect("Plan label");
+    assert_eq!(plan.attribute("x"), Some("295"));
+    assert_eq!(plan.attribute("y"), Some("199.8"));
+    let build = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.text() == Some("Build"))
+        .expect("Build label");
+    assert_eq!(build.attribute("x"), Some("295"));
+    assert_eq!(build.attribute("y"), Some("392.8"));
 }
 
 #[test]

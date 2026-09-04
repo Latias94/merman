@@ -283,3 +283,48 @@ fn pie_canonical_svg_keeps_root_profile_and_chart_roles() {
     assert!(svg.contains("data-merman-resource=\"pie.slice.0.shape\""));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
+    let svg = render_svg(
+        "timeline\n  accTitle: Timeline parity\n  section Release\n    2026 : Ship\n",
+        "timeline-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Timeline SVG is XML");
+    let root = document.root_element();
+
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-timeline-parity")
+    );
+    for class in [
+        "timeline-node",
+        "taskWrapper",
+        "eventWrapper",
+        "lineWrapper",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Timeline class {class:?}"
+        );
+    }
+    assert!(document.descendants().any(|node| node.has_tag_name("line")));
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-resource")
+            .is_some_and(|id| id.ends_with(".arrowhead"))
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("Ship") })
+    );
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

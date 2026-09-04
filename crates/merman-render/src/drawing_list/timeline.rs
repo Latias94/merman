@@ -65,6 +65,8 @@ struct TimelineBuilder<'a> {
     text_color: Color,
     connector_color: Color,
     connector_width: f64,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -136,6 +138,8 @@ impl<'a> TimelineBuilder<'a> {
             text_color,
             connector_color,
             connector_width,
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -152,13 +156,7 @@ impl<'a> TimelineBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "timeline.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| title.clone())
-                .or_else(|| self.metadata.title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -171,6 +169,10 @@ impl<'a> TimelineBuilder<'a> {
         for (section_index, section) in self.layout.sections.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("timeline.section.{section_index}");
+            self.semantic_classes.insert(
+                semantic_id.clone(),
+                format!("timeline-node {}", section.node.section_class),
+            );
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -242,6 +244,9 @@ impl<'a> TimelineBuilder<'a> {
                 family: RenderFamilyKind::Timeline,
                 body: SvgStructureBody::Timeline(TimelineSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
                 }),
             },
         })
@@ -249,6 +254,8 @@ impl<'a> TimelineBuilder<'a> {
 
     fn emit_task(&mut self, index: usize, task: &crate::model::TimelineTaskLayout) -> Result<()> {
         let semantic_id = format!("timeline.task.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "taskWrapper".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -305,6 +312,8 @@ impl<'a> TimelineBuilder<'a> {
         event: &TimelineNodeLayout,
     ) -> Result<()> {
         let semantic_id = format!("{task_id}.event.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "eventWrapper".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -327,6 +336,10 @@ impl<'a> TimelineBuilder<'a> {
         is_event: bool,
     ) -> Result<()> {
         let style = self.node_style(node, is_event)?;
+        self.path_classes.insert(
+            format!("{prefix}.background"),
+            "node-bkg node-undefined".to_string(),
+        );
         self.add_path(
             format!("{prefix}.background"),
             timeline_node_path(
@@ -344,6 +357,13 @@ impl<'a> TimelineBuilder<'a> {
         )?;
 
         if let Some(divider) = style.divider {
+            self.path_classes.insert(
+                format!("{prefix}.divider"),
+                format!(
+                    "node-line-{}",
+                    node.section_class.trim_start_matches("section-")
+                ),
+            );
             self.add_path(
                 format!("{prefix}.divider"),
                 line_path(
@@ -438,6 +458,8 @@ impl<'a> TimelineBuilder<'a> {
         };
         let mut line_style = stroke(self.connector_color, width);
         line_style.dash_array = vec![5.0, 5.0];
+        self.path_classes
+            .insert(format!("{prefix}.line"), "line".to_string());
         self.add_path(
             format!("{prefix}.line"),
             line_path(Point::new(line.x1, line.y1), Point::new(line.x2, line.y2)),
@@ -470,6 +492,10 @@ impl<'a> TimelineBuilder<'a> {
         let mut line_style = stroke(self.connector_color, width);
         line_style.dash_array.clear();
         let semantic_id = "timeline.activity";
+        self.semantic_classes
+            .insert(semantic_id.to_string(), "lineWrapper".to_string());
+        self.path_classes
+            .insert("timeline.activity.line".to_string(), "line".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
@@ -502,6 +528,8 @@ impl<'a> TimelineBuilder<'a> {
         line: &TimelineLineLayout,
         stroke_width: f64,
     ) -> Result<()> {
+        self.path_classes
+            .insert(prefix.to_string(), "arrowhead".to_string());
         self.add_path(
             prefix,
             arrowhead_path(line.x1, line.y1, line.x2, line.y2, stroke_width)?,

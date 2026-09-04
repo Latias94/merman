@@ -31,7 +31,7 @@ inventory row fails at test time.  The current inventory is:
 | Gantt | yes | legacy bridge |
 | Pie | yes | canonical |
 | Packet | yes | canonical |
-| Timeline | yes | legacy bridge |
+| Timeline | yes | canonical |
 | Journey | yes | legacy bridge |
 | Requirement | yes | legacy bridge |
 | Sankey | yes | legacy bridge |

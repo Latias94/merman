@@ -383,6 +383,9 @@ pub(crate) struct GitGraphSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct TimelineSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral Wardley document.
