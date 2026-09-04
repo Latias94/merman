@@ -32,7 +32,7 @@ Observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529
 | Android AAR | `merman-android-v0.8.0-alpha.6.aar` is attached to the alpha.6 GitHub Release | No action; reconciled by `release-android.yml` run `33858143487` |
 | Apple XCFramework | `Merman.xcframework-v0.8.0-alpha.6.zip` and its checksum are attached to the alpha.6 GitHub Release | No action; reconciled by `release-apple.yml` run `33858143156` |
 | Web npm group | All five public packages expose `0.8.0-alpha.6`, the `alpha` tag, the original package-group integrities, and npm provenance attestations | No action; recovered from original run `33858142954` by `release-web.yml` run `33865637706` |
-| Node npm group | The exact seven-package alpha.6 artifact from run `33858143339` is verified; `@mermanjs/node-wasm` still needs its first registry publication | Maintainer 2FA bootstrap from that exact artifact, then configure Trusted Publishing for all seven names |
+| Node npm group | The exact seven-package alpha.6 artifact from pinned-toolchain run `33869785698` (artifact `9936094987`) is verified; `@mermanjs/node-wasm` still needs its first registry publication | Maintainer 2FA bootstrap from that exact artifact, then configure Trusted Publishing for all seven names |
 | Flutter `merman` | pub.dev exposes `0.8.0-alpha.6` from the pushed `flutter-v0.8.0-alpha.6` tag | No action; published by tag-triggered run `33862063296` |
 
 The Python wheel and Flutter package archive were built before this post-publication documentation
@@ -179,7 +179,8 @@ loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
 For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
-immutable source and record its workflow run id. Download the verified
+immutable source and record its workflow run id. For alpha.6, the approved candidate is run
+`33869785698` with artifact `9936094987`, built with Node `24.13.1`. Download the verified
 `merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
 WASM tarball, and then the loader directly under the requested final tag with a maintainer's
 2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
