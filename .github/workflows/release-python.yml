@@ -179,6 +179,7 @@ jobs:
           else
             PYTHON=target/python-final-wheel-smoke/bin/python
           fi
+          "$PYTHON" -m ensurepip --upgrade
           "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
           "$PYTHON" platforms/python/merman/examples/smoke.py
 

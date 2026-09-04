@@ -431,6 +431,14 @@ jobs:
             build.index("- name: Build wheel"),
         )
 
+    def test_python_release_bootstraps_the_final_smoke_venv(self) -> None:
+        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
+        self.assertIn('"$PYTHON" -m ensurepip --upgrade', build)
+        self.assertLess(
+            build.index('"$PYTHON" -m ensurepip --upgrade'),
+            build.index('"$PYTHON" -m pip install --no-deps'),
+        )
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)
