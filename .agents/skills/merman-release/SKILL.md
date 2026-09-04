@@ -46,6 +46,12 @@ this check. If that same-line previous-facade lane fails, either restore the req
 or start a new release line; do not hide the failure behind a checked-in lockfile or a downstream
 exact dependency.
 
+This gate is admission control for a new prerelease. For a backfill of a prerelease that was
+already published before the gate existed, keep the original immutable tag and record the known
+historical compatibility exception; use only the owner workflows for the missing artifacts. Do not
+rerun a failed historical admission check as a reason to move the tag, and do not carry this
+exception into any new prerelease.
+
 For the first prerelease in a repository, use `--allow-missing-previous` only after confirming that
 no earlier workspace tag exists. Stable releases skip this prerelease-only probe.
 

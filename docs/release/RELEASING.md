@@ -212,6 +212,11 @@ a new release line; do not rely on downstream lockfiles to hide the mixed graph.
 tarballs are immutable, so a dependency requirement defect cannot be repaired by editing this
 repository after publication; the next release must carry the corrected manifest and pass this gate.
 
+The prerelease compatibility gate is admission control for a new version. A backfill of an
+immutable prerelease that was published before this gate existed may use the original tag and the
+owner-specific artifact workflows while recording its historical compatibility exception. It must
+not move the tag or treat the exception as permission for a later prerelease.
+
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
