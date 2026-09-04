@@ -8,7 +8,7 @@
 use super::root_svg;
 use super::util::{escape_attr_into, escape_xml_into, fmt};
 use super::{SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
-use crate::drawing_list::RenderDocument;
+use crate::drawing_list::{RenderDocument, SvgStructureBody};
 use crate::environment::RenderSession;
 use crate::family::RenderFamilyKind;
 use crate::{Error, Result};
@@ -22,7 +22,7 @@ use merman_display_list::{
     TextObligation, TextRun, Transform,
 };
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 /// Serializes one validated canonical document to SVG.
@@ -40,6 +40,7 @@ pub(crate) fn render_document_svg(
 
 struct DocumentSvgEncoder<'a> {
     document: &'a DrawingListDocument,
+    svg_body: &'a SvgStructureBody,
     family: RenderFamilyKind,
     diagram_type: &'static str,
     options: &'a SvgRenderOptions,
@@ -134,6 +135,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         Ok(Self {
             document: &document.public,
+            svg_body: &document.svg.body,
             family,
             diagram_type: document.svg.diagram_type(),
             options,
@@ -162,17 +164,34 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         let viewport = self.document.viewport.bounds;
-        let bounds = root_svg::DiagramBounds::from_view_box(
+        let viewport_bounds = root_svg::DiagramBounds::from_view_box(
+            viewport.x,
+            viewport.y,
+            viewport.width,
+            viewport.height,
+        );
+        let padded_bounds = root_svg::DiagramBounds::from_view_box(
             viewport.x - padding,
             viewport.y - padding,
             viewport.width + 2.0 * padding,
             viewport.height + 2.0 * padding,
         );
-        if ![bounds.min_x, bounds.min_y, bounds.width, bounds.height]
-            .into_iter()
-            .all(f64::is_finite)
-            || bounds.width < 0.0
-            || bounds.height < 0.0
+        if ![
+            viewport_bounds.min_x,
+            viewport_bounds.min_y,
+            viewport_bounds.width,
+            viewport_bounds.height,
+            padded_bounds.min_x,
+            padded_bounds.min_y,
+            padded_bounds.width,
+            padded_bounds.height,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+            || viewport_bounds.width < 0.0
+            || viewport_bounds.height < 0.0
+            || padded_bounds.width < 0.0
+            || padded_bounds.height < 0.0
         {
             return Err(invalid(
                 "canonical document viewport cannot be serialized to SVG",
@@ -190,8 +209,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             .as_ref()
             .map(|_| format!("{}-description", self.diagram_id));
 
-        let root_spec = root_svg::RootViewportSpec::responsive(bounds)
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(bounds.width));
+        let root_spec = self.root_spec(viewport_bounds, padded_bounds)?;
         let root_context =
             root_svg::RootViewportContext::new(self.family, self.diagram_id.as_str());
         let mut chrome = root_svg::RootChrome::new(self.diagram_id.as_str(), self.diagram_type);
@@ -199,8 +217,12 @@ impl<'a> DocumentSvgEncoder<'a> {
         chrome.aria_labelledby = title_id.as_deref();
         chrome.aria_describedby = description_id.as_deref();
         chrome.dom.trailing_newline = false;
+        if matches!(self.svg_body, SvgStructureBody::Error(_)) {
+            chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+        }
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
 
+        self.write_family_style()?;
         self.write_defs()?;
         self.write_accessibility_metadata(
             title.as_deref(),
@@ -222,6 +244,57 @@ impl<'a> DocumentSvgEncoder<'a> {
         root_document
             .complete(self.output)?
             .into_string_for(self.family)
+    }
+
+    fn root_spec(
+        &self,
+        viewport_bounds: root_svg::DiagramBounds,
+        padded_bounds: root_svg::DiagramBounds,
+    ) -> Result<root_svg::RootViewportSpec> {
+        match self.svg_body {
+            SvgStructureBody::Info(_) => Ok(
+                root_svg::RootViewportSpec::responsive_without_view_box(400.0),
+            ),
+            SvgStructureBody::Error(body) => {
+                if !body.max_width_px.is_finite() || body.max_width_px <= 0.0 {
+                    return Err(invalid("canonical error SVG max-width is invalid"));
+                }
+                Ok(root_svg::RootViewportSpec::responsive(viewport_bounds)
+                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(body.max_width_px))
+                    .without_background())
+            }
+            _ => Ok(
+                root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
+                    root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
+                ),
+            ),
+        }
+    }
+
+    fn write_family_style(&mut self) -> Result<()> {
+        let css = match self.svg_body {
+            SvgStructureBody::Info(_) => Some((
+                false,
+                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
+            )),
+            SvgStructureBody::Error(_) => Some((
+                true,
+                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
+            )),
+            _ => None,
+        };
+        let Some((xhtml_namespace, css)) = css else {
+            return Ok(());
+        };
+        if xhtml_namespace {
+            self.output
+                .push_str(r#"<style xmlns="http://www.w3.org/1999/xhtml">"#);
+        } else {
+            self.output.push_str("<style>");
+        }
+        self.output.push_str(&css);
+        self.output.push_str("</style>");
+        Ok(())
     }
 
     fn document_semantic(&self) -> Option<&SemanticAnnotation> {
@@ -255,6 +328,27 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_defs(&mut self) -> Result<()> {
+        let clip_paths = self
+            .document
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                DrawingCommand::ClipPath { path, .. } => Some(path.as_str().to_owned()),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let has_defs = self.resources.iter().any(|(raw_id, resource)| {
+            matches!(
+                resource,
+                DrawingResource::LinearGradient(_)
+                    | DrawingResource::RadialGradient(_)
+                    | DrawingResource::Pattern(_)
+                    | DrawingResource::Font(_)
+            ) || matches!(resource, DrawingResource::Path(_)) && clip_paths.contains(raw_id)
+        });
+        if !has_defs {
+            return Ok(());
+        }
         self.output.push_str("<defs>");
         let resources = self
             .resources
@@ -262,6 +356,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             .map(|(raw_id, resource)| (raw_id.clone(), *resource))
             .collect::<Vec<_>>();
         for (raw_id, resource) in resources {
+            if matches!(resource, DrawingResource::Path(_)) && !clip_paths.contains(&raw_id) {
+                continue;
+            }
             let svg_id = self.svg_resource_id(raw_id.as_str())?;
             match resource {
                 DrawingResource::LinearGradient(gradient) => {
@@ -286,7 +383,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             .resources
             .iter()
             .filter_map(|(raw_id, resource)| match resource {
-                DrawingResource::Path(path) => Some((raw_id.clone(), path.segments.clone())),
+                DrawingResource::Path(path) if clip_paths.contains(raw_id) => {
+                    Some((raw_id.clone(), path.segments.clone()))
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -626,6 +725,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class);
+            self.output.push_str("\"");
+        }
         self.write_path_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -664,13 +768,23 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.origin.y)
         )
         .map_err(|_| invalid("failed to write text origin"))?;
+        if let Some(class) = self.text_class(run) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class);
+            self.output.push_str("\"");
+        }
+        let font_size = if matches!(self.svg_body, SvgStructureBody::Error(_)) {
+            format!("{}px", fmt(run.style.font_size))
+        } else {
+            fmt(run.style.font_size).to_string()
+        };
         write!(
             self.output,
             " text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
             text_anchor(run.anchor),
             text_baseline(run.baseline),
             text_direction(run.direction),
-            fmt(run.style.font_size),
+            font_size,
             fmt(run.style.letter_spacing),
         )
         .map_err(|_| invalid("failed to write text style"))?;
@@ -715,6 +829,20 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.output.push_str("</text>");
         Ok(())
+    }
+
+    fn path_class(&self, path_id: &ResourceId) -> Option<&'static str> {
+        (matches!(self.svg_body, SvgStructureBody::Error(_))
+            && path_id.as_str().starts_with("error.icon."))
+        .then_some("error-icon")
+    }
+
+    fn text_class(&self, _run: &TextRun) -> Option<&'static str> {
+        match self.svg_body {
+            SvgStructureBody::Error(_) => Some("error-text"),
+            SvgStructureBody::Info(_) => Some("version"),
+            _ => None,
+        }
     }
 
     fn emit_image(

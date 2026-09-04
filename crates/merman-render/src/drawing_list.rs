@@ -235,6 +235,7 @@ impl RenderDocument {
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorSvgBody {
     pub(crate) version_text: String,
+    pub(crate) max_width_px: f64,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral Mindmap document.
@@ -424,7 +425,13 @@ impl ErrorSvgBody {
     pub(crate) fn new() -> Self {
         Self {
             version_text: format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION),
+            max_width_px: 512.0,
         }
+    }
+
+    pub(crate) fn with_max_width(mut self, max_width_px: f64) -> Self {
+        self.max_width_px = max_width_px;
+        self
     }
 
     /// Writes the source-backed body shape used by the existing SVG parity renderer.
@@ -578,7 +585,7 @@ fn build_error_document(
         postscript_name: None,
         resource: None,
     };
-    let body = ErrorSvgBody::new();
+    let body = ErrorSvgBody::new().with_max_width(layout.max_width_px);
 
     let mut resources = Vec::with_capacity(ERROR_ICON_PATHS.len());
     let mut commands = vec![
