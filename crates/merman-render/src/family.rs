@@ -60,6 +60,47 @@ pub enum RenderFamilyKind {
 }
 
 impl RenderFamilyKind {
+    /// The complete built-in family catalog owned by the typed renderer.
+    ///
+    /// Keep this list next to the exhaustive `as_str` mapping so coverage tooling can compare
+    /// external evidence against the actual renderer vocabulary without maintaining a second
+    /// family enum.  The array is intentionally ordered by enum declaration order.
+    pub const ALL: [Self; 33] = [
+        Self::Error,
+        Self::Mindmap,
+        Self::State,
+        Self::Sequence,
+        Self::Zenuml,
+        Self::Flowchart,
+        Self::Swimlane,
+        Self::Architecture,
+        Self::Class,
+        Self::C4,
+        Self::Cynefin,
+        Self::Wardley,
+        Self::Railroad,
+        Self::Kanban,
+        Self::Gantt,
+        Self::Pie,
+        Self::Packet,
+        Self::Timeline,
+        Self::Journey,
+        Self::Requirement,
+        Self::Sankey,
+        Self::Radar,
+        Self::Info,
+        Self::Treemap,
+        Self::Block,
+        Self::Er,
+        Self::QuadrantChart,
+        Self::XyChart,
+        Self::GitGraph,
+        Self::TreeView,
+        Self::Ishikawa,
+        Self::EventModeling,
+        Self::Venn,
+    ];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Error => "error",
