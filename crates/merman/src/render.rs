@@ -145,6 +145,11 @@ pub enum RenderError {
     #[cfg(feature = "svg")]
     #[error(transparent)]
     TargetAdmission(#[from] TargetAdmissionError),
+    #[cfg(feature = "svg")]
+    #[error(
+        "render target `{target}` does not support RequirePortable because it has no target portability admission"
+    )]
+    PortabilityUnavailableForTarget { target: &'static str },
     #[cfg(feature = "ascii")]
     #[error(transparent)]
     Ascii(AsciiError),
@@ -828,6 +833,13 @@ fn render_layout_json_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    if request.environment.theme_portability_requirement()
+        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+    {
+        return Err(RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json",
+        });
+    }
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),

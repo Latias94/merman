@@ -605,6 +605,11 @@ fn classify_render_error(
         merman::RenderError::TargetAdmission(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
+        merman::RenderError::PortabilityUnavailableForTarget { target } => {
+            BindingError::invalid_argument(format!(
+                "render target `{target}` does not support RequirePortable portability admission"
+            ))
+        }
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         merman::RenderError::Export(err) => match err.resource_limit_details() {

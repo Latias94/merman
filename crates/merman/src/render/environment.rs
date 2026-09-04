@@ -87,6 +87,13 @@ impl SvgEnvironment {
         self
     }
 
+    /// Returns the portability requirement that will be captured by the next session.
+    pub fn theme_portability_requirement(
+        &self,
+    ) -> merman_render::diagram_theme::ThemePortabilityRequirement {
+        self.backend.theme_portability_requirement()
+    }
+
     /// Returns the configured text-measurement routes without creating an operation session.
     pub fn text_measurement_routes(&self) -> [merman_render::environment::TextMeasurementRoute; 4] {
         self.text_measurement_routes.clone()

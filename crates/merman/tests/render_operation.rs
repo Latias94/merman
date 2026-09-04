@@ -413,6 +413,53 @@ fn typed_svg_targets_share_the_prepared_operation() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn layout_json_rejects_require_portable_without_target_admission() {
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let renderer = Renderer::new();
+
+    let error = renderer
+        .render(RenderRequest::layout_json(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+            request.clone(),
+        ))
+        .expect_err("layout JSON has no target portability admission");
+    assert_eq!(
+        error.to_string(),
+        "render target `layout-json` does not support RequirePortable because it has no target portability admission"
+    );
+    assert!(matches!(
+        &error,
+        RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json"
+        }
+    ));
+
+    let semantic = renderer
+        .prepare_semantic(
+            "flowchart TD\nA[Start] --> B[Done]",
+            OperationControl::new(),
+        )
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    let error = semantic
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("prepared layout JSON must use the same portability guard");
+    assert!(matches!(
+        error,
+        RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json"
+        }
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn completed_svg_evidence_freezes_family_and_theme_identity() {
     let theme = merman::svg::DiagramThemeCompiler::new()
         .compile_preset(merman::svg::ThemePreset::OneDark)
