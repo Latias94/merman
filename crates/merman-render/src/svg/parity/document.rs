@@ -232,6 +232,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         ) {
             chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
+        if matches!(self.svg_body, SvgStructureBody::XyChart(_)) {
+            chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+        }
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
 
         self.write_family_style()?;
@@ -288,6 +291,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::XyChart(_) => Ok(root_svg::RootViewportSpec::responsive(
+                viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -310,6 +319,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::packet::packet_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::XyChart(_) => {
+                let mut css = String::new();
+                super::push_xychart_css(&mut css, self.diagram_id.as_str());
+                Some((false, css))
+            }
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -323,7 +337,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.output.push_str(&css);
         self.output.push_str("</style>");
-        if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+        if matches!(
+            self.svg_body,
+            SvgStructureBody::Packet(_) | SvgStructureBody::XyChart(_)
+        ) {
             self.output.push_str("<g/>");
         }
         Ok(())
@@ -338,7 +355,13 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn accessibility_id(&self, suffix: &str) -> String {
         match self.svg_body {
-            SvgStructureBody::Packet(_) => format!("chart-{suffix}-{}", self.diagram_id),
+            SvgStructureBody::Packet(_) | SvgStructureBody::XyChart(_) => {
+                let suffix = match suffix {
+                    "description" => "desc",
+                    other => other,
+                };
+                format!("chart-{suffix}-{}", self.diagram_id)
+            }
             _ => format!("{}-{suffix}", self.diagram_id),
         }
     }
@@ -720,9 +743,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         write!(
             self.output,
-            "<g id=\"{}\" class=\"merman-semantic {}\" role=\"group\" data-merman-semantic-id=\"{}\"",
+            "<g id=\"{}\" class=\"merman-semantic {}{}\" role=\"group\" data-merman-semantic-id=\"{}\"",
             escaped_attr(svg_id.as_str()),
             role_class,
+            self.semantic_extra_class(semantic_id)
+                .map_or_else(String::new, |class| format!(" {class}")),
             escaped_attr(semantic.id.as_str()),
         )
         .map_err(|_| invalid("failed to write semantic group"))?;
@@ -747,6 +772,15 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn semantic_extra_class(&self, semantic_id: &str) -> Option<&str> {
+        match self.svg_body {
+            SvgStructureBody::XyChart(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            _ => None,
+        }
+    }
+
     fn end_semantic_group(&mut self) -> Result<()> {
         match self.groups.pop() {
             Some(GroupKind::Semantic { linked, .. }) => {
@@ -767,6 +801,23 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::XyChart(_))
+            && path_id.as_str() == "xychart.background"
+        {
+            let path = self.path_resource(path_id)?;
+            if let Some(bounds) = rectangle_from_path(path) {
+                return self.emit_xychart_background(bounds, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::XyChart(_))
+            && path_id.as_str().contains(".rect.")
+            && path_id.as_str().ends_with(".shape")
+        {
+            let path = self.path_resource(path_id)?;
+            if let Some(bounds) = rectangle_from_path(path) {
+                return self.emit_rect(path_id, bounds, style);
+            }
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -792,6 +843,22 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str(" data-merman-resource=\"");
         escape_attr_into(&mut self.output, path_id.as_str());
         self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_xychart_background(&mut self, bounds: Rect, style: &PathStyle) -> Result<()> {
+        let Some(fill) = style.fill.as_ref() else {
+            return Err(invalid("XYChart background is missing its fill"));
+        };
+        write!(
+            self.output,
+            "<rect width=\"{}\" height=\"{}\" class=\"background\"",
+            fmt(bounds.width),
+            fmt(bounds.height),
+        )
+        .map_err(|_| invalid("failed to write XYChart background"))?;
+        self.write_paint("fill", fill)?;
+        self.output.push_str("/>");
         Ok(())
     }
 
@@ -860,11 +927,16 @@ impl<'a> DocumentSvgEncoder<'a> {
         } else {
             fmt(run.style.font_size).to_string()
         };
+        let baseline = if matches!(self.svg_body, SvgStructureBody::XyChart(_)) {
+            xychart_text_baseline(run.baseline)
+        } else {
+            text_baseline(run.baseline)
+        };
         write!(
             self.output,
             " text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
             text_anchor(run.anchor),
-            text_baseline(run.baseline),
+            baseline,
             text_direction(run.direction),
             font_size,
             fmt(run.style.letter_spacing),
@@ -1120,7 +1192,22 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_transform_and_blend(&mut self) {
-        if self.state.transform != Transform::IDENTITY {
+        let xychart_text = matches!(self.svg_body, SvgStructureBody::XyChart(_))
+            && self
+                .current_semantic_id()
+                .is_some_and(|id| id.starts_with("xychart.text."));
+        if xychart_text && is_rigid_transform(self.state.transform) {
+            let transform = self.state.transform;
+            let rotation = transform.b.atan2(transform.a).to_degrees();
+            write!(
+                self.output,
+                " transform=\"translate({}, {}) rotate({})\"",
+                fmt(transform.e),
+                fmt(transform.f),
+                fmt(rotation),
+            )
+            .expect("writing to String cannot fail");
+        } else if self.state.transform != Transform::IDENTITY {
             write!(
                 self.output,
                 " transform=\"matrix({})\"",
@@ -1213,6 +1300,19 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Error => "merman",
         _ => family.as_str(),
     }
+}
+
+fn is_rigid_transform(transform: Transform) -> bool {
+    let epsilon = 1e-12;
+    (transform.a * transform.a + transform.b * transform.b - 1.0).abs() <= epsilon
+        && (transform.c + transform.b).abs() <= epsilon
+        && (transform.d - transform.a).abs() <= epsilon
+        && transform.a.is_finite()
+        && transform.b.is_finite()
+        && transform.c.is_finite()
+        && transform.d.is_finite()
+        && transform.e.is_finite()
+        && transform.f.is_finite()
 }
 
 fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
@@ -1411,6 +1511,17 @@ fn text_baseline(baseline: TextBaseline) -> &'static str {
         TextBaseline::Ideographic => "ideographic",
         TextBaseline::Middle => "central",
         TextBaseline::TextBeforeEdge => "text-before-edge",
+        TextBaseline::TextAfterEdge => "text-after-edge",
+    }
+}
+
+fn xychart_text_baseline(baseline: TextBaseline) -> &'static str {
+    match baseline {
+        TextBaseline::Alphabetic => "auto",
+        TextBaseline::Hanging => "hanging",
+        TextBaseline::Middle => "middle",
+        TextBaseline::TextBeforeEdge => "text-before-edge",
+        TextBaseline::Ideographic => "ideographic",
         TextBaseline::TextAfterEdge => "text-after-edge",
     }
 }

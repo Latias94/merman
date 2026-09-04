@@ -58,6 +58,7 @@ struct XyChartBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    svg_semantic_classes: BTreeMap<String, String>,
 }
 
 impl<'a> XyChartBuilder<'a> {
@@ -105,6 +106,10 @@ impl<'a> XyChartBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            svg_semantic_classes: BTreeMap::from([(
+                "xychart.document".to_string(),
+                "main".to_string(),
+            )]),
         })
     }
 
@@ -112,13 +117,9 @@ impl<'a> XyChartBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "xychart.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| self.model.title.clone())
-                .or_else(|| self.metadata.title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            // Body/frontmatter titles are painted chart labels, not accessibility titles.  The
+            // SVG renderer only promotes an explicit `accTitle` to the root `<title>` element.
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -160,6 +161,7 @@ impl<'a> XyChartBuilder<'a> {
                 family: RenderFamilyKind::XyChart,
                 body: SvgStructureBody::XyChart(XyChartSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    semantic_classes: self.svg_semantic_classes,
                 }),
             },
         })
@@ -201,6 +203,10 @@ impl<'a> XyChartBuilder<'a> {
         }
 
         let semantic_id = format!("xychart.drawable.{drawable_index}");
+        if let Some(classes) = svg_group_classes(group_texts) {
+            self.svg_semantic_classes
+                .insert(semantic_id.clone(), classes);
+        }
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -263,13 +269,12 @@ impl<'a> XyChartBuilder<'a> {
 
         let styles = PortableStyleResolver::new("xychart");
         let fill = styles.optional_color("rectangle fill", &rect.fill)?;
-        let stroke = if rect.stroke_width == 0.0 {
-            None
-        } else {
-            styles
-                .optional_color("rectangle stroke", &rect.stroke_fill)?
-                .map(|color| stroke(color, rect.stroke_width))
-        };
+        // Mermaid emits the stroke paint even when the width is zero.  Keeping that resolved
+        // paint in the document preserves both the source style and the option for a host backend
+        // to apply its own zero-width policy instead of silently changing the rectangle contract.
+        let stroke = styles
+            .optional_color("rectangle stroke", &rect.stroke_fill)?
+            .map(|color| stroke(color, rect.stroke_width));
         if rect.width > 0.0 && rect.height > 0.0 && (fill.is_some() || stroke.is_some()) {
             self.add_path(
                 format!("{semantic_id}.shape"),
@@ -318,13 +323,9 @@ impl<'a> XyChartBuilder<'a> {
             .map(|fill| styles.optional_color("path fill", fill))
             .transpose()?
             .flatten();
-        let stroke = if path.stroke_width == 0.0 {
-            None
-        } else {
-            styles
-                .optional_color("path stroke", &path.stroke_fill)?
-                .map(|color| stroke(color, path.stroke_width))
-        };
+        let stroke = styles
+            .optional_color("path stroke", &path.stroke_fill)?
+            .map(|color| stroke(color, path.stroke_width));
         if fill.is_some() || stroke.is_some() {
             self.add_path(
                 format!("{semantic_id}.shape"),
@@ -579,6 +580,20 @@ fn group_title(group_texts: &[String]) -> Option<String> {
     (!group_texts.is_empty()).then(|| group_texts.join(" / "))
 }
 
+fn svg_group_classes(group_texts: &[String]) -> Option<String> {
+    let classes = group_texts
+        .iter()
+        .filter(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        })
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    (!classes.is_empty()).then(|| classes.join(" "))
+}
+
 fn text_anchor(text: &XyChartTextData) -> TextAnchor {
     match xychart_text_anchor(&text.horizontal_pos) {
         XyChartTextAnchor::Start => TextAnchor::Start,
@@ -616,9 +631,12 @@ fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
     if ![layout.width, layout.height]
         .into_iter()
         .all(f64::is_finite)
-        || layout.width < 0.0
-        || layout.height < 0.0
     {
+        return Err(unavailable(
+            "XYChart layout contains non-finite root geometry",
+        ));
+    }
+    if layout.width < 0.0 || layout.height < 0.0 {
         return Err(invalid("XYChart root geometry is invalid"));
     }
 
@@ -629,10 +647,12 @@ fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
                     if ![rect.x, rect.y, rect.width, rect.height, rect.stroke_width]
                         .into_iter()
                         .all(f64::is_finite)
-                        || rect.width < 0.0
-                        || rect.height < 0.0
-                        || rect.stroke_width < 0.0
                     {
+                        return Err(unavailable(
+                            "XYChart layout contains non-finite rectangle geometry",
+                        ));
+                    }
+                    if rect.width < 0.0 || rect.height < 0.0 || rect.stroke_width < 0.0 {
                         return Err(invalid("XYChart contains invalid rectangle geometry"));
                     }
                 }
@@ -648,10 +668,12 @@ fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
                 }
             }
             XyChartDrawableElem::Path { data, .. } => {
-                if data
-                    .iter()
-                    .any(|path| !path.stroke_width.is_finite() || path.stroke_width < 0.0)
-                {
+                if data.iter().any(|path| !path.stroke_width.is_finite()) {
+                    return Err(unavailable(
+                        "XYChart layout contains non-finite path geometry",
+                    ));
+                }
+                if data.iter().any(|path| path.stroke_width < 0.0) {
                     return Err(invalid("XYChart contains invalid path stroke geometry"));
                 }
             }
@@ -664,9 +686,12 @@ fn validate_text(text: &XyChartTextData, data_label: bool) -> Result<()> {
     if ![text.x, text.y, text.font_size, text.rotation]
         .into_iter()
         .all(f64::is_finite)
-        || text.font_size < 0.0
-        || (data_label && text.rotation != 0.0)
     {
+        return Err(unavailable(
+            "XYChart layout contains non-finite text geometry",
+        ));
+    }
+    if text.font_size < 0.0 || (data_label && text.rotation != 0.0) {
         return Err(invalid("XYChart contains invalid text geometry"));
     }
     Ok(())

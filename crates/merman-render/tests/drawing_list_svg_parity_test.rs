@@ -161,3 +161,37 @@ fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
             .any(|node| node.attribute("class") == Some("radarLegendBox-0"))
     );
 }
+
+#[test]
+fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
+    let svg = render_svg(
+        "xychart\n  title Sales\n  x-axis [A, B]\n  y-axis 0 --> 100\n  bar [40, 60]\n  line [30, 70]\n",
+        "xychart-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical XYChart SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("viewBox"), Some("0 0 700 500"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 700px; background-color: white;")
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|token| token == "main"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|token| token == "bar-plot-0"))
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("rect") && node.attribute("class") == Some("background"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("xychart.text.0.0") })
+    );
+}

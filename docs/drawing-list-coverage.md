@@ -41,7 +41,7 @@ inventory row fails at test time.  The current inventory is:
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
 | QuadrantChart | yes | legacy bridge |
-| XYChart | yes | legacy bridge |
+| XYChart | yes | canonical |
 | GitGraph | yes | legacy bridge |
 | TreeView | yes | legacy bridge |
 | Ishikawa | yes | legacy bridge |

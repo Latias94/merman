@@ -345,6 +345,7 @@ pub(crate) struct VennSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct XyChartSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral EventModeling document.
