@@ -2271,3 +2271,103 @@ fn sequence_emits_control_note_and_activation_semantics() {
         merman_display_list::DrawingCommand::DrawText { run } if run.text == "observed"
     )));
 }
+
+#[test]
+fn block_emits_source_backed_shapes_routes_styles_and_semantics() {
+    let source = r#"block
+        columns 3
+        A("Rounded")
+        B(("Circle"))
+        C[("Database")]
+        A -- "next" --> B
+        B --> C
+        classDef hot fill:#ffe4e6,stroke:#be123c,stroke-width:3px,color:#881337
+        class A hot
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Block diagram should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    let rounded_semantic = document
+        .semantics
+        .iter()
+        .find(|semantic| {
+            semantic.role == merman_display_list::SemanticRole::Node
+                && semantic.title.as_deref() == Some("Rounded")
+        })
+        .expect("styled Block node should have node semantics");
+    let rounded_shape = format!("{}.shape", rounded_semantic.id);
+
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == rounded_shape
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawPath { path, style }
+            if path.as_str() == rounded_shape
+                && style.fill == Some(merman_display_list::Paint::solid(
+                    merman_display_list::Color::rgba(0xff, 0xe4, 0xe6, 0xff)
+                ))
+                && style.stroke.as_ref().is_some_and(|stroke| {
+                    stroke.width == 3.0
+                        && stroke.paint == merman_display_list::Paint::solid(
+                            merman_display_list::Color::rgba(0xbe, 0x12, 0x3c, 0xff)
+                        )
+                })
+    )));
+    for text in ["Rounded", "Circle", "Database", "next"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().starts_with("block.edge.")
+                && path.id.as_str().ends_with(".marker.end")
+    )));
+    assert_eq!(
+        document
+            .semantics
+            .iter()
+            .filter(|semantic| semantic.role == merman_display_list::SemanticRole::Node)
+            .count(),
+        3
+    );
+    assert_eq!(
+        document
+            .semantics
+            .iter()
+            .filter(|semantic| semantic.role == merman_display_list::SemanticRole::Edge)
+            .count(),
+        2
+    );
+    assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn block_rejects_unmapped_visual_effects_instead_of_dropping_them() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"block
+                A["Styled"]
+                classDef glow fill:#123456,filter:blur(2px)
+                class A glow
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("Block filters must remain an explicit capability boundary");
+    assert!(error.to_string().contains("style property `filter`"));
+}
