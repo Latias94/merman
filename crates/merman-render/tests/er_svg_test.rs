@@ -44,10 +44,18 @@ fn edge_labels_group(svg: &str) -> &str {
 }
 
 fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
+    render_er_svg_from_text_with_engine(text, options, Engine::new())
+}
+
+fn render_er_svg_from_text_with_engine(
+    text: &str,
+    options: &SvgRenderOptions,
+    engine: Engine,
+) -> String {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let parsed = Engine::new()
+    let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
@@ -644,7 +652,11 @@ erDiagram
   CUSTOMER ||--o{ ORDER : places
 "#;
 
-    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
+    let svg = render_er_svg_from_text_with_engine(
+        text,
+        &SvgRenderOptions::default(),
+        legacy_init_theme_compat_engine(),
+    );
 
     assert!(
         svg.contains(r#"data-look="neo""#),
@@ -654,6 +666,110 @@ erDiagram
         !svg.contains(r#"data-look="classic""#),
         "configured ER look must not leave classic DOM attributes: {svg}"
     );
+}
+
+#[test]
+fn er_svg_neo_markers_use_neo_geometry_units_and_theme_values() {
+    let text = r##"%%{init: {"look": "neo", "themeVariables": {"mainBkg": "#fedcba", "strokeWidth": 3.5}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+"##;
+
+    let svg = render_er_svg_from_text_with_engine(
+        text,
+        &SvgRenderOptions::default(),
+        legacy_init_theme_compat_engine(),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Neo ER SVG");
+
+    let zero_or_one_start = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("marker") && node.attribute("id") == Some("merman_er-zeroOrOneStart")
+        })
+        .expect("expected Neo zeroOrOneStart marker");
+    assert_eq!(
+        zero_or_one_start.attribute("markerUnits"),
+        Some("userSpaceOnUse")
+    );
+    let circle = zero_or_one_start
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("expected Neo zeroOrOneStart circle");
+    assert_eq!(circle.attribute("fill"), Some("#fedcba"));
+    assert_eq!(circle.attribute("cx"), Some("21"));
+    assert_eq!(circle.attribute("stroke-width"), Some("3.5"));
+    let path = zero_or_one_start
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("expected Neo zeroOrOneStart path");
+    assert_eq!(path.attribute("d"), Some("M9,0 L9,18"));
+    assert_eq!(path.attribute("stroke-width"), Some("3.5"));
+
+    let zero_or_more_start = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("marker") && node.attribute("id") == Some("merman_er-zeroOrMoreStart")
+        })
+        .expect("expected Neo zeroOrMoreStart marker");
+    assert_eq!(
+        zero_or_more_start.attribute("markerUnits"),
+        Some("userSpaceOnUse")
+    );
+    let circle = zero_or_more_start
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("expected Neo zeroOrMoreStart circle");
+    assert_eq!(circle.attribute("fill"), Some("#fedcba"));
+    assert_eq!(circle.attribute("cx"), Some("45.5"));
+    assert_eq!(circle.attribute("stroke-width"), Some("3.5"));
+}
+
+#[test]
+fn er_svg_classic_markers_keep_classic_geometry_and_styling() {
+    let text = r##"%%{init: {"look": "classic", "themeVariables": {"mainBkg": "#fedcba", "strokeWidth": 3.5}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+"##;
+
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
+    let document = roxmltree::Document::parse(&svg).expect("valid classic ER SVG");
+
+    let zero_or_one_start = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("marker") && node.attribute("id") == Some("merman_er-zeroOrOneStart")
+        })
+        .expect("expected classic zeroOrOneStart marker");
+    assert_eq!(zero_or_one_start.attribute("markerUnits"), None);
+    let circle = zero_or_one_start
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("expected classic zeroOrOneStart circle");
+    assert_eq!(circle.attribute("fill"), Some("white"));
+    assert_eq!(circle.attribute("cx"), Some("21"));
+    assert_eq!(circle.attribute("stroke-width"), None);
+    let path = zero_or_one_start
+        .children()
+        .find(|node| node.has_tag_name("path"))
+        .expect("expected classic zeroOrOneStart path");
+    assert_eq!(path.attribute("d"), Some("M9,0 L9,18"));
+    assert_eq!(path.attribute("stroke-width"), None);
+
+    let zero_or_more_start = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("marker") && node.attribute("id") == Some("merman_er-zeroOrMoreStart")
+        })
+        .expect("expected classic zeroOrMoreStart marker");
+    assert_eq!(zero_or_more_start.attribute("markerUnits"), None);
+    let circle = zero_or_more_start
+        .children()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("expected classic zeroOrMoreStart circle");
+    assert_eq!(circle.attribute("fill"), Some("white"));
+    assert_eq!(circle.attribute("cx"), Some("48"));
+    assert_eq!(circle.attribute("stroke-width"), None);
 }
 
 #[test]

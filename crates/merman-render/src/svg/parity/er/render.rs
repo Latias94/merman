@@ -625,6 +625,7 @@ fn write_er_marker_definition(
     ref_y: &str,
     marker_width: &str,
     marker_height: &str,
+    marker_units: Option<&str>,
     content: &str,
     typed_stroke: Option<(usize, &str)>,
 ) -> Result<()> {
@@ -638,6 +639,9 @@ fn write_er_marker_definition(
         marker_width,
         marker_height,
     );
+    if let Some(marker_units) = marker_units {
+        let _ = write!(out, r#" markerUnits="{}""#, escape_attr(marker_units));
+    }
     if let Some((_, css)) = typed_stroke {
         let _ = write!(out, r#" style="stroke:{} !important""#, escape_attr(css));
     }
@@ -917,7 +921,8 @@ pub(crate) fn render_er_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
 
-    // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
+    // Cardinality markers follow Mermaid 11.17.2's unified ER renderer: the
+    // classic and Neo marker families intentionally have different geometry.
     // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
     // Mermaid emits one `<defs>` wrapper per marker. Only marker definitions referenced by a
@@ -944,6 +949,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 } else {
                     "28"
                 },
+                None,
                 r#"<path d="M 18,7 L9,13 L1,7 L9,1 Z"/>"#,
                 emitted_stroke,
             )?;
@@ -954,7 +960,15 @@ pub(crate) fn render_er_diagram_svg_model(
         }
     }
 
-    for (suffix, class, ref_x, ref_y, width, height, content) in [
+    let neo_marker = data_look == "neo";
+    let neo_stroke_width = config_f64_css_px(effective_config, &["themeVariables", "strokeWidth"])
+        .filter(|value| value.is_finite())
+        .unwrap_or(1.0)
+        .max(0.0);
+    let neo_stroke_width = fmt(neo_stroke_width).to_string();
+    let neo_main_bkg = escape_attr(&main_bkg);
+
+    for (suffix, class, ref_x, ref_y, width, height, classic_content) in [
         (
             "onlyOneStart",
             "marker onlyOne er",
@@ -1034,6 +1048,53 @@ pub(crate) fn render_er_diagram_svg_model(
         let emitted_stroke = expected_stroke
             .as_ref()
             .map(|(rule_index, css)| (*rule_index, css.as_str()));
+        let content = if neo_marker {
+            match suffix {
+                "onlyOneStart" => format!(
+                    r#"<path d="M9,0 L9,18 M15,0 L15,18" stroke-width="{}"/>"#,
+                    neo_stroke_width.as_str()
+                ),
+                "onlyOneEnd" => format!(
+                    r#"<path d="M3,0 L3,18 M9,0 L9,18" stroke-width="{}"/>"#,
+                    neo_stroke_width.as_str()
+                ),
+                "zeroOrOneStart" => format!(
+                    r#"<circle fill="{}" cx="21" cy="9" stroke-width="{}" r="6"/><path d="M9,0 L9,18" stroke-width="{}"/>"#,
+                    neo_main_bkg.as_str(),
+                    neo_stroke_width.as_str(),
+                    neo_stroke_width.as_str(),
+                ),
+                "zeroOrOneEnd" => format!(
+                    r#"<circle fill="{}" cx="9" cy="9" stroke-width="{}" r="6"/><path d="M21,0 L21,18" stroke-width="{}"/>"#,
+                    neo_main_bkg.as_str(),
+                    neo_stroke_width.as_str(),
+                    neo_stroke_width.as_str(),
+                ),
+                "oneOrMoreStart" => format!(
+                    r#"<path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" stroke-width="{}"/>"#,
+                    neo_stroke_width.as_str()
+                ),
+                "oneOrMoreEnd" => format!(
+                    r#"<path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" stroke-width="{}"/>"#,
+                    neo_stroke_width.as_str()
+                ),
+                "zeroOrMoreStart" => format!(
+                    r#"<circle fill="{}" cx="45.5" cy="18" stroke-width="{}" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18" stroke-width="{}"/>"#,
+                    neo_main_bkg.as_str(),
+                    neo_stroke_width.as_str(),
+                    neo_stroke_width.as_str(),
+                ),
+                "zeroOrMoreEnd" => format!(
+                    r#"<circle fill="{}" cx="11" cy="18" stroke-width="{}" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18" stroke-width="{}"/>"#,
+                    neo_main_bkg.as_str(),
+                    neo_stroke_width.as_str(),
+                    neo_stroke_width.as_str(),
+                ),
+                _ => classic_content.to_string(),
+            }
+        } else {
+            classic_content.to_string()
+        };
         write_er_marker_definition(
             &mut out,
             &marker_id,
@@ -1042,7 +1103,8 @@ pub(crate) fn render_er_diagram_svg_model(
             ref_y,
             width,
             height,
-            content,
+            neo_marker.then_some("userSpaceOnUse"),
+            &content,
             emitted_stroke,
         )?;
         if expected {
