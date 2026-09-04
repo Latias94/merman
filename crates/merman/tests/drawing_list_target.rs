@@ -127,6 +127,51 @@ fn class_emits_typed_compartments_relations_namespaces_and_notes() {
 }
 
 #[test]
+fn er_emits_typed_entities_attribute_rows_relationships_and_cardinality() {
+    let source = r#"erDiagram
+        CUSTOMER ||--o{ ORDER : places
+        CUSTOMER {
+            string id PK
+            string name
+        }
+        ORDER {
+            int id PK
+        }
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable ER diagram should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("er.entity")
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("er.edge.0.marker")
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("CUSTOMER")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("places")
+    }));
+}
+
+#[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
         root((Merman))

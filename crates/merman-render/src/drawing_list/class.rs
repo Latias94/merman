@@ -149,7 +149,7 @@ impl<'a> ClassBuilder<'a> {
         let note_stroke = theme_color(config, "noteBorderColor", "#aaaa33")?;
 
         let nodes_by_id = unique_layout_nodes(layout)?;
-        let edges_by_id = unique_layout_edges(layout)?;
+        unique_layout_edges(layout)?;
         let relations_by_id = model
             .relations
             .iter()
