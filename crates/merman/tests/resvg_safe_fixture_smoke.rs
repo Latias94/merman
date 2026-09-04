@@ -5,6 +5,7 @@ use merman::{
     MermaidConfig, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
     SvgRequest,
 };
+use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
 #[cfg(feature = "png")]
@@ -567,6 +568,49 @@ fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     assert_rasterizes_when_enabled(name, source, svg);
 }
 
+fn svg_contains_equivalent_theme_color(svg: &str, expected: &str) -> bool {
+    if svg.contains(expected) {
+        return true;
+    }
+    let Ok(expected) = ThemeColor::parse(expected) else {
+        return false;
+    };
+    let expected_channels = [
+        expected.channel(ColorChannel::Red),
+        expected.channel(ColorChannel::Green),
+        expected.channel(ColorChannel::Blue),
+        expected.channel(ColorChannel::Alpha),
+    ];
+    let Ok(document) = roxmltree::Document::parse(svg) else {
+        return false;
+    };
+    document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .any(|node| {
+            node.attributes().any(|attribute| {
+                if !matches!(attribute.name(), "fill" | "stroke" | "color") {
+                    return false;
+                }
+                let Ok(actual) = ThemeColor::parse(attribute.value()) else {
+                    return false;
+                };
+                [
+                    actual.channel(ColorChannel::Red),
+                    actual.channel(ColorChannel::Green),
+                    actual.channel(ColorChannel::Blue),
+                    actual.channel(ColorChannel::Alpha),
+                ]
+                .into_iter()
+                .zip(expected_channels)
+                // Canonical SVG paints are serialized as 8-bit RGB hex values. Compare the
+                // quantized channels so a source HSL token and its canonical hex spelling remain
+                // semantically equivalent without weakening the visible-color assertion.
+                .all(|(actual, expected)| actual.round() == expected.round())
+            })
+        })
+}
+
 fn contains_non_finite_visual_token(value: &str) -> bool {
     value
         .split(|character: char| {
@@ -1045,8 +1089,8 @@ fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
                 render_resvg_safe_with_options(&name, source, false, Some(site_config.clone()));
             assert_resvg_safe_output(&name, source, &svg);
             assert!(
-                svg.contains(expected_scale),
-                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?}: {svg}"
+                svg_contains_equivalent_theme_color(&svg, expected_scale),
+                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?} (possibly in canonical color syntax): {svg}"
             );
         }
     }
