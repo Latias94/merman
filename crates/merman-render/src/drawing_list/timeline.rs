@@ -162,7 +162,7 @@ impl<'a> TimelineBuilder<'a> {
         });
 
         if self.layout.direction == TimelineDirection::TopDown {
-            self.emit_activity_line(false)?;
+            self.emit_activity_line(true)?;
         }
 
         let mut task_index = 0usize;
@@ -469,9 +469,7 @@ impl<'a> TimelineBuilder<'a> {
                 stroke: Some(line_style),
             },
         )?;
-        if self.layout.direction == TimelineDirection::LeftToRight {
-            self.emit_arrowhead(&format!("{prefix}.arrowhead"), line, width)?;
-        }
+        self.emit_arrowhead(&format!("{prefix}.arrowhead"), line, width)?;
         self.semantics.push(SemanticAnnotation {
             id: prefix.to_string(),
             role: SemanticRole::Edge,

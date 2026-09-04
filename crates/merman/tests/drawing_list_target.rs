@@ -2311,6 +2311,41 @@ fn timeline_emits_sections_tasks_events_connectors_and_title() {
 }
 
 #[test]
+fn vertical_timeline_emits_explicit_arrowhead_geometry() {
+    let source = r#"timeline TD
+        title Release history
+        section Planning
+            Plan : Build
+            Ship : Done
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("vertical Timeline should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    for path_id in [
+        "timeline.activity.arrowhead",
+        "timeline.task.0.connector.0.arrowhead",
+    ] {
+        assert!(
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
+            )),
+            "missing vertical Timeline arrowhead {path_id}"
+        );
+    }
+    assert!(document.fallbacks.is_empty());
+}
+
+#[test]
 fn journey_emits_actors_sections_tasks_faces_and_activity_axis() {
     let source = r#"journey
         title User checkout

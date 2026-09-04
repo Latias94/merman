@@ -114,7 +114,7 @@ section Work
 }
 
 #[test]
-fn timeline_marker_ids_are_prefixed_with_diagram_svg_id() {
+fn timeline_canonical_svg_expands_arrowheads_into_scoped_resources() {
     let svg = render_svg_from_text(
         r#"timeline
 title Release
@@ -124,11 +124,19 @@ section Phase
         "m15-timeline",
     );
 
-    assert_scoped_marker(&svg, "m15-timeline", "arrowhead");
+    assert!(
+        !svg.contains("<marker"),
+        "canonical Timeline should not depend on SVG marker definitions:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.arrowhead""#)
+            && svg.contains(r#"data-merman-resource="timeline.activity.arrowhead""#),
+        "canonical Timeline should keep explicit arrowhead geometry:\n{svg}"
+    );
 }
 
 #[test]
-fn vertical_timeline_preserves_upstream_marker_contract() {
+fn vertical_timeline_canonical_svg_preserves_activity_and_connector_arrows() {
     let svg = render_svg_from_text(
         r#"timeline TD
 title Release
@@ -139,17 +147,13 @@ section Phase
     );
 
     assert!(
-        svg.contains(r#"id="undefined-arrowhead""#),
-        "expected Mermaid's vertical Timeline marker id:\n{svg}"
+        !svg.contains("<marker"),
+        "canonical vertical Timeline should not depend on SVG marker definitions:\n{svg}"
     );
     assert!(
-        svg.contains(r#"marker-end="url(#arrowhead)""#),
-        "expected Mermaid's vertical Timeline marker reference:\n{svg}"
-    );
-    assert!(
-        !svg.contains(r#"id="m15-timeline-vertical-arrowhead""#)
-            && !svg.contains(r#"url(#m15-timeline-vertical-arrowhead)"#),
-        "vertical Timeline must not use the horizontal renderer's scoped marker contract:\n{svg}"
+        svg.contains(r#"data-merman-resource="timeline.activity.arrowhead""#)
+            && svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.arrowhead""#),
+        "canonical vertical Timeline should retain activity and connector arrow geometry:\n{svg}"
     );
 }
 
