@@ -1,7 +1,7 @@
 use super::super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_css(
+pub(crate) fn packet_css(
     diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
 ) -> String {

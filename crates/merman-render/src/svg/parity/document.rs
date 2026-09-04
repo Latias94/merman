@@ -17,7 +17,7 @@ use merman_core::OperationPhase;
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_display_list::{
     BlendMode, Color, DrawingCommand, DrawingListDocument, DrawingResource, FillRule, FontStyle,
-    GradientSpread, LineCap, LineJoin, Paint, PathResource, PathSegment, PathStyle, Rect,
+    GradientSpread, LineCap, LineJoin, Paint, PathResource, PathSegment, PathStyle, Point, Rect,
     ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline, TextDirection,
     TextObligation, TextRun, Transform,
 };
@@ -56,6 +56,7 @@ struct DocumentSvgEncoder<'a> {
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
+    semantic_text_counts: BTreeMap<String, usize>,
     output: String,
 }
 
@@ -82,9 +83,9 @@ struct SavePoint {
     group_len: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum GroupKind {
-    Semantic { linked: bool },
+    Semantic { linked: bool, semantic_id: String },
     Layer,
     Clip,
 }
@@ -151,6 +152,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             state: GraphicsState::default(),
             saves: Vec::new(),
             groups: Vec::new(),
+            semantic_text_counts: BTreeMap::new(),
             output: String::new(),
         })
     }
@@ -204,20 +206,23 @@ impl<'a> DocumentSvgEncoder<'a> {
         let description = self
             .document_semantic()
             .and_then(|semantic| semantic.description.clone());
-        let title_id = title.as_ref().map(|_| format!("{}-title", self.diagram_id));
+        let title_id = title.as_ref().map(|_| self.accessibility_id("title"));
         let description_id = description
             .as_ref()
-            .map(|_| format!("{}-description", self.diagram_id));
+            .map(|_| self.accessibility_id("description"));
 
         let root_spec = self.root_spec(viewport_bounds, padded_bounds)?;
         let root_context =
             root_svg::RootViewportContext::new(self.family, self.diagram_id.as_str());
         let mut chrome = root_svg::RootChrome::new(self.diagram_id.as_str(), self.diagram_type);
-        chrome.class = Some(self.family.as_str());
+        chrome.class = self.root_class();
         chrome.aria_labelledby = title_id.as_deref();
         chrome.aria_describedby = description_id.as_deref();
         chrome.dom.trailing_newline = false;
-        if matches!(self.svg_body, SvgStructureBody::Error(_)) {
+        if matches!(
+            self.svg_body,
+            SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
+        ) {
             chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
@@ -263,6 +268,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                     .with_max_width(root_svg::RootMaxWidth::SvgNumber(body.max_width_px))
                     .without_background())
             }
+            SvgStructureBody::Packet(_) => Ok(root_svg::RootViewportSpec::responsive(
+                viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -281,6 +292,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 true,
                 super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Packet(_) => Some((
+                false,
+                super::packet::packet_css(self.diagram_id.as_str(), self.effective_config),
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -294,7 +309,24 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.output.push_str(&css);
         self.output.push_str("</style>");
+        if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+            self.output.push_str("<g/>");
+        }
         Ok(())
+    }
+
+    fn root_class(&self) -> Option<&'static str> {
+        match self.svg_body {
+            SvgStructureBody::Info(_) | SvgStructureBody::Error(_) => Some(self.family.as_str()),
+            _ => None,
+        }
+    }
+
+    fn accessibility_id(&self, suffix: &str) -> String {
+        match self.svg_body {
+            SvgStructureBody::Packet(_) => format!("chart-{suffix}-{}", self.diagram_id),
+            _ => format!("{}-{suffix}", self.diagram_id),
+        }
     }
 
     fn document_semantic(&self) -> Option<&SemanticAnnotation> {
@@ -694,13 +726,16 @@ impl<'a> DocumentSvgEncoder<'a> {
             escape_xml_into(&mut self.output, description);
             self.output.push_str("</desc>");
         }
-        self.groups.push(GroupKind::Semantic { linked });
+        self.groups.push(GroupKind::Semantic {
+            linked,
+            semantic_id: semantic_id.to_owned(),
+        });
         Ok(())
     }
 
     fn end_semantic_group(&mut self) -> Result<()> {
         match self.groups.pop() {
-            Some(GroupKind::Semantic { linked }) => {
+            Some(GroupKind::Semantic { linked, .. }) => {
                 self.output.push_str("</g>");
                 if linked {
                     self.output.push_str("</a>");
@@ -718,6 +753,14 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Packet(_))
+            && path_id.as_str().ends_with(".shape")
+        {
+            let path = self.path_resource(path_id)?;
+            if let Some(bounds) = rectangle_from_path(path) {
+                return self.emit_rect(path_id, bounds, style);
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
@@ -731,6 +774,30 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("\"");
         }
         self.write_path_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_rect(&mut self, path_id: &ResourceId, bounds: Rect, style: &PathStyle) -> Result<()> {
+        self.output.push_str("<rect x=\"");
+        write!(
+            self.output,
+            "{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height),
+        )
+        .map_err(|_| invalid("failed to write SVG rectangle"))?;
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class);
+            self.output.push_str("\"");
+        }
+        self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
         escape_attr_into(&mut self.output, path_id.as_str());
@@ -768,7 +835,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.origin.y)
         )
         .map_err(|_| invalid("failed to write text origin"))?;
-        if let Some(class) = self.text_class(run) {
+        let text_index = self.record_text_index();
+        if let Some(class) = self.text_class(run, text_index) {
             self.output.push_str(" class=\"");
             self.output.push_str(class);
             self.output.push_str("\"");
@@ -832,17 +900,47 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn path_class(&self, path_id: &ResourceId) -> Option<&'static str> {
-        (matches!(self.svg_body, SvgStructureBody::Error(_))
-            && path_id.as_str().starts_with("error.icon."))
-        .then_some("error-icon")
+        if matches!(self.svg_body, SvgStructureBody::Error(_))
+            && path_id.as_str().starts_with("error.icon.")
+        {
+            return Some("error-icon");
+        }
+        (matches!(self.svg_body, SvgStructureBody::Packet(_))
+            && path_id.as_str().ends_with(".shape"))
+        .then_some("packetBlock")
     }
 
-    fn text_class(&self, _run: &TextRun) -> Option<&'static str> {
+    fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<&'static str> {
         match self.svg_body {
             SvgStructureBody::Error(_) => Some("error-text"),
             SvgStructureBody::Info(_) => Some("version"),
+            SvgStructureBody::Packet(_) => match self.current_semantic_id() {
+                Some("packet.title") => Some("packetTitle"),
+                Some(id) if id.starts_with("packet.block.") => match text_index {
+                    Some(0) => Some("packetLabel"),
+                    Some(1) => Some("packetByte start"),
+                    Some(2) => Some("packetByte end"),
+                    _ => None,
+                },
+                _ => None,
+            },
             _ => None,
         }
+    }
+
+    fn current_semantic_id(&self) -> Option<&str> {
+        self.groups.iter().rev().find_map(|group| match group {
+            GroupKind::Semantic { semantic_id, .. } => Some(semantic_id.as_str()),
+            _ => None,
+        })
+    }
+
+    fn record_text_index(&mut self) -> Option<usize> {
+        let semantic_id = self.current_semantic_id()?.to_owned();
+        let count = self.semantic_text_counts.entry(semantic_id).or_default();
+        let index = *count;
+        *count = count.saturating_add(1);
+        Some(index)
     }
 
     fn emit_image(
@@ -897,6 +995,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str(" fill-rule=\"");
         self.output.push_str(fill_rule_name(style.fill_rule));
         self.output.push_str("\"");
+        self.write_fill_stroke_style(style)
+    }
+
+    fn write_fill_stroke_style(&mut self, style: &PathStyle) -> Result<()> {
         if let Some(fill) = style.fill.as_ref() {
             self.write_paint("fill", fill)?;
         } else {
@@ -1056,6 +1158,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
     match family {
         RenderFamilyKind::Mindmap => "mindmap",
+        RenderFamilyKind::Packet => "merman",
         RenderFamilyKind::State
         | RenderFamilyKind::Sequence
         | RenderFamilyKind::Class
@@ -1066,6 +1169,39 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Error => "merman",
         _ => family.as_str(),
     }
+}
+
+fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
+    let [
+        PathSegment::MoveTo { to: first },
+        PathSegment::LineTo { to: second },
+        PathSegment::LineTo { to: third },
+        PathSegment::LineTo { to: fourth },
+        PathSegment::Close,
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+    let epsilon = f64::EPSILON * 8.0;
+    let horizontal = |left: Point, right: Point| (left.y - right.y).abs() <= epsilon;
+    let vertical = |top: Point, bottom: Point| (top.x - bottom.x).abs() <= epsilon;
+    if !horizontal(*first, *second)
+        || !vertical(*second, *third)
+        || !horizontal(*third, *fourth)
+        || !vertical(*fourth, *first)
+        || (first.x - fourth.x).abs() > epsilon
+        || (second.x - third.x).abs() > epsilon
+        || (first.y - second.y).abs() > epsilon
+        || (third.y - fourth.y).abs() > epsilon
+    {
+        return None;
+    }
+    let x = first.x.min(second.x).min(third.x).min(fourth.x);
+    let y = first.y.min(second.y).min(third.y).min(fourth.y);
+    let max_x = first.x.max(second.x).max(third.x).max(fourth.x);
+    let max_y = first.y.max(second.y).max(third.y).max(fourth.y);
+    let bounds = Rect::new(x, y, max_x - x, max_y - y);
+    (bounds.width > 0.0 && bounds.height > 0.0).then_some(bounds)
 }
 
 fn scoped_id(prefix: &str, index: usize, raw: &str) -> String {

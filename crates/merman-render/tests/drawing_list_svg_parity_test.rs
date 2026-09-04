@@ -76,3 +76,51 @@ fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
         "mermaid version {PINNED_MERMAID_BASELINE_VERSION}"
     )));
 }
+
+#[test]
+fn packet_canonical_svg_keeps_root_profile_and_packet_dom_roles() {
+    let svg = render_svg(
+        "packet\ntitle Header\n0-7: \"Version\"\n8-15: \"Length\"\n",
+        "packet-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Packet SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), None);
+    assert_eq!(root.attribute("viewBox"), Some("0 0 1026 94"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 1026px; background-color: white;")
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(
+                |node| node.has_tag_name("rect") && node.attribute("class") == Some("packetBlock")
+            )
+            .count(),
+        2
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("packetLabel"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("packetByte start"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("packetByte end"))
+            .count(),
+        2
+    );
+    assert!(svg.contains("chart-title-packet-parity"));
+}
