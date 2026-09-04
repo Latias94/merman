@@ -111,6 +111,15 @@ where
     out
 }
 
+/// Returns the source-backed Radar stylesheet for the canonical document serializer.
+pub(crate) fn canonical_radar_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> String {
+    let theme = PresentationTheme::new(effective_config).radar();
+    radar_css(diagram_id, &theme)
+}
+
 pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,

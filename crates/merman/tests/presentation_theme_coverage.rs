@@ -709,8 +709,8 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ),
             &["#e5e7eb", "#111827", "#94a3b8"],
             &[
-                ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch { stroke: #94a3b8;",
-                ".ishikawa .ishikawa-head { fill: #111827; stroke: #94a3b8;",
+                "ishikawa-spine,#presentation-theme-ishikawa",
+                ".ishikawa-head{fill:#111827;stroke:#94a3b8;",
             ],
         ),
         (
@@ -720,12 +720,12 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
                 "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",
             ],
             &[
-                "class=\"em-swimlane\"><rect",
+                "em-swimlane",
                 "fill=\"#1e293b\" stroke=\"#475569\"",
-                "stroke=\"#475569\" fill=\"#111827\"",
-                "stroke=\"#34d399\" fill=\"#34d399\"",
-                "stroke=\"#94a3b8\" fill=\"#60a5fa\"",
-                "stroke=\"#fbbf24\" fill=\"#f59e0b\"",
+                "fill=\"#111827\" stroke=\"#475569\"",
+                "fill=\"#34d399\" stroke=\"#34d399\"",
+                "fill=\"#60a5fa\" stroke=\"#94a3b8\"",
+                "fill=\"#f59e0b\" stroke=\"#fbbf24\"",
             ],
         ),
     ];

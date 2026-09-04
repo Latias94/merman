@@ -543,6 +543,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Radar(_) => Some((
+                false,
+                super::radar::canonical_radar_css(self.diagram_id.as_str(), self.effective_config),
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -582,6 +586,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::TreeView(_)
                 | SvgStructureBody::Gantt(_)
                 | SvgStructureBody::GitGraph(_)
+                | SvgStructureBody::Radar(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -613,6 +618,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::TreeView(_)
             | SvgStructureBody::Gantt(_)
             | SvgStructureBody::GitGraph(_)
+            | SvgStructureBody::Radar(_)
             | SvgStructureBody::Treemap(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
