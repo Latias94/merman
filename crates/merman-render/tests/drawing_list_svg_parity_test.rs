@@ -124,3 +124,40 @@ fn packet_canonical_svg_keeps_root_profile_and_packet_dom_roles() {
     );
     assert!(svg.contains("chart-title-packet-parity"));
 }
+
+#[test]
+fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
+    let svg = render_svg(
+        "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",
+        "radar-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Radar SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("overflow"), Some("visible"));
+    assert_eq!(root.attribute("viewBox"), Some("0 0 700 700"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 700px; background-color: white;")
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarTitle"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarAxisLabel"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarCurve-0"))
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("radarLegendBox-0"))
+    );
+}

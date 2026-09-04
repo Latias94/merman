@@ -60,6 +60,7 @@ struct RadarBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     text_color: String,
+    title_color: String,
     title_font_size: String,
     axis_color: String,
     axis_stroke_width: f64,
@@ -119,6 +120,7 @@ impl<'a> RadarBuilder<'a> {
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             text_color: theme.text_color,
+            title_color: theme.title_color,
             title_font_size: theme.title_font_size_css,
             axis_color: theme.axis_color,
             axis_stroke_width: theme.axis_stroke_width,
@@ -146,12 +148,9 @@ impl<'a> RadarBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "radar.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| title.map(str::to_string))
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            // Preserve Mermaid's accessibility contract: a body/frontmatter chart title is visual
+            // content, while only an explicit `accTitle` becomes the root accessible title.
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -217,6 +216,7 @@ impl<'a> RadarBuilder<'a> {
                 family: RenderFamilyKind::Radar,
                 body: SvgStructureBody::Radar(RadarSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.use_max_width,
                 }),
             },
         })
@@ -325,12 +325,14 @@ impl<'a> RadarBuilder<'a> {
 
         let placement = radar_axis_label_placement(&axis);
         let font_size = portable_length("axisLabelFontSize", self.axis_label_font_size)?;
+        let text_color = self.axis_color.clone();
         self.emit_text(
             &axis.label,
             Point::new(placement.x, placement.y),
             font_size,
             radar_anchor(placement.anchor),
             radar_baseline(placement.baseline),
+            &text_color,
         )?;
 
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -411,12 +413,14 @@ impl<'a> RadarBuilder<'a> {
             stroke,
         )?;
         let font_size = portable_length("legendFontSize", self.legend_font_size)?;
+        let text_color = self.text_color.clone();
         self.emit_text(
             &item.label,
             Point::new(RADAR_LEGEND_TEXT_X_PX, 0.0),
             font_size,
             TextAnchor::Start,
             TextBaseline::Hanging,
+            &text_color,
         )?;
 
         self.commands.push(DrawingCommand::Restore);
@@ -445,12 +449,14 @@ impl<'a> RadarBuilder<'a> {
         });
         let font_size =
             PortableStyleResolver::new("radar").length("title font-size", &self.title_font_size)?;
+        let title_color = self.title_color.clone();
         self.emit_text(
             &title,
             Point::new(0.0, self.layout.title_y),
             font_size,
             TextAnchor::Middle,
             TextBaseline::Hanging,
+            &title_color,
         )?;
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -470,13 +476,13 @@ impl<'a> RadarBuilder<'a> {
         font_size: f64,
         anchor: TextAnchor,
         baseline: TextBaseline,
+        color: &str,
     ) -> Result<()> {
         let value = svg_plain_text(value);
         if value.is_empty() || font_size == 0.0 {
             return Ok(());
         }
-        let Some(fill) = PortableStyleResolver::new("radar")
-            .optional_color("inherited text fill", &self.text_color)?
+        let Some(fill) = PortableStyleResolver::new("radar").optional_color("text fill", color)?
         else {
             return Ok(());
         };

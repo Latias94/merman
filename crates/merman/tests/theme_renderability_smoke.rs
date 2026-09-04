@@ -340,8 +340,8 @@ radar-beta
                 "#22c55e",
                 "#facc15",
                 "#334155",
-                "stroke-width:4",
-                "stroke-width:5",
+                "stroke-width=\"4\"",
+                "stroke-width=\"5\"",
             ],
         ),
         (

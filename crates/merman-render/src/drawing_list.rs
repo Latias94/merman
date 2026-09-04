@@ -290,6 +290,7 @@ pub(crate) struct QuadrantChartSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct RadarSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
 }
 
 /// SVG-only metadata retained beside the public Railroad document.

@@ -35,7 +35,7 @@ inventory row fails at test time.  The current inventory is:
 | Journey | yes | legacy bridge |
 | Requirement | yes | legacy bridge |
 | Sankey | yes | legacy bridge |
-| Radar | yes | legacy bridge |
+| Radar | yes | canonical |
 | Info | yes | canonical |
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |

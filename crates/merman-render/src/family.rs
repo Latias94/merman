@@ -1126,7 +1126,10 @@ fn render_family_artifact_svg(
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
-        RenderFamilyKind::Error | RenderFamilyKind::Info | RenderFamilyKind::Packet
+        RenderFamilyKind::Error
+            | RenderFamilyKind::Info
+            | RenderFamilyKind::Packet
+            | RenderFamilyKind::Radar
     )
 }
 

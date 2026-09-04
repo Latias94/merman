@@ -22,6 +22,7 @@ use merman_display_list::{
     TextObligation, TextRun, Transform,
 };
 use serde_json::Value;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -219,6 +220,12 @@ impl<'a> DocumentSvgEncoder<'a> {
         chrome.aria_labelledby = title_id.as_deref();
         chrome.aria_describedby = description_id.as_deref();
         chrome.dom.trailing_newline = false;
+        let radar_extra_attrs = [("overflow", "visible")];
+        if matches!(self.svg_body, SvgStructureBody::Radar(_)) {
+            chrome.extra_attrs = &radar_extra_attrs;
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -270,6 +277,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
             SvgStructureBody::Packet(_) => Ok(root_svg::RootViewportSpec::responsive(
                 viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
+            SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
             )
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
@@ -770,7 +784,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("\"");
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
-            self.output.push_str(class);
+            self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
         self.write_path_style(style)?;
@@ -794,7 +808,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         .map_err(|_| invalid("failed to write SVG rectangle"))?;
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
-            self.output.push_str(class);
+            self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
         self.write_fill_stroke_style(style)?;
@@ -899,15 +913,39 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
-    fn path_class(&self, path_id: &ResourceId) -> Option<&'static str> {
+    fn path_class(&self, path_id: &ResourceId) -> Option<Cow<'static, str>> {
         if matches!(self.svg_body, SvgStructureBody::Error(_))
             && path_id.as_str().starts_with("error.icon.")
         {
-            return Some("error-icon");
+            return Some(Cow::Borrowed("error-icon"));
         }
-        (matches!(self.svg_body, SvgStructureBody::Packet(_))
-            && path_id.as_str().ends_with(".shape"))
-        .then_some("packetBlock")
+        if matches!(self.svg_body, SvgStructureBody::Packet(_))
+            && path_id.as_str().ends_with(".shape")
+        {
+            return Some(Cow::Borrowed("packetBlock"));
+        }
+        if matches!(self.svg_body, SvgStructureBody::Radar(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id.starts_with("radar.graticule.") {
+                return Some(Cow::Borrowed("radarGraticule"));
+            }
+            if raw_id.starts_with("radar.axis.") {
+                return Some(Cow::Borrowed("radarAxisLine"));
+            }
+            if let Some(index) = raw_id
+                .strip_prefix("radar.curve.")
+                .and_then(|value| value.strip_suffix(".shape"))
+            {
+                return Some(Cow::Owned(format!("radarCurve-{index}")));
+            }
+            if let Some(index) = raw_id
+                .strip_prefix("radar.legend.")
+                .and_then(|value| value.strip_suffix(".box"))
+            {
+                return Some(Cow::Owned(format!("radarLegendBox-{index}")));
+            }
+        }
+        None
     }
 
     fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<&'static str> {
@@ -922,6 +960,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                     Some(2) => Some("packetByte end"),
                     _ => None,
                 },
+                _ => None,
+            },
+            SvgStructureBody::Radar(_) => match self.current_semantic_id() {
+                Some(id) if id.starts_with("radar.axis.") => Some("radarAxisLabel"),
+                Some(id) if id.starts_with("radar.legend.") => Some("radarLegendText"),
+                Some("radar.title") => Some("radarTitle"),
                 _ => None,
             },
             _ => None,
