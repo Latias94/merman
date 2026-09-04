@@ -1127,6 +1127,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
         RenderFamilyKind::Error
+            | RenderFamilyKind::State
             | RenderFamilyKind::Info
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie

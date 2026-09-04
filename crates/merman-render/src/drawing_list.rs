@@ -360,6 +360,10 @@ pub(crate) struct SequenceSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct StateSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) semantic_looks: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public Treemap document.

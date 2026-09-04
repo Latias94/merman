@@ -75,6 +75,10 @@ struct StateBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    semantic_looks: BTreeMap<String, String>,
 }
 
 impl<'a> StateBuilder<'a> {
@@ -193,6 +197,10 @@ impl<'a> StateBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            semantic_looks: BTreeMap::new(),
         };
         builder.preflight()?;
         Ok(builder)
@@ -211,6 +219,8 @@ impl<'a> StateBuilder<'a> {
             description: self.model.acc_descr.clone(),
             link: None,
         });
+        self.semantic_looks
+            .insert("state.document".to_string(), "classic".to_string());
 
         // Match Mermaid's painter order: transition paths, transition labels, then nodes.
         for (index, edge) in self.model.edges.iter().enumerate() {
@@ -266,6 +276,10 @@ impl<'a> StateBuilder<'a> {
                 family: RenderFamilyKind::State,
                 body: SvgStructureBody::State(StateSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    semantic_classes: std::mem::take(&mut self.semantic_classes),
+                    path_classes: std::mem::take(&mut self.path_classes),
+                    text_classes: std::mem::take(&mut self.text_classes),
+                    semantic_looks: std::mem::take(&mut self.semantic_looks),
                 }),
             },
         })
@@ -303,15 +317,15 @@ impl<'a> StateBuilder<'a> {
             }
         }
         if self.layout.nodes.len() != self.model.nodes.len() {
-            return Err(invalid(format!(
-                "State layout has {} nodes for {} semantic nodes",
+            return Err(unavailable(format!(
+                "State layout has {} nodes for {} semantic nodes; helper geometry is outside the canonical subset",
                 self.layout.nodes.len(),
                 self.model.nodes.len()
             )));
         }
         if self.layout.edges.len() != self.model.edges.len() {
-            return Err(invalid(format!(
-                "State layout has {} edges for {} semantic edges",
+            return Err(unavailable(format!(
+                "State layout has {} edges for {} semantic edges; helper geometry is outside the canonical subset",
                 self.layout.edges.len(),
                 self.model.edges.len()
             )));
@@ -503,6 +517,14 @@ impl<'a> StateBuilder<'a> {
         let route_segments =
             flowchart_curve_segments(&points, FlowchartCurveKind::Basis, 0.0, false, None);
         let semantic_id = format!("state.edge.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgePath".to_string());
+        self.semantic_looks
+            .insert(semantic_id.clone(), "classic".to_string());
+        self.path_classes.insert(
+            format!("{semantic_id}.route"),
+            "edge-thickness-normal edge-pattern-solid transition".to_string(),
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -549,6 +571,10 @@ impl<'a> StateBuilder<'a> {
                 end.y + direction.y * dx + normal.y * dy,
             )
         };
+        self.path_classes.insert(
+            format!("state.edge.{index}.marker.end"),
+            "marker".to_string(),
+        );
         self.add_path(
             format!("state.edge.{index}.marker.end"),
             polygon_path(&[
@@ -587,6 +613,14 @@ impl<'a> StateBuilder<'a> {
             with_alpha(self.edge_label_background, 0.5)
         };
         let semantic_id = format!("state.edge.{index}.label");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
+        self.semantic_looks
+            .insert(semantic_id.clone(), "classic".to_string());
+        self.path_classes
+            .insert(format!("{semantic_id}.background"), "label".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -624,11 +658,22 @@ impl<'a> StateBuilder<'a> {
     fn emit_node(&mut self, index: usize, node: &StateDiagramRenderNode) -> Result<()> {
         let layout = self.nodes_by_id[node.id.as_str()];
         let semantic_id = format!("state.node.{index}");
+        let semantic_class = if node.shape == "rect" {
+            "node statediagram-state"
+        } else {
+            "node default"
+        };
+        self.semantic_classes
+            .insert(semantic_id.clone(), semantic_class.to_string());
+        self.semantic_looks
+            .insert(semantic_id.clone(), "classic".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
         let title = match node.shape.as_str() {
             "stateStart" => {
+                self.path_classes
+                    .insert(format!("{semantic_id}.shape"), "state-start".to_string());
                 self.add_path(
                     format!("{semantic_id}.shape"),
                     ellipse_path(layout.x, layout.y, 7.0, 7.0),
@@ -641,6 +686,8 @@ impl<'a> StateBuilder<'a> {
                 "Start".to_string()
             }
             "rect" => {
+                self.path_classes
+                    .insert(format!("{semantic_id}.shape"), "basic".to_string());
                 self.add_path(
                     format!("{semantic_id}.shape"),
                     rounded_rect_path(
@@ -658,6 +705,8 @@ impl<'a> StateBuilder<'a> {
                 )?;
                 let raw = state_node_label_text(node).expect("validated in preflight");
                 let text = state_plain_text_label(&raw).expect("validated in preflight");
+                self.text_classes
+                    .insert(semantic_id.clone(), "nodeLabel".to_string());
                 let rounded = node.rx.unwrap_or(0.0) > 0.0 && node.ry.unwrap_or(0.0) > 0.0;
                 let horizontal_padding = if rounded {
                     self.state_padding

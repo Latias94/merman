@@ -266,6 +266,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::State(_)) {
+            chrome.dom.aria_attr_order = root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby;
+        }
         if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
@@ -381,6 +384,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Requirement(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
+            SvgStructureBody::State(_) => Ok(root_svg::RootViewportSpec::responsive(
+                viewport_bounds,
             )
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
@@ -501,6 +510,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::requirement_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::State(_) => Some((
+                false,
+                super::state::canonical_state_css(self.diagram_id.as_str(), self.effective_config),
+            )),
             SvgStructureBody::Venn(_) => Some((
                 false,
                 super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)
@@ -594,6 +607,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Kanban(_)
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Requirement(_)
+                | SvgStructureBody::State(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Railroad(_)
                 | SvgStructureBody::EventModeling(_)
@@ -616,6 +630,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Railroad(_) => Some("railroad-diagram"),
             SvgStructureBody::GitGraph(_) => Some("gitGraph"),
             SvgStructureBody::Requirement(_) => Some("requirementDiagram"),
+            SvgStructureBody::State(_) => Some("statediagram"),
             _ => None,
         }
     }
@@ -638,6 +653,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Radar(_)
             | SvgStructureBody::Treemap(_)
             | SvgStructureBody::Requirement(_)
+            | SvgStructureBody::State(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -1162,21 +1178,31 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Requirement(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::State(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             _ => None,
         }
     }
 
     fn requirement_semantic_attrs(&self, semantic_id: &str) -> String {
-        let SvgStructureBody::Requirement(body) = self.svg_body else {
+        let (looks, color_ids) = match self.svg_body {
+            SvgStructureBody::Requirement(body) => {
+                (Some(&body.semantic_looks), Some(&body.semantic_color_ids))
+            }
+            SvgStructureBody::State(body) => (Some(&body.semantic_looks), None),
+            _ => (None, None),
+        };
+        let Some(looks) = looks else {
             return String::new();
         };
         let mut attrs = String::new();
-        if let Some(look) = body.semantic_looks.get(semantic_id) {
+        if let Some(look) = looks.get(semantic_id) {
             attrs.push_str(" data-look=\"");
             escape_attr_into(&mut attrs, look);
             attrs.push('"');
         }
-        if let Some(color_id) = body.semantic_color_ids.get(semantic_id) {
+        if let Some(color_id) = color_ids.and_then(|ids| ids.get(semantic_id)) {
             attrs.push_str(" data-color-id=\"");
             escape_attr_into(&mut attrs, color_id);
             attrs.push('"');
@@ -1428,6 +1454,18 @@ impl<'a> DocumentSvgEncoder<'a> {
                 && let Some(bounds) = rectangle_from_path(path)
             {
                 return self.emit_rect(path_id, bounds, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::State(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id.starts_with("state.node.") && raw_id.ends_with(".shape") {
+                let path = self.path_resource(path_id)?;
+                if let Some((center, radius)) = circle_from_path(path) {
+                    return self.emit_circle(path_id, center, radius, style);
+                }
+                if let Some((bounds, radius)) = rounded_rectangle_from_path(path) {
+                    return self.emit_rounded_rect(path_id, bounds, radius, style);
+                }
             }
         }
         let path_data = {
@@ -1894,6 +1932,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::State(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -2040,6 +2083,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                         .and_then(|index| body.text_classes.get(&format!("{id}.label.{index}")))
                         .or_else(|| body.text_classes.get(id))
                 })
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::State(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),

@@ -207,6 +207,57 @@ fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
 }
 
 #[test]
+fn state_canonical_svg_keeps_typed_shapes_transitions_and_labels() {
+    let svg = render_svg(
+        r#"stateDiagram-v2
+  [*] --> Idle: start
+  Idle --> Done: finish
+"#,
+        "state-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical State SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("statediagram"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.starts_with("max-width: "))
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("circle") && node.attribute("class") == Some("state-start")
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("rect") && node.attribute("class") == Some("basic") })
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.contains("transition"))
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("path") && node.attribute("class") == Some("marker") })
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("state.edge.0.label")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.contains("edgeLabel"))
+    }));
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("text") && node.attribute("class") == Some("nodeLabel")
+        })
+    );
+    assert!(svg.contains(".transition{"));
+}
+
+#[test]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",

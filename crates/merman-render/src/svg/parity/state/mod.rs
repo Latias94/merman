@@ -62,3 +62,10 @@ struct StateRenderCtx<'a> {
 
 mod render;
 pub(super) use render::render_state_diagram_svg_model;
+
+pub(super) fn canonical_state_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: Copy + std::fmt::Display,
+{
+    state_css(diagram_id, &StateSvgModel::default(), effective_config)
+}
