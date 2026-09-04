@@ -431,8 +431,11 @@ jobs:
             build.index("- name: Build wheel"),
         )
 
-    def test_python_release_bootstraps_the_final_smoke_venv(self) -> None:
+    def test_python_release_isolates_and_bootstraps_the_final_smoke_venv(self) -> None:
         build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
+        self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
+        self.assertIn('python -m venv "$VENV_DIR"', build)
+        self.assertNotIn("target/python-final-wheel-smoke", build)
         self.assertIn('"$PYTHON" -m ensurepip --upgrade', build)
         self.assertLess(
             build.index('"$PYTHON" -m ensurepip --upgrade'),

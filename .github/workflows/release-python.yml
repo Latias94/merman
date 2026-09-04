@@ -173,11 +173,12 @@ jobs:
 
       - name: Run final wheel install smoke
         run: |
-          python -m venv target/python-final-wheel-smoke
-          if [ -f target/python-final-wheel-smoke/Scripts/python.exe ]; then
-            PYTHON=target/python-final-wheel-smoke/Scripts/python.exe
+          VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"
+          python -m venv "$VENV_DIR"
+          if [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+            PYTHON="$VENV_DIR/Scripts/python.exe"
           else
-            PYTHON=target/python-final-wheel-smoke/bin/python
+            PYTHON="$VENV_DIR/bin/python"
           fi
           "$PYTHON" -m ensurepip --upgrade
           "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
