@@ -1,5 +1,5 @@
 ARG RUST_IMAGE=rust:1.95-bullseye
-ARG NODE_IMAGE=node:24-bullseye
+ARG NODE_IMAGE=node:24.13.1-bullseye
 
 FROM ${RUST_IMAGE} AS rust-toolchain
 

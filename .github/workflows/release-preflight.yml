@@ -455,7 +455,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
@@ -532,7 +532,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -589,7 +589,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -686,7 +686,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.musl \
-            --build-arg NODE_IMAGE=node:24-alpine3.22 \
+            --build-arg NODE_IMAGE=node:24.13.1-alpine3.22 \
             --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
             --tag merman-node-musl:ci \
             platforms/node
@@ -731,7 +731,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
@@ -770,7 +770,7 @@ jobs:
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -910,7 +910,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
 

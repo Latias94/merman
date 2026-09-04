@@ -154,7 +154,7 @@ For an npm-only alpha test, `release-node.yml` treats `release_tag` as the packa
 same-named workspace tag; the workflow records the resolved commit in the package-group manifest,
 and release notes must not claim that separately published channels are byte-identical.
 
-The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24, enters
+The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24.13.1, enters
 the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
 the immutable source commit without credentials. The source checkout supplies only the package
 surface descriptor; the trusted revision verifies the downloaded package-group hashes before

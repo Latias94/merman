@@ -379,6 +379,27 @@ jobs:
                 with self.subTest(path=path.relative_to(ROOT).as_posix()):
                     assert_no_npm_provenance_disable(self, read(path))
 
+    def test_release_package_workflows_pin_node_toolchain(self) -> None:
+        expected = 'node-version: "24.13.1"'
+        for path in (
+            WORKFLOW_ROOT / "release-web.yml",
+            WORKFLOW_ROOT / "release-node.yml",
+            WORKFLOW_ROOT / "release-preflight.yml",
+        ):
+            text = read(path)
+            with self.subTest(path=path.name):
+                self.assertIn(expected, text)
+                self.assertNotIn('node-version: "24"', text)
+        for path in (
+            WORKFLOW_ROOT / "release-node.yml",
+            WORKFLOW_ROOT / "release-preflight.yml",
+        ):
+            text = read(path)
+            with self.subTest(path=path.name, image="alpine"):
+                self.assertIn("NODE_IMAGE=node:24.13.1-alpine3.22", text)
+            with self.subTest(path=path.name, image="bullseye"):
+                self.assertIn("NODE_IMAGE=node:24.13.1-bullseye", text)
+
         for package_json in [
             ROOT / "platforms" / "web" / "package.json",
             ROOT / "platforms" / "node" / "package.json",

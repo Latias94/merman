@@ -173,6 +173,11 @@ configuring Dart OIDC credentials; never replace this boundary with direct `tar 
 
 For Web or Node publication, treat the verified package-group manifest order as publication order. Publish dependency or platform packages first and the default Web package or Node loader last.
 
+Keep the release and preflight Web/Node jobs on the pinned Node `24.13.1` toolchain, including the
+GNU and musl container images. A floating major tag can change the embedded build-tool provenance
+and npm tarball bytes between retries even when the source commit and generated runtime files are
+unchanged.
+
 npm Trusted Publisher authorizes `npm publish`, not a later `npm dist-tag` repair. The owner script must preflight every existing exact version, integrity, and requested tag before mutating the registry, publish only missing versions directly under the final tag, verify each postcondition, and skip matching members on retry. Stop before publication when an existing integrity or tag conflicts; recover that tag with an explicitly authorized maintainer credential. Do not reintroduce a synthetic staging tag or OIDC-incompatible promotion step.
 
 When a Web package-group publication is partial, reuse the exact artifact from the original
