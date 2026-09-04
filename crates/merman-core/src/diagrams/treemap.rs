@@ -424,7 +424,7 @@ fn treemap_compatibility_output_preflight(
         if index.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        let joined_bytes = joined_style_bytes(&class_def.styles);
+        let joined_bytes = joined_style_bytes(&class_def.styles, control)?;
         if joined_bytes != 0 {
             class_style_bytes.insert(id.as_str(), joined_bytes);
         }
@@ -467,11 +467,18 @@ fn treemap_compatibility_output_preflight(
     Ok(Ok(()))
 }
 
-fn joined_style_bytes(styles: &[String]) -> usize {
-    styles
-        .iter()
-        .fold(0usize, |total, style| total.saturating_add(style.len()))
-        .saturating_add(styles.len().saturating_sub(1))
+fn joined_style_bytes(
+    styles: &[String],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<usize> {
+    let mut total = 0usize;
+    for (index, style) in styles.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        total = total.saturating_add(style.len());
+    }
+    Ok(total.saturating_add(styles.len().saturating_sub(1)))
 }
 
 fn treemap_compatibility_output_budget_error(
@@ -1888,6 +1895,20 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
 
         assert!(matches!(
             render_model_to_compat_json_controlled(&model, &meta(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn treemap_style_byte_preflight_observes_cancellation_inside_one_class() {
+        let styles = (0..512)
+            .map(|index| format!("fill:{index}"))
+            .collect::<Vec<_>>();
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            joined_style_bytes(&styles, &control),
             Err(crate::OperationCancelled { .. })
         ));
     }
