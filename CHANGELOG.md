@@ -74,7 +74,7 @@ Alpha.6 is a deliberately breaking prerelease that advances Mermaid compatibilit
 - Added grapheme-aware ASCII plans, canonical/compact Flowchart and Sequence layouts, ANSI16 semantic roles, schema-2 output encoding, structured-text projections for non-diagrammatic families, and configurable Flowchart label wrapping for Issue #53.
 - Added `merman-cli rustdoc build/check` for checked static SVG fragments that can be committed, freshness-checked in CI, and included by Rust documentation without adding a renderer or proc macro to the consumer graph.
 - Added Playground export previews for SVG/raster/document outputs, reproducible share URLs, and an infinite-canvas viewport that keeps editor pan/zoom state separate from exported geometry.
-- Prepared independently versioned Typst package `0.3.0` with Typst plugin ABI `2` and a smaller deterministic WASM closure after removing ICU collation data and generated font-metric tables; the published Typst channel remains separate from the workspace release.
+- Prepared independently versioned Typst package `0.3.0` with Typst plugin ABI `3` and a smaller deterministic WASM closure after removing ICU collation data and generated font-metric tables; the published Typst channel remains separate from the workspace release.
 
 ### Changed
 

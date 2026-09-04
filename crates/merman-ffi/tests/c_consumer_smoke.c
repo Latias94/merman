@@ -285,7 +285,7 @@ int merman_c_consumer_smoke(
                 !bytes_contain(
                     result.metadata_or_error_json.data,
                     result.metadata_or_error_json.len,
-                    "\"schema_version\":2"
+                    "\"schema_version\":3"
                 ) ||
                 !bytes_contain(
                     result.metadata_or_error_json.data,
