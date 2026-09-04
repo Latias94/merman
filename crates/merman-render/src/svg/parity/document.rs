@@ -242,12 +242,17 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
         let journey_extra_attrs = [("preserveAspectRatio", "xMinYMin meet")];
+        let treemap_extra_attrs = [("class", "flowchart")];
         if matches!(self.svg_body, SvgStructureBody::Journey(_)) {
             chrome.extra_attrs = &journey_extra_attrs;
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
             chrome.dom.responsive_height_placement =
                 root_svg::RootResponsiveHeightPlacement::AfterExtraAttrs;
+        }
+        if matches!(self.svg_body, SvgStructureBody::Treemap(_)) {
+            chrome.extra_attrs = &treemap_extra_attrs;
+            chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
         if matches!(self.svg_body, SvgStructureBody::Kanban(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
@@ -351,6 +356,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_mermaid_responsive_height(body.use_max_width, body.svg_height)
             .with_fixed_size(body.width, body.svg_height)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(body.width))),
+            SvgStructureBody::Treemap(_) => Ok(root_svg::RootViewportSpec::responsive(
+                viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             SvgStructureBody::Kanban(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -456,6 +467,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Treemap(_) => Some((
+                false,
+                super::treemap::canonical_treemap_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                )
+                .map_err(|_| invalid("failed to write Treemap stylesheet"))?,
+            )),
             SvgStructureBody::Kanban(_) => Some((
                 false,
                 super::kanban::canonical_kanban_css(
@@ -552,6 +571,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Timeline(_)
                 | SvgStructureBody::Journey(_)
+                | SvgStructureBody::Treemap(_)
                 | SvgStructureBody::Kanban(_)
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Venn(_)
@@ -593,6 +613,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::TreeView(_)
             | SvgStructureBody::Gantt(_)
             | SvgStructureBody::GitGraph(_)
+            | SvgStructureBody::Treemap(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -1109,6 +1130,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::GitGraph(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Treemap(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             _ => None,
         }
     }
@@ -1197,6 +1221,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
             {
                 return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Treemap(_)) {
+            let path = self.path_resource(path_id)?;
+            if let Some(bounds) = rectangle_from_path(path) {
+                return self.emit_rect(path_id, bounds, style);
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Kanban(_)) {
@@ -1807,6 +1837,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Treemap(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1939,6 +1974,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Treemap(body) => {
+                let semantic_id = self.current_semantic_id()?;
+                let class = text_index
+                    .and_then(|index| body.text_classes.get(&format!("{semantic_id}#{index}")))
+                    .or_else(|| body.text_classes.get(semantic_id))?;
+                Some(Cow::Owned(class.clone()))
+            }
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
                 Some(id) if id.starts_with("radar.legend.") => {
@@ -2106,6 +2148,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 SvgStructureBody::QuadrantChart(_) => id.starts_with("quadrantchart."),
                 SvgStructureBody::XyChart(_) => id.starts_with("xychart.text."),
                 SvgStructureBody::GitGraph(_) => id.starts_with("gitgraph."),
+                SvgStructureBody::Treemap(_) => id.starts_with("treemap."),
                 _ => false,
             });
         if family_text

@@ -331,6 +331,14 @@ pub(crate) fn render_treemap_diagram_svg(
     root_document.complete(out)
 }
 
+/// Returns the source-backed Treemap stylesheet for the canonical document serializer.
+pub(crate) fn canonical_treemap_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> Result<String> {
+    treemap_css(diagram_id, effective_config)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

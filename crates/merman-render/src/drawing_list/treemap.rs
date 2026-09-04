@@ -56,6 +56,10 @@ struct TreemapBuilder<'a> {
     title_fill: Option<Color>,
     title_font_size: f64,
     text_obligation: TextObligation,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    text_class_counts: BTreeMap<String, usize>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -139,6 +143,10 @@ impl<'a> TreemapBuilder<'a> {
             title_fill: styles.optional_color("treemap.titleColor", &theme.title_color)?,
             title_font_size,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            text_class_counts: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -218,6 +226,9 @@ impl<'a> TreemapBuilder<'a> {
                 family: RenderFamilyKind::Treemap,
                 body: SvgStructureBody::Treemap(TreemapSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -257,12 +268,14 @@ impl<'a> TreemapBuilder<'a> {
                 line_height: self.title_font_size,
             };
             self.emit_text(
+                &semantic_id,
                 &title.text,
                 Point::new(title.x, title.y),
                 TextAnchor::Middle,
                 TextBaseline::Middle,
                 &style,
                 None,
+                "treemapTitle",
             )?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -290,6 +303,11 @@ impl<'a> TreemapBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Treemap section presentation {index}")))?
             .clone();
         let semantic_id = format!("treemap.section.{index}");
+        let section_class = format!("treemapNode section treemapSection section{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), section_class.clone());
+        self.path_classes
+            .insert(format!("{semantic_id}.shape"), section_class);
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -313,7 +331,7 @@ impl<'a> TreemapBuilder<'a> {
                 &path_style,
             )?;
             self.emit_section_label(&semantic_id, &presentation)?;
-            self.emit_section_value(&presentation)?;
+            self.emit_section_value(&semantic_id, &presentation)?;
             self.commands.push(DrawingCommand::Restore);
         }
 
@@ -355,16 +373,22 @@ impl<'a> TreemapBuilder<'a> {
             crate::treemap::TREEMAP_SECTION_HEADER_HEIGHT_PX,
         );
         self.emit_text(
+            semantic_id,
             &presentation.label_text,
             Point::new(presentation.label_x, presentation.label_y),
             TextAnchor::Start,
             TextBaseline::Middle,
             &style,
             Some((format!("{semantic_id}.label.clip"), clip)),
+            "treemapSectionLabel",
         )
     }
 
-    fn emit_section_value(&mut self, presentation: &TreemapSectionPresentation) -> Result<()> {
+    fn emit_section_value(
+        &mut self,
+        semantic_id: &str,
+        presentation: &TreemapSectionPresentation,
+    ) -> Result<()> {
         let Some(value) = presentation
             .value_text
             .as_deref()
@@ -382,12 +406,14 @@ impl<'a> TreemapBuilder<'a> {
             FontStyle::Italic,
         )?;
         self.emit_text(
+            semantic_id,
             value,
             Point::new(presentation.value_x, presentation.value_y),
             TextAnchor::End,
             TextBaseline::Middle,
             &style,
             None,
+            "treemapSectionValue",
         )
     }
 
@@ -405,6 +431,20 @@ impl<'a> TreemapBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Treemap leaf presentation {index}")))?
             .clone();
         let semantic_id = format!("treemap.leaf.{index}");
+        let custom_class = layout
+            .class_selector
+            .as_deref()
+            .filter(|class| !class.trim().is_empty())
+            .map(|class| format!(" {class}x"))
+            .unwrap_or_default();
+        let leaf_group_class =
+            format!("treemapNode leaf treemapLeafGroup leaf{index}x{custom_class}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), leaf_group_class);
+        self.path_classes.insert(
+            format!("{semantic_id}.shape"),
+            format!("treemapNode leaf treemapLeaf leaf{index}"),
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -458,12 +498,14 @@ impl<'a> TreemapBuilder<'a> {
                 FontStyle::Normal,
             )?;
             self.emit_text(
+                semantic_id,
                 &layout.name,
                 Point::new(presentation.label_x, presentation.label_y),
                 TextAnchor::Middle,
                 TextBaseline::Middle,
                 &style,
                 Some((format!("{semantic_id}.label.clip"), clip)),
+                "treemapLabel",
             )?;
         }
         if !presentation.value_hidden
@@ -482,12 +524,14 @@ impl<'a> TreemapBuilder<'a> {
                 FontStyle::Normal,
             )?;
             self.emit_text(
+                semantic_id,
                 value,
                 Point::new(presentation.value_x, presentation.value_y),
                 TextAnchor::Middle,
                 TextBaseline::Hanging,
                 &style,
                 Some((format!("{semantic_id}.value.clip"), clip)),
+                "treemapValue",
             )?;
         }
         Ok(())
@@ -504,12 +548,11 @@ impl<'a> TreemapBuilder<'a> {
         }
         let fill = style
             .fill
-            .map(|color| with_alpha(color, style.fill_opacity))
-            .filter(|color| color.alpha > 0);
+            .map(|color| with_alpha(color, style.fill_opacity));
         let stroke_color = style
             .stroke
-            .map(|color| with_alpha(color, style.stroke_opacity))
-            .filter(|color| color.alpha > 0 && style.stroke_width > 0.0);
+            .filter(|_| style.stroke_width > 0.0)
+            .map(|color| with_alpha(color, style.stroke_opacity));
         if fill.is_none() && stroke_color.is_none() {
             return Ok(());
         }
@@ -569,12 +612,14 @@ impl<'a> TreemapBuilder<'a> {
 
     fn emit_text(
         &mut self,
+        semantic_id: &str,
         text: &str,
         origin: Point,
         anchor: TextAnchor,
         baseline: TextBaseline,
         style: &ResolvedTextStyle,
         clip: Option<(String, Rect)>,
+        class: &str,
     ) -> Result<()> {
         let Some(fill) = style.fill.filter(|fill| fill.alpha > 0) else {
             return Ok(());
@@ -619,12 +664,25 @@ impl<'a> TreemapBuilder<'a> {
                 path: clip_id,
                 fill_rule: FillRule::NonZero,
             });
+            self.record_text_class(semantic_id, class);
             self.commands.push(DrawingCommand::DrawText { run });
             self.commands.push(DrawingCommand::Restore);
         } else {
+            self.record_text_class(semantic_id, class);
             self.commands.push(DrawingCommand::DrawText { run });
         }
         Ok(())
+    }
+
+    fn record_text_class(&mut self, semantic_id: &str, class: &str) {
+        let text_index = self
+            .text_class_counts
+            .entry(semantic_id.to_string())
+            .or_default();
+        let index = *text_index;
+        *text_index = text_index.saturating_add(1);
+        self.text_classes
+            .insert(format!("{semantic_id}#{index}"), class.to_string());
     }
 
     fn measure_text_bounds(
