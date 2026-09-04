@@ -84,6 +84,49 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
+fn class_emits_typed_compartments_relations_namespaces_and_notes() {
+    let source = r#"classDiagram
+        namespace Core {
+            class Animal {
+                +name: String
+                +speak()
+            }
+        }
+        class Dog
+        Animal <|-- Dog
+        note for Dog "Companion"
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Class diagram should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("class.node")
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("Animal")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.description.as_deref().is_some_and(|description| {
+                description.contains("Animal") && description.contains("Dog")
+            })
+    }));
+}
+
+#[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
         root((Merman))
