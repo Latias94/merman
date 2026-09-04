@@ -254,6 +254,11 @@ pub(crate) struct InfoSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct IshikawaSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) font_size: f64,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral Journey document.

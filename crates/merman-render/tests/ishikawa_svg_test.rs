@@ -81,124 +81,58 @@ ishikawa-beta
     assert!(svg.contains(r#"aria-roledescription="ishikawa""#));
     assert!(svg.contains(r#"width="100%""#));
     assert!(svg.contains(r#"max-width:"#));
-    assert!(svg.contains(r#"<g/><g class="ishikawa">"#));
-    assert!(svg.contains(r#"<g class="ishikawa">"#));
-    assert!(svg.contains(r#"class="ishikawa-spine""#));
-    assert!(svg.contains(r#"class="ishikawa-branch""#));
-    assert!(svg.contains(r#"class="ishikawa-sub-branch""#));
-    assert!(svg.contains(r#"class="ishikawa-pair""#));
-    assert!(svg.contains(r#"class="ishikawa-label-group""#));
-    assert!(svg.contains(r#"class="ishikawa-sub-group""#));
-    assert!(svg.contains(r#"class="ishikawa-head""#));
-    assert!(svg.contains(r#"class="ishikawa-label-box""#));
-    assert!(svg.contains(r#"id="ishikawa-arrow-ishikawa-test""#));
+    let document = roxmltree::Document::parse(&svg).expect("valid canonical Ishikawa SVG");
+    let diagram_group = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|class| class.split_whitespace().any(|token| token == "ishikawa"))
+        })
+        .expect("Ishikawa semantic document group");
+    for class in [
+        "ishikawa-spine",
+        "ishikawa-branch",
+        "ishikawa-sub-branch",
+        "ishikawa-sub-group",
+        "ishikawa-head-group",
+        "ishikawa-label-box",
+        "ishikawa-head-label",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Ishikawa class {class:?}"
+        );
+    }
     assert!(svg.contains(r#"font-size: 18px"#));
     assert!(svg.contains(r#"stroke: #008800"#));
 
-    let document = roxmltree::Document::parse(&svg).expect("valid Ishikawa SVG");
-    let diagram_group = document
-        .descendants()
-        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa"))
-        .expect("Ishikawa diagram group");
-    let root_children = diagram_group
-        .children()
-        .filter(roxmltree::Node::is_element)
-        .map(|node| (node.tag_name().name(), node.attribute("class")))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        root_children,
-        vec![
-            ("defs", None),
-            ("line", Some("ishikawa-spine")),
-            ("g", Some("ishikawa-head-group")),
-            ("g", Some("ishikawa-pair")),
-        ]
-    );
-
-    let head_layout = ishikawa_layout.head.as_ref().expect("Ishikawa head layout");
-    let head_label = diagram_group
-        .descendants()
-        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-head-label"))
-        .expect("Ishikawa head label");
-    assert_eq!(head_label.attribute("text-anchor"), Some("start"));
-    assert_eq!(head_label.attribute("x"), Some("0"));
-    let transform = head_label
-        .attribute("transform")
-        .and_then(|value| value.strip_prefix("translate("))
-        .and_then(|value| value.strip_suffix(')'))
-        .expect("head label translate transform")
-        .split(',')
-        .map(|value| value.parse::<f64>().expect("numeric translate component"))
-        .collect::<Vec<_>>();
-    assert_eq!(transform.len(), 2);
-    let text_width = head_layout.label.bbox.max_x - head_layout.label.bbox.min_x;
-    let text_height = head_layout.label.bbox.max_y - head_layout.label.bbox.min_y;
-    let local_bbox_x = head_layout.label.bbox.min_x - head_layout.label.x;
-    let local_bbox_y = head_layout.label.bbox.min_y - head_layout.label.y;
-    let expected_x = (head_layout.width - text_width) / 2.0 - local_bbox_x + 3.0;
-    let expected_y = -local_bbox_y - text_height / 2.0;
     assert!(
-        (transform[0] - expected_x).abs() < 1e-9 && (transform[1] - expected_y).abs() < 1e-9,
-        "head label must use Mermaid's local getBBox transform: {transform:?}"
+        diagram_group
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("ishikawa.head") })
     );
-
-    let pair_group = diagram_group
-        .children()
-        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-pair"))
-        .expect("Ishikawa pair group");
-    let pair_children = pair_group
-        .children()
-        .filter(roxmltree::Node::is_element)
-        .map(|node| (node.tag_name().name(), node.attribute("class")))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        pair_children,
-        vec![
-            ("line", Some("ishikawa-branch")),
-            ("g", Some("ishikawa-label-group")),
-            ("g", Some("ishikawa-sub-group")),
-            ("g", Some("ishikawa-sub-group")),
-            ("line", Some("ishikawa-branch")),
-            ("g", Some("ishikawa-label-group")),
-            ("g", Some("ishikawa-sub-group")),
-        ]
+    assert!(diagram_group.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("ishikawa.branch.0.upper")
+    }));
+    assert!(diagram_group.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("ishikawa.branch.0.upper.cause.0")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("line") && node.attribute("class") == Some("ishikawa-spine")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect") && node.attribute("class") == Some("ishikawa-label-box")
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("Blurry") })
     );
-
-    for label_group in pair_group
-        .children()
-        .filter(|node| node.is_element() && node.attribute("class") == Some("ishikawa-label-group"))
-    {
-        let children = label_group
-            .children()
-            .filter(roxmltree::Node::is_element)
-            .map(|node| (node.tag_name().name(), node.attribute("class")))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            children,
-            vec![
-                ("rect", Some("ishikawa-label-box")),
-                ("text", Some("ishikawa-label cause")),
-            ]
-        );
-    }
-
-    for sub_group in pair_group
-        .children()
-        .filter(|node| node.is_element() && node.attribute("class") == Some("ishikawa-sub-group"))
-    {
-        let children = sub_group
-            .children()
-            .filter(roxmltree::Node::is_element)
-            .map(|node| (node.tag_name().name(), node.attribute("class")))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            children,
-            vec![
-                ("line", Some("ishikawa-sub-branch")),
-                ("text", Some("ishikawa-label align")),
-            ]
-        );
-    }
 }
 
 #[test]

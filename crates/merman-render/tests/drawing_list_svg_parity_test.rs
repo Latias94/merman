@@ -502,3 +502,43 @@ fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
     assert!(!svg.contains("<foreignObject"));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
+    let svg = render_svg(
+        "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n    User\n        Shaky hands\n",
+        "ishikawa-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Ishikawa SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("ishikawa"));
+    assert!(root.attribute("viewBox").is_some());
+    for class in [
+        "ishikawa",
+        "ishikawa-spine",
+        "ishikawa-branch",
+        "ishikawa-sub-branch",
+        "ishikawa-head-label",
+        "ishikawa-label-box",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Ishikawa class {class:?}"
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("ishikawa.head") })
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("Out of focus") })
+    );
+    assert!(!svg.contains("<marker") && !svg.contains("NaN") && !svg.contains("Infinity"));
+}

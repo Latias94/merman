@@ -40,7 +40,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = ishikawa_css(layout, effective_config);
+    let css = ishikawa_css(layout.font_size, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str(r#"<g/><g class="ishikawa">"#);
     options.checkpoint_emit()?;
@@ -465,12 +465,12 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
     out.push_str("</text>");
 }
 
-fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
+pub(super) fn ishikawa_css(font_size_px: f64, effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).ishikawa();
     let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
         .render_settings()
         .font_size_css
-        .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
+        .unwrap_or_else(|| format!("{}px", fmt_string(font_size_px)));
     let line_width = crate::ishikawa::ishikawa_line_stroke_width("ishikawa-spine");
     let sub_branch_width = crate::ishikawa::ishikawa_line_stroke_width("ishikawa-sub-branch");
     let head_font_size = crate::ishikawa::ISHIKAWA_HEAD_LABEL_FONT_SIZE;

@@ -62,6 +62,9 @@ struct IshikawaBuilder<'a> {
     line_color: Option<Color>,
     main_background: Option<Color>,
     text_color: Option<Color>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -116,6 +119,12 @@ impl<'a> IshikawaBuilder<'a> {
             line_color: styles.optional_color("lineColor", &theme.line_color)?,
             main_background: styles.optional_color("mainBkg", &theme.main_bkg)?,
             text_color: styles.optional_color("textColor", &theme.text_color)?,
+            semantic_classes: BTreeMap::from([(
+                "ishikawa.document".to_string(),
+                "ishikawa".to_string(),
+            )]),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -204,6 +213,11 @@ impl<'a> IshikawaBuilder<'a> {
                 family: RenderFamilyKind::Ishikawa,
                 body: SvgStructureBody::Ishikawa(IshikawaSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    font_size: self.layout.font_size,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -240,6 +254,10 @@ impl<'a> IshikawaBuilder<'a> {
 
     fn emit_head(&mut self, head: &IshikawaHeadLayout) -> Result<()> {
         let semantic_id = "ishikawa.head".to_string();
+        self.semantic_classes
+            .insert(semantic_id.clone(), "ishikawa-head-group".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "ishikawa-head-label".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -286,6 +304,12 @@ impl<'a> IshikawaBuilder<'a> {
     ) -> Result<()> {
         let semantic_id = format!("ishikawa.branch.{pair_index}.{side}");
         let title = visible_text(&branch.label_group.label.text);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "ishikawa-branch-group".to_string());
+        self.text_classes.insert(
+            semantic_id.clone(),
+            branch.label_group.label.class_name.clone(),
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -329,6 +353,10 @@ impl<'a> IshikawaBuilder<'a> {
     ) -> Result<()> {
         let semantic_id = format!("{branch_id}.cause.{subgroup_index}");
         let title = visible_text(&subgroup.label.text);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "ishikawa-sub-group".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), subgroup.label.class_name.clone());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -357,6 +385,16 @@ impl<'a> IshikawaBuilder<'a> {
         title: Option<String>,
         description: Option<String>,
     ) -> Result<()> {
+        self.semantic_classes
+            .insert(semantic_id.to_string(), line.class_name.clone());
+        self.path_classes
+            .insert(format!("{semantic_id}.path"), line.class_name.clone());
+        if line.marker_start {
+            self.path_classes.insert(
+                format!("{semantic_id}.marker.start"),
+                "ishikawa-arrow".to_string(),
+            );
+        }
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
@@ -414,6 +452,8 @@ impl<'a> IshikawaBuilder<'a> {
         if fill.is_none() && stroke.is_none() {
             return Ok(());
         }
+        self.path_classes
+            .insert(id.to_string(), "ishikawa-label-box".to_string());
         self.add_path(
             id.to_string(),
             polygon_path(&[
