@@ -399,6 +399,11 @@ pub(crate) struct CynefinSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct GanttSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) bar_height: f64,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral GitGraph document.

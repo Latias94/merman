@@ -73,6 +73,10 @@ struct GanttBuilder<'a> {
     crit_border: Color,
     crit_fill: Color,
     vert_line: Color,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -151,6 +155,10 @@ impl<'a> GanttBuilder<'a> {
             crit_border: color("critBorderColor", &theme.crit_border_color)?,
             crit_fill: color("critBkgColor", &theme.crit_bkg_color)?,
             vert_line: color("vertLineColor", &theme.vert_line_color)?,
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
             theme,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
@@ -250,6 +258,11 @@ impl<'a> GanttBuilder<'a> {
                 family: RenderFamilyKind::Gantt,
                 body: SvgStructureBody::Gantt(GanttSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    bar_height: self.layout.bar_height,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -269,6 +282,12 @@ impl<'a> GanttBuilder<'a> {
 
     fn emit_excludes(&mut self) -> Result<()> {
         for (index, exclude) in self.layout.excludes.iter().enumerate() {
+            self.dom_ids
+                .insert(format!("gantt.exclude.{index}"), exclude.id.clone());
+            self.path_classes.insert(
+                format!("gantt.exclude.{index}"),
+                "exclude-range".to_string(),
+            );
             self.add_path(
                 format!("gantt.exclude.{index}"),
                 rect_path(exclude.x, exclude.y, exclude.width, exclude.height, 0.0),
@@ -283,20 +302,26 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn emit_axis(&mut self, ticks: &[GanttAxisTickLayout], y: f64, bottom: bool) -> Result<()> {
+        let axis_name = if bottom { "bottom" } else { "top" };
+        let axis_semantic_id = format!("gantt.axis.{axis_name}");
+        self.semantic_classes
+            .insert(axis_semantic_id.clone(), "grid".to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: axis_semantic_id.clone(),
+        });
         let range =
             (self.layout.width - self.layout.left_padding - self.layout.right_padding).max(1.0);
         let tick_size = if bottom {
-            self.layout.height - self.layout.top_padding - self.layout.grid_line_start_padding
-        } else {
             -self.layout.height + self.layout.top_padding + self.layout.grid_line_start_padding
+        } else {
+            self.layout.height - self.layout.top_padding - self.layout.grid_line_start_padding
         };
 
+        let domain_id = format!("gantt.axis.{axis_name}.domain");
+        self.path_classes
+            .insert(domain_id.clone(), "domain".to_string());
         self.add_path(
-            if bottom {
-                "gantt.axis.bottom.domain"
-            } else {
-                "gantt.axis.top.domain"
-            },
+            domain_id,
             vec![
                 PathSegment::MoveTo {
                     to: Point::new(self.layout.left_padding + 0.5, y + tick_size),
@@ -320,14 +345,18 @@ impl<'a> GanttBuilder<'a> {
 
         for (index, tick) in ticks.iter().enumerate() {
             let x = tick.x + 0.5;
+            let tick_semantic_id = format!("{axis_semantic_id}.tick.{index}");
+            self.semantic_classes
+                .insert(tick_semantic_id.clone(), "tick".to_string());
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: tick_semantic_id.clone(),
+            });
             self.commands.push(DrawingCommand::Save);
             self.commands
                 .push(DrawingCommand::SetOpacity { opacity: 0.8 });
+            let tick_path_id = format!("gantt.axis.{axis_name}.tick.{index}");
             self.add_path(
-                format!(
-                    "gantt.axis.{}.tick.{index}",
-                    if bottom { "bottom" } else { "top" }
-                ),
+                tick_path_id,
                 vec![
                     PathSegment::MoveTo {
                         to: Point::new(x, y),
@@ -346,10 +375,7 @@ impl<'a> GanttBuilder<'a> {
 
             let text_y = if bottom { y + 13.0 } else { y - 3.0 };
             self.emit_text(
-                &format!(
-                    "gantt.axis.{}.tick.{index}.label",
-                    if bottom { "bottom" } else { "top" }
-                ),
+                &format!("{tick_semantic_id}.label"),
                 &tick.label,
                 Point::new(x, text_y),
                 10.0,
@@ -360,13 +386,31 @@ impl<'a> GanttBuilder<'a> {
                 false,
                 false,
             )?;
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.semantics.push(SemanticAnnotation {
+                id: tick_semantic_id,
+                role: SemanticRole::Label,
+                title: Some(tick.label.clone()),
+                description: None,
+                link: None,
+            });
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.semantics.push(SemanticAnnotation {
+            id: axis_semantic_id,
+            role: SemanticRole::Group,
+            title: Some(format!("{} axis", if bottom { "Bottom" } else { "Top" })),
+            description: None,
+            link: None,
+        });
         Ok(())
     }
 
     fn emit_rows(&mut self) -> Result<()> {
         for (index, row) in self.layout.rows.iter().enumerate() {
             let fill = self.row_fill(row);
+            self.path_classes
+                .insert(format!("gantt.row.{index}"), row.class.clone());
             self.commands.push(DrawingCommand::Save);
             self.commands
                 .push(DrawingCommand::SetOpacity { opacity: 0.2 });
@@ -397,6 +441,10 @@ impl<'a> GanttBuilder<'a> {
                 semantic_id: semantic_id.clone(),
             });
             let (fill, border, stroke_width) = self.task_style(source);
+            let bar_id = format!("{semantic_id}.bar");
+            self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
+            self.path_classes
+                .insert(bar_id.clone(), task.bar.class.clone());
             let path = if source.milestone {
                 transformed_rect_path(
                     task.bar.x,
@@ -417,7 +465,7 @@ impl<'a> GanttBuilder<'a> {
                 )
             };
             self.add_path(
-                format!("{semantic_id}.bar"),
+                bar_id,
                 path,
                 PathStyle {
                     fill_rule: FillRule::NonZero,
@@ -434,6 +482,12 @@ impl<'a> GanttBuilder<'a> {
             };
             let anchor = label_anchor(&task.label.class);
             let clickable = source.classes.iter().any(|class| class == "clickable");
+            self.text_classes.insert(
+                semantic_id.clone(),
+                task_label_classes(task, source, self.layout),
+            );
+            self.dom_ids
+                .insert(semantic_id.clone(), task.label.id.clone());
             self.emit_text(
                 &format!("{semantic_id}.label"),
                 &task.label.text,
@@ -465,6 +519,8 @@ impl<'a> GanttBuilder<'a> {
     fn emit_section_titles(&mut self) -> Result<()> {
         for (index, section) in self.layout.section_titles.iter().enumerate() {
             let semantic_id = format!("gantt.section.{index}");
+            self.text_classes
+                .insert(semantic_id.clone(), section.class.clone());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -524,6 +580,10 @@ impl<'a> GanttBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: "gantt.today".to_string(),
         });
+        self.semantic_classes
+            .insert("gantt.today".to_string(), "today".to_string());
+        self.path_classes
+            .insert("gantt.today.line".to_string(), "today".to_string());
         self.commands.push(DrawingCommand::Save);
         self.commands.push(DrawingCommand::SetOpacity { opacity });
         self.add_path(
@@ -555,6 +615,8 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn emit_title(&mut self, title: &str) -> Result<()> {
+        self.text_classes
+            .insert("gantt.title".to_string(), "titleText".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: "gantt.title".to_string(),
         });
@@ -865,6 +927,65 @@ fn validate_rect(x: f64, y: f64, width: f64, height: f64, kind: &str) -> Result<
 
 fn find_task<'a>(model: &'a GanttDiagramRenderModel, id: &str) -> Option<&'a GanttRenderTask> {
     model.tasks.iter().find(|task| task.id == id)
+}
+
+fn task_label_classes(
+    layout_task: &crate::model::GanttTaskLayout,
+    source: &GanttRenderTask,
+    layout: &GanttDiagramLayout,
+) -> String {
+    let section = crate::gantt::gantt_section_class_suffix(
+        &source.task_type,
+        &layout.categories,
+        layout.number_section_styles,
+    );
+    let mut state_classes = String::new();
+    let mut push_class = |class: String| {
+        if !state_classes.is_empty() {
+            state_classes.push(' ');
+        }
+        state_classes.push_str(&class);
+    };
+    if source.active {
+        if source.crit {
+            push_class(format!("activeCritText{section}"));
+        } else {
+            push_class(format!("activeText{section}"));
+        }
+    }
+    if source.done {
+        if source.crit {
+            push_class(format!("doneCritText{section}"));
+        } else {
+            push_class(format!("doneText{section}"));
+        }
+    } else if source.crit {
+        push_class(format!("critText{section}"));
+    }
+    if source.milestone {
+        push_class("milestoneText".to_string());
+    }
+    if source.vert {
+        push_class("vertText".to_string());
+    }
+    gantt_insert_before_width(&layout_task.label.class, state_classes.as_str())
+}
+
+fn gantt_insert_before_width(base: &str, insert: &str) -> String {
+    let insert = insert.trim();
+    if insert.is_empty() {
+        return base.to_string();
+    }
+    let mut parts: Vec<&str> = base.split_whitespace().collect();
+    let insert_parts: Vec<&str> = insert.split_whitespace().collect();
+    if let Some(index) = parts.iter().position(|part| part.starts_with("width-")) {
+        for (offset, part) in insert_parts.iter().enumerate() {
+            parts.insert(index + offset, part);
+        }
+    } else {
+        parts.extend(insert_parts);
+    }
+    parts.join(" ")
 }
 
 fn class_suffix(class: &str) -> Option<usize> {

@@ -211,8 +211,23 @@ section Delivery
 Task: 2024-01-01, 1d
 "#,
     );
+    let title_texts = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Gantt SVG XML");
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_whitespace().any(|token| token == "titleText")
+                    })
+            })
+            .filter_map(|node| node.text().map(str::to_owned))
+            .collect::<Vec<_>>()
+    };
     assert!(
-        frontmatter_svg.contains(r#"class="titleText">Frontmatter schedule</text>"#),
+        title_texts(&frontmatter_svg)
+            .iter()
+            .any(|title| title == "Frontmatter schedule"),
         "frontmatter title should render when the Gantt body has none: {frontmatter_svg}"
     );
 
@@ -227,8 +242,13 @@ section Delivery
 Task: 2024-01-01, 1d
 "#,
     );
-    assert!(body_svg.contains(r#"class="titleText">Body schedule</text>"#));
-    assert!(!body_svg.contains(">Frontmatter schedule</text>"));
+    let body_titles = title_texts(&body_svg);
+    assert!(body_titles.iter().any(|title| title == "Body schedule"));
+    assert!(
+        !body_titles
+            .iter()
+            .any(|title| title == "Frontmatter schedule")
+    );
 }
 
 #[test]
@@ -244,11 +264,15 @@ fn gantt_explicit_whitespace_title_overrides_frontmatter_without_trimming() {
         "Task: 2024-01-01, 1d\n",
     ));
 
-    assert!(
-        svg.contains(r#"class="titleText"> </text>"#),
-        "the one remaining Jison separator must be rendered exactly: {svg}"
-    );
-    assert!(!svg.contains(">Frontmatter schedule</text>"));
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.split_whitespace().any(|token| token == "titleText"))
+            && node.text() == Some(" ")
+    }));
+    assert!(!svg.contains("Frontmatter schedule"));
 }
 
 #[test]
@@ -281,30 +305,46 @@ gantt
             && svg.contains(r#"style="max-width: 420px; background-color: white;""#),
         "frontmatter gantt.useWidth should set rendered SVG width: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+    let class_has = |node: roxmltree::Node<'_, '_>, token: &str| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|value| value == token))
+    };
     assert_eq!(
-        svg.matches(r#"<g class="grid" transform="translate(75, 50)""#)
-            .count(),
-        1,
-        "frontmatter gantt.topAxis should add the top axis grid at top padding: {svg}"
-    );
-    assert_eq!(
-        svg.matches(r#"<g class="grid" transform="translate(75, "#)
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && class_has(*node, "grid"))
             .count(),
         2,
         "frontmatter gantt.topAxis should render both top and bottom axes: {svg}"
     );
-    assert!(
-        svg.contains(r#"width="415" height="24" class="section section0""#)
-            && svg.contains(r#"width="415" height="24" class="section section1""#),
-        "frontmatter gantt.rightPadding and numberSectionStyles should affect visible rows: {svg}"
-    );
-    assert!(
-        svg.contains(r#"class="sectionTitle sectionTitle0""#)
-            && svg.contains(r#"class="sectionTitle sectionTitle1""#)
-            && svg.contains(r#"id="gantt-config-a1""#)
-            && svg.contains(r#"id="gantt-config-b1-text""#),
-        "configured Gantt SVG should expose section classes and scoped task DOM: {svg}"
-    );
+    for section in ["section0", "section1"] {
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("rect")
+                    && class_has(node, section)
+                    && node.attribute("width") == Some("415")
+                    && node.attribute("height") == Some("24")
+            }),
+            "frontmatter Gantt row {section} should reflect configured width: {svg}"
+        );
+    }
+    for id in ["gantt-config-a1", "gantt-config-b1-text"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(id)),
+            "configured Gantt SVG should expose scoped DOM id {id}: {svg}"
+        );
+    }
+    for section in ["sectionTitle0", "sectionTitle1"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && class_has(node, section)),
+            "configured Gantt SVG should expose section title class {section}: {svg}"
+        );
+    }
 }
 
 #[test]

@@ -238,6 +238,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+        }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
@@ -359,6 +362,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::Gantt(_body) => {
+                Ok(root_svg::RootViewportSpec::responsive(viewport_bounds)
+                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width)))
+            }
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -457,6 +464,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Gantt(_) => Some((
+                false,
+                super::gantt::canonical_gantt_css(self.diagram_id.as_str(), self.effective_config),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -496,6 +507,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Ishikawa(_)
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::TreeView(_)
+                | SvgStructureBody::Gantt(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -522,6 +534,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::EventModeling(_)
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::TreeView(_)
+            | SvgStructureBody::Gantt(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -978,6 +991,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::TreeView(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Gantt(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1129,6 +1145,30 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_rounded_rect(path_id, bounds, radius, style);
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if raw_id == "gantt.background"
+                || raw_id.starts_with("gantt.exclude.")
+                || raw_id.starts_with("gantt.row.")
+                || raw_id.starts_with("gantt.task.") && raw_id.ends_with(".bar")
+            {
+                if let Some((bounds, radius)) = rounded_rectangle_from_path(path) {
+                    if radius > 0.0 {
+                        return self.emit_rounded_rect(path_id, bounds, radius, style);
+                    }
+                    return self.emit_rect(path_id, bounds, style);
+                }
+                if let Some(bounds) = rectangle_from_path(path) {
+                    return self.emit_rect(path_id, bounds, style);
+                }
+            }
+            if (raw_id == "gantt.today.line" || raw_id.contains(".tick."))
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
@@ -1136,6 +1176,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
+        self.write_gantt_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1207,6 +1248,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
+        self.write_gantt_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1247,6 +1289,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.height),
         )
         .map_err(|_| invalid("failed to write SVG rectangle"))?;
+        self.write_gantt_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1279,6 +1322,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(radius),
         )
         .map_err(|_| invalid("failed to write rounded SVG rectangle"))?;
+        self.write_gantt_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1336,6 +1380,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(end.y),
         )
         .map_err(|_| invalid("failed to write SVG line"))?;
+        self.write_gantt_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1379,6 +1424,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.origin.y)
         )
         .map_err(|_| invalid("failed to write text origin"))?;
+        let semantic_id = self.current_semantic_id().map(str::to_owned);
+        if let Some(semantic_id) = semantic_id.as_deref() {
+            self.write_gantt_dom_id(semantic_id);
+        }
         let text_index = self.record_text_index();
         if let Some(class) = self.text_class(run, text_index) {
             let class = class.into_owned();
@@ -1425,6 +1474,19 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(" xml:lang=\"");
             escape_attr_into(&mut self.output, language);
             self.output.push_str("\"");
+        }
+        if let SvgStructureBody::Gantt(body) = self.svg_body
+            && self
+                .effective_config
+                .get("securityLevel")
+                .and_then(Value::as_str)
+                == Some("loose")
+            && self
+                .current_semantic_id()
+                .is_some_and(|id| id.starts_with("gantt.task."))
+        {
+            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))
+                .map_err(|_| invalid("failed to write Gantt task text height"))?;
         }
         self.write_paint("fill", &run.style.fill)?;
         self.write_state_attrs();
@@ -1495,6 +1557,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Gantt(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1522,6 +1589,21 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         None
+    }
+
+    fn write_gantt_dom_id(&mut self, key: &str) {
+        let Some(raw_id) = (match self.svg_body {
+            SvgStructureBody::Gantt(body) => body.dom_ids.get(key),
+            _ => None,
+        })
+        .cloned() else {
+            return;
+        };
+        self.output.push_str(" id=\"");
+        escape_attr_into(&mut self.output, self.diagram_id.as_str());
+        self.output.push('-');
+        escape_attr_into(&mut self.output, raw_id.as_str());
+        self.output.push('"');
     }
 
     fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<Cow<'_, str>> {
@@ -1563,6 +1645,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::TreeView(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Gantt(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),

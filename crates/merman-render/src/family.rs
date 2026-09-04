@@ -1140,6 +1140,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Ishikawa
             | RenderFamilyKind::Cynefin
             | RenderFamilyKind::TreeView
+            | RenderFamilyKind::Gantt
             | RenderFamilyKind::XyChart
     )
 }

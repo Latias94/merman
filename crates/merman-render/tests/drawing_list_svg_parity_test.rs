@@ -628,3 +628,79 @@ fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
     );
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
+    let svg = render_svg(
+        "gantt\n  title Release Plan\n  dateFormat YYYY-MM-DD\n  topAxis\n  todayMarker off\n  section Core\n  Build :a1, 2026-01-01, 4d\n  Ship :crit, milestone, 2026-01-05, 1d\n  section Follow-up\n  Docs :done, 2026-01-06, 2d\n",
+        "gantt-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Gantt SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("gantt"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    for class in [
+        "grid",
+        "tick",
+        "section0",
+        "section1",
+        "task0",
+        "done1",
+        "critText0",
+        "doneText1",
+        "milestoneText",
+        "sectionTitle",
+        "titleText",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Gantt class {class:?}"
+        );
+    }
+    for semantic_id in [
+        "gantt.axis.top",
+        "gantt.axis.bottom",
+        "gantt.section.0",
+        "gantt.task.0",
+        "gantt.task.1",
+        "gantt.task.2",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.attribute("data-merman-semantic-id") == Some(semantic_id) }),
+            "expected canonical Gantt semantic id {semantic_id:?}"
+        );
+    }
+    for dom_id in [
+        "gantt-parity-a1",
+        "gantt-parity-a1-text",
+        "gantt-parity-task1",
+        "gantt-parity-task1-text",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(dom_id)),
+            "expected scoped Gantt DOM id {dom_id:?}"
+        );
+    }
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node
+                .attribute("class")
+                .is_some_and(|value| value.split_whitespace().any(|token| token == "task"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.text().is_some_and(|text| text == "Release Plan")
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

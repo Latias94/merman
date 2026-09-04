@@ -28,7 +28,7 @@ inventory row fails at test time.  The current inventory is:
 | Wardley | yes | legacy bridge |
 | Railroad | yes | canonical |
 | Kanban | yes | legacy bridge |
-| Gantt | yes | legacy bridge |
+| Gantt | yes | canonical |
 | Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | canonical |
