@@ -1142,6 +1142,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::TreeView
             | RenderFamilyKind::Gantt
             | RenderFamilyKind::Journey
+            | RenderFamilyKind::Kanban
             | RenderFamilyKind::XyChart
     )
 }

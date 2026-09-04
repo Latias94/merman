@@ -784,3 +784,56 @@ fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
     assert!(!svg.contains("<foreignObject"));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn kanban_canonical_svg_keeps_sections_cards_ticket_links_and_plain_text() {
+    let svg = render_svg(
+        r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
+kanban
+  todo[Todo]
+    task[Task]@{ ticket: K-1, assigned: "Ada", priority: "High" }
+"##,
+        "kanban-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Kanban SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("kanban"));
+    assert_eq!(root.attribute("viewBox"), Some("90 -310 220 111"));
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("id") == Some("kanban-parity-todo")
+            && node.attribute("data-look") == Some("classic")
+            && node
+                .attribute("class")
+                .is_some_and(|value| value.split_whitespace().any(|token| token == "section-1"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.attribute("id") == Some("kanban-parity-task")
+            && node
+                .attribute("class")
+                .is_some_and(|value| value.split_whitespace().any(|token| token == "node"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node
+                .attribute("class")
+                .is_some_and(|value| value.contains("label-container"))
+    }));
+    assert!(svg.contains(
+        r#"<a class="kanban-ticket-link" xlink:href="https://example.test/tickets/K-1""#
+    ));
+    for text in ["Todo", "Task", "K-1", "Ada"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some(text)),
+            "expected canonical Kanban text {text:?}"
+        );
+    }
+    assert!(!svg.contains("<foreignObject"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

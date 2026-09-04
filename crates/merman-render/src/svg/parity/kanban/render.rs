@@ -4,7 +4,7 @@ use crate::kanban::{
     KanbanPreparedLabelGeometry,
 };
 
-fn kanban_css(
+pub(super) fn kanban_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
 ) -> Result<String> {

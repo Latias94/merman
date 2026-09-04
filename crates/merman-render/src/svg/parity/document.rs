@@ -249,6 +249,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.responsive_height_placement =
                 root_svg::RootResponsiveHeightPlacement::AfterExtraAttrs;
         }
+        if matches!(self.svg_body, SvgStructureBody::Kanban(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
@@ -347,6 +351,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_mermaid_responsive_height(body.use_max_width, body.svg_height)
             .with_fixed_size(body.width, body.svg_height)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(body.width))),
+            SvgStructureBody::Kanban(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             SvgStructureBody::Sankey(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -441,6 +452,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Kanban(_) => Some((
+                false,
+                super::kanban::canonical_kanban_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                )?,
+            )),
             SvgStructureBody::Sankey(_) => Some((
                 false,
                 super::sankey_css(self.diagram_id.as_str(), self.effective_config),
@@ -523,6 +541,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Timeline(_)
                 | SvgStructureBody::Journey(_)
+                | SvgStructureBody::Kanban(_)
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Railroad(_)
@@ -553,6 +572,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Timeline(_)
             | SvgStructureBody::Journey(_)
+            | SvgStructureBody::Kanban(_)
             | SvgStructureBody::Venn(_)
             | SvgStructureBody::Railroad(_)
             | SvgStructureBody::EventModeling(_)
@@ -939,16 +959,44 @@ impl<'a> DocumentSvgEncoder<'a> {
             .link
             .as_deref()
             .and_then(|value| prepare_mermaid_navigation_uri(value, security));
-        let linked = link.is_some();
-        if let Some(link) = link {
+        let kanban_ticket_href = match self.svg_body {
+            SvgStructureBody::Kanban(body) if semantic_id.starts_with("kanban.item.") => {
+                body.ticket_links.get(semantic_id).cloned()
+            }
+            _ => None,
+        };
+        let kanban_ticket_anchor = kanban_ticket_href.is_some();
+        let linked = link.is_some() || kanban_ticket_anchor;
+        if kanban_ticket_anchor {
+            self.output.push_str("<a class=\"kanban-ticket-link\"");
+            if let Some(href) = kanban_ticket_href.flatten() {
+                self.output.push_str(" xlink:href=\"");
+                // KanbanPreparedTicketLink already owns the serialized SVG attribute value.
+                self.output.push_str(href.as_str());
+                self.output.push('"');
+            }
+            if security == MermaidNavigationSecurity::Loose {
+                self.output.push_str(" target=\"_blank\"");
+            }
+            self.output.push('>');
+        } else if let Some(link) = link {
             self.output.push_str("<a href=\"");
             escape_attr_into(&mut self.output, link.as_str());
             self.output.push_str("\">");
         }
+        write!(self.output, "<g id=\"{}\"", escaped_attr(svg_id.as_str()))
+            .map_err(|_| invalid("failed to write semantic group"))?;
+        if let SvgStructureBody::Kanban(body) = self.svg_body
+            && semantic_id.starts_with("kanban.section.")
+        {
+            // Preserve Mermaid's stable section attribute ordering for DOM consumers.
+            self.output.push_str(" data-look=\"");
+            escape_attr_into(&mut self.output, body.look.as_str());
+            self.output.push('"');
+        }
         write!(
             self.output,
-            "<g id=\"{}\" class=\"merman-semantic {}{}\" role=\"group\" data-merman-semantic-id=\"{}\"",
-            escaped_attr(svg_id.as_str()),
+            " class=\"merman-semantic {}{}\" role=\"group\" data-merman-semantic-id=\"{}\"",
             role_class,
             self.semantic_extra_class(semantic_id)
                 .map_or_else(String::new, |class| format!(" {class}")),
@@ -995,6 +1043,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Journey(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::Kanban(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Sankey(body) => {
@@ -1112,6 +1163,20 @@ impl<'a> DocumentSvgEncoder<'a> {
                 && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
             {
                 return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Kanban(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if raw_id.ends_with(".background")
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+            if raw_id.ends_with(".priority")
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_))
@@ -1621,6 +1686,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Kanban(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1727,6 +1797,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Journey(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Kanban(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
@@ -1979,6 +2053,11 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn semantic_svg_id(&self, id: &str) -> Result<String> {
+        if let SvgStructureBody::Kanban(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
         self.semantic_svg_ids
             .get(id)
             .cloned()

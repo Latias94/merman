@@ -88,6 +88,11 @@ struct KanbanBuilder<'a> {
     background: Color,
     node_border: Color,
     text_obligation: TextObligation,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
+    ticket_links: BTreeMap<String, Option<String>>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -164,6 +169,11 @@ impl<'a> KanbanBuilder<'a> {
             background,
             node_border,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
+            ticket_links: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -234,6 +244,13 @@ impl<'a> KanbanBuilder<'a> {
                 family: RenderFamilyKind::Kanban,
                 body: SvgStructureBody::Kanban(KanbanSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    look: self.look,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    dom_ids: self.dom_ids,
+                    ticket_links: self.ticket_links,
                 }),
             },
         })
@@ -250,6 +267,11 @@ impl<'a> KanbanBuilder<'a> {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("kanban.section.{index}");
             let (fill, border) = self.section_colors(section.index)?;
+            self.semantic_classes.insert(
+                semantic_id.clone(),
+                format!("cluster undefined section-{}", section.index),
+            );
+            self.dom_ids.insert(semantic_id.clone(), section.id.clone());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -272,6 +294,8 @@ impl<'a> KanbanBuilder<'a> {
             let max_width = section.width.max(1.0);
             let plan = self.prepared_label_plan(prepared, max_width)?;
             if !plan.is_empty() {
+                self.text_classes
+                    .insert(semantic_id.clone(), "nodeLabel".to_string());
                 let left = section.center_x - section.width / 2.0;
                 let label_left = left + (section.width - plan.width).max(0.0) / 2.0;
                 let label_height = section
@@ -327,6 +351,24 @@ impl<'a> KanbanBuilder<'a> {
             }
 
             let semantic_id = format!("kanban.item.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "node undefined".to_string());
+            self.dom_ids.insert(semantic_id.clone(), item.id.clone());
+            self.path_classes.insert(
+                format!("{semantic_id}.background"),
+                "basic label-container __APA__".to_string(),
+            );
+            self.text_classes
+                .insert(semantic_id.clone(), "nodeLabel".to_string());
+            if let Some(ticket_link) = prepared.ticket_link.as_ref() {
+                self.ticket_links.insert(
+                    semantic_id.clone(),
+                    ticket_link
+                        .href
+                        .as_ref()
+                        .map(|href| href.as_serialized_str().to_string()),
+                );
+            }
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -403,6 +445,8 @@ impl<'a> KanbanBuilder<'a> {
             }
 
             if let Some(priority) = item.priority.as_deref().filter(|value| !value.is_empty()) {
+                self.path_classes
+                    .insert(format!("{semantic_id}.priority"), "priority".to_string());
                 self.emit_priority_line(&semantic_id, item, priority)?;
             }
 

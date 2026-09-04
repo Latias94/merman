@@ -278,6 +278,13 @@ pub(crate) struct JourneySvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct KanbanSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) look: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) ticket_links: BTreeMap<String, Option<String>>,
 }
 
 /// SVG-only metadata retained beside the public Pie document.
