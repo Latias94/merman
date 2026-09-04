@@ -28,12 +28,17 @@ Observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529
 | Workspace crates and FFI source (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm`) | `0.8.0-alpha.6` visible on crates.io | No action |
 | CLI/LSP archives | Present on the alpha.6 GitHub Release | No action |
 | Typst `@preview/merman:0.3.0` | Published on 2026-09-01 from the alpha.6 source line | No action; reconcile docs only |
-| Python `merman` | PyPI has no `0.8.0a6` wheel; latest observed release is `0.8.0a3` | Dispatch `release-python.yml` with publication enabled |
-| Android AAR | No alpha.6 AAR asset on the GitHub Release | Dispatch `release-android.yml` |
-| Apple XCFramework | No alpha.6 XCFramework asset on the GitHub Release | Dispatch `release-apple.yml` |
-| Web npm group | All five public packages stop at `0.8.0-alpha.5` | Dispatch `release-web.yml` with the immutable alpha.6 tag |
-| Node npm group | Six existing packages stop at `0.8.0-alpha.5`; `@mermanjs/node-wasm` has no registry version | Build one verified group, then perform the documented 2FA bootstrap |
-| Flutter `merman` | pub.dev has no `0.8.0-alpha.6`; `flutter-v0.8.0-alpha.6` tag is absent | Validate, then push the dedicated Flutter tag |
+| Python `merman` | PyPI exposes `0.8.0a6` with the three expected wheels, and the same hashes are attached to the alpha.6 GitHub Release | No action; reconciled by `release-python.yml` run `33862859069` |
+| Android AAR | `merman-android-v0.8.0-alpha.6.aar` is attached to the alpha.6 GitHub Release | No action; reconciled by `release-android.yml` run `33858143487` |
+| Apple XCFramework | `Merman.xcframework-v0.8.0-alpha.6.zip` and its checksum are attached to the alpha.6 GitHub Release | No action; reconciled by `release-apple.yml` run `33858143156` |
+| Web npm group | All five public packages expose `0.8.0-alpha.6`, the `alpha` tag, the original package-group integrities, and npm provenance attestations | No action; recovered from original run `33858142954` by `release-web.yml` run `33865637706` |
+| Node npm group | The exact seven-package alpha.6 artifact from run `33858143339` is verified; `@mermanjs/node-wasm` still needs its first registry publication | Maintainer 2FA bootstrap from that exact artifact, then configure Trusted Publishing for all seven names |
+| Flutter `merman` | pub.dev exposes `0.8.0-alpha.6` from the pushed `flutter-v0.8.0-alpha.6` tag | No action; published by tag-triggered run `33862063296` |
+
+The Python wheel and Flutter package archive were built before this post-publication documentation
+reconciliation, so their immutable alpha.6 payloads may retain prepared-candidate wording in
+embedded README or changelog text. The current source guidance is corrected on `main`; the
+immutable payloads are not rewritten, and the wording correction will ship with the next version.
 
 VS Code currently produces GitHub Actions VSIX artifacts only, Homebrew validates stable formulae, and
 Android Maven Central and the Typst wrapper do not share the workspace crates.io publication path.

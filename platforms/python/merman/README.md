@@ -4,7 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `6`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. This repository documents the prepared `0.8.0a6` source candidate; the PyPI prerelease channel is an independent publication and may resolve an older package until the matching wheel is authorized.
+> **Alpha:** Python and native APIs may break before the stable release. The package currently targets direct UniFFI binding API `6`, which is independent from the C ABI and text-measurement protocol. Install the Python wheel and native library as one artifact rather than mixing releases. PyPI publishes `0.8.0a6` for macOS arm64, manylinux x86_64, and Windows x86_64 from the verified alpha.6 release artifact.
 
 ## Install
 
@@ -14,7 +14,9 @@ Install the published prerelease channel from PyPI only after checking that its 
 python -m pip install --pre merman
 ```
 
-For alpha.6 candidate work, build the wheel and native library from the exact commit accepted by release preflight and keep those artifacts paired; do not assume that the registry command above installs the source candidate.
+For a reproducible alpha.6 install, pin `python -m pip install 'merman==0.8.0a6'`.
+
+For source work, build the wheel and native library from the exact reviewed commit and keep those artifacts paired with the same binding contract.
 
 Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
 

@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.8.0-alpha.6] - 2026-09-02
 
-This section describes the prepared alpha.6 source candidate. The Android artifact channel remains independently published and requires the matching Kotlin sources and native library before adoption.
+This section describes alpha.6, whose matching Android AAR was attached to the GitHub Release on 2026-09-04.
 
 ### Added
 
