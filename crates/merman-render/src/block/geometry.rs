@@ -217,8 +217,16 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
         label_height,
         padding,
     } = inputs;
-    let rect_w = (label_width + 4.0 * padding).max(1.0);
-    let rect_h = (label_height + padding).max(1.0);
+    // `squareRect` passes `labelPaddingX = padding * 2` and
+    // `labelPaddingY = padding` to `drawRect`, which applies each padding on both
+    // sides.  Rounded blocks use the separate `roundedRect` helper and pass one
+    // padding unit on each axis.  Keep the two intrinsic contracts distinct so
+    // the layout measurement and positioned writer agree with Mermaid.
+    let square_width = (label_width + 4.0 * padding).max(1.0);
+    let square_height = (label_height + 2.0 * padding).max(1.0);
+    let round_width = (label_width + 2.0 * padding).max(1.0);
+    let round_height = square_height;
+    let shape_height = (label_height + padding).max(1.0);
     let block_arrow_height = label_height + 2.0 * padding;
     let natural_block_arrow_width = label_width + block_arrow_height + padding;
 
@@ -230,8 +238,8 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
             kind: BlockRectangleKind::Composite,
         },
         "group" => BlockShapeBoundary::Rectangle {
-            width: rect_w,
-            height: rect_h,
+            width: square_width,
+            height: square_height,
             radius: 0.0,
             kind: BlockRectangleKind::Basic,
         },
@@ -253,8 +261,8 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
             }
         }
         "stadium" => BlockShapeBoundary::Stadium {
-            width: (label_width + rect_h / 4.0 + padding).max(1.0),
-            height: rect_h,
+            width: (label_width + shape_height / 4.0 + padding).max(1.0),
+            height: shape_height,
         },
         "cylinder" => {
             let width = (label_width + padding).max(1.0);
@@ -296,7 +304,7 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
             }
         }
         "hexagon" => {
-            let height = rect_h;
+            let height = shape_height;
             let shoulder = height / 4.0;
             let width = (label_width + 2.0 * shoulder + padding).max(1.0);
             let shoulder = height / 4.0;
@@ -350,14 +358,14 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
             polygon_boundary(points, width, block_arrow_height)
         }
         "round" => BlockShapeBoundary::Rectangle {
-            width: rect_w,
-            height: rect_h,
+            width: round_width,
+            height: round_height,
             radius: 5.0,
             kind: BlockRectangleKind::Basic,
         },
         _ => BlockShapeBoundary::Rectangle {
-            width: rect_w,
-            height: rect_h,
+            width: square_width,
+            height: square_height,
             radius: 0.0,
             kind: BlockRectangleKind::Basic,
         },
@@ -1391,6 +1399,24 @@ mod tests {
             )
             .is_none(),
             "space is allocation-only and must not fabricate a visible boundary"
+        );
+    }
+
+    #[test]
+    fn square_and_round_intrinsic_sizes_match_mermaid_padding_contracts() {
+        let directions = Vec::new();
+
+        assert_eq!(
+            natural_shape_size("square", &directions, 64.0, 24.0, 8.0, true),
+            Some((96.0, 40.0))
+        );
+        assert_eq!(
+            natural_shape_size("round", &directions, 64.0, 24.0, 8.0, true),
+            Some((80.0, 40.0))
+        );
+        assert_eq!(
+            natural_shape_size("default", &directions, 64.0, 24.0, 8.0, true),
+            Some((96.0, 40.0))
         );
     }
 }
