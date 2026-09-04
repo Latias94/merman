@@ -100,7 +100,7 @@ Rel(customer, system, "Uses")"#,
 }
 
 #[test]
-fn journey_marker_ids_are_prefixed_with_diagram_svg_id() {
+fn journey_canonical_svg_expands_activity_arrowhead_into_geometry() {
     let svg = render_svg_from_text(
         r#"journey
 title My day
@@ -110,7 +110,14 @@ section Work
         "m15-journey",
     );
 
-    assert_scoped_marker(&svg, "m15-journey", "arrowhead");
+    assert!(
+        !svg.contains("<marker"),
+        "canonical Journey should not depend on SVG marker definitions:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"data-merman-resource="journey.activity.arrowhead""#),
+        "canonical Journey should keep explicit activity arrowhead geometry:\n{svg}"
+    );
 }
 
 #[test]

@@ -32,7 +32,7 @@ inventory row fails at test time.  The current inventory is:
 | Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | canonical |
-| Journey | yes | legacy bridge |
+| Journey | yes | canonical |
 | Requirement | yes | legacy bridge |
 | Sankey | yes | canonical |
 | Radar | yes | canonical |

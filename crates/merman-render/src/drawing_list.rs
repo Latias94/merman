@@ -265,6 +265,13 @@ pub(crate) struct IshikawaSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct JourneySvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) width: f64,
+    pub(crate) svg_height: f64,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral Kanban document.

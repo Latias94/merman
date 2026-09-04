@@ -241,6 +241,14 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
             chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
+        let journey_extra_attrs = [("preserveAspectRatio", "xMinYMin meet")];
+        if matches!(self.svg_body, SvgStructureBody::Journey(_)) {
+            chrome.extra_attrs = &journey_extra_attrs;
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+            chrome.dom.responsive_height_placement =
+                root_svg::RootResponsiveHeightPlacement::AfterExtraAttrs;
+        }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
@@ -332,6 +340,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::Journey(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )
+            .with_mermaid_responsive_height(body.use_max_width, body.svg_height)
+            .with_fixed_size(body.width, body.svg_height)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(body.width))),
             SvgStructureBody::Sankey(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -419,6 +434,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::Journey(_) => Some((
+                false,
+                super::journey::canonical_journey_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             SvgStructureBody::Sankey(_) => Some((
                 false,
                 super::sankey_css(self.diagram_id.as_str(), self.effective_config),
@@ -500,6 +522,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::QuadrantChart(_)
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Timeline(_)
+                | SvgStructureBody::Journey(_)
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Railroad(_)
@@ -529,6 +552,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::QuadrantChart(_)
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Timeline(_)
+            | SvgStructureBody::Journey(_)
             | SvgStructureBody::Venn(_)
             | SvgStructureBody::Railroad(_)
             | SvgStructureBody::EventModeling(_)
@@ -970,6 +994,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Timeline(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Journey(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::Sankey(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1063,6 +1090,28 @@ impl<'a> DocumentSvgEncoder<'a> {
             let path = self.path_resource(path_id)?;
             if let Some((start, end)) = line_from_path(path) {
                 return self.emit_line(path_id, start, end, style);
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Journey(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if (raw_id.ends_with(".line") || raw_id == "journey.activity.line")
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if (raw_id.ends_with(".circle")
+                || raw_id.ends_with(".face")
+                || raw_id.ends_with(".left_eye")
+                || raw_id.ends_with(".right_eye"))
+                && let Some((center, radius)) = circle_from_path(path)
+            {
+                return self.emit_circle(path_id, center, radius, style);
+            }
+            if raw_id.ends_with(".background")
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_))
@@ -1177,6 +1226,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
         self.write_gantt_dom_id(path_id.as_str());
+        self.write_journey_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1249,6 +1299,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
         self.write_gantt_dom_id(path_id.as_str());
+        self.write_journey_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1290,6 +1341,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         )
         .map_err(|_| invalid("failed to write SVG rectangle"))?;
         self.write_gantt_dom_id(path_id.as_str());
+        self.write_journey_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1323,6 +1375,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         )
         .map_err(|_| invalid("failed to write rounded SVG rectangle"))?;
         self.write_gantt_dom_id(path_id.as_str());
+        self.write_journey_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1381,6 +1434,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         )
         .map_err(|_| invalid("failed to write SVG line"))?;
         self.write_gantt_dom_id(path_id.as_str());
+        self.write_journey_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -1562,6 +1616,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Journey(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1594,6 +1653,21 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn write_gantt_dom_id(&mut self, key: &str) {
         let Some(raw_id) = (match self.svg_body {
             SvgStructureBody::Gantt(body) => body.dom_ids.get(key),
+            _ => None,
+        })
+        .cloned() else {
+            return;
+        };
+        self.output.push_str(" id=\"");
+        escape_attr_into(&mut self.output, self.diagram_id.as_str());
+        self.output.push('-');
+        escape_attr_into(&mut self.output, raw_id.as_str());
+        self.output.push('"');
+    }
+
+    fn write_journey_dom_id(&mut self, key: &str) {
+        let Some(raw_id) = (match self.svg_body {
+            SvgStructureBody::Journey(body) => body.dom_ids.get(key),
             _ => None,
         })
         .cloned() else {
@@ -1649,6 +1723,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Gantt(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Journey(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),

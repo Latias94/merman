@@ -704,3 +704,83 @@ fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
     }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
+    let svg = render_svg(
+        "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob\n    Review: 1: Alice\n",
+        "journey-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Journey SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("journey"));
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-journey-parity")
+    );
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.contains("background-color: white;"))
+    );
+    assert_eq!(root.attribute("preserveAspectRatio"), Some("xMinYMin meet"));
+    for class in [
+        "legend",
+        "journey-section",
+        "section-type-0",
+        "task",
+        "task-type-0",
+        "task-line",
+        "face",
+        "mouth",
+        "actor-0",
+        "actor-1",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical Journey class {class:?}"
+        );
+    }
+    for semantic_id in [
+        "journey.document",
+        "journey.actor.0",
+        "journey.section.0",
+        "journey.task.0",
+        "journey.task.1",
+        "journey.activity",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.attribute("data-merman-semantic-id") == Some(semantic_id) }),
+            "expected canonical Journey semantic id {semantic_id:?}"
+        );
+    }
+    for dom_id in [
+        "journey-parity-task0",
+        "journey-parity-task1",
+        "journey-parity-task2",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(dom_id)),
+            "expected scoped Journey task line id {dom_id:?}"
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("circle"))
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.text().is_some_and(|text| text == "User checkout")
+    }));
+    assert!(svg.contains(r#"data-merman-resource="journey.activity.arrowhead""#));
+    assert!(!svg.contains("<foreignObject"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

@@ -69,6 +69,10 @@ struct JourneyBuilder<'a> {
     title_color: Color,
     actor_color_overrides: Vec<Option<Color>>,
     text_obligation: TextObligation,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -180,6 +184,10 @@ impl<'a> JourneyBuilder<'a> {
             title_color,
             actor_color_overrides,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -269,6 +277,18 @@ impl<'a> JourneyBuilder<'a> {
                 family: RenderFamilyKind::Journey,
                 body: SvgStructureBody::Journey(JourneySvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    width: self.layout.width,
+                    svg_height: self.layout.svg_height
+                        + if title_from_metadata {
+                            JOURNEY_TITLE_EXTRA_HEIGHT_PX
+                        } else {
+                            0.0
+                        },
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -278,9 +298,17 @@ impl<'a> JourneyBuilder<'a> {
         let legend_font = self.legend_font.clone();
         for (index, item) in self.layout.actor_legend.iter().enumerate() {
             let semantic_id = format!("journey.actor.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "legend".to_string());
+            self.text_classes
+                .insert(semantic_id.clone(), "legend".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
+            self.path_classes.insert(
+                format!("{semantic_id}.circle"),
+                format!("actor-{}", item.pos),
+            );
             self.add_path(
                 format!("{semantic_id}.circle"),
                 ellipse_path(item.circle_cx, item.circle_cy, item.circle_r, item.circle_r),
@@ -319,11 +347,18 @@ impl<'a> JourneyBuilder<'a> {
         for (index, section) in self.layout.sections.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("journey.section.{index}");
+            let section_class = format!("journey-section section-type-{}", section.num);
+            self.semantic_classes
+                .insert(semantic_id.clone(), section_class.clone());
+            self.text_classes
+                .insert(semantic_id.clone(), section_class.clone());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
             let fill =
                 PortableStyleResolver::new("journey").color("section.fill", &section.fill)?;
+            self.path_classes
+                .insert(format!("{semantic_id}.background"), section_class);
             self.add_path(
                 format!("{semantic_id}.background"),
                 rounded_rect_path(
@@ -363,9 +398,17 @@ impl<'a> JourneyBuilder<'a> {
         for (index, task) in self.layout.tasks.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let semantic_id = format!("journey.task.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "task".to_string());
+            self.text_classes
+                .insert(semantic_id.clone(), "task".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
+            self.dom_ids
+                .insert(format!("{semantic_id}.line"), task.line_id.clone());
+            self.path_classes
+                .insert(format!("{semantic_id}.line"), "task-line".to_string());
             self.add_path(
                 format!("{semantic_id}.line"),
                 line_path(
@@ -385,6 +428,8 @@ impl<'a> JourneyBuilder<'a> {
             let face_y = task
                 .face_cy
                 .ok_or_else(|| unavailable("Journey score produced non-finite face geometry"))?;
+            self.path_classes
+                .insert(format!("{semantic_id}.face"), "face".to_string());
             self.add_path(
                 format!("{semantic_id}.face"),
                 ellipse_path(
@@ -435,6 +480,10 @@ impl<'a> JourneyBuilder<'a> {
             )?;
 
             let fill = PortableStyleResolver::new("journey").color("task.fill", &task.fill)?;
+            self.path_classes.insert(
+                format!("{semantic_id}.background"),
+                format!("task task-type-{}", task.num),
+            );
             self.add_path(
                 format!("{semantic_id}.background"),
                 rounded_rect_path(
@@ -485,6 +534,10 @@ impl<'a> JourneyBuilder<'a> {
         actor: &JourneyTaskActorCircleLayout,
     ) -> Result<()> {
         let semantic_id = format!("{task_id}.actor.{index}");
+        self.path_classes.insert(
+            format!("{semantic_id}.circle"),
+            format!("actor-{}", actor.pos),
+        );
         self.add_path(
             format!("{semantic_id}.circle"),
             ellipse_path(actor.cx, actor.cy, actor.r, actor.r),
@@ -505,6 +558,8 @@ impl<'a> JourneyBuilder<'a> {
     }
 
     fn emit_mouth(&mut self, id: &str, mouth: JourneyMouthKind, cx: f64, cy: f64) -> Result<()> {
+        self.path_classes
+            .insert(id.to_string(), "mouth".to_string());
         match mouth {
             JourneyMouthKind::Smile => self.add_path(
                 id,
