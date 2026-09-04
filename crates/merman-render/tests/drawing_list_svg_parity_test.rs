@@ -587,3 +587,44 @@ fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
     );
     assert!(!svg.contains("<marker") && !svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
+    let svg = render_svg(
+        "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
+        "tree-view-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical TreeView SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("treeView"));
+    assert!(root.attribute("viewBox").is_some());
+    for class in [
+        "tree-view",
+        "treeView-node-line",
+        "treeView-node-icon",
+        "treeView-node-label",
+        "treeView-node-dir",
+        "treeView-node-description",
+        "treeView-highlight-bg",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical TreeView class {class:?}"
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("treeView.node.0") })
+    );
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("text") && node.text() == Some("main.rs") })
+    );
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

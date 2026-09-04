@@ -176,7 +176,7 @@ fn push_tree_view_node(
     Ok(())
 }
 
-fn tree_view_css(effective_config: &serde_json::Value) -> String {
+pub(super) fn tree_view_css(effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(

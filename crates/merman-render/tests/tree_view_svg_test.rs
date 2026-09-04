@@ -94,14 +94,16 @@ fn tree_view_icon_group_for_label<'a, 'input>(
         .descendants()
         .find(|node| node.has_tag_name("text") && node.text() == Some(label))
         .expect("TreeView label node");
-    label_node
-        .parent()
-        .expect("TreeView node group")
-        .children()
-        .find(|node| {
-            node.has_tag_name("g") && node.attribute("class") == Some("treeView-node-icon")
-        })
-        .expect("inline TreeView icon group")
+    let mut ancestor = label_node.parent();
+    while let Some(node) = ancestor {
+        if let Some(icon_group) = node.children().find(|child| {
+            child.has_tag_name("g") && child.attribute("class") == Some("treeView-node-icon")
+        }) {
+            return icon_group;
+        }
+        ancestor = node.parent();
+    }
+    panic!("TreeView icon group");
 }
 
 fn tree_view_icon_svg_for_label<'a, 'input>(
@@ -154,9 +156,20 @@ treeView-beta
     assert!(svg.contains(r#"width="100%""#));
     assert!(svg.contains(r#"style="max-width: "#));
     assert!(svg.contains(r#"viewBox="-1.5 0 "#));
-    assert!(svg.contains(r#"<g/><g class="tree-view">"#));
-    assert!(svg.contains(r#"<g class="tree-view">"#));
-    assert!(svg.contains(r#"<g><text dominant-baseline="middle""#));
+    let document = roxmltree::Document::parse(&svg).expect("valid canonical TreeView SVG");
+    assert!(svg.contains("<g/>") || svg.contains("<g />"));
+    assert!(document.descendants().any(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|token| token == "tree-view"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.attribute("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|token| token == "treeView-node-label")
+            })
+    }));
     assert!(svg.contains(r#"class="treeView-node-label""#));
     assert!(svg.contains(r#"class="treeView-node-line""#));
     assert!(svg.contains(r#"font-size: 20px"#));
@@ -194,8 +207,12 @@ accDescr: Accessible TreeView Description
         r#"aria-describedby="chart-desc-tree-view-a11y-test" aria-labelledby="chart-title-tree-view-a11y-test""#
     ));
     assert!(svg.contains(
-        r#"<title id="chart-title-tree-view-a11y-test">Accessible TreeView Title</title><desc id="chart-desc-tree-view-a11y-test">Accessible TreeView Description</desc><style>"#
+        r#"<title id="chart-title-tree-view-a11y-test">Accessible TreeView Title</title>"#
     ));
+    assert!(svg.contains(
+        r#"<desc id="chart-desc-tree-view-a11y-test">Accessible TreeView Description</desc>"#
+    ));
+    assert!(svg.contains("<style>"));
 }
 
 #[test]

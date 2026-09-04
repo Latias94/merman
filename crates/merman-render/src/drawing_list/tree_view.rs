@@ -64,6 +64,9 @@ struct TreeViewBuilder<'a> {
     description_color: Option<Color>,
     highlight_fill: Option<Color>,
     highlight_stroke: Option<Color>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -148,6 +151,12 @@ impl<'a> TreeViewBuilder<'a> {
                 .then(|| styles.optional_color("treeView.highlightStroke", &theme.highlight_stroke))
                 .transpose()?
                 .flatten(),
+            semantic_classes: BTreeMap::from([(
+                "treeView.document".to_string(),
+                "tree-view".to_string(),
+            )]),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -220,6 +229,10 @@ impl<'a> TreeViewBuilder<'a> {
                 family: RenderFamilyKind::TreeView,
                 body: SvgStructureBody::TreeView(TreeViewSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -227,6 +240,10 @@ impl<'a> TreeViewBuilder<'a> {
 
     fn emit_background(&mut self) -> Result<()> {
         let left = -self.layout.line_thickness / 2.0;
+        self.path_classes.insert(
+            "treeView.background".to_string(),
+            "treeView-background".to_string(),
+        );
         self.add_path(
             "treeView.background".to_string(),
             polygon_path(&[
@@ -255,6 +272,8 @@ impl<'a> TreeViewBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing TreeView node {node_index}")))?
             .clone();
         let semantic_id = format!("treeView.node.{}", node.id);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "treeView-node".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -266,6 +285,10 @@ impl<'a> TreeViewBuilder<'a> {
                 stroke: self.highlight_stroke.map(|color| stroke(color, 1.0)),
             };
             if highlight_style.fill.is_some() || highlight_style.stroke.is_some() {
+                self.path_classes.insert(
+                    format!("{semantic_id}.highlight"),
+                    HIGHLIGHT_BACKGROUND_CLASS.to_string(),
+                );
                 self.add_path(
                     format!("{semantic_id}.highlight"),
                     rounded_rect_path(
@@ -312,6 +335,8 @@ impl<'a> TreeViewBuilder<'a> {
             return Err(invalid("TreeView icon color was not resolved"));
         };
         let id = ResourceId::new(format!("{semantic_id}.icon"));
+        self.path_classes
+            .insert(id.as_str().to_string(), "treeView-node-icon".to_string());
         self.resources.push(DrawingResource::Path(PathResource {
             id: id.clone(),
             segments: parse_svg_path(icon.path_data)?,
@@ -375,6 +400,14 @@ impl<'a> TreeViewBuilder<'a> {
         } else {
             self.normal_font.clone()
         };
+        let semantic_id = format!("treeView.node.{}.label", node.id);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "treeView-node-label-group".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), tree_view_label_classes(node));
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.clone(),
+        });
         self.emit_text(
             &node.name,
             Point::new(node.label_x, node.label_y),
@@ -387,6 +420,14 @@ impl<'a> TreeViewBuilder<'a> {
             font,
             fill,
         );
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id,
+            role: SemanticRole::Label,
+            title: Some(node.name.clone()),
+            description: None,
+            link: None,
+        });
         Ok(())
     }
 
@@ -403,6 +444,16 @@ impl<'a> TreeViewBuilder<'a> {
                 node.name
             )));
         };
+        let semantic_id = format!("treeView.node.{}.description", node.id);
+        self.semantic_classes.insert(
+            semantic_id.clone(),
+            "treeView-node-description-group".to_string(),
+        );
+        self.text_classes
+            .insert(semantic_id.clone(), DESCRIPTION_CLASS.to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.clone(),
+        });
         self.emit_text(
             description,
             Point::new(x, node.label_y),
@@ -415,6 +466,14 @@ impl<'a> TreeViewBuilder<'a> {
             self.description_font.clone(),
             fill,
         );
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id,
+            role: SemanticRole::Label,
+            title: Some(description.to_string()),
+            description: None,
+            link: None,
+        });
         Ok(())
     }
 
@@ -455,6 +514,10 @@ impl<'a> TreeViewBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing TreeView line {line_index}")))?
             .clone();
         let semantic_id = format!("treeView.line.{line_index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), LINE_CLASS.to_string());
+        self.path_classes
+            .insert(format!("{semantic_id}.path"), LINE_CLASS.to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -595,6 +658,22 @@ fn node_has_class(node: &TreeViewNodeLayout, expected: &str) -> bool {
     node.css_class
         .as_deref()
         .is_some_and(|classes| classes.split_whitespace().any(|class| class == expected))
+}
+
+fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
+    let mut classes = vec!["treeView-node-label".to_string()];
+    if tree_view_node_is_directory(node) {
+        classes.push(DIRECTORY_CLASS.to_string());
+    }
+    if let Some(css_class) = node.css_class.as_deref() {
+        classes.extend(
+            css_class
+                .split_whitespace()
+                .filter(|class| !class.is_empty())
+                .map(str::to_string),
+        );
+    }
+    classes.join(" ")
 }
 
 fn line_path(line: &TreeViewLineLayout) -> Vec<PathSegment> {

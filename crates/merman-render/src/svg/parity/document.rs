@@ -355,6 +355,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::TreeView(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -446,6 +450,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
+            SvgStructureBody::TreeView(_) => Some((
+                false,
+                super::tree_view::canonical_tree_view_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -484,6 +495,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::EventModeling(_)
                 | SvgStructureBody::Ishikawa(_)
                 | SvgStructureBody::Cynefin(_)
+                | SvgStructureBody::TreeView(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -509,6 +521,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Railroad(_)
             | SvgStructureBody::EventModeling(_)
             | SvgStructureBody::Cynefin(_)
+            | SvgStructureBody::TreeView(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -962,6 +975,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Cynefin(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::TreeView(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::XyChart(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1090,10 +1106,104 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_rect(path_id, bounds, style);
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id.starts_with("treeView.node.") && raw_id.ends_with(".icon") {
+                let path = self.path_resource(path_id)?.clone();
+                return self.emit_tree_view_icon(path_id, &path, style);
+            }
+            let path = self.path_resource(path_id)?;
+            if raw_id.ends_with(".path")
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if raw_id == "treeView.background"
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if raw_id.ends_with(".highlight")
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
         };
+        self.output.push_str("<path d=\"");
+        escape_attr_into(&mut self.output, path_data.as_str());
+        self.output.push_str("\"");
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push_str("\"");
+        }
+        self.write_path_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_tree_view_icon(
+        &mut self,
+        path_id: &ResourceId,
+        path: &PathResource,
+        style: &PathStyle,
+    ) -> Result<()> {
+        let transform = self.state.transform;
+        if transform.b.abs() > 1e-9
+            || transform.c.abs() > 1e-9
+            || (transform.a - transform.d).abs() > 1e-9
+            || !transform.a.is_finite()
+            || transform.a <= 0.0
+        {
+            return self.emit_path_as_standard(path_id, path, style);
+        }
+        let path_data = path_d(&path.segments);
+        self.output
+            .push_str("<g class=\"treeView-node-icon\" transform=\"translate(");
+        write!(self.output, "{},{}\">", fmt(transform.e), fmt(transform.f))
+            .map_err(|_| invalid("failed to write TreeView icon transform"))?;
+        if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
+            // The icon group is emitted inside the current state, so preserve state attributes on
+            // the nested SVG rather than changing the path's resolved geometry.
+            self.output.pop();
+            self.output.push(' ');
+            if self.state.opacity != 1.0 {
+                write!(self.output, "opacity=\"{}\"", fmt(self.state.opacity))
+                    .map_err(|_| invalid("failed to write TreeView icon opacity"))?;
+            }
+            write_blend_style(&mut self.output, self.state.blend_mode);
+            self.output.push('>');
+        }
+        write!(
+            self.output,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 24 24\"><path d=\"{}\"",
+            fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
+            fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
+            escaped_attr(path_data.as_str()),
+        )
+        .map_err(|_| invalid("failed to write TreeView icon SVG"))?;
+        self.write_path_style(style)?;
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        self.output.push_str("</svg></g>");
+        Ok(())
+    }
+
+    fn emit_path_as_standard(
+        &mut self,
+        path_id: &ResourceId,
+        path: &PathResource,
+        style: &PathStyle,
+    ) -> Result<()> {
+        let path_data = path_d(&path.segments);
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
         self.output.push_str("\"");
@@ -1141,6 +1251,38 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
+    fn emit_rounded_rect(
+        &mut self,
+        path_id: &ResourceId,
+        bounds: Rect,
+        radius: f64,
+        style: &PathStyle,
+    ) -> Result<()> {
+        self.output.push_str("<rect x=\"");
+        write!(
+            self.output,
+            "{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height),
+            fmt(radius),
+            fmt(radius),
+        )
+        .map_err(|_| invalid("failed to write rounded SVG rectangle"))?;
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push('"');
         }
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -1348,6 +1490,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::TreeView(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1412,6 +1559,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Cynefin(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::TreeView(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
@@ -1739,6 +1890,108 @@ fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
     let max_y = first.y.max(second.y).max(third.y).max(fourth.y);
     let bounds = Rect::new(x, y, max_x - x, max_y - y);
     (bounds.width > 0.0 && bounds.height > 0.0).then_some(bounds)
+}
+
+fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {
+    let [
+        PathSegment::MoveTo { to: p0 },
+        PathSegment::LineTo { to: p1 },
+        PathSegment::ArcTo {
+            radius_x: r1x,
+            radius_y: r1y,
+            x_axis_rotation_degrees: rot1,
+            large_arc: large1,
+            sweep_clockwise: sweep1,
+            to: p2,
+        },
+        PathSegment::LineTo { to: p3 },
+        PathSegment::ArcTo {
+            radius_x: r2x,
+            radius_y: r2y,
+            x_axis_rotation_degrees: rot2,
+            large_arc: large2,
+            sweep_clockwise: sweep2,
+            to: p4,
+        },
+        PathSegment::LineTo { to: p5 },
+        PathSegment::ArcTo {
+            radius_x: r3x,
+            radius_y: r3y,
+            x_axis_rotation_degrees: rot3,
+            large_arc: large3,
+            sweep_clockwise: sweep3,
+            to: p6,
+        },
+        PathSegment::LineTo { to: p7 },
+        PathSegment::ArcTo {
+            radius_x: r4x,
+            radius_y: r4y,
+            x_axis_rotation_degrees: rot4,
+            large_arc: large4,
+            sweep_clockwise: sweep4,
+            to: p8,
+        },
+        PathSegment::Close,
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+    let epsilon = 1e-9;
+    let same = |left: f64, right: f64| (left - right).abs() <= epsilon;
+    let radius = *r1x;
+    if !radius.is_finite()
+        || radius <= 0.0
+        || !same(*r1x, *r1y)
+        || !same(*r1x, *r2x)
+        || !same(*r1x, *r2y)
+        || !same(*r1x, *r3x)
+        || !same(*r1x, *r3y)
+        || !same(*r1x, *r4x)
+        || !same(*r1x, *r4y)
+        || [*rot1, *rot2, *rot3, *rot4]
+            .into_iter()
+            .any(|value| value.abs() > epsilon)
+        || [*large1, *large2, *large3, *large4]
+            .into_iter()
+            .any(|value| value)
+        || [*sweep1, *sweep2, *sweep3, *sweep4]
+            .into_iter()
+            .any(|value| !value)
+    {
+        return None;
+    }
+    let left = p7.x;
+    let right = p2.x;
+    let top = p0.y;
+    let bottom = p5.y;
+    if [left, right, top, bottom]
+        .into_iter()
+        .any(|value| !value.is_finite())
+        || !same(p0.x, left + radius)
+        || !same(p1.x, right - radius)
+        || !same(p1.y, top)
+        || !same(p2.x, right)
+        || !same(p2.y, top + radius)
+        || !same(p3.x, right)
+        || !same(p3.y, bottom - radius)
+        || !same(p4.x, right - radius)
+        || !same(p4.y, bottom)
+        || !same(p5.x, left + radius)
+        || !same(p6.x, left)
+        || !same(p6.y, bottom - radius)
+        || !same(p7.x, left)
+        || !same(p7.y, top + radius)
+        || !same(p8.x, left + radius)
+        || !same(p8.y, top)
+    {
+        return None;
+    }
+    let bounds = Rect::new(left, top, right - left, bottom - top);
+    (bounds.width > 0.0
+        && bounds.height > 0.0
+        && radius <= bounds.width / 2.0
+        && radius <= bounds.height / 2.0)
+        .then_some((bounds, radius))
 }
 
 fn line_from_path(path: &PathResource) -> Option<(Point, Point)> {

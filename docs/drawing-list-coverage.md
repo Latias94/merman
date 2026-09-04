@@ -43,7 +43,7 @@ inventory row fails at test time.  The current inventory is:
 | QuadrantChart | yes | canonical |
 | XYChart | yes | canonical |
 | GitGraph | yes | legacy bridge |
-| TreeView | yes | legacy bridge |
+| TreeView | yes | canonical |
 | Ishikawa | yes | canonical |
 | EventModeling | yes | canonical |
 | Venn | yes | canonical |
