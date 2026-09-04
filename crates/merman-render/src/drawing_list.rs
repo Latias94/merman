@@ -333,6 +333,12 @@ pub(crate) struct RailroadSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) semantic_looks: BTreeMap<String, String>,
+    pub(crate) semantic_color_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public Sankey document.

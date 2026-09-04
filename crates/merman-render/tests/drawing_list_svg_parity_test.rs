@@ -126,6 +126,87 @@ fn packet_canonical_svg_keeps_root_profile_and_packet_dom_roles() {
 }
 
 #[test]
+fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
+    let svg = render_svg(
+        r#"requirementDiagram
+  direction LR
+  accTitle: Requirement parity
+  accDescr: A portable requirement graph
+  requirement req1 {
+    id: REQ-1
+    text: Login
+    risk: high
+    verifymethod: test
+  }
+  element system {
+    type: service
+    docref: docs
+  }
+  system - satisfies -> req1
+"#,
+        "requirement-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Requirement SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("requirementDiagram"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.starts_with("max-width: "))
+    );
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-requirement-parity")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-requirement-parity")
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("requirement.node.0")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.split_whitespace().any(|token| token == "node"))
+            && node.attribute("data-look") == Some("classic")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-semantic-id") == Some("requirement.edge.0")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.contains("edgePath"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.contains("relationshipLine"))
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.has_tag_name("path") && node.attribute("class") == Some("reqBox") })
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("divider")
+        })
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("text") && node.attribute("class") == Some("reqLabel")
+        })
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("text") && node.attribute("class") == Some("edgeLabel")
+        })
+    );
+    assert!(svg.contains(".reqBox{"));
+    assert!(svg.contains(".relationshipLine{"));
+}
+
+#[test]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",

@@ -1001,7 +1001,7 @@ gitGraph
 }
 
 #[test]
-fn requirement_default_visible_rough_stroke_uses_node_border() {
+fn requirement_default_visible_stroke_uses_node_border() {
     let svg = render_svg(
         "requirement-default-stroke",
         r##"requirementDiagram
@@ -1022,9 +1022,15 @@ fn requirement_default_visible_rough_stroke_uses_node_border() {
     );
     assert!(
         svg.contains(
-            r##"stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
+            r##"class="reqBox" fill-rule="nonzero" fill="#ececff" stroke="#9370db" stroke-width="1.3""##,
         ),
-        "Requirement visible rough shape/divider strokes should use nodeBorder by default: {svg}"
+        "Requirement canonical shape strokes should use nodeBorder by default: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"class="divider" fill-rule="nonzero" fill="none" stroke="#9370db" stroke-width="1.3""##,
+        ),
+        "Requirement canonical divider strokes should use nodeBorder by default: {svg}"
     );
 }
 

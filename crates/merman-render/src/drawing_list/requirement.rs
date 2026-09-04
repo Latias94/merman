@@ -93,6 +93,11 @@ struct RequirementBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    semantic_looks: BTreeMap<String, String>,
+    semantic_color_ids: BTreeMap<String, String>,
 }
 
 impl<'a> RequirementBuilder<'a> {
@@ -193,6 +198,11 @@ impl<'a> RequirementBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            semantic_looks: BTreeMap::new(),
+            semantic_color_ids: BTreeMap::new(),
         })
     }
 
@@ -209,6 +219,8 @@ impl<'a> RequirementBuilder<'a> {
             description: self.model.acc_descr.clone(),
             link: None,
         });
+        self.semantic_looks
+            .insert("requirement.document".to_string(), "classic".to_string());
 
         self.emit_edges()?;
         self.emit_edge_labels()?;
@@ -259,6 +271,16 @@ impl<'a> RequirementBuilder<'a> {
                 family: RenderFamilyKind::Requirement,
                 body: SvgStructureBody::Requirement(RequirementSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: crate::requirement::RequirementConfigView::new(
+                        self.metadata.effective_config.as_value(),
+                    )
+                    .render_settings()
+                    .use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    semantic_looks: self.semantic_looks,
+                    semantic_color_ids: self.semantic_color_ids,
                 }),
             },
         })
@@ -275,6 +297,10 @@ impl<'a> RequirementBuilder<'a> {
                 ))
             })?;
             let semantic_id = format!("requirement.edge.{index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "edgePath".to_string());
+            self.semantic_looks
+                .insert(semantic_id.clone(), "classic".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -285,6 +311,17 @@ impl<'a> RequirementBuilder<'a> {
             } else {
                 vec![10.0, 7.0]
             };
+            self.path_classes.insert(
+                format!("{semantic_id}.route"),
+                format!(
+                    "edge-thickness-normal edge-pattern-{} relationshipLine",
+                    if dash_array.is_empty() {
+                        "solid"
+                    } else {
+                        "dashed"
+                    }
+                ),
+            );
             self.add_path(
                 format!("{semantic_id}.route"),
                 segments,
@@ -335,6 +372,14 @@ impl<'a> RequirementBuilder<'a> {
             })?;
             let text = plain_markdown(&prepared.display_text)?;
             let semantic_id = format!("requirement.edge.{index}.label");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "edgeLabel".to_string());
+            self.semantic_looks
+                .insert(semantic_id.clone(), "classic".to_string());
+            self.path_classes
+                .insert(format!("{semantic_id}.background"), "labelBkg".to_string());
+            self.text_classes
+                .insert(semantic_id.clone(), "edgeLabel".to_string());
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -411,6 +456,16 @@ impl<'a> RequirementBuilder<'a> {
                 )));
             };
             let semantic_id = format!("requirement.node.{source_index}");
+            self.semantic_classes
+                .insert(semantic_id.clone(), "node default".to_string());
+            self.semantic_looks
+                .insert(semantic_id.clone(), "classic".to_string());
+            if !self.border_colors.is_empty() {
+                self.semantic_color_ids.insert(
+                    semantic_id.clone(),
+                    format!("color-{}", source_index % self.border_colors.len()),
+                );
+            }
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -423,6 +478,8 @@ impl<'a> RequirementBuilder<'a> {
                 0.0,
             );
             if style.fill.is_some() || style.stroke.is_some() {
+                self.path_classes
+                    .insert(format!("{semantic_id}.shape"), "reqBox".to_string());
                 self.add_path(
                     format!("{semantic_id}.shape"),
                     shape.clone(),
@@ -435,6 +492,8 @@ impl<'a> RequirementBuilder<'a> {
             }
             self.emit_node_labels(&semantic_id, node, plan, style)?;
             if let Some(divider_offset) = plan.divider_y_offset {
+                self.path_classes
+                    .insert(format!("{semantic_id}.divider"), "divider".to_string());
                 self.add_path(
                     format!("{semantic_id}.divider"),
                     vec![
@@ -483,6 +542,10 @@ impl<'a> RequirementBuilder<'a> {
                 (TextAnchor::Start, node.x + LABEL_PADDING_PX / 2.0)
             };
             let origin_y = node.y + line.y_offset + LABEL_PADDING_PX;
+            self.text_classes.insert(
+                format!("{semantic_id}.label.{index}"),
+                "reqLabel".to_string(),
+            );
             self.emit_text(
                 &format!("{semantic_id}.label.{index}"),
                 &text,
@@ -605,6 +668,8 @@ impl<'a> RequirementBuilder<'a> {
                 center.y + normal.y * 9.0 * scale,
             ),
         ));
+        self.path_classes
+            .insert(format!("{semantic_id}.marker.start"), "marker".to_string());
         self.add_path(
             format!("{semantic_id}.marker.start"),
             segments,
@@ -635,6 +700,8 @@ impl<'a> RequirementBuilder<'a> {
             base.x - normal.x * 10.0 * scale,
             base.y - normal.y * 10.0 * scale,
         );
+        self.path_classes
+            .insert(format!("{semantic_id}.marker.end"), "marker".to_string());
         self.add_path(
             format!("{semantic_id}.marker.end"),
             vec![
@@ -679,6 +746,10 @@ impl<'a> RequirementBuilder<'a> {
             TextAnchor::Middle,
             TextBaseline::Alphabetic,
         )?;
+        self.text_classes.insert(
+            "requirement.title".to_string(),
+            "requirementDiagramTitleText".to_string(),
+        );
         self.semantics.push(SemanticAnnotation {
             id: "requirement.title".to_string(),
             role: SemanticRole::Label,
