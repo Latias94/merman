@@ -28,6 +28,24 @@ class PythonWheelLicenseTests(unittest.TestCase):
             with self.subTest(wheel=wheel):
                 self.assertEqual(licenses.wheel_target(Path(wheel)), target)
 
+    def test_wheel_platform_for_target_matches_single_target_wheel_tags(self) -> None:
+        cases = {
+            "aarch64-apple-darwin": "macosx-11.0-arm64",
+            "x86_64-pc-windows-msvc": "win-amd64",
+            "x86_64-unknown-linux-gnu": "linux-x86_64",
+        }
+        for target, platform in cases.items():
+            with self.subTest(target=target):
+                self.assertEqual(licenses.wheel_platform_for_target(target), platform)
+
+    def test_wheel_target_rejects_a_universal2_tag_for_a_single_target_build(self) -> None:
+        wheel = Path("merman-0.8.0a6-py3-none-macosx_11_0_universal2.whl")
+        with self.assertRaisesRegex(
+            licenses.PythonWheelLicenseError,
+            "cannot map Python wheel platform tag",
+        ):
+            licenses.wheel_target(wheel)
+
     def test_install_and_wheel_verification_use_the_same_target_report_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
