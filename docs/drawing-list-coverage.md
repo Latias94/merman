@@ -53,3 +53,17 @@ to `canonical` only after a focused SVG parity fixture proves that root geometry
 obligations, and effect disposition remain source-backed.  Unsupported browser-only effects must
 remain explicit DrawingList errors or bounded raster fallbacks; they must not be hidden by the
 bridge.
+
+## Exercised effect accounting
+
+`fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by
+`drawing_list_effect_accounting`.  It covers the visual constructs currently exercised by admitted
+fixtures: portable path paint, host text, gradients, clips, and semantic links, plus explicit
+fail-closed outcomes for browser-wrapped text, filters, hand-drawn RoughJS output, and external
+icon registry content.  Each row is executed against the typed renderer and must produce its
+declared vector or structured-error disposition; no row may be an unclassified best effort.
+
+The matrix intentionally does not claim that every protocol resource kind is emitted by a current
+family.  Patterns, inline images, glyph/outline text, and raster subtrees remain protocol-level
+capabilities with dedicated display-list validation fixtures until a family admits them through a
+source-backed renderer slice.

@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "effects": [
+    {
+      "id": "path-fill-stroke",
+      "disposition": "vector",
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\n",
+      "assertion": "path_fill_stroke",
+      "evidence": "DrawingCommand::DrawPath with resolved fill and stroke"
+    },
+    {
+      "id": "host-text",
+      "disposition": "vector",
+      "family": "info",
+      "source": "info",
+      "assertion": "host_text",
+      "evidence": "DrawingCommand::DrawText with TextObligation::HostText"
+    },
+    {
+      "id": "linear-gradient",
+      "disposition": "vector",
+      "family": "sankey",
+      "source": "sankey\nSource,Target,10\n",
+      "assertion": "linear_gradient",
+      "evidence": "DrawingResource::LinearGradient referenced by a link paint"
+    },
+    {
+      "id": "clip-path",
+      "disposition": "vector",
+      "family": "treemap",
+      "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+      "assertion": "clip_path",
+      "evidence": "DrawingCommand::ClipPath scopes a section paint"
+    },
+    {
+      "id": "semantic-link",
+      "disposition": "vector",
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\nclick A \"https://example.invalid/start\"\n",
+      "assertion": "semantic_link",
+      "evidence": "SemanticAnnotation.link carries a sanitized navigation URI"
+    },
+    {
+      "id": "foreign-object",
+      "disposition": "error",
+      "family": "venn",
+      "source": "venn-beta\nset A[\"Frontend\"]:20\n  text A1[\"React\"]\n",
+      "assertion": "error_message",
+      "expected_error": "foreignObject and browser wrapping",
+      "evidence": "structured DrawingListUnavailable before a partial document"
+    },
+    {
+      "id": "filter",
+      "disposition": "error",
+      "family": "treemap",
+      "source": "treemap-beta\n\"Engineering\"\n  \"Frontend\": 1:::glow\nclassDef glow fill:#123456,filter:blur(2px);\n",
+      "assertion": "error_message",
+      "expected_error": "classDef property `filter`",
+      "evidence": "structured DrawingListUnavailable instead of dropping a filter"
+    },
+    {
+      "id": "hand-drawn",
+      "disposition": "error",
+      "family": "venn",
+      "source": "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
+      "assertion": "error_message",
+      "expected_error": "RoughJS paths",
+      "evidence": "structured DrawingListUnavailable instead of substituting classic geometry"
+    },
+    {
+      "id": "external-icon",
+      "disposition": "error",
+      "family": "treeView",
+      "source": "treeView-beta\nRoot icon(logos:react)\n",
+      "assertion": "error_message",
+      "expected_error": "non-builtin icon `logos:react`",
+      "evidence": "structured DrawingListUnavailable instead of embedding registry SVG"
+    }
+  ]
+}
