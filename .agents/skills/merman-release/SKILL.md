@@ -175,6 +175,14 @@ For Web or Node publication, treat the verified package-group manifest order as 
 
 npm Trusted Publisher authorizes `npm publish`, not a later `npm dist-tag` repair. The owner script must preflight every existing exact version, integrity, and requested tag before mutating the registry, publish only missing versions directly under the final tag, verify each postcondition, and skip matching members on retry. Stop before publication when an existing integrity or tag conflicts; recover that tag with an explicitly authorized maintainer credential. Do not reintroduce a synthetic staging tag or OIDC-incompatible promotion step.
 
+When a Web package-group publication is partial, reuse the exact artifact from the original
+`release-web.yml` run. Do not rebuild the group from the same source and assume npm tarball
+bytes will match: a rebuilt tarball can differ while the source commit is identical. Use the
+workflow's `recovery_run_id` input with `source_ref` set to the artifact manifest's full 40-character
+source SHA; the recovery path verifies the prior run identity, downloads its single unexpired
+package-group artifact, and publishes only registry members whose exact version is still missing.
+If the existing integrity differs, stop and require an explicitly authorized maintainer decision.
+
 When npm package-group code or its workflow changes, run the focused owner checks before dispatching:
 
 ```bash
@@ -341,7 +349,8 @@ Classify the failure before changing anything:
 - A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
   auto-yank, silently resume, or publish dependent batches.
 - Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
-  republish a version a registry accepted.
+  republish a version a registry accepted. For Web npm groups, use `recovery_run_id` to consume
+  the original verified artifact instead of rebuilding it in a new run.
 - Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
 Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.

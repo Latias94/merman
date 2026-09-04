@@ -363,6 +363,22 @@ and target tag, then publishes missing versions directly under the requested `al
 or `latest` tag in manifest order, with the default package last. Do not publish a member manually:
 the workflow's manifest and post-publish integrity checks are the source of truth for a retry.
 
+If a Web publication is partial, do not start a new build for the retry. Dispatch the same workflow
+with `recovery_run_id` set to the original `release-web.yml` run and `source_ref` set to that run's
+verified package-group manifest `source_sha`:
+
+```bash
+gh workflow run release-web.yml \
+  -f release_tag="v<version>" \
+  -f source_ref="<manifest-source-sha>" \
+  -f recovery_run_id="<original-web-run-id>" \
+  -f publish_to_npm=true
+```
+
+The recovery path downloads the original unexpired artifact, verifies its source, version, tag,
+and tarball integrity, and skips members already accepted by npm. A new build from the same source
+is not an equivalent recovery artifact and can be rejected if npm already accepted one member.
+
 For local Node package validation on the current host:
 
 ```bash

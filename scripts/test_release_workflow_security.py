@@ -442,6 +442,24 @@ jobs:
             build.index('"$PYTHON" -m pip install --no-deps'),
         )
 
+    def test_web_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-web.yml")
+        validate = workflow_job(text, "validate-inputs")
+        build = workflow_job(text, "build")
+        publish = workflow_job(text, "publish")
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", validate)
+        self.assertIn("recovery requires source_ref to be the exact 40-character source commit", validate)
+        self.assertIn("if: ${{ needs.validate-inputs.outputs.recovery_run_id == '' }}", build)
+        self.assertIn("if: ${{ always() && inputs.publish_to_npm", publish)
+        self.assertIn("Verify recovery run identity", publish)
+        self.assertIn(".github/workflows/release-web.yml", publish)
+        self.assertIn("Download exact Web package group from recovery run", publish)
+        self.assertIn("run-id: ${{ needs.validate-inputs.outputs.recovery_run_id }}", publish)
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
+        self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)
