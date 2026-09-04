@@ -4,6 +4,8 @@
 //! internal value. SVG-only structure stays beside it so a native host never has to understand
 //! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
 
+#[cfg(feature = "layout-cytoscape")]
+mod architecture;
 mod block;
 mod c4;
 mod class;
@@ -54,6 +56,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use svgtypes::{PathParser, PathSegment as SvgPathSegment};
 
+#[cfg(feature = "layout-cytoscape")]
+use architecture::ArchitectureSvgBody;
 use flowchart::{FlowchartSvgBody, build_flowchart_document, build_swimlane_document};
 
 /// The private SVG projection kept beside the public renderer-neutral document.
@@ -96,6 +100,8 @@ pub(crate) enum SvgStructureBody {
     Timeline(TimelineSvgBody),
     Wardley(WardleySvgBody),
     Block(BlockSvgBody),
+    #[cfg(feature = "layout-cytoscape")]
+    Architecture(ArchitectureSvgBody),
 }
 
 /// A complete canonical render document.
@@ -198,6 +204,10 @@ impl RenderDocument {
             }
             (RenderFamilyKind::Block, SvgStructureBody::Block(block)) => {
                 !block.diagram_type.is_empty()
+            }
+            #[cfg(feature = "layout-cytoscape")]
+            (RenderFamilyKind::Architecture, SvgStructureBody::Architecture(architecture)) => {
+                !architecture.diagram_type.is_empty()
             }
             _ => false,
         });
@@ -519,8 +529,12 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::Block(pair) => {
             block::build_block_document(pair, metadata, policy, session)
         }
-        _ => Err(Error::DrawingListUnavailable {
-            family: family.kind().as_str().to_string(),
+        #[cfg(feature = "layout-cytoscape")]
+        BuiltinFamilyArtifact::Architecture(pair) => {
+            architecture::build_architecture_document(pair, metadata, policy, session)
+        }
+        BuiltinFamilyArtifact::Zenuml(_) => Err(Error::DrawingListUnavailable {
+            family: RenderFamilyKind::Zenuml.as_str().to_string(),
             reason: "the family has not been migrated to the canonical document seam".to_string(),
         }),
     }

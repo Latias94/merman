@@ -211,6 +211,54 @@ fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
     }));
 }
 
+#[cfg(feature = "layout-cytoscape")]
+#[test]
+fn architecture_emits_typed_icons_groups_edges_and_semantics() {
+    let source = r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%
+architecture-beta
+    group core(cloud)[Core]
+    service api(server)[API] in core
+    service db(database)[Database] in core
+    api:R --> L:db
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Architecture should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    for path_prefix in [
+        "architecture.node.0.icon",
+        "architecture.group.0.outline",
+        "architecture.edge.0.route",
+        "architecture.edge.0.arrow",
+    ] {
+        assert!(document.resources.iter().any(|resource| matches!(
+            resource,
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str().starts_with(path_prefix)
+        )));
+    }
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Group
+            && semantic.title.as_deref() == Some("Core")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Node
+            && semantic.title.as_deref() == Some("API")
+    }));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.description.as_deref() == Some("api → db")
+    }));
+}
+
 #[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
