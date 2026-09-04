@@ -58,6 +58,9 @@ struct VennBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     theme: crate::theme::VennTheme,
+    semantic_classes: BTreeMap<String, String>,
+    semantic_data_sets: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -119,6 +122,9 @@ impl<'a> VennBuilder<'a> {
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             theme,
+            semantic_classes: BTreeMap::new(),
+            semantic_data_sets: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -135,12 +141,7 @@ impl<'a> VennBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "venn.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| title.map(str::to_string))
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
         });
@@ -166,7 +167,7 @@ impl<'a> VennBuilder<'a> {
                 &self.theme,
                 self.layout.scale,
             )?;
-            self.emit_area(area_index, &area, &presentation)?;
+            self.emit_area(area_index, circle_index, &area, &presentation)?;
             if area.sets.len() == 1 {
                 circle_index += 1;
             }
@@ -203,6 +204,10 @@ impl<'a> VennBuilder<'a> {
                 family: RenderFamilyKind::Venn,
                 body: SvgStructureBody::Venn(VennSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    semantic_data_sets: self.semantic_data_sets,
+                    text_classes: self.text_classes,
                 }),
             },
         })
@@ -232,6 +237,8 @@ impl<'a> VennBuilder<'a> {
         };
         let styles = PortableStyleResolver::new("venn");
         let semantic_id = "venn.title".to_string();
+        self.text_classes
+            .insert(semantic_id.clone(), "venn-title".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -261,10 +268,22 @@ impl<'a> VennBuilder<'a> {
     fn emit_area(
         &mut self,
         area_index: usize,
+        circle_index: usize,
         area: &VennAreaLayout,
         presentation: &VennAreaPresentation,
     ) -> Result<()> {
         let semantic_id = format!("venn.area.{area_index}");
+        let area_class = if area.sets.len() == 1 {
+            format!("venn-area venn-circle venn-set-{}", circle_index % 8)
+        } else {
+            "venn-area venn-intersection".to_string()
+        };
+        self.semantic_classes
+            .insert(semantic_id.clone(), area_class);
+        self.semantic_data_sets
+            .insert(semantic_id.clone(), area.sets.join("_"));
+        self.text_classes
+            .insert(semantic_id.clone(), "label".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });

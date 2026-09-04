@@ -46,7 +46,7 @@ inventory row fails at test time.  The current inventory is:
 | TreeView | yes | legacy bridge |
 | Ishikawa | yes | legacy bridge |
 | EventModeling | yes | legacy bridge |
-| Venn | yes | legacy bridge |
+| Venn | yes | canonical |
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after a focused SVG parity fixture proves that root geometry, style, DOM/a11y

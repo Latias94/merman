@@ -365,3 +365,46 @@ fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
     }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
+    let svg = render_svg(
+        "venn-beta\n title Product Surface\n set A[\"Core\"]:20\n set B[\"Editor\"]:14\n union A,B[\"Shared\"]:4\n",
+        "venn-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Venn SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("viewBox"), Some("0 0 800 450"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 800px; background-color: white;")
+    );
+    assert!(svg.contains("#venn-parity .venn-title"));
+    for (sets, class) in [
+        ("A", "venn-circle"),
+        ("B", "venn-circle"),
+        ("A_B", "venn-intersection"),
+    ] {
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-venn-sets") == Some(sets)
+                && node
+                    .attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+        }));
+    }
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-merman-resource") == Some("venn.area.0.shape")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("class") == Some("venn-title")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.attribute("class") == Some("label")
+            && node.text() == Some("Core")
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

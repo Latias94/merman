@@ -349,6 +349,10 @@ pub(crate) struct TreeViewSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct VennSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) semantic_data_sets: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public XYChart document.

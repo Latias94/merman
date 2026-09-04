@@ -242,6 +242,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
         }
+        if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(
             self.svg_body,
             SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
@@ -326,6 +330,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.use_max_width,
             )
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width))),
+            SvgStructureBody::Venn(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -383,6 +391,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::sankey_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Venn(_) => Some((
+                false,
+                super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)
+                    .map_err(|_| invalid("failed to write Venn stylesheet"))?,
+            )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -416,6 +429,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Timeline(_)
                 | SvgStructureBody::Sankey(_)
+                | SvgStructureBody::Venn(_)
                 | SvgStructureBody::XyChart(_)
         ) {
             self.output.push_str("<g/>");
@@ -436,6 +450,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::QuadrantChart(_)
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Timeline(_)
+            | SvgStructureBody::Venn(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -832,6 +847,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             escaped_attr(semantic.id.as_str()),
         )
         .map_err(|_| invalid("failed to write semantic group"))?;
+        if let SvgStructureBody::Venn(body) = self.svg_body
+            && let Some(sets) = body.semantic_data_sets.get(semantic_id)
+        {
+            self.output.push_str(" data-venn-sets=\"");
+            escape_attr_into(&mut self.output, sets);
+            self.output.push('"');
+        }
         if !visible {
             self.output.push_str(" display=\"none\"");
         }
@@ -865,6 +887,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Sankey(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::Venn(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::XyChart(body) => {
@@ -1256,6 +1281,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Borrowed(class.as_str())),
+            SvgStructureBody::Venn(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
                 Some(id) if id.starts_with("radar.legend.") => {
