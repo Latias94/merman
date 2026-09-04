@@ -84,6 +84,46 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
+fn zenuml_emits_typed_participants_lifelines_messages_and_semantics() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "zenuml\n@Starter(Client)\nClient->Service: call\nService-->Client: done\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable ZenUML should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    assert!(document.viewport.bounds.width > 0.0);
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("zenuml.participant")
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("zenuml.lifeline")
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str().contains("zenuml.message")
+    )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run } if run.text == "call"
+    )));
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Edge
+            && semantic.title.as_deref() == Some("call")
+    }));
+}
+
+#[test]
 fn class_emits_typed_compartments_relations_namespaces_and_notes() {
     let source = r#"classDiagram
         namespace Core {

@@ -36,6 +36,7 @@ mod treemap;
 mod venn;
 mod wardley;
 mod xychart;
+mod zenuml;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
@@ -59,6 +60,7 @@ use svgtypes::{PathParser, PathSegment as SvgPathSegment};
 #[cfg(feature = "layout-cytoscape")]
 use architecture::ArchitectureSvgBody;
 use flowchart::{FlowchartSvgBody, build_flowchart_document, build_swimlane_document};
+use zenuml::ZenumlSvgBody;
 
 /// The private SVG projection kept beside the public renderer-neutral document.
 #[derive(Debug, Clone)]
@@ -102,6 +104,7 @@ pub(crate) enum SvgStructureBody {
     Block(BlockSvgBody),
     #[cfg(feature = "layout-cytoscape")]
     Architecture(ArchitectureSvgBody),
+    Zenuml(ZenumlSvgBody),
 }
 
 /// A complete canonical render document.
@@ -208,6 +211,9 @@ impl RenderDocument {
             #[cfg(feature = "layout-cytoscape")]
             (RenderFamilyKind::Architecture, SvgStructureBody::Architecture(architecture)) => {
                 !architecture.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Zenuml, SvgStructureBody::Zenuml(zenuml)) => {
+                !zenuml.diagram_type.is_empty()
             }
             _ => false,
         });
@@ -533,10 +539,9 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::Architecture(pair) => {
             architecture::build_architecture_document(pair, metadata, policy, session)
         }
-        BuiltinFamilyArtifact::Zenuml(_) => Err(Error::DrawingListUnavailable {
-            family: RenderFamilyKind::Zenuml.as_str().to_string(),
-            reason: "the family has not been migrated to the canonical document seam".to_string(),
-        }),
+        BuiltinFamilyArtifact::Zenuml(pair) => {
+            zenuml::build_zenuml_document(pair, metadata, policy, session)
+        }
     }
 }
 
