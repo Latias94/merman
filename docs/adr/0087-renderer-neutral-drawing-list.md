@@ -55,7 +55,9 @@ flowchart LR
    committed after cancellation, deadline, validation, or resource-limit failure.
 5. The existing Root Viewport, operation control, resource limits, security boundary, and render
    environment remain authoritative. Decoding and consuming a DrawingList never performs ambient
-   network, file, or font loading.
+   network, file, or font loading. Before serialization, a document-wide footprint is charged to
+   the existing operation work budget so command, path, text, asset, pixel, and nesting costs are
+   accounted for together; the protocol validator remains authoritative for exact limits.
 6. Capability discovery and generic transports advertise one `drawing-list-json` operation. ABI 3
    appends operation code `14` only while the existing function table, record layouts, and closed
    error vocabulary remain unchanged; an actual ABI layout change requires a separately reviewed

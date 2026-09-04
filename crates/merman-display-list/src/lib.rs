@@ -17,8 +17,9 @@ pub use commands::{
     TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
 };
 pub use document::{
-    AlphaMode, CoordinateSystem, DrawingListDocument, DrawingListLimits, FallbackReason,
-    RasterFallback, RasterFormat, SemanticAnnotation, SemanticRole, Viewport, VisualSource,
+    AlphaMode, CoordinateSystem, DrawingListDocument, DrawingListFootprint, DrawingListLimits,
+    FallbackReason, RasterFallback, RasterFormat, SemanticAnnotation, SemanticRole, Viewport,
+    VisualSource,
 };
 pub use error::DrawingListError;
 pub use geometry::{Color, Point, Rect, Transform};

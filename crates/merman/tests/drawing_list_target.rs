@@ -454,6 +454,32 @@ fn info_emits_typed_version_text_and_semantics() {
 }
 
 #[test]
+fn drawing_list_footprint_is_admitted_to_operation_work_accounting() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "info",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Info should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let footprint = output
+        .document()
+        .footprint()
+        .expect("the returned document is balanced");
+    let work_units = footprint
+        .work_units()
+        .expect("the returned footprint is representable");
+    assert!(
+        output.evidence().layout_work_units() >= work_units,
+        "document footprint must be charged before output is committed"
+    );
+}
+
+#[test]
 fn state_emits_typed_nodes_transitions_markers_and_labels() {
     let source = r#"stateDiagram-v2
         [*] --> Idle: start

@@ -730,7 +730,19 @@ impl OperationWorkMeter {
 
     /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
     pub(crate) fn charge(&self, additional: usize) -> Result<(), OperationWorkError> {
-        let phase = OperationPhase::Layout;
+        self.charge_at(additional, OperationPhase::Layout)
+    }
+
+    /// Charges work atomically at an explicit operation phase.
+    ///
+    /// DrawingList construction happens after layout, so it uses the same established work
+    /// ceiling with an `Emit` phase instead of pretending that the cost belongs to a second
+    /// layout pass. A rejected charge leaves cumulative usage unchanged.
+    pub(crate) fn charge_at(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(phase)?;
         if additional == 0 {
             return Ok(());

@@ -915,6 +915,15 @@ impl FamilyRenderArtifact {
             &self.session,
         )?;
         self.session.checkpoint(OperationPhase::Emit)?;
+        let footprint = document
+            .public
+            .footprint()
+            .map_err(Error::DrawingListContract)?;
+        let work_units = footprint.work_units().map_err(Error::DrawingListContract)?;
+        self.session
+            .work_meter()
+            .charge_at(work_units, OperationPhase::Emit)?;
+        self.session.checkpoint(OperationPhase::Emit)?;
         let json = document
             .public
             .canonical_json_bytes_with_limits(&limits)

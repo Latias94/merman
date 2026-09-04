@@ -125,6 +125,32 @@ fn validator_enforces_exact_command_and_numeric_boundaries() {
 }
 
 #[test]
+fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
+    let document = common::extended_document();
+    let footprint = document.footprint().expect("fixture scopes are balanced");
+
+    assert_eq!(footprint.commands, document.commands.len());
+    assert_eq!(footprint.resources, document.resources.len());
+    assert_eq!(footprint.semantics, document.semantics.len());
+    assert_eq!(footprint.path_segments, 5);
+    assert_eq!(footprint.gradient_stops, 4);
+    assert_eq!(footprint.image_bytes, 4);
+    assert_eq!(footprint.image_pixels, 64);
+    assert_eq!(footprint.font_bytes, 4);
+    assert_eq!(footprint.text_bytes, "A node".len());
+    assert_eq!(footprint.glyphs, 1);
+    assert_eq!(footprint.max_nesting_depth, 4);
+    assert!(footprint.work_units().unwrap() > footprint.commands);
+}
+
+#[test]
+fn document_footprint_rejects_unbalanced_scopes_before_accounting() {
+    let mut document = sample_document();
+    document.commands.pop();
+    assert!(document.footprint().is_err());
+}
+
+#[test]
 fn validator_enforces_document_wide_path_segment_budget() {
     let mut document = sample_document();
     document

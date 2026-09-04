@@ -145,6 +145,66 @@ pub struct DrawingListLimits {
     pub max_glyphs: usize,
 }
 
+/// Cumulative footprint of one validated drawing document.
+///
+/// The counts are intentionally kept separate from [`DrawingListLimits`].  Limits are a caller
+/// policy (and may be stricter than the protocol defaults), while a footprint is an observation
+/// that the renderer can charge to its existing operation work budget before serializing bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DrawingListFootprint {
+    pub commands: usize,
+    pub resources: usize,
+    pub semantics: usize,
+    pub fallbacks: usize,
+    pub path_segments: usize,
+    pub gradient_stops: usize,
+    pub image_bytes: usize,
+    pub image_pixels: usize,
+    pub fallback_pixels: usize,
+    pub font_bytes: usize,
+    pub text_bytes: usize,
+    pub glyphs: usize,
+    pub max_nesting_depth: usize,
+}
+
+impl DrawingListFootprint {
+    /// Converts the footprint to conservative operation work units.
+    ///
+    /// Structural items, path segments, and glyphs cost one unit each.  Inline bytes and pixels
+    /// cost one unit per started KiB; their exact safety ceilings remain enforced by the protocol
+    /// validator.  Checked arithmetic keeps hostile or corrupted documents fail-closed.
+    pub fn work_units(self) -> Result<usize, DrawingListError> {
+        let mut units = 0usize;
+        for value in [
+            self.commands,
+            self.resources,
+            self.semantics,
+            self.fallbacks,
+            self.path_segments,
+            self.gradient_stops,
+            self.glyphs,
+            self.max_nesting_depth,
+        ] {
+            units = units.checked_add(value).ok_or_else(|| {
+                DrawingListError::invalid("DrawingList footprint overflows usize")
+            })?;
+        }
+        for value in [
+            self.image_bytes,
+            self.image_pixels,
+            self.fallback_pixels,
+            self.font_bytes,
+            self.text_bytes,
+        ] {
+            let kib = value / 1024 + usize::from(value % 1024 != 0);
+            units = units.checked_add(kib).ok_or_else(|| {
+                DrawingListError::invalid("DrawingList footprint overflows usize")
+            })?;
+        }
+        Ok(units)
+    }
+}
+
 impl Default for DrawingListLimits {
     fn default() -> Self {
         Self {
@@ -165,6 +225,203 @@ impl Default for DrawingListLimits {
 }
 
 impl DrawingListDocument {
+    /// Computes the document-wide footprint used by renderer operation accounting.
+    ///
+    /// Callers normally invoke this after [`Self::validate_with_limits`].  The method still
+    /// checks stack underflow and checked arithmetic so it never turns malformed input into an
+    /// unbounded accounting value.
+    pub fn footprint(&self) -> Result<DrawingListFootprint, DrawingListError> {
+        let mut footprint = DrawingListFootprint {
+            commands: self.commands.len(),
+            resources: self.resources.len(),
+            semantics: self.semantics.len(),
+            fallbacks: self.fallbacks.len(),
+            ..DrawingListFootprint::default()
+        };
+
+        for resource in &self.resources {
+            match resource {
+                DrawingResource::Path(path) => {
+                    footprint.path_segments = footprint
+                        .path_segments
+                        .checked_add(path.segments.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList path segment footprint overflows usize",
+                            )
+                        })?;
+                }
+                DrawingResource::LinearGradient(gradient) => {
+                    footprint.gradient_stops = footprint
+                        .gradient_stops
+                        .checked_add(gradient.stops.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList gradient footprint overflows usize",
+                            )
+                        })?;
+                }
+                DrawingResource::RadialGradient(gradient) => {
+                    footprint.gradient_stops = footprint
+                        .gradient_stops
+                        .checked_add(gradient.stops.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList gradient footprint overflows usize",
+                            )
+                        })?;
+                }
+                DrawingResource::Image(image) => {
+                    footprint.image_bytes = footprint
+                        .image_bytes
+                        .checked_add(image.image.data.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList image-byte footprint overflows usize",
+                            )
+                        })?;
+                    footprint.image_pixels = footprint
+                        .image_pixels
+                        .checked_add(pixel_count(image.pixel_width, image.pixel_height)?)
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList image-pixel footprint overflows usize",
+                            )
+                        })?;
+                }
+                DrawingResource::Pattern(_) => {}
+                DrawingResource::Font(font) => {
+                    footprint.font_bytes = footprint
+                        .font_bytes
+                        .checked_add(font.font.data.len())
+                        .ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList font-byte footprint overflows usize")
+                    })?;
+                }
+            }
+        }
+
+        for fallback in &self.fallbacks {
+            footprint.fallback_pixels = footprint
+                .fallback_pixels
+                .checked_add(pixel_count(fallback.pixel_width, fallback.pixel_height)?)
+                .ok_or_else(|| {
+                    DrawingListError::invalid(
+                        "DrawingList fallback-pixel footprint overflows usize",
+                    )
+                })?;
+        }
+
+        let mut state_depth = 0usize;
+        let mut semantic_depth = 0usize;
+        let mut layer_depth = 0usize;
+        let mut clip_depth = 0usize;
+        let mut state_scopes = Vec::new();
+        for command in &self.commands {
+            match command {
+                DrawingCommand::Save => {
+                    state_depth = state_depth.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList state footprint overflows usize")
+                    })?;
+                    state_scopes.push((semantic_depth, layer_depth, clip_depth));
+                }
+                DrawingCommand::Restore => {
+                    let Some((saved_semantic, saved_layer, saved_clip)) = state_scopes.pop() else {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found restore without save",
+                        ));
+                    };
+                    if semantic_depth != saved_semantic || layer_depth != saved_layer {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found restore across an open group",
+                        ));
+                    }
+                    if clip_depth < saved_clip {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found an invalid clip scope",
+                        ));
+                    }
+                    clip_depth = saved_clip;
+                    state_depth = state_depth.checked_sub(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList state footprint underflows usize")
+                    })?;
+                }
+                DrawingCommand::BeginLayer { .. } => {
+                    layer_depth = layer_depth.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList layer footprint overflows usize")
+                    })?;
+                }
+                DrawingCommand::EndLayer => {
+                    layer_depth = layer_depth.checked_sub(1).ok_or_else(|| {
+                        DrawingListError::invalid(
+                            "DrawingList footprint found layer end without begin",
+                        )
+                    })?;
+                }
+                DrawingCommand::ClipPath { .. } => {
+                    clip_depth = clip_depth.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList clip footprint overflows usize")
+                    })?;
+                }
+                DrawingCommand::BeginSemanticGroup { .. } => {
+                    semantic_depth = semantic_depth.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList semantic footprint overflows usize")
+                    })?;
+                }
+                DrawingCommand::EndSemanticGroup => {
+                    semantic_depth = semantic_depth.checked_sub(1).ok_or_else(|| {
+                        DrawingListError::invalid(
+                            "DrawingList footprint found semantic end without begin",
+                        )
+                    })?;
+                }
+                DrawingCommand::DrawText { run } => {
+                    footprint.text_bytes = footprint
+                        .text_bytes
+                        .checked_add(run.text.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid(
+                                "DrawingList text-byte footprint overflows usize",
+                            )
+                        })?;
+                    if let TextObligation::GlyphRun { glyphs } = &run.obligation {
+                        footprint.glyphs =
+                            footprint.glyphs.checked_add(glyphs.len()).ok_or_else(|| {
+                                DrawingListError::invalid(
+                                    "DrawingList glyph footprint overflows usize",
+                                )
+                            })?;
+                    }
+                }
+                DrawingCommand::SetOpacity { .. }
+                | DrawingCommand::SetBlendMode { .. }
+                | DrawingCommand::ConcatTransform { .. }
+                | DrawingCommand::DrawPath { .. }
+                | DrawingCommand::DrawImage { .. }
+                | DrawingCommand::DrawRasterSubtree { .. } => {}
+            }
+            let nesting = state_depth
+                .checked_add(semantic_depth)
+                .and_then(|value| value.checked_add(layer_depth))
+                .and_then(|value| value.checked_add(clip_depth))
+                .ok_or_else(|| {
+                    DrawingListError::invalid("DrawingList nesting footprint overflows usize")
+                })?;
+            footprint.max_nesting_depth = footprint.max_nesting_depth.max(nesting);
+        }
+        if !state_scopes.is_empty()
+            || state_depth != 0
+            || semantic_depth != 0
+            || layer_depth != 0
+            || clip_depth != 0
+        {
+            return Err(DrawingListError::invalid(
+                "DrawingList footprint found unbalanced command scopes",
+            ));
+        }
+        Ok(footprint)
+    }
+
     pub fn validate(&self) -> Result<(), DrawingListError> {
         self.validate_with_limits(&DrawingListLimits::default())
     }
