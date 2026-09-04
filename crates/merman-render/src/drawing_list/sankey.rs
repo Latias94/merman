@@ -51,6 +51,8 @@ struct SankeyBuilder<'a> {
     font: FontDescriptor,
     text_color: Color,
     text_obligation: TextObligation,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
@@ -99,6 +101,8 @@ impl<'a> SankeyBuilder<'a> {
             font,
             text_color,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -114,11 +118,7 @@ impl<'a> SankeyBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: "sankey.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .metadata
-                .title
-                .clone()
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            title: self.metadata.title.clone(),
             description: None,
             link: None,
         });
@@ -126,10 +126,6 @@ impl<'a> SankeyBuilder<'a> {
         for node_index in 0..self.plan.nodes.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(node_index)?;
-        }
-        for label_index in 0..self.plan.labels.len() {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            self.emit_label(label_index)?;
         }
         for link_index in 0..self.plan.links.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -172,6 +168,9 @@ impl<'a> SankeyBuilder<'a> {
                 family: RenderFamilyKind::Sankey,
                 body: SvgStructureBody::Sankey(SankeySvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.plan.use_max_width,
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
                 }),
             },
         })
@@ -185,9 +184,16 @@ impl<'a> SankeyBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Sankey visual node {node_index}")))?
             .clone();
         let semantic_id = format!("sankey.node.{node_index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "node".to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.clone(),
+        });
         let fill = PortableStyleResolver::new("sankey").optional_color("nodeColors", &node.fill)?;
         if let Some(fill) = fill {
             let path_id = ResourceId::new(format!("{semantic_id}.shape"));
+            self.path_classes
+                .insert(path_id.as_str().to_string(), "node-shape".to_string());
             self.resources.push(DrawingResource::Path(PathResource {
                 id: path_id.clone(),
                 segments: polygon_path(&[
@@ -197,9 +203,6 @@ impl<'a> SankeyBuilder<'a> {
                     Point::new(node.x, node.y + node.height),
                 ]),
             }));
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
             self.commands.push(DrawingCommand::DrawPath {
                 path: path_id,
                 style: PathStyle {
@@ -208,8 +211,18 @@ impl<'a> SankeyBuilder<'a> {
                     stroke: None,
                 },
             });
-            self.commands.push(DrawingCommand::EndSemanticGroup);
         }
+        let labels = self
+            .plan
+            .labels
+            .iter()
+            .filter(|label| label.node_index == node_index)
+            .cloned()
+            .collect::<Vec<_>>();
+        for label in labels {
+            self.emit_label_text(label)?;
+        }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
@@ -223,25 +236,15 @@ impl<'a> SankeyBuilder<'a> {
         Ok(())
     }
 
-    fn emit_label(&mut self, label_index: usize) -> Result<()> {
-        let label = self
-            .plan
-            .labels
-            .get(label_index)
-            .ok_or_else(|| invalid(format!("missing Sankey visual label {label_index}")))?
-            .clone();
+    fn emit_label_text(&mut self, label: crate::sankey::SankeyVisualLabel) -> Result<()> {
         let text = svg_plain_text(&label.text);
         if text.is_empty() {
             return Ok(());
         }
-        let semantic_id = format!("sankey.node.{}", label.node_index);
         let baseline_y = label.baseline_y();
         let ascent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_ASCENT_EM;
         let descent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_DESCENT_EM;
         let bounds = &self.plan.bounds;
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
                 text,
@@ -269,7 +272,6 @@ impl<'a> SankeyBuilder<'a> {
                 obligation: self.text_obligation.clone(),
             },
         });
-        self.commands.push(DrawingCommand::EndSemanticGroup);
         Ok(())
     }
 
@@ -281,9 +283,13 @@ impl<'a> SankeyBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Sankey visual link {link_index}")))?
             .clone();
         let semantic_id = format!("sankey.link.{}", link.index);
+        self.semantic_classes
+            .insert(semantic_id.clone(), "link".to_string());
         let paint = self.link_paint(&semantic_id, &link)?;
         if let Some(paint) = paint {
             let path_id = ResourceId::new(format!("{semantic_id}.path"));
+            self.path_classes
+                .insert(path_id.as_str().to_string(), "link-path".to_string());
             self.resources.push(DrawingResource::Path(PathResource {
                 id: path_id.clone(),
                 segments: vec![

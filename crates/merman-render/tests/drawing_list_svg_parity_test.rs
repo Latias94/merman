@@ -328,3 +328,40 @@ fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
     );
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
+    let svg = render_svg("sankey-beta\nA,B,10\n", "sankey-parity");
+    let document = roxmltree::Document::parse(&svg).expect("canonical Sankey SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("viewBox"), Some("0 0 600 400"));
+    assert_eq!(
+        root.attribute("style"),
+        Some("max-width: 600px; background-color: white;")
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.split_whitespace().any(|token| token == "node"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect") && node.attribute("data-merman-resource").is_some()
+    }));
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("linearGradient"))
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.split_whitespace().any(|token| token == "link-path"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.text().is_some_and(|text| text.contains("A"))
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

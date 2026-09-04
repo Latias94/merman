@@ -21,7 +21,7 @@
     { "id": "timeline", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "journey", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "requirement", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "sankey", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "sankey", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "radar", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "info", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "treemap", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
