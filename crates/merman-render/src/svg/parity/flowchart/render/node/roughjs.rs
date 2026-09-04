@@ -6,6 +6,12 @@
 use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use roughr::core::RoughRandomness;
 
+// Mermaid's `userNodeOverrides(...)` defaults for hand-drawn flowchart shapes.
+// Keep these in one place so every object shape uses the same RoughJS contract.
+const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
+const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
 };
@@ -270,6 +276,32 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     Some((fill_d?, stroke_d?))
 }
 
+/// Render a path with Mermaid's default hand-drawn node options.
+pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
+    svg_path_data: &str,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    randomness: &RoughRandomness,
+) -> Option<(String, String)> {
+    // Object-shape renderers use this helper alongside the hand-drawn circle path. Keep both
+    // branches on the same fallback boundary when a CSS color is not representable by roughr.
+    parse_hex_color_to_srgba(fill)?;
+    parse_hex_color_to_srgba(stroke)?;
+    roughjs_hachure_paths_for_svg_path(
+        svg_path_data,
+        fill,
+        stroke,
+        stroke_width,
+        stroke_dasharray,
+        HAND_DRAWN_FILL_WEIGHT,
+        HAND_DRAWN_HACHURE_GAP,
+        HAND_DRAWN_ROUGHNESS,
+        randomness,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     x: f64,
@@ -383,15 +415,19 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
-        .roughness(if hand_drawn { 0.7 } else { 0.0 })
+        .roughness(if hand_drawn {
+            HAND_DRAWN_ROUGHNESS
+        } else {
+            0.0
+        })
         .fill(fill)
         .fill_style(if hand_drawn {
             roughr::core::FillStyle::Hachure
         } else {
             roughr::core::FillStyle::Solid
         })
-        .fill_weight(4.0)
-        .hachure_gap(5.2)
+        .fill_weight(HAND_DRAWN_FILL_WEIGHT)
+        .hachure_gap(HAND_DRAWN_HACHURE_GAP)
         .stroke(stroke)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])

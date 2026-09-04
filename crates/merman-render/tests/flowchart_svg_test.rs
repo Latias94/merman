@@ -3277,7 +3277,97 @@ C --> D@{ shape: browser, label: "browser" }
             }),
             "handDrawn {shape} must retain its shape group: {hand_drawn}"
         );
+        assert!(
+            node.descendants().any(|child| {
+                child.has_tag_name("path")
+                    && child.attribute("fill") == Some("none")
+                    && child.attribute("stroke-width") == Some("4")
+                    && child.attribute("stroke-dasharray") == Some("0 0")
+            }),
+            "handDrawn {shape} must emit a RoughJS hachure fill sketch: {hand_drawn}"
+        );
     }
+
+    let folder_source = "%%{init: {\"look\": \"handDrawn\"}}%%\nflowchart TB\nA@{ shape: folder, label: \"folder\" }";
+    let folder_svg = render_flowchart_svg_from_text(folder_source);
+    let folder_document =
+        roxmltree::Document::parse(&folder_svg).expect("valid handDrawn folder SVG");
+    let folder_node = folder_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn folder node");
+    assert!(folder_node.descendants().any(|child| {
+        child.has_tag_name("path")
+            && child.attribute("stroke-width") == Some("4")
+            && child.attribute("stroke-dasharray") == Some("0 0")
+    }));
+}
+
+#[test]
+fn flowchart_hand_drawn_object_shapes_preserve_inline_style_and_fallback_consistently() {
+    let styled = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: browser, label: "browser" }
+style A opacity:0.4,stroke-linecap:round
+"#,
+    );
+    let styled_document = roxmltree::Document::parse(&styled).expect("valid styled handDrawn SVG");
+    let styled_group = styled_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("styled handDrawn browser node");
+    let shape_group = styled_group
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("basic label-container")
+        })
+        .expect("styled browser shape group");
+    let group_style = shape_group.attribute("style").unwrap_or_default();
+    assert!(
+        group_style.contains("opacity:0.4"),
+        "style was not preserved: {styled}"
+    );
+    assert!(
+        group_style.contains("stroke-linecap:round"),
+        "style was not preserved: {styled}"
+    );
+
+    let fallback = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: person, label: "person" }
+style A fill:red,stroke:blue
+"#,
+    );
+    let fallback_document = roxmltree::Document::parse(&fallback).expect("valid fallback SVG");
+    let fallback_node = fallback_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("fallback person node");
+    assert!(
+        !fallback_node.descendants().any(|element| {
+            element.has_tag_name("path") && element.attribute("stroke-width") == Some("4")
+        }),
+        "person body and head must share the non-hex fallback boundary: {fallback}"
+    );
+    assert!(
+        fallback_node
+            .descendants()
+            .any(|element| element.has_tag_name("circle"))
+    );
 }
 
 #[test]
