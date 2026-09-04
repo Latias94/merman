@@ -89,6 +89,13 @@ enum TreemapRow {
 
 type StyleClassDef = TreemapClassDefRenderModel;
 
+// The compatibility shape emits every effective classDef style once in the nested `root` tree
+// and once again in the flattened `nodes` array. Keep the estimate deliberately conservative:
+// the fixed allowance covers the Value/array/object bookkeeping around each repeated style while
+// the variable part accounts for the joined CSS declaration bytes themselves.
+const TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES: usize = 8 * 1024 * 1024;
+const TREEMAP_COMPATIBILITY_STYLE_ENTRY_OVERHEAD_BYTES: usize = 128;
+
 #[derive(Debug, Clone)]
 struct NodeRecord {
     name: String,
@@ -168,14 +175,20 @@ impl TreemapParseOutcome {
             None => {
                 let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
                 let model = source.render_model_controlled(control)?;
-                Ok((source, model))
+                match treemap_compatibility_output_preflight(&model, meta, control)? {
+                    Ok(()) => Ok((source, model)),
+                    Err(error) => Err(family::CombinedSemanticFailure::new(
+                        error,
+                        source.editor_facts,
+                    )),
+                }
             }
         };
         let combined = family::CombinedSemanticParse::from_construction(
             construction,
             |(source, model)| {
                 (
-                    render_model_to_compat_json(&model, meta),
+                    render_model_to_compat_json_unchecked(&model, meta),
                     source.editor_facts,
                 )
             },
@@ -343,6 +356,30 @@ pub(crate) fn render_model_to_compat_json(
     model: &TreemapDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
+    let control = crate::OperationControl::new();
+    render_model_to_compat_json_controlled(model, meta, &control)
+        .expect("a private compatibility projection control cannot be cancelled")
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<Value>> {
+    control.checkpoint()?;
+    let preflight = treemap_compatibility_output_preflight(model, meta, control)?;
+    match preflight {
+        Ok(()) => {}
+        Err(error) => return Ok(Err(error)),
+    }
+    control.checkpoint()?;
+    Ok(render_model_to_compat_json_unchecked(model, meta))
+}
+
+fn render_model_to_compat_json_unchecked(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     if model.root.children.is_none() {
         return Ok(json!({}));
     }
@@ -366,6 +403,87 @@ pub(crate) fn render_model_to_compat_json(
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
+}
+
+/// Estimates only the repeated classDef style materialization performed by the compatibility
+/// projection. The estimate is intentionally conservative and runs before any output `Value`
+/// tree is allocated. A rejected estimate is a normal semantic `Error`; cancellation remains on
+/// the outer [`crate::OperationControlResult`] channel.
+fn treemap_compatibility_output_preflight(
+    model: &TreemapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<()>> {
+    control.checkpoint()?;
+    if model.root.children.is_none() {
+        return Ok(Ok(()));
+    }
+
+    let mut class_style_bytes = std::collections::HashMap::with_capacity(model.classes.len());
+    for (index, (id, class_def)) in model.classes.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        let joined_bytes = joined_style_bytes(&class_def.styles);
+        if joined_bytes != 0 {
+            class_style_bytes.insert(id.as_str(), joined_bytes);
+        }
+    }
+
+    let mut estimated_bytes = 0usize;
+    let mut stack = vec![(&model.root, true)];
+    let mut visited = 0usize;
+    while let Some((node, is_root)) = stack.pop() {
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+
+        if node.css_compiled_styles.is_none()
+            && let Some(selector) = node.class_selector.as_deref()
+            && let Some(&style_bytes) = class_style_bytes.get(selector)
+        {
+            let occurrence_count = if is_root { 1 } else { 2 };
+            let per_occurrence =
+                style_bytes.saturating_add(TREEMAP_COMPATIBILITY_STYLE_ENTRY_OVERHEAD_BYTES);
+            let requested = per_occurrence.saturating_mul(occurrence_count);
+            estimated_bytes = estimated_bytes.saturating_add(requested);
+            if estimated_bytes > TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES {
+                return Ok(Err(treemap_compatibility_output_budget_error(
+                    meta,
+                    estimated_bytes,
+                )));
+            }
+        }
+
+        if let Some(children) = node.children.as_ref() {
+            for child in children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    control.checkpoint()?;
+    Ok(Ok(()))
+}
+
+fn joined_style_bytes(styles: &[String]) -> usize {
+    styles
+        .iter()
+        .fold(0usize, |total, style| total.saturating_add(style.len()))
+        .saturating_add(styles.len().saturating_sub(1))
+}
+
+fn treemap_compatibility_output_budget_error(
+    meta: &ParseMetadata,
+    estimated_bytes: usize,
+) -> Error {
+    Error::diagram_parse_fallback(
+        meta.diagram_type.clone(),
+        format!(
+            "treemap compatibility JSON output budget exceeded: estimated repeated classDef styles require {estimated_bytes} bytes, maximum is {TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES} bytes"
+        ),
+    )
 }
 
 fn render_node_to_map(
@@ -1683,6 +1801,123 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
             model["root"]["children"][0]["cssCompiledStyles"][0],
             json!("fill:#f96;stroke:#333;stroke-width:2px")
         );
+    }
+
+    fn model_with_shared_class_styles(
+        node_count: usize,
+        style_bytes: usize,
+    ) -> (TreemapDiagramRenderModel, String) {
+        let style = format!("fill:{}", "a".repeat(style_bytes.saturating_sub(5)));
+        let root = TreemapNodeRenderModel {
+            name: String::new(),
+            children: Some(
+                (0..node_count)
+                    .map(|index| TreemapNodeRenderModel {
+                        name: format!("node-{index}"),
+                        children: None,
+                        value: Some(json!(1)),
+                        class_selector: Some("shared".to_string()),
+                        css_compiled_styles: None,
+                    })
+                    .collect(),
+            ),
+            value: None,
+            class_selector: None,
+            css_compiled_styles: None,
+        };
+        let mut classes = std::collections::BTreeMap::new();
+        classes.insert(
+            "shared".to_string(),
+            TreemapClassDefRenderModel {
+                id: "shared".to_string(),
+                styles: vec![style.clone()],
+                text_styles: Vec::new(),
+            },
+        );
+        (
+            TreemapDiagramRenderModel {
+                acc_title: None,
+                acc_descr: None,
+                title: None,
+                root,
+                classes,
+            },
+            style,
+        )
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_accepts_bounded_shared_class_styles() {
+        let (model, style) = model_with_shared_class_styles(512, 256);
+        let output = render_model_to_compat_json(&model, &meta())
+            .expect("bounded repeated classDef styles should remain compatible");
+
+        assert_eq!(output["nodes"].as_array().unwrap().len(), 512);
+        assert_eq!(output["nodes"][0]["cssCompiledStyles"], json!([style]));
+        assert_eq!(
+            output["root"]["children"][511]["cssCompiledStyles"],
+            output["nodes"][511]["cssCompiledStyles"]
+        );
+    }
+
+    #[test]
+    fn treemap_compatibility_projection_rejects_repeated_class_styles_before_value_build() {
+        let (model, _) = model_with_shared_class_styles(2_048, 4_096);
+        let error = render_model_to_compat_json(&model, &meta())
+            .expect_err("repeated classDef styles beyond the output budget must fail");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a structured compatibility output budget error");
+        };
+        assert!(
+            diagnostic
+                .message()
+                .contains("treemap compatibility JSON output budget exceeded"),
+            "{}",
+            diagnostic.message()
+        );
+        assert!(diagnostic.message().contains(&format!(
+            "maximum is {TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES}"
+        )));
+    }
+
+    #[test]
+    fn treemap_compatibility_preflight_observes_cancellation() {
+        let (model, _) = model_with_shared_class_styles(512, 256);
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            render_model_to_compat_json_controlled(&model, &meta(), &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+    }
+
+    #[test]
+    fn treemap_combined_compatibility_budget_error_preserves_editor_facts() {
+        const NODE_COUNT: usize = 2_048;
+        const STYLE_BYTES: usize = 4_096;
+        let style = format!("fill:{}", "a".repeat(STYLE_BYTES.saturating_sub(5)));
+        let mut text = String::from("treemap\n");
+        for index in 0..NODE_COUNT {
+            text.push_str(&format!("\"node-{index}\": 1:::shared\n"));
+        }
+        text.push_str("classDef shared ");
+        text.push_str(&style);
+        text.push('\n');
+
+        let parsed =
+            parse_treemap_json_and_editor_facts(&text, &meta(), &crate::OperationControl::new())
+                .expect("budget rejection must remain a semantic result");
+        let (model, facts, _) = parsed.into_parts();
+        let error = model.expect_err("oversized compatibility output must not be truncated");
+        assert!(
+            error
+                .to_string()
+                .contains("treemap compatibility JSON output budget exceeded")
+        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "shared" && symbol.detail.as_deref() == Some("treemap class definition")
+        }));
     }
 
     #[test]

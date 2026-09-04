@@ -710,9 +710,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::info::InfoDiagramRenderModel,
     crate::diagrams::info::render_model_to_compat_json
 );
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::treemap::TreemapDiagramRenderModel,
-    crate::diagrams::treemap::render_model_to_compat_json
+    crate::diagrams::treemap::render_model_to_compat_json,
+    crate::diagrams::treemap::render_model_to_compat_json_controlled
 );
 impl_builtin_render_semantic!(
     crate::diagrams::block::BlockDiagramRenderModel,
