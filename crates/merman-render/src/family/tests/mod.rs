@@ -58,12 +58,20 @@ fn session() -> RenderSession {
 }
 
 fn flowchart_node_theme(style: ThemeStylePatch) -> DiagramTheme {
+    flowchart_node_theme_with_variant(DiagramFamilyId::FLOWCHART, style, None)
+}
+
+fn flowchart_node_theme_with_variant(
+    family: DiagramFamilyId,
+    style: ThemeStylePatch,
+    variant: Option<crate::diagram_theme::ThemeVariant>,
+) -> DiagramTheme {
+    let mut rule = ThemeRule::new(ThemeTarget::Node, style).for_family(family);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
     DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                ThemeRule::new(ThemeTarget::Node, style).for_family(DiagramFamilyId::FLOWCHART),
-            )),
-        )
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
         .expect("compile Flowchart Node theme")
 }
 
@@ -1473,6 +1481,67 @@ fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
             target: ThemeTarget::Node,
         }]
     );
+}
+
+#[test]
+fn require_portable_accepts_explicit_default_flowchart_family_node_paint() {
+    for (family, source) in [
+        (DiagramFamilyId::FLOWCHART, "flowchart LR\nA --> B\n"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
+        ),
+    ] {
+        for (fill, stroke, expected_css) in [
+            (
+                CanvasPaint::solid("#ef4444").unwrap(),
+                CanvasPaint::solid("#2563eb").unwrap(),
+                "fill:#ef4444 !important;stroke:#2563eb !important",
+            ),
+            (
+                CanvasPaint::Transparent,
+                CanvasPaint::Transparent,
+                "fill:none !important;stroke:none !important",
+            ),
+        ] {
+            let theme = flowchart_node_theme_with_variant(
+                family,
+                ThemeStylePatch::default()
+                    .with_fill(fill)
+                    .with_stroke(stroke),
+                Some(crate::diagram_theme::ThemeVariant::Default),
+            );
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart-family source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict explicit Default node session"),
+            )
+            .expect("prepare explicit Default Node paint")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("explicit Default Node paint should satisfy strict portability");
+
+            assert_eq!(rendered.family_id(), family);
+            assert!(flowchart_node_shape_style(rendered.svg(), "A").contains(expected_css));
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Node,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
 }
 
 #[test]

@@ -921,7 +921,7 @@ pub(super) fn summarize_theme_support(
 
     let effect_binding =
         (rule_facet == ThemeRuleFacetV1::Effect).then(|| classify_effect_binding(family));
-    for_each_public_selector(|selector| {
+    for_each_matrix_selector(|selector| {
         for_each_public_rule_facet(rule_facet, |matrix_facet| {
             let mut disposition = classify_rule_facet(family, target, selector, matrix_facet);
             if effect_binding.is_some_and(|binding| {
@@ -983,11 +983,6 @@ fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
             },
         });
     }
-}
-
-#[cfg(test)]
-fn for_each_public_selector(visit: impl FnMut(FamilyThemeSelectorShape)) {
-    for_each_matrix_selector(visit);
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
@@ -1480,26 +1475,10 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::FLOWCHART
-        && target == ThemeTarget::Cluster
-        && matches!(
-            selector,
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default)
-            }
-        )
-        && matches!(
-            facet,
-            FamilyThemeRuleFacet::Fill(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::Stroke(
-                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            )
-        )
-    {
-        return FamilyThemeDisposition::TypedAdapter;
-    }
-    if family == DiagramFamilyId::SWIMLANE
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    )
         && target == ThemeTarget::Cluster
         && matches!(
             selector,
@@ -2134,7 +2113,12 @@ pub(super) fn classify_rule_facet(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Node
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -2480,7 +2464,7 @@ mod tests {
                     continue;
                 }
 
-                for_each_public_selector(|selector| {
+                for_each_matrix_selector(|selector| {
                     for &contract_facet in ThemeRuleFacetV1::ALL {
                         for_each_public_rule_facet(contract_facet, |facet| {
                             if classify_rule_facet(family, target, selector, facet)
@@ -3143,7 +3127,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_keep_explicit_default_node_paint_in_compatibility() {
+    fn flowchart_and_swimlane_own_static_default_node_paint() {
         let default_style = ThemeStylePatch {
             geometry: ThemeGeometryPatch {
                 radius: Specified::Value(8.0),
@@ -3165,7 +3149,7 @@ mod tests {
                     FamilyThemeMechanism::RuleFacet {
                         facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
                         ..
-                    } => FamilyThemeDisposition::LegacyCompatibility,
+                    } => FamilyThemeDisposition::TypedAdapter,
                     FamilyThemeMechanism::RuleFacet {
                         facet:
                             FamilyThemeRuleFacet::StrokeWidth
@@ -5655,7 +5639,17 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 100);
+        assert_eq!(qualified.len(), 108);
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            assert_eq!(
+                qualified
+                    .iter()
+                    .filter(|route| route.family_id() == family)
+                    .count(),
+                10,
+                "family={family:?}"
+            );
+        }
         assert_eq!(
             qualified
                 .iter()
@@ -5779,6 +5773,16 @@ mod tests {
                     ],
                     "route={route:?}"
                 );
+            } else if matches!(
+                route.family_id(),
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            ) && route.target() == ThemeTarget::Node
+            {
+                let expected = match route.facet() {
+                    ThemeRouteCutoverFacet::Fill => ThemeRouteCutoverProjection::NodeFill,
+                    ThemeRouteCutoverFacet::Stroke => ThemeRouteCutoverProjection::NodeStroke,
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::GANTT {
                 let expected = match (route.target(), route.selector(), route.facet()) {
                     (

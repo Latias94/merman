@@ -461,12 +461,12 @@ fn update_selector(hasher: &mut Sha256, selector: FamilyThemeSelectorShape) {
             match selector {
                 OrdinalSelector::Exact(index) => {
                     update_len_prefixed(hasher, b"exact");
-                    update_usize(hasher, index);
+                    update_len(hasher, index);
                 }
                 OrdinalSelector::Cycle { period, offset } => {
                     update_len_prefixed(hasher, b"cycle");
-                    update_usize(hasher, period);
-                    update_usize(hasher, offset);
+                    update_len(hasher, period);
+                    update_len(hasher, offset);
                 }
             }
         }
@@ -527,11 +527,6 @@ fn update_paint_kind(hasher: &mut Sha256, kind: FamilyThemePaintKind) {
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 fn update_len(hasher: &mut Sha256, value: usize) {
-    hasher.update((value as u64).to_be_bytes());
-}
-
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-fn update_usize(hasher: &mut Sha256, value: usize) {
     hasher.update((value as u64).to_be_bytes());
 }
 
@@ -2474,9 +2469,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xf1, 0xc1, 0x6a, 0x5d, 0x5e, 0x4b, 0x25, 0xf1, 0x7d, 0x76, 0xd2, 0xc1, 0x1e, 0x00,
-            0x9b, 0x89, 0x3e, 0x26, 0xdd, 0xfc, 0x20, 0x3a, 0x1c, 0x4b, 0x4d, 0x1f, 0x8e, 0x37,
-            0xa5, 0xbd, 0x55, 0x3b,
+            0xf7, 0x72, 0xa7, 0x87, 0xfc, 0x26, 0x92, 0xd4, 0xa3, 0x27, 0xd6, 0x24, 0xe5, 0xdf,
+            0xa6, 0x38, 0xb4, 0x92, 0xa9, 0xe8, 0xec, 0xab, 0x44, 0x55, 0x42, 0xda, 0x84, 0xa6,
+            0x6c, 0xbe, 0x35, 0xc2,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0x53, 0x8b, 0xdb, 0xf5, 0x9e, 0x50, 0x01, 0xae, 0xc6, 0x9a, 0xd0, 0xef, 0x20, 0x17,
@@ -2491,7 +2486,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 336);
+        assert_eq!(status.matrix_route_count(), 328);
         assert_eq!(status.matrix_family_count(), 20);
         assert_eq!(status.dispatched_family_count(), 20);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);

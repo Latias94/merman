@@ -1241,7 +1241,7 @@ fn route_shape_label(shape: RouteShape) -> String {
         "{}/{}/{}/{}/{}",
         shape.0.as_str(),
         shape.1.id(),
-        selector_id(shape.2),
+        shape.2.id(),
         facet_id(shape.3),
         projection_set_label(shape.4)
     )
@@ -1262,7 +1262,7 @@ fn route_label(route: ThemeRouteCutoverDescriptor) -> String {
         "{}/{}/{}/{}/{}/{}",
         route.family_id().as_str(),
         route.target().id(),
-        selector_id(route.selector()),
+        route.selector().id(),
         facet_id(route.facet()),
         value_id(route.value()),
         projection_set_label(route.projections())
@@ -1279,10 +1279,6 @@ fn witness_label(witness: CutoverWitnessId) -> String {
 
 fn case_label(case: CutoverCase) -> String {
     witness_label(case.id)
-}
-
-fn selector_id(selector: ThemeRouteCutoverSelector) -> String {
-    selector.id()
 }
 
 fn projection_set_label(projections: ThemeRouteCutoverProjectionSet) -> String {
@@ -1310,7 +1306,7 @@ fn value_id(value: ThemeRouteCutoverValue) -> &'static str {
 fn append_route(output: &mut Vec<u8>, route: ThemeRouteCutoverDescriptor) {
     append_len_prefixed(output, route.family_id().as_str().as_bytes());
     append_len_prefixed(output, route.target().id().as_bytes());
-    append_len_prefixed(output, selector_id(route.selector()).as_bytes());
+    append_len_prefixed(output, route.selector().id().as_bytes());
     append_len_prefixed(output, facet_id(route.facet()).as_bytes());
     append_len_prefixed(output, value_id(route.value()).as_bytes());
     output.extend_from_slice(&usize_to_u64(route.projections().len()).to_be_bytes());
@@ -1369,11 +1365,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_224_routes_and_252_artifact_witnesses() {
+    fn route_inventory_retains_232_routes_and_260_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 224);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 252);
+        assert_eq!(inventory.len(), 232);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 260);
     }
 
     #[test]
