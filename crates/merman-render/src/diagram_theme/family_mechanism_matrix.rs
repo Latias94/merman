@@ -1508,6 +1508,23 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::ARCHITECTURE
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::ARCHITECTURE
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             (target, facet),
@@ -1519,7 +1536,7 @@ pub(super) fn classify_rule_facet(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
             ) | (
-                ThemeTarget::Text | ThemeTarget::Marker,
+                ThemeTarget::Marker,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
@@ -2563,7 +2580,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_text_fill_keeps_the_default_variant_on_the_compatibility_route() {
+    fn architecture_text_fill_owns_unqualified_and_default_variants() {
         for kind in [
             FamilyThemePaintKind::Transparent,
             FamilyThemePaintKind::Solid,
@@ -2586,7 +2603,7 @@ mod tests {
                     },
                     FamilyThemeRuleFacet::Fill(kind),
                 ),
-                FamilyThemeDisposition::LegacyCompatibility,
+                FamilyThemeDisposition::TypedAdapter,
             );
         }
     }
@@ -5466,7 +5483,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 76);
+        assert_eq!(qualified.len(), 78);
         assert_eq!(
             qualified
                 .iter()
@@ -5494,6 +5511,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
             4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::ARCHITECTURE)
+                .count(),
+            2
         );
         assert_eq!(
             qualified

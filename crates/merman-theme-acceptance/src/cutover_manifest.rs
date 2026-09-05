@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 31;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 32;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x4f, 0x7d, 0x79, 0x0d, 0x68, 0xee, 0x5e, 0x8f, 0x6f, 0x76, 0xb0, 0xcb, 0x98, 0x64, 0x34, 0x77,
-    0xb7, 0x42, 0x0a, 0x67, 0xed, 0xa9, 0xcc, 0x08, 0xf8, 0x6f, 0xbf, 0x7e, 0x9d, 0x00, 0x71, 0xea,
+    0x52, 0x6f, 0xef, 0xcf, 0xe0, 0x31, 0x8a, 0x8a, 0xad, 0x6c, 0x50, 0x71, 0xe7, 0x36, 0xaf, 0xc2,
+    0x58, 0xa1, 0x06, 0x31, 0xe7, 0x8f, 0xa6, 0x62, 0x16, 0xee, 0x30, 0x05, 0xc9, 0xd3, 0xa2, 0xe5,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 194] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 196] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1448,6 +1448,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 194] = [
     route(
         DiagramFamilyId::ARCHITECTURE,
         ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ARCHITECTURE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ARCHITECTURE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
@@ -2396,7 +2412,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 31);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 32);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

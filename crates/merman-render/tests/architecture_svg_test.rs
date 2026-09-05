@@ -2,8 +2,9 @@
 
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
-    ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -144,6 +145,21 @@ fn architecture_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
             TypographySpec::default().with_family_style(DiagramFamilyId::ARCHITECTURE, typography),
         ))
         .expect("compile Architecture typography theme")
+}
+
+fn architecture_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::ARCHITECTURE);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Architecture text theme")
 }
 
 fn prepare_architecture_with_theme_and_environment(
@@ -473,6 +489,63 @@ architecture-beta
     assert!(!svg.contains(
         r#"#architecture-theme .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
     ));
+}
+
+#[test]
+fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_default_routes() {
+    let source = r#"architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service db(database)[DB] in platform
+  api:R -[request]- L:db
+"#;
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let theme = architecture_text_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Architecture text fill"),
+            variant,
+        );
+        let artifact = prepare_architecture_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            RenderEnvironment::deterministic(),
+        );
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("architecture-text-fill".to_string()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render themed Architecture text")
+            .into_completion();
+        let (svg, report) = rendered.into_output_and_report();
+        let document = roxmltree::Document::parse(&svg).expect("valid Architecture SVG");
+        let text_nodes = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert!(
+            !text_nodes.is_empty(),
+            "Architecture fixture must emit text terminals"
+        );
+        assert!(
+            text_nodes.iter().any(|node| {
+                node.attribute("style").is_some_and(|style| {
+                    style
+                        .split(';')
+                        .any(|declaration| declaration == "fill:#123456")
+                })
+            }),
+            "typed Architecture Text.fill must reach a final text terminal for variant {variant:?}: {svg}"
+        );
+        let evidence = merman_render::__private::family_evidence(&report);
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]

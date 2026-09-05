@@ -1065,7 +1065,17 @@ fn direct_surface_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> bool {
-    if selector != (FamilyThemeSelectorShape::Static { variant: None }) {
+    let selector_is_direct = match (target, selector) {
+        (
+            ThemeTarget::Text,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default),
+            },
+        )
+        | (_, FamilyThemeSelectorShape::Static { variant: None }) => true,
+        _ => false,
+    };
+    if !selector_is_direct {
         return false;
     }
     match (target, facet) {
