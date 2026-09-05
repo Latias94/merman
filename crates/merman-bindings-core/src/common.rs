@@ -999,6 +999,15 @@ pub(crate) fn compile_drawing_list_options(
     macro_rules! apply_limit {
         ($field:ident) => {
             if let Some(value) = limits.$field {
+                if value == 0 {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!(
+                            "drawing_list.limits.{} must be a positive integer",
+                            stringify!($field)
+                        ),
+                    ));
+                }
                 if value > defaults.$field {
                     return Err(BindingError::new(
                         BindingStatus::InvalidArgument,
@@ -1030,6 +1039,12 @@ pub(crate) fn compile_drawing_list_options(
         let maximum = defaults
             .max_serialized_bytes
             .min(max_svg_bytes.unwrap_or(usize::MAX));
+        if value == 0 {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "drawing_list.limits.max_serialized_bytes must be a positive integer",
+            ));
+        }
         if value > maximum {
             return Err(BindingError::new(
                 BindingStatus::InvalidArgument,
@@ -3119,6 +3134,29 @@ mod tests {
                 .expect_err("DrawingList options must not apply to SVG operations");
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(error.message().contains("drawing_list"));
+
+        for field in [
+            "max_serialized_bytes",
+            "max_commands",
+            "max_resources",
+            "max_path_segments",
+            "max_image_bytes",
+            "max_image_pixels",
+            "max_fallback_pixels",
+            "max_font_bytes",
+            "max_nesting_depth",
+            "max_fallbacks",
+            "max_text_bytes",
+            "max_glyphs",
+        ] {
+            let request = format!(r#"{{"drawing_list":{{"limits":{{"{field}":0}}}}}}"#);
+            let error =
+                resolve_request_options(b"", request.as_bytes(), BindingResourceScope::DrawingList)
+                    .expect_err("DrawingList limits must reject zero");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains(field), "{error:?}");
+            assert!(error.message().contains("positive"), "{error:?}");
+        }
     }
 
     #[test]
