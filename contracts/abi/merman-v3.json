@@ -5,7 +5,7 @@
   "result_schema_version": 1,
   "minimum_prefix": {
     "status_code_count": 17,
-    "operation_code_count": 15,
+    "operation_code_count": 14,
     "error_kind_count": 5,
     "callback_count": 1,
     "function_slot_count": 7,

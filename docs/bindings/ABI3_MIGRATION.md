@@ -1,8 +1,10 @@
 # Native ABI 3 Migration
 
-The `0.8.0-alpha.3` packages used native ABI 2. Current source uses native ABI 3 and intentionally
-does not preserve ABI 2 or prerelease ABI 3 consumer compatibility. Rebuild every C, C++, Dart FFI,
-or custom native host against the generated headers from the same Merman release.
+The `0.8.0-alpha.3` packages used native ABI 2. The alpha.5 and current alpha.6 packages use
+native ABI 3. ABI 3 keeps its minimum-prefix layout stable when new operation codes are appended,
+but a release-matched generated header is still required for the complete current operation
+catalog. Rebuild every C, C++, Dart FFI, or custom native host against the generated headers from
+the same Merman release; do not call an operation that an older header does not declare.
 
 ## Required Host Changes
 
@@ -39,10 +41,12 @@ or custom native host against the generated headers from the same Merman release
 `minimum_prefix_layout_digest` is the discovery compatibility key. `full_descriptor_digest`
 identifies the complete release descriptor, while `capability_catalog_digest` identifies the
 loaded artifact's callable feature surface. Release-matched hosts should validate the complete
-table they were generated against; partial historical tables are not a supported consumer target.
-The minimum prefix deliberately remains stable through slot `6`; the generated operation-control
-and controlled-execute prefix macros describe the appended slot boundaries without changing that
-compatibility digest.
+table they were generated against; partial historical tables may pass discovery when their
+minimum prefix remains compatible, but they must not call operations absent from that table. The
+minimum prefix deliberately remains stable through slot `6` and operation code `13`; the
+alpha.6 `drawing-list-json` operation is an additive catalog entry and does not change this
+compatibility digest. The generated operation-control and controlled-execute prefix macros
+describe the appended slot boundaries without changing that digest.
 
 ## Record, Result, And Service Rules
 

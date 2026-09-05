@@ -46,7 +46,7 @@ For a symbol-by-symbol compatibility table and longer Rust examples, see the [de
 - Keep generic UniFFI requests on `MermanOperationRequestV4`; optional `MermanOperationControl` carries cooperative cancellation and relative deadlines, while cancellation details remain separate from resource-limit details.
 - Upgrade Web and WASM artifacts to transport API `5`; transport-dispatched requests accept top-level `timeout_ms`. Same-realm execution is cooperatively cancellable, while hard interruption requires a Worker or process boundary.
 - Upgrade Android JNI transport API `1` to API `2` and replace the Kotlin classes and `libmerman_android_jni.so` together; API 2 owns the opaque operation-control registry and exact resource/cancellation detail projections.
-- The native C ABI remains the alpha.5 ABI 3 contract; do not mix an older generated header/table with an alpha.6 library even when the frozen prefix happens to load.
+- The native C ABI remains ABI 3 and keeps the alpha.5 minimum-prefix digest for additive changes. An alpha.5 header may discover the alpha.6 library, but it cannot call the new `drawing-list-json` operation; rebuild the generated header/table together when enabling the complete alpha.6 surface.
 
 Generated bindings and native artifacts are version-coupled. Runtime catalogs and binding probes are expected to reject mixed API versions before decoding changed records; do not add local aliases for the removed probes.
 

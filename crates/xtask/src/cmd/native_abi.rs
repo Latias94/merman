@@ -2694,5 +2694,25 @@ mod tests {
             full_descriptor_digest(&appended, &operations).unwrap(),
             original_full
         );
+
+        let mut appended_operation = committed_descriptor();
+        let mut future_operation = appended_operation.operation_codes.last().unwrap().clone();
+        future_operation.id = "future_operation".to_string();
+        future_operation.c_name = "MERMAN_NATIVE_OPERATION_FUTURE_OPERATION".to_string();
+        future_operation.code = appended_operation
+            .operation_codes
+            .last()
+            .expect("committed ABI has at least one operation code")
+            .code
+            + 1;
+        appended_operation.operation_codes.push(future_operation);
+        assert_eq!(
+            minimum_prefix_layout_digest(&appended_operation).unwrap(),
+            original_prefix
+        );
+        assert_ne!(
+            full_descriptor_digest(&appended_operation, &operations).unwrap(),
+            original_full
+        );
     }
 }
