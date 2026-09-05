@@ -125,6 +125,17 @@ fn validator_enforces_exact_command_and_numeric_boundaries() {
 }
 
 #[test]
+fn validator_enforces_cumulative_nesting_across_scope_kinds() {
+    let document = common::extended_document();
+    let limits = DrawingListLimits {
+        max_nesting_depth: 3,
+        ..DrawingListLimits::default()
+    };
+
+    assert!(document.validate_with_limits(&limits).is_err());
+}
+
+#[test]
 fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
     let document = common::extended_document();
     let footprint = document.footprint().expect("fixture scopes are balanced");

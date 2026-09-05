@@ -728,6 +728,12 @@ impl DrawingListDocument {
                 | DrawingCommand::SetBlendMode { .. }
                 | DrawingCommand::ConcatTransform { .. } => {}
             }
+            let nesting_depth = state_depth
+                .checked_add(semantic_depth)
+                .and_then(|depth| depth.checked_add(layer_depth))
+                .and_then(|depth| depth.checked_add(clip_depth))
+                .ok_or_else(|| DrawingListError::invalid("nesting depth overflows usize"))?;
+            validate_count("nesting_depth", nesting_depth, limits.max_nesting_depth)?;
         }
         if state_depth != 0 {
             return Err(DrawingListError::invalid(
