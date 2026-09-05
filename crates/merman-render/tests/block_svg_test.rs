@@ -56,7 +56,24 @@ fn try_render_block_svg_from_text_with_engine_and_policy(
 }
 
 fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
-    let transform = node.attribute("transform").expect("node transform");
+    let Some(transform) = node.attribute("transform") else {
+        let circle = node
+            .descendants()
+            .find(|child| child.has_tag_name("circle"))
+            .expect("node transform or absolute circle geometry");
+        return (
+            circle
+                .attribute("cx")
+                .expect("circle center x")
+                .parse()
+                .expect("numeric circle center x"),
+            circle
+                .attribute("cy")
+                .expect("circle center y")
+                .parse()
+                .expect("numeric circle center y"),
+        );
+    };
     let captures = Regex::new(
         r"^translate\(\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$",
     )
@@ -72,7 +89,7 @@ fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
 fn path_start(path: roxmltree::Node<'_, '_>) -> (f64, f64) {
     let d = path.attribute("d").expect("path data");
     let captures =
-        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))")
+        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))(?:\s*,\s*|\s+)(-?(?:\d+(?:\.\d*)?|\.\d+))")
             .expect("valid path regex")
             .captures(d)
             .expect("path starts with an absolute move");

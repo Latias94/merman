@@ -1148,6 +1148,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Treemap
             | RenderFamilyKind::Requirement
             | RenderFamilyKind::Er
+            | RenderFamilyKind::Block
             | RenderFamilyKind::XyChart
     )
 }

@@ -9,6 +9,239 @@ use crate::svg::parity::roughjs_common::{
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
+fn block_class_css<D, F>(
+    diagram_id: D,
+    class_defs: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDefRenderModel>,
+    checkpoint: &mut F,
+) -> Result<String>
+where
+    D: SvgDiagramIdValue,
+    F: FnMut() -> Result<()>,
+{
+    fn important_declarations(styles: &[String]) -> String {
+        let mut out = String::new();
+        for style in styles {
+            let Some((key, value)) = parse_style_decl(style) else {
+                continue;
+            };
+            let _ = write!(&mut out, "{key}:{}!important;", escape_xml(value));
+        }
+        out
+    }
+
+    let mut out = String::new();
+    for class_def in class_defs.values() {
+        checkpoint()?;
+        let class = escape_xml(&class_def.id);
+        let shape_style = important_declarations(&class_def.styles);
+        if !shape_style.is_empty() {
+            let _ = write!(
+                &mut out,
+                r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                diagram_id,
+                class.as_str(),
+                shape_style,
+                diagram_id,
+                class.as_str(),
+                shape_style
+            );
+        }
+
+        let text_style = important_declarations(&class_def.text_styles);
+        if !text_style.is_empty() {
+            let _ = write!(
+                &mut out,
+                r#"#{} .{} tspan{{{}}}"#,
+                diagram_id,
+                class.as_str(),
+                text_style
+            );
+        }
+        checkpoint()?;
+    }
+    Ok(out)
+}
+
+pub(in crate::svg::parity) fn block_css<D, F>(
+    diagram_id: D,
+    effective_config: &serde_json::Value,
+    class_defs: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDefRenderModel>,
+    mut checkpoint: F,
+) -> Result<String>
+where
+    D: SvgDiagramIdValue,
+    F: FnMut() -> Result<()>,
+{
+    let theme = PresentationTheme::new(effective_config).node_diagram();
+    let font_family = theme.common.font_family_css.as_str();
+    let font_size = theme.common.font_size_px;
+    let text_color = theme.common.text_color.as_str();
+    let node_text_color = theme.node_text_color.as_str();
+    let title_color = theme.title_color.as_str();
+    let main_bkg = theme.main_bkg.as_str();
+    let node_border = theme.node_border.as_str();
+    let line_color = theme.common.line_color.as_str();
+    let arrowhead_color = theme.arrowhead_color.as_str();
+    let stroke_width = theme.stroke_width.as_str();
+    let edge_label_background = theme.edge_label_background.as_str();
+    let cluster_bkg = theme.cluster_bkg.as_str();
+    let cluster_border = theme.cluster_border.as_str();
+    let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
+    let cluster_border = css_rgba_fade(cluster_border, 0.2)?;
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        diagram_id,
+        font_family,
+        fmt(font_size),
+        node_text_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
+        diagram_id,
+        font_family,
+        node_text_color,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        node_text_color,
+        node_text_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
+        diagram_id, title_color, diagram_id, diagram_id, title_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        diagram_id,
+        main_bkg,
+        node_border,
+        diagram_id,
+        diagram_id,
+        diagram_id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+        diagram_id,
+        diagram_id,
+        arrowhead_color,
+        line_color,
+        diagram_id,
+        line_color,
+        diagram_id,
+        line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
+        diagram_id,
+        edge_label_background,
+        diagram_id,
+        diagram_id,
+        edge_label_background,
+        edge_label_background,
+        diagram_id,
+        edge_label_background
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
+        diagram_id,
+        cluster_bkg,
+        cluster_border,
+        diagram_id,
+        title_color,
+        diagram_id,
+        diagram_id,
+        title_color,
+        diagram_id,
+        text_color,
+        diagram_id,
+        font_family
+    );
+    out.push_str(&block_class_css(diagram_id, class_defs, &mut checkpoint)?);
+    Ok(out)
+}
+
+fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
+    if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
+        *value = raw.to_string();
+        return;
+    }
+    out.push((key.to_string(), raw.to_string()));
+}
+
+pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String, String, String) {
+    let mut box_decls: Vec<(String, String)> = Vec::new();
+    let mut text_decls: Vec<(String, String)> = Vec::new();
+
+    for raw in styles {
+        let trimmed = raw.trim().trim_end_matches(';').trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = parse_style_decl(trimmed) else {
+            let decoded = decode_mermaid_entities_for_render_text(trimmed);
+            let decoded = decoded.as_ref().trim();
+            if !decoded.is_empty() {
+                push_ordered_decl(&mut box_decls, decoded, decoded);
+            }
+            continue;
+        };
+        if is_rect_style_key(key) {
+            push_ordered_decl(&mut box_decls, key, trimmed);
+        }
+        if is_text_style_key(key) {
+            let _ = value;
+            push_ordered_decl(&mut text_decls, key, trimmed);
+        }
+    }
+
+    let style_attr = |decls: &[(String, String)]| -> String {
+        let mut out = String::new();
+        for (_, raw) in decls {
+            out.push_str(raw);
+            out.push(';');
+        }
+        out
+    };
+
+    let mut div_prefix = String::new();
+    for (key, raw) in &text_decls {
+        if key == "color" {
+            let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
+            if !value.is_empty() {
+                let _ = write!(
+                    &mut div_prefix,
+                    "color: {}; ",
+                    super::super::util::cssom_color_value(value)
+                );
+            }
+        } else {
+            div_prefix.push_str(raw);
+            div_prefix.push_str("; ");
+        }
+    }
+
+    (style_attr(&box_decls), style_attr(&text_decls), div_prefix)
+}
+
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
@@ -294,69 +527,6 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
-        if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
-            *value = raw.to_string();
-            return;
-        }
-        out.push((key.to_string(), raw.to_string()));
-    }
-
-    fn compile_block_inline_styles(styles: &[String]) -> (String, String, String) {
-        let mut box_decls: Vec<(String, String)> = Vec::new();
-        let mut text_decls: Vec<(String, String)> = Vec::new();
-
-        for raw in styles {
-            let trimmed = raw.trim().trim_end_matches(';').trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let Some((key, value)) = parse_style_decl(trimmed) else {
-                let decoded = decode_mermaid_entities_for_render_text(trimmed);
-                let decoded = decoded.as_ref().trim();
-                if !decoded.is_empty() {
-                    push_ordered_decl(&mut box_decls, decoded, decoded);
-                }
-                continue;
-            };
-            if is_rect_style_key(key) {
-                push_ordered_decl(&mut box_decls, key, trimmed);
-            }
-            if is_text_style_key(key) {
-                let _ = value;
-                push_ordered_decl(&mut text_decls, key, trimmed);
-            }
-        }
-
-        let style_attr = |decls: &[(String, String)]| -> String {
-            let mut out = String::new();
-            for (_, raw) in decls {
-                out.push_str(raw);
-                out.push(';');
-            }
-            out
-        };
-
-        let mut div_prefix = String::new();
-        for (key, raw) in &text_decls {
-            if key == "color" {
-                let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
-                if !value.is_empty() {
-                    let _ = write!(
-                        &mut div_prefix,
-                        "color: {}; ",
-                        super::super::util::cssom_color_value(value)
-                    );
-                }
-            } else {
-                div_prefix.push_str(raw);
-                div_prefix.push_str("; ");
-            }
-        }
-
-        (style_attr(&box_decls), style_attr(&text_decls), div_prefix)
-    }
-
     fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
         match arrow.unwrap_or("").trim() {
             "arrow_point" => 4.5,
@@ -385,174 +555,6 @@ pub(crate) fn render_block_diagram_svg_model(
             x: point.x + dx / len * distance,
             y: point.y + dy / len * distance,
         }
-    }
-
-    fn block_class_css(
-        diagram_id: SvgDiagramId<'_>,
-        class_defs: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
-        options: &SvgExecution<'_>,
-    ) -> Result<String> {
-        fn important_declarations(styles: &[String]) -> String {
-            let mut out = String::new();
-            for style in styles {
-                let Some((key, value)) = parse_style_decl(style) else {
-                    continue;
-                };
-                let _ = write!(&mut out, "{key}:{}!important;", escape_xml(value));
-            }
-            out
-        }
-
-        let mut out = String::new();
-        for class_def in class_defs.values() {
-            options.checkpoint_emit()?;
-            let class = escape_xml(&class_def.id);
-            let shape_style = important_declarations(&class_def.styles);
-            if !shape_style.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                    diagram_id,
-                    class.as_str(),
-                    shape_style,
-                    diagram_id,
-                    class.as_str(),
-                    shape_style
-                );
-            }
-
-            let text_style = important_declarations(&class_def.text_styles);
-            if !text_style.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"#{} .{} tspan{{{}}}"#,
-                    diagram_id,
-                    class.as_str(),
-                    text_style
-                );
-            }
-            options.checkpoint_emit()?;
-        }
-        Ok(out)
-    }
-
-    fn block_css(
-        diagram_id: SvgDiagramId<'_>,
-        effective_config: &serde_json::Value,
-        class_defs: &indexmap::IndexMap<
-            String,
-            merman_core::diagrams::block::BlockClassDefRenderModel,
-        >,
-        options: &SvgExecution<'_>,
-    ) -> Result<String> {
-        let theme = PresentationTheme::new(effective_config).node_diagram();
-        let font_family = theme.common.font_family_css.as_str();
-        let font_size = theme.common.font_size_px;
-        let text_color = theme.common.text_color.as_str();
-        let node_text_color = theme.node_text_color.as_str();
-        let title_color = theme.title_color.as_str();
-        let main_bkg = theme.main_bkg.as_str();
-        let node_border = theme.node_border.as_str();
-        let line_color = theme.common.line_color.as_str();
-        let arrowhead_color = theme.arrowhead_color.as_str();
-        let stroke_width = theme.stroke_width.as_str();
-        let edge_label_background = theme.edge_label_background.as_str();
-        let cluster_bkg = theme.cluster_bkg.as_str();
-        let cluster_border = theme.cluster_border.as_str();
-        let cluster_bkg = css_rgba_fade(cluster_bkg, 0.5)?;
-        let cluster_border = css_rgba_fade(cluster_border, 0.2)?;
-
-        let mut out = String::new();
-        let _ = write!(
-            &mut out,
-            r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-            diagram_id,
-            font_family,
-            fmt(font_size),
-            node_text_color
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-            diagram_id, stroke_width, diagram_id, diagram_id, diagram_id, diagram_id, diagram_id
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
-            diagram_id,
-            font_family,
-            node_text_color,
-            diagram_id,
-            diagram_id,
-            diagram_id,
-            diagram_id,
-            node_text_color,
-            node_text_color
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
-            diagram_id, title_color, diagram_id, diagram_id, title_color
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
-            diagram_id,
-            diagram_id,
-            diagram_id,
-            diagram_id,
-            diagram_id,
-            main_bkg,
-            node_border,
-            diagram_id,
-            diagram_id,
-            diagram_id
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-            diagram_id,
-            diagram_id,
-            arrowhead_color,
-            line_color,
-            diagram_id,
-            line_color,
-            diagram_id,
-            line_color
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
-            diagram_id,
-            edge_label_background,
-            diagram_id,
-            diagram_id,
-            edge_label_background,
-            edge_label_background,
-            diagram_id,
-            edge_label_background
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
-            diagram_id,
-            cluster_bkg,
-            cluster_border,
-            diagram_id,
-            title_color,
-            diagram_id,
-            diagram_id,
-            title_color,
-            diagram_id,
-            text_color,
-            diagram_id,
-            font_family
-        );
-        out.push_str(&block_class_css(diagram_id, class_defs, options)?);
-        Ok(out)
     }
 
     let diagram_id = options.diagram_id_or("merman");
@@ -626,7 +628,7 @@ pub(crate) fn render_block_diagram_svg_model(
         diagram_id,
         effective_config,
         &model.class_defs,
-        options,
+        || options.checkpoint_emit(),
     )?);
     out.push_str("</style><g/>");
     options.checkpoint_emit()?;
@@ -647,7 +649,7 @@ pub(crate) fn render_block_diagram_svg_model(
             format!("{} flowchart-label", node.classes.join(" "))
         };
         let (node_box_style, node_text_style, node_div_style_prefix) =
-            compile_block_inline_styles(&node.styles);
+            block_inline_styles(&node.styles);
 
         let geometry =
             shape_geometries_by_id

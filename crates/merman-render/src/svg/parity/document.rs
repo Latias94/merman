@@ -451,6 +451,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 Ok(root_svg::RootViewportSpec::responsive(viewport_bounds)
                     .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width)))
             }
+            SvgStructureBody::Block(_) => Ok(root_svg::RootViewportSpec::responsive(
+                viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -590,6 +596,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::radar::canonical_radar_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Block(body) => Some((
+                false,
+                super::block::block_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                    &body.class_defs,
+                    || self.session.checkpoint(OperationPhase::Emit),
+                )?,
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -634,6 +649,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::GitGraph(_)
                 | SvgStructureBody::Radar(_)
                 | SvgStructureBody::XyChart(_)
+                | SvgStructureBody::Block(_)
         ) {
             self.output.push_str("<g/>");
         }
@@ -1118,6 +1134,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                 class,
             )
             .map_err(|_| invalid("failed to write Timeline semantic group"))?;
+        } else if matches!(self.svg_body, SvgStructureBody::Block(_))
+            && let Some(class) = semantic_extra_class.as_deref()
+        {
+            write!(
+                self.output,
+                " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
+                escaped_attr(semantic.id.as_str()),
+                escaped_attr(class),
+            )
+            .map_err(|_| invalid("failed to write Block semantic group"))?;
         } else {
             write!(
                 self.output,
@@ -1217,6 +1243,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Er(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::Block(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             _ => None,
@@ -1533,6 +1562,26 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_line(path_id, start, end, style);
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::Block(_)) {
+            let raw_id = path_id.as_str();
+            if raw_id.starts_with("block.edge.") && raw_id.ends_with(".label.background") {
+                // Block's HTML label shell owns the same resolved background paint in SVG. Native
+                // hosts still receive the public rectangle command.
+                return Ok(());
+            }
+            if raw_id.starts_with("block.node.") {
+                let path = self.path_resource(path_id)?;
+                if let Some((center, radius)) = circle_from_path(path) {
+                    return self.emit_circle(path_id, center, radius, style);
+                }
+                if let Some((bounds, radius)) = rounded_rectangle_from_path(path) {
+                    return self.emit_rounded_rect(path_id, bounds, radius, style);
+                }
+                if let Some(bounds) = rectangle_from_path(path) {
+                    return self.emit_rect(path_id, bounds, style);
+                }
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
@@ -1548,6 +1597,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
+        self.write_block_inline_path_style(path_id);
         self.write_path_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1622,6 +1672,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
+        self.write_block_inline_path_style(path_id);
         self.write_path_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1665,6 +1716,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
+        self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1700,6 +1752,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1729,6 +1782,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1761,6 +1815,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -1793,6 +1848,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if matches!(self.svg_body, SvgStructureBody::Block(_)) {
+            return self.emit_block_html_text(run, semantic_id.as_deref(), text_index);
+        }
         if let SvgStructureBody::Er(body) = self.svg_body
             && semantic_id.as_deref() != Some("er.title")
         {
@@ -1974,6 +2032,96 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn emit_block_html_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+        text_index: Option<usize>,
+    ) -> Result<()> {
+        let Some(semantic_id) = semantic_id else {
+            return Err(invalid("Block HTML text is outside a semantic group"));
+        };
+        let class: String = self
+            .text_class(run, text_index)
+            .map(Cow::into_owned)
+            .unwrap_or_else(|| "nodeLabel".to_string());
+        let (max_width, text_style, div_prefix, data_id) = {
+            let SvgStructureBody::Block(body) = self.svg_body else {
+                return Err(invalid("Block HTML text requires a Block sidecar"));
+            };
+            let max_width = body
+                .label_max_widths
+                .get(semantic_id)
+                .copied()
+                .unwrap_or(run.bounds.width.max(0.0));
+            let (_, text_style, div_prefix) = body
+                .label_inline_styles
+                .get(semantic_id)
+                .map(|styles| super::block::block_inline_styles(styles))
+                .unwrap_or_default();
+            (
+                max_width,
+                text_style,
+                div_prefix,
+                body.label_data_ids.get(semantic_id).cloned(),
+            )
+        };
+        let bounds = run.bounds;
+
+        if semantic_id.starts_with("block.edge.") && semantic_id.ends_with(".label") {
+            self.output.push_str("<g class=\"label\"");
+            if let Some(data_id) = data_id.as_deref() {
+                self.output.push_str(" data-id=\"");
+                escape_attr_into(&mut self.output, data_id);
+                self.output.push('"');
+            }
+            write!(
+                self.output,
+                " transform=\"translate({}, {})\"><foreignObject width=\"{}\" height=\"{}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"labelBkg\" style=\"display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;\"><span class=\"{}\"><p>",
+                fmt(bounds.x),
+                fmt(bounds.y),
+                fmt(bounds.width.max(0.0)),
+                fmt(bounds.height.max(0.0)),
+                fmt(max_width),
+                escaped_attr(class.as_str()),
+            )
+            .map_err(|_| invalid("failed to write Block edge label shell"))?;
+            escape_xml_into(&mut self.output, run.text.as_str());
+            self.output
+                .push_str("</p></span></div></foreignObject></g>");
+            return Ok(());
+        }
+
+        self.output.push_str("<g class=\"label\" style=\"");
+        escape_attr_into(&mut self.output, text_style.as_str());
+        write!(
+            self.output,
+            "\" transform=\"translate({}, {})\"><rect/><foreignObject width=\"{}\" height=\"{}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" style=\"",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width.max(0.0)),
+            fmt(bounds.height.max(0.0)),
+        )
+        .map_err(|_| invalid("failed to write Block node label shell"))?;
+        escape_attr_into(&mut self.output, div_prefix.as_str());
+        write!(
+            self.output,
+            "display: table-cell; white-space: nowrap; line-height: 1.5;\"><span class=\"{}\"",
+            escaped_attr(class.as_str()),
+        )
+        .map_err(|_| invalid("failed to write Block node label style"))?;
+        if !text_style.is_empty() {
+            self.output.push_str(" style=\"");
+            escape_attr_into(&mut self.output, text_style.as_str());
+            self.output.push('"');
+        }
+        self.output.push_str("><p>");
+        escape_xml_into(&mut self.output, run.text.as_str());
+        self.output
+            .push_str("</p></span></div></foreignObject></g>");
+        Ok(())
+    }
+
     fn path_class(&self, path_id: &ResourceId) -> Option<Cow<'static, str>> {
         if matches!(self.svg_body, SvgStructureBody::Error(_))
             && path_id.as_str().starts_with("error.icon.")
@@ -2060,6 +2208,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Block(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -2123,6 +2276,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let raw_id = match self.svg_body {
             SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
             SvgStructureBody::Er(body) => body.dom_ids.get(key),
+            SvgStructureBody::Block(body) => body.dom_ids.get(key),
             _ => None,
         };
         let Some(raw_id) = raw_id else {
@@ -2132,6 +2286,22 @@ impl<'a> DocumentSvgEncoder<'a> {
         escape_attr_into(&mut self.output, self.diagram_id.as_str());
         self.output.push('-');
         escape_attr_into(&mut self.output, raw_id.as_str());
+        self.output.push('"');
+    }
+
+    fn write_block_inline_path_style(&mut self, key: &ResourceId) {
+        let Some(styles) = (match self.svg_body {
+            SvgStructureBody::Block(body) => body.path_inline_styles.get(key.as_str()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let (box_style, _, _) = super::block::block_inline_styles(styles);
+        if box_style.is_empty() {
+            return;
+        }
+        self.output.push_str(" style=\"");
+        escape_attr_into(&mut self.output, box_style.as_str());
         self.output.push('"');
     }
 
@@ -2219,6 +2389,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                     .or_else(|| body.text_classes.get(semantic_id))?;
                 Some(Cow::Owned(class.clone()))
             }
+            SvgStructureBody::Block(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
                 Some(id) if id.starts_with("radar.legend.") => {
@@ -2483,6 +2657,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
         }
+        if let SvgStructureBody::Block(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
         self.semantic_svg_ids
             .get(id)
             .cloned()
@@ -2513,6 +2692,7 @@ fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
         | RenderFamilyKind::Er
         | RenderFamilyKind::Flowchart
         | RenderFamilyKind::Swimlane
+        | RenderFamilyKind::Block
         | RenderFamilyKind::Error => "merman",
         RenderFamilyKind::QuadrantChart => "quadrantchart",
         RenderFamilyKind::Pie => "merman",

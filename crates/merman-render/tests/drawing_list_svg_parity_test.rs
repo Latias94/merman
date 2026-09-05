@@ -258,6 +258,53 @@ fn state_canonical_svg_keeps_typed_shapes_transitions_and_labels() {
 }
 
 #[test]
+fn block_canonical_svg_keeps_nodes_routes_styles_and_html_labels() {
+    let svg = render_svg(
+        r#"block
+  A["Alpha"] --> B(("Beta"))
+  classDef hot fill:#ffe4e6,stroke:#be123c
+  class A hot
+"#,
+        "block-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Block SVG is XML");
+    let root = document.root_element();
+
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.starts_with("max-width: ")
+                && style.ends_with(" background-color: white;"))
+    );
+    assert!(
+        svg.contains("#block-parity .hot&gt;*{fill:#ffe4e6!important;stroke:#be123c!important;}")
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("id") == Some("block-parity-A")
+            && node.attribute("class") == Some("node hot flowchart-label")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.attribute("id") == Some("block-parity-B")
+            && node.attribute("class") == Some("node default flowchart-label")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|part| part == "flowchart-link")
+            })
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("foreignObject")
+            && node
+                .descendants()
+                .any(|child| child.has_tag_name("p") && child.text() == Some("Alpha"))
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}
+
+#[test]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",

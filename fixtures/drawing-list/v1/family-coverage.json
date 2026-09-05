@@ -25,7 +25,7 @@
     { "id": "radar", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "info", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "treemap", "document_adapter": "direct", "svg_serializer": "canonical" },
-    { "id": "block", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "block", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "er", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "quadrantChart", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "xychart", "document_adapter": "direct", "svg_serializer": "canonical" },

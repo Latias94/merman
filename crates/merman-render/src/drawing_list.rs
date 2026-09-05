@@ -462,6 +462,16 @@ pub(crate) struct WardleySvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct BlockSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) class_defs:
+        indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDefRenderModel>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) label_max_widths: BTreeMap<String, f64>,
+    pub(crate) label_inline_styles: BTreeMap<String, Vec<String>>,
+    pub(crate) label_data_ids: BTreeMap<String, String>,
+    pub(crate) path_inline_styles: BTreeMap<String, Vec<String>>,
 }
 
 /// SVG-only metadata retained beside the public renderer-neutral Swimlane document.

@@ -21,8 +21,7 @@ use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
 use crate::text::{
-    TextMeasurer as _, TextStyle as MeasurementTextStyle, mermaid_markdown_to_xhtml_label_fragment,
-    mermaid_xhtml_label_plain_text, split_html_br_lines,
+    mermaid_markdown_to_xhtml_label_fragment, mermaid_xhtml_label_plain_text, split_html_br_lines,
 };
 use crate::{Error, Result};
 use merman_core::OperationPhase;
@@ -113,6 +112,14 @@ struct BlockBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
+    label_max_widths: BTreeMap<String, f64>,
+    label_inline_styles: BTreeMap<String, Vec<String>>,
+    label_data_ids: BTreeMap<String, String>,
+    path_inline_styles: BTreeMap<String, Vec<String>>,
 }
 
 pub(crate) fn build_block_document(
@@ -133,13 +140,24 @@ impl<'a> BlockBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config_diagram_look(config)
-            .as_str()
-            .eq_ignore_ascii_case("handDrawn")
-        {
-            return Err(unavailable(
-                "Block hand-drawn output uses SVG/RoughJS effects that DrawingList v1 cannot preserve",
-            ));
+        let look = config_diagram_look(config);
+        match look.as_str() {
+            value if value.eq_ignore_ascii_case("classic") => {}
+            value if value.eq_ignore_ascii_case("handDrawn") => {
+                return Err(unavailable(
+                    "Block hand-drawn output uses SVG/RoughJS effects that DrawingList v1 cannot preserve",
+                ));
+            }
+            value if value.eq_ignore_ascii_case("neo") => {
+                return Err(unavailable(
+                    "Block neo output uses SVG drop-shadow filters that DrawingList v1 cannot preserve",
+                ));
+            }
+            other => {
+                return Err(unavailable(format!(
+                    "Block look `{other}` has no lossless DrawingList v1 mapping"
+                )));
+            }
         }
         if config
             .get("themeCSS")
@@ -220,6 +238,14 @@ impl<'a> BlockBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
+            label_max_widths: BTreeMap::new(),
+            label_inline_styles: BTreeMap::new(),
+            label_data_ids: BTreeMap::new(),
+            path_inline_styles: BTreeMap::new(),
         })
     }
 
@@ -236,6 +262,8 @@ impl<'a> BlockBuilder<'a> {
             description: None,
             link: None,
         });
+        self.semantic_classes
+            .insert("block.document".to_string(), "block".to_string());
 
         for (index, node) in self.layout.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -283,6 +311,15 @@ impl<'a> BlockBuilder<'a> {
                 family: RenderFamilyKind::Block,
                 body: SvgStructureBody::Block(BlockSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    class_defs: self.model.class_defs.clone(),
+                    semantic_classes: std::mem::take(&mut self.semantic_classes),
+                    path_classes: std::mem::take(&mut self.path_classes),
+                    text_classes: std::mem::take(&mut self.text_classes),
+                    dom_ids: std::mem::take(&mut self.dom_ids),
+                    label_max_widths: std::mem::take(&mut self.label_max_widths),
+                    label_inline_styles: std::mem::take(&mut self.label_inline_styles),
+                    label_data_ids: std::mem::take(&mut self.label_data_ids),
+                    path_inline_styles: std::mem::take(&mut self.path_inline_styles),
                 }),
             },
         })
@@ -302,9 +339,26 @@ impl<'a> BlockBuilder<'a> {
             ))
         })?;
         let style = self.node_style(&source, &geometry)?;
+        let semantic_id = format!("block.node.{index}");
+        let node_class = if source.classes.is_empty() {
+            "node default flowchart-label".to_string()
+        } else {
+            format!("node {} flowchart-label", source.classes.join(" "))
+        };
+        self.semantic_classes
+            .insert(semantic_id.clone(), node_class);
+        self.dom_ids.insert(semantic_id.clone(), node.id.clone());
+        self.text_classes
+            .insert(semantic_id.clone(), "nodeLabel".to_string());
+        self.label_max_widths
+            .insert(semantic_id.clone(), geometry.allocated.width.max(0.0));
+        if !source.styles.is_empty() {
+            self.label_inline_styles
+                .insert(semantic_id.clone(), source.styles.clone());
+        }
         if !style.visible {
             self.semantics.push(SemanticAnnotation {
-                id: format!("block.node.{index}"),
+                id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(source.label.clone()),
                 description: Some(format!("{} ({})", node.id, source.block_type)),
@@ -313,7 +367,6 @@ impl<'a> BlockBuilder<'a> {
             return Ok(());
         }
 
-        let semantic_id = format!("block.node.{index}");
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -331,7 +384,7 @@ impl<'a> BlockBuilder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
-            title: Some(if lines.iter().all(|line| line.is_empty()) {
+            title: Some(if lines.iter().all(|line| line.trim().is_empty()) {
                 node.id.clone()
             } else {
                 lines.join(" ")
@@ -349,6 +402,11 @@ impl<'a> BlockBuilder<'a> {
         geometry: &BlockShapeGeometry,
         style: &BlockStyle,
     ) -> Result<()> {
+        let inline_styles = self
+            .sources
+            .get(&node.id)
+            .map(|source| source.styles.clone())
+            .unwrap_or_default();
         let fill = style
             .fill
             .map(|color| with_alpha(color, style.opacity * style.fill_opacity));
@@ -375,18 +433,52 @@ impl<'a> BlockBuilder<'a> {
                 inner_radius,
                 ..
             } => {
+                let outer_id = format!("{id}.outer");
+                let inner_id = format!("{id}.inner");
+                self.path_classes
+                    .insert(outer_id.clone(), "outer-circle".to_string());
+                self.path_classes
+                    .insert(inner_id.clone(), "inner-circle".to_string());
+                if !inline_styles.is_empty() {
+                    self.path_inline_styles
+                        .insert(outer_id.clone(), inline_styles.clone());
+                    self.path_inline_styles
+                        .insert(inner_id.clone(), inline_styles.clone());
+                }
                 self.add_path(
-                    format!("{id}.outer"),
+                    outer_id,
                     ellipse_path(node.x, node.y, *outer_radius, *outer_radius),
                     path_style(fill, stroke_color),
                 )?;
                 self.add_path(
-                    format!("{id}.inner"),
+                    inner_id,
                     ellipse_path(node.x, node.y, *inner_radius, *inner_radius),
                     path_style(fill, stroke_color),
                 )?;
             }
             boundary => {
+                let class = match boundary {
+                    BlockShapeBoundary::Rectangle {
+                        kind: BlockRectangleKind::Composite,
+                        ..
+                    } => "basic cluster composite label-container",
+                    BlockShapeBoundary::Rectangle { .. } | BlockShapeBoundary::Circle { .. } => {
+                        "basic label-container"
+                    }
+                    BlockShapeBoundary::Cylinder { .. } => "basic label-container outer-path",
+                    BlockShapeBoundary::Polygon { .. } => "label-container",
+                    BlockShapeBoundary::Stadium { .. } => {
+                        unreachable!("RoughJS stadiums fail Block preflight")
+                    }
+                    BlockShapeBoundary::DoubleCircle { .. } => {
+                        unreachable!("double circles use the dedicated branch")
+                    }
+                };
+                self.path_classes.insert(id.to_string(), class.to_string());
+                if !inline_styles.is_empty() {
+                    self.path_inline_styles
+                        .insert(id.to_string(), inline_styles.clone());
+                }
                 self.add_path(
                     id.to_string(),
                     shape_segments(node, boundary),
@@ -409,36 +501,17 @@ impl<'a> BlockBuilder<'a> {
         if lines.iter().all(|line| line.is_empty()) {
             return Ok(());
         }
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(style.font_family_css.clone()),
-            font_size: style.font_size,
-            font_weight: Some(style.font.weight.to_string()),
-            font_style: Some(match style.font.style {
-                FontStyle::Normal => "normal".to_string(),
-                FontStyle::Italic => "italic".to_string(),
-                FontStyle::Oblique => "oblique".to_string(),
-            }),
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let measured_heights = lines
-            .iter()
-            .map(|line| {
-                if line.is_empty() {
-                    style.font_size
-                } else {
-                    measurer
-                        .measure_svg_raw_text_bbox_height_px(line, &measurement_style)
-                        .max(1.0)
-                }
-            })
-            .collect::<Vec<_>>();
-        let line_height = style
+        let visually_empty = lines.iter().all(|line| line.trim().is_empty());
+        let text_line_height = style
             .line_height
             .max(layout_height / lines.len().max(1) as f64)
             .max(style.font_size);
-        let total_height = line_height * lines.len().max(1) as f64;
+        let bounds_line_height = if visually_empty {
+            0.0
+        } else {
+            text_line_height
+        };
+        let total_height = bounds_line_height * lines.len().max(1) as f64;
         let label_center = label_center(
             node,
             geometry,
@@ -448,16 +521,17 @@ impl<'a> BlockBuilder<'a> {
                 .map(|source| source.block_type.as_str())
                 .unwrap_or(""),
         );
-        let label_width = layout_width.max(1.0);
+        let label_width = if visually_empty {
+            0.0
+        } else {
+            layout_width.max(0.0)
+        };
         let label_left = label_center.x - label_width / 2.0;
         for (line_index, line) in lines.iter().enumerate() {
             if line.is_empty() {
                 continue;
             }
             self.session.checkpoint(OperationPhase::Emit)?;
-            let width = measurer
-                .measure_svg_raw_text_bbox_width_px(line, &measurement_style)
-                .max(1.0);
             let origin_x = match style.text_anchor {
                 TextAnchor::Start => label_left,
                 TextAnchor::Middle => label_center.x,
@@ -465,24 +539,24 @@ impl<'a> BlockBuilder<'a> {
             };
             let origin = Point::new(
                 origin_x,
-                label_center.y - total_height / 2.0 + line_height * (line_index as f64 + 0.5),
+                label_center.y - total_height / 2.0
+                    + bounds_line_height * (line_index as f64 + 0.5),
             );
-            let left = match style.text_anchor {
-                TextAnchor::Start => origin.x,
-                TextAnchor::Middle => origin.x - width / 2.0,
-                TextAnchor::End => origin.x - width,
-            };
-            let height = measured_heights[line_index];
             self.commands.push(DrawingCommand::DrawText {
                 run: TextRun {
                     text: line.clone(),
                     origin,
-                    bounds: Rect::new(left, origin.y - height / 2.0, width, height),
+                    bounds: Rect::new(
+                        label_left,
+                        origin.y - bounds_line_height / 2.0,
+                        label_width,
+                        bounds_line_height,
+                    ),
                     style: DisplayTextStyle {
                         font: style.font.clone(),
                         font_size: style.font_size,
                         letter_spacing: 0.0,
-                        line_height,
+                        line_height: text_line_height,
                         fill: Paint::solid(with_alpha(style.text, style.opacity)),
                     },
                     anchor: style.text_anchor,
@@ -502,6 +576,8 @@ impl<'a> BlockBuilder<'a> {
             .get(&edge.id)
             .ok_or_else(|| invalid(format!("Block edge `{}` has no layout geometry", edge.id)))?;
         let semantic_id = format!("block.edge.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgePath".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -519,8 +595,14 @@ impl<'a> BlockBuilder<'a> {
             );
         }
         let style = self.edge_style(edge)?;
+        let route_id = format!("{semantic_id}.route");
+        self.path_classes.insert(
+            route_id.clone(),
+            "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1".to_string(),
+        );
+        self.dom_ids.insert(route_id.clone(), edge.id.clone());
         self.add_path(
-            format!("{semantic_id}.route"),
+            route_id,
             flowchart_curve_segments(&points, FlowchartCurveKind::Basis, 0.0, false, None),
             PathStyle {
                 fill_rule: FillRule::NonZero,
@@ -574,6 +656,8 @@ impl<'a> BlockBuilder<'a> {
         let Some(marker) = marker_kind(arrow)? else {
             return Ok(());
         };
+        self.path_classes
+            .insert(id.to_string(), "arrowMarkerPath".to_string());
         let endpoint = if start {
             points
                 .first()
@@ -584,70 +668,60 @@ impl<'a> BlockBuilder<'a> {
                 .ok_or_else(|| invalid("Block edge has no end point"))?
         };
         let adjacent = if start {
-            points
-                .get(1)
-                .ok_or_else(|| invalid("Block edge has no start tangent"))?
+            points.iter().skip(1).find(|candidate| {
+                (candidate.x - endpoint.x).hypot(candidate.y - endpoint.y) > f64::EPSILON
+            })
         } else {
-            points
-                .get(points.len().saturating_sub(2))
-                .ok_or_else(|| invalid("Block edge has no end tangent"))?
-        };
-        let mut direction = Point::new(adjacent.x - endpoint.x, adjacent.y - endpoint.y);
-        if !start {
-            direction.x = -direction.x;
-            direction.y = -direction.y;
+            points.iter().rev().skip(1).find(|candidate| {
+                (candidate.x - endpoint.x).hypot(candidate.y - endpoint.y) > f64::EPSILON
+            })
         }
-        direction = normalize(direction.x, direction.y);
+        .ok_or_else(|| invalid("Block edge marker has no non-zero tangent"))?;
+        let direction = if start {
+            normalize(adjacent.x - endpoint.x, adjacent.y - endpoint.y)
+        } else {
+            normalize(endpoint.x - adjacent.x, endpoint.y - adjacent.y)
+        };
         let normal = Point::new(-direction.y, direction.x);
-        let stroke_color = style.stroke.unwrap_or(self.arrow_color);
+        let marker_point = |x: f64, y: f64, ref_x: f64, ref_y: f64, scale: f64| {
+            let dx = (x - ref_x) * scale;
+            let dy = (y - ref_y) * scale;
+            Point::new(
+                endpoint.x + direction.x * dx + normal.x * dy,
+                endpoint.y + direction.y * dx + normal.y * dy,
+            )
+        };
+        let stroke_color = style.stroke.unwrap_or(self.line_color);
         let stroke_color = with_alpha(stroke_color, style.opacity * style.stroke_opacity);
-        let fill_color = with_alpha(
-            style.fill.unwrap_or(self.node_fill),
-            style.opacity * style.fill_opacity,
-        );
+        let fill_color = with_alpha(self.arrow_color, style.opacity * style.fill_opacity);
         let segments = match marker {
-            BlockMarker::Point => {
-                let base = Point::new(
-                    endpoint.x + direction.x * 8.0,
-                    endpoint.y + direction.y * 8.0,
-                );
-                polygon_path(&[
-                    Point::new(endpoint.x, endpoint.y),
-                    Point::new(base.x + normal.x * 4.0, base.y + normal.y * 4.0),
-                    Point::new(base.x - normal.x * 4.0, base.y - normal.y * 4.0),
-                ])
-            }
+            BlockMarker::Point if start => polygon_path(&[
+                marker_point(0.0, 5.0, 4.5, 5.0, 0.8),
+                marker_point(10.0, 10.0, 4.5, 5.0, 0.8),
+                marker_point(10.0, 0.0, 4.5, 5.0, 0.8),
+            ]),
+            BlockMarker::Point => polygon_path(&[
+                marker_point(0.0, 0.0, 5.0, 5.0, 0.8),
+                marker_point(10.0, 5.0, 5.0, 5.0, 0.8),
+                marker_point(0.0, 10.0, 5.0, 5.0, 0.8),
+            ]),
             BlockMarker::Circle => {
-                let center = Point::new(
-                    endpoint.x + direction.x * 4.0,
-                    endpoint.y + direction.y * 4.0,
-                );
-                ellipse_path(center.x, center.y, 4.5, 4.5)
+                let ref_x = if start { -1.0 } else { 11.0 };
+                let center = marker_point(5.0, 5.0, ref_x, 5.0, 1.1);
+                ellipse_path(center.x, center.y, 5.5, 5.5)
             }
             BlockMarker::Cross => vec![
                 PathSegment::MoveTo {
-                    to: Point::new(
-                        endpoint.x + direction.x * 1.0 + normal.x * 4.0,
-                        endpoint.y + direction.y * 1.0 + normal.y * 4.0,
-                    ),
+                    to: marker_point(1.0, 1.0, if start { -1.0 } else { 12.0 }, 5.2, 1.0),
                 },
                 PathSegment::LineTo {
-                    to: Point::new(
-                        endpoint.x + direction.x * 1.0 - normal.x * 4.0,
-                        endpoint.y + direction.y * 1.0 - normal.y * 4.0,
-                    ),
+                    to: marker_point(10.0, 10.0, if start { -1.0 } else { 12.0 }, 5.2, 1.0),
                 },
                 PathSegment::MoveTo {
-                    to: Point::new(
-                        endpoint.x + direction.x * 1.0 - normal.x * 4.0,
-                        endpoint.y + direction.y * 1.0 + normal.y * 4.0,
-                    ),
+                    to: marker_point(10.0, 1.0, if start { -1.0 } else { 12.0 }, 5.2, 1.0),
                 },
                 PathSegment::LineTo {
-                    to: Point::new(
-                        endpoint.x + direction.x * 1.0 + normal.x * 4.0,
-                        endpoint.y + direction.y * 1.0 - normal.y * 4.0,
-                    ),
+                    to: marker_point(1.0, 10.0, if start { -1.0 } else { 12.0 }, 5.2, 1.0),
                 },
             ],
         };
@@ -657,18 +731,18 @@ impl<'a> BlockBuilder<'a> {
             match marker {
                 BlockMarker::Point => PathStyle {
                     fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(stroke_color)),
-                    stroke: Some(stroke(stroke_color, style.stroke_width.max(1.0))),
+                    fill: Some(Paint::solid(fill_color)),
+                    stroke: Some(stroke(stroke_color, 1.0)),
                 },
                 BlockMarker::Circle => PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(fill_color)),
-                    stroke: Some(stroke(stroke_color, style.stroke_width.max(1.0))),
+                    stroke: Some(stroke(stroke_color, 1.0)),
                 },
                 BlockMarker::Cross => PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: None,
-                    stroke: Some(stroke(stroke_color, style.stroke_width.max(1.0))),
+                    stroke: Some(stroke(stroke_color, 2.0)),
                 },
             },
         )
@@ -689,6 +763,15 @@ impl<'a> BlockBuilder<'a> {
         let lines = plain_lines(&edge.label, &format!("Block edge `{}` label", edge.id))?;
         let style = self.edge_style(edge)?;
         let semantic_id = format!("block.edge.{index}.label");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
+        self.path_classes
+            .insert(format!("{semantic_id}.background"), "label".to_string());
+        self.text_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
+        self.label_max_widths.insert(semantic_id.clone(), 200.0);
+        self.label_data_ids
+            .insert(semantic_id.clone(), edge.id.clone());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -1023,6 +1106,23 @@ fn validate_model(
             )));
         }
         let source = sources.get(&node.id).expect("checked above");
+        match &geometries.get(&node.id).expect("checked above").boundary {
+            BlockShapeBoundary::Stadium { .. } => {
+                return Err(unavailable(format!(
+                    "Block node `{}` uses a stadium rendered through RoughJS even in classic mode",
+                    node.id
+                )));
+            }
+            BlockShapeBoundary::Polygon { .. }
+                if matches!(source.block_type.as_str(), "odd" | "rect_left_inv_arrow") =>
+            {
+                return Err(unavailable(format!(
+                    "Block node `{}` uses an odd shape rendered through RoughJS even in classic mode",
+                    node.id
+                )));
+            }
+            _ => {}
+        }
         if source
             .classes
             .iter()
@@ -1236,7 +1336,7 @@ fn label_center(node: &LayoutNode, geometry: &BlockShapeGeometry, block_type: &s
 fn plain_lines(raw: &str, context: &str) -> Result<Vec<String>> {
     let decoded = raw.replace("&nbsp;", "\u{00A0}");
     if decoded.trim().is_empty() {
-        return Ok(vec![String::new()]);
+        return Ok(vec![decoded]);
     }
     split_html_br_lines(&decoded)
         .into_iter()

@@ -2737,12 +2737,31 @@ fn block_emits_source_backed_shapes_routes_styles_and_semantics() {
             merman_display_list::DrawingCommand::DrawText { run } if run.text == text
         )));
     }
-    assert!(document.resources.iter().any(|resource| matches!(
-        resource,
-        merman_display_list::DrawingResource::Path(path)
-            if path.id.as_str().starts_with("block.edge.")
-                && path.id.as_str().ends_with(".marker.end")
-    )));
+    let marker = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str().starts_with("block.edge.")
+                    && path.id.as_str().ends_with(".marker.end") =>
+            {
+                Some(path)
+            }
+            _ => None,
+        })
+        .expect("Block point marker should be expanded into typed geometry");
+    let [
+        merman_display_list::PathSegment::MoveTo { to: base_top },
+        merman_display_list::PathSegment::LineTo { to: tip },
+        ..,
+    ] = marker.segments.as_slice()
+    else {
+        panic!("Block point marker should start with its base and tip");
+    };
+    assert!(
+        tip.x > base_top.x,
+        "a left-to-right Block edge must expand an end marker that points right"
+    );
     assert_eq!(
         document
             .semantics
@@ -2776,6 +2795,30 @@ fn block_rejects_unmapped_visual_effects_instead_of_dropping_them() {
         ))
         .expect_err("Block filters must remain an explicit capability boundary");
     assert!(error.to_string().contains("style property `filter`"));
+
+    for (source, expected) in [
+        (
+            "block\n  A([\"Stadium\"])\n",
+            "stadium rendered through RoughJS",
+        ),
+        (
+            "block\n  A>\"Odd\"]\n",
+            "odd shape rendered through RoughJS",
+        ),
+        (
+            "%%{init: {\"look\": \"neo\"}}%%\nblock\n  A[\"Neo\"]\n",
+            "neo output uses SVG drop-shadow filters",
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect_err("unmapped Block effects must fail before returning a document");
+        assert!(error.to_string().contains(expected), "{error}");
+    }
 }
 
 #[test]
