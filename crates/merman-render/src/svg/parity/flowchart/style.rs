@@ -31,6 +31,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     inline_shape_sources: Vec<PendingSourceDeclaration>,
     generated_shape_sources: Vec<PendingSourceDeclaration>,
     label_sources: Vec<PendingSourceDeclaration>,
+    label_foreground_status: crate::flowchart::FlowchartSourceFacetStatus,
     invalid_sources: Vec<PendingInvalidSourceDeclaration>,
 }
 
@@ -198,6 +199,7 @@ struct PendingInvalidSourceDeclaration {
     raw: Arc<str>,
     provenance: PendingSourceProvenance,
     channel: crate::diagram_theme::SourceStyleChannel,
+    label_foreground: bool,
 }
 
 impl PendingInvalidSourceDeclaration {
@@ -215,6 +217,7 @@ enum PreparedClassDeclaration {
     Invalid {
         raw: Arc<str>,
         channel: crate::diagram_theme::SourceStyleChannel,
+        label_foreground: bool,
     },
 }
 
@@ -257,9 +260,14 @@ impl FlowchartPreparedClassStyles {
                         crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw)
                             .map(Arc::new)
                             .map(PreparedClassDeclaration::Valid)
-                            .unwrap_or_else(|| PreparedClassDeclaration::Invalid {
-                                raw: Arc::from(raw.trim()),
-                                channel: invalid_source_style_channel(raw),
+                            .unwrap_or_else(|| {
+                                let (channel, label_foreground) =
+                                    classify_invalid_source_style(raw);
+                                PreparedClassDeclaration::Invalid {
+                                    raw: Arc::from(raw.trim()),
+                                    channel,
+                                    label_foreground,
+                                }
                             });
                     prepared.push(declaration);
                 }
@@ -566,6 +574,26 @@ impl FlowchartCompiledStyles {
             .as_ref()
             .map(SourceFacetDeclaration::status)
             .unwrap_or(crate::flowchart::FlowchartSourceFacetStatus::Absent)
+    }
+
+    pub(super) fn source_label_foreground_status(
+        &self,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        self.label_foreground_status
+    }
+
+    pub(super) fn emitted_source_label_foreground_status(
+        &self,
+        receipt: crate::svg::parity::flowchart::render::node::emission::FlowchartNodeLabelEmissionReceipt,
+    ) -> crate::flowchart::FlowchartSourceFacetStatus {
+        if receipt
+            .label_fill_reach()
+            .is_some_and(|reach| reach.is_verified())
+        {
+            self.source_label_foreground_status()
+        } else {
+            crate::flowchart::FlowchartSourceFacetStatus::Absent
+        }
     }
 
     pub(super) fn emitted_source_font_size_status(
@@ -1959,10 +1987,15 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
             };
             let prepared = match declaration {
                 PreparedClassDeclaration::Valid(prepared) => Arc::clone(prepared),
-                PreparedClassDeclaration::Invalid { raw, channel } => {
+                PreparedClassDeclaration::Invalid {
+                    raw,
+                    channel,
+                    label_foreground,
+                } => {
                     invalid_sources.push(PendingInvalidSourceDeclaration {
                         raw: Arc::clone(raw),
                         channel: *channel,
+                        label_foreground: *label_foreground,
                         provenance,
                     });
                     continue;
@@ -1995,9 +2028,11 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
             let Some(declaration) =
                 crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw)
             else {
+                let (channel, label_foreground) = classify_invalid_source_style(raw);
                 invalid_sources.push(PendingInvalidSourceDeclaration {
                     raw: Arc::from(raw.trim()),
-                    channel: invalid_source_style_channel(raw),
+                    channel,
+                    label_foreground,
                     provenance,
                 });
                 continue;
@@ -2173,6 +2208,26 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         }
     }
 
+    let label_foreground_status = label_sources
+        .iter()
+        .filter(|source| source.prepared.property() == "color")
+        .map(|source| {
+            crate::flowchart::FlowchartSourceFacetStatus::from_parts(
+                true,
+                crate::mermaid_style::is_supported_css_color_value(source.prepared.value()),
+            )
+        })
+        .chain(
+            invalid_sources
+                .iter()
+                .filter(|source| source.label_foreground)
+                .map(|_| crate::flowchart::FlowchartSourceFacetStatus::Unverified),
+        )
+        .fold(
+            crate::flowchart::FlowchartSourceFacetStatus::Absent,
+            crate::flowchart::FlowchartSourceFacetStatus::merge,
+        );
+
     if let Some(declaration) = inline_semantic.get("stroke") {
         inline_stroke_source = Some(SourceFacetDeclaration {
             prepared: Arc::clone(&declaration.prepared),
@@ -2219,21 +2274,25 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         inline_shape_sources,
         generated_shape_sources,
         label_sources,
+        label_foreground_status,
         invalid_sources,
     })
 }
 
-fn invalid_source_style_channel(raw: &str) -> crate::diagram_theme::SourceStyleChannel {
+fn classify_invalid_source_style(raw: &str) -> (crate::diagram_theme::SourceStyleChannel, bool) {
     let property = raw
         .trim()
         .split_once(':')
         .map(|(property, _)| property.trim())
         .unwrap_or_default();
-    if crate::flowchart::flowchart_is_source_spelled_label_style_key(property) {
+    let channel = if crate::flowchart::flowchart_is_source_spelled_label_style_key(property) {
         crate::diagram_theme::SourceStyleChannel::Label
     } else {
         crate::diagram_theme::SourceStyleChannel::Shape
-    }
+    };
+    let label_foreground = channel == crate::diagram_theme::SourceStyleChannel::Label
+        && property.eq_ignore_ascii_case("color");
+    (channel, label_foreground)
 }
 
 fn admitted_flowchart_source_paint(value: &str) -> bool {
@@ -2359,6 +2418,7 @@ mod tests {
             inline_shape_sources: Vec::new(),
             generated_shape_sources: Vec::new(),
             label_sources: Vec::new(),
+            label_foreground_status: crate::flowchart::FlowchartSourceFacetStatus::Absent,
             invalid_sources: Vec::new(),
         }
     }

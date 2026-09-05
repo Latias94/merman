@@ -403,9 +403,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE),
-        (DiagramFamilyId::CLASS, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL)
-        }
+        (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
+            ThemeTarget::NodeLabel,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL),
         (
             DiagramFamilyId::TREE_VIEW,
             ThemeTarget::NodeLabel | ThemeTarget::Text,
@@ -1352,7 +1354,14 @@ pub(super) fn classify_rule_facet(
             FamilyThemeRuleFacet::Typography(
                 ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
             )
-        ) || (target == ThemeTarget::EdgeLabel && facet == FamilyThemeRuleFacet::Padding))
+        ) || (target == ThemeTarget::EdgeLabel && facet == FamilyThemeRuleFacet::Padding)
+            || (target == ThemeTarget::NodeLabel
+                && matches!(
+                    facet,
+                    FamilyThemeRuleFacet::Fill(
+                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                    )
+                )))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -3888,6 +3897,29 @@ mod tests {
     }
 
     #[test]
+    fn flowchart_and_swimlane_node_label_fill_owns_unqualified_and_explicit_default_routes() {
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            for paint_kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            family,
+                            ThemeTarget::NodeLabel,
+                            FamilyThemeSelectorShape::Static { variant },
+                            FamilyThemeRuleFacet::Fill(paint_kind),
+                        ),
+                        FamilyThemeDisposition::TypedAdapter,
+                        "family={family:?} paint={paint_kind:?} variant={variant:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn flowchart_and_swimlane_own_static_scalar_edge_stroke() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -4938,6 +4970,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::FLOWCHART,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
                 ThemeTarget::Edge,
                 Stroke,
                 Transparent,
@@ -5515,6 +5561,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
             ),
             (
                 DiagramFamilyId::SWIMLANE,
@@ -5681,14 +5741,14 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 110);
+        assert_eq!(qualified.len(), 124);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
                     .iter()
                     .filter(|route| route.family_id() == family)
                     .count(),
-                10,
+                12,
                 "family={family:?}"
             );
         }

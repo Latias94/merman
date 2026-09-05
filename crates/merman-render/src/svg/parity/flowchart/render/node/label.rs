@@ -13,7 +13,7 @@ use crate::svg::parity::flowchart::util::{
     HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_html_contains_img_tag,
 };
 use crate::svg::parity::flowchart::{
-    write_flowchart_svg_label_plan, write_flowchart_svg_text_markdown_wrapped,
+    write_flowchart_svg_label_plan_with_style, write_flowchart_svg_text_markdown_wrapped_with_style,
 };
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
@@ -21,6 +21,7 @@ pub(super) struct FlowchartNodeLabelEmissionPlan<'a> {
     node_classes: &'a [String],
     node_styles: &'a [String],
     compiled_styles: &'a FlowchartCompiledStyles,
+    typed_label_fill: Option<&'a str>,
 }
 
 impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
@@ -28,12 +29,26 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         node_classes: &'a [String],
         node_styles: &'a [String],
         compiled_styles: &'a FlowchartCompiledStyles,
+        typed_label_fill: Option<&'a str>,
     ) -> Self {
         Self {
             node_classes,
             node_styles,
             compiled_styles,
+            typed_label_fill,
         }
+    }
+
+    pub(super) const fn has_typed_label_fill(&self) -> bool {
+        self.typed_label_fill.is_some()
+    }
+
+    fn typed_label_fill_style(&self) -> Option<String> {
+        self.typed_label_fill.map(|fill| {
+            let mut style = String::new();
+            append_typed_label_fill(&mut style, fill);
+            style
+        })
     }
 
     fn text_style<'b>(
@@ -73,11 +88,15 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         &self,
         prepared: Option<&crate::flowchart::FlowchartSvgLabelRenderPlan<'_>>,
     ) -> String {
-        prepared
+        let mut style = prepared
             .and_then(|plan| {
                 plan.merge_emission_font_style(Some(self.compiled_styles.label_style.as_str()))
             })
-            .unwrap_or_else(|| self.compiled_styles.label_style.clone())
+            .unwrap_or_else(|| self.compiled_styles.label_style.clone());
+        if let Some(fill) = self.typed_label_fill {
+            append_typed_label_fill(&mut style, fill);
+        }
+        style
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -170,6 +189,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                     crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
                 ),
             )
+            .with_label_fill_reach(typography_applicable, self.typed_label_fill.is_some())
             .with_html_typography_statuses(html_font_stack, html_font_size)
     }
 }
@@ -318,21 +338,23 @@ fn render_flowchart_node_label_with_wrapper(
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
         if label.label_type == "markdown" {
-            write_flowchart_svg_text_markdown_wrapped(
+            write_flowchart_svg_text_markdown_wrapped_with_style(
                 out,
                 label.text,
-                true,
+                &label_group_style,
                 ctx.measurer,
                 &node_text_style,
                 Some(ctx.wrapping_width),
             );
         } else {
-            write_flowchart_svg_label_plan(
+            let typed_label_fill_style = common.label_emission.typed_label_fill_style();
+            write_flowchart_svg_label_plan_with_style(
                 out,
                 prepared_svg_label
                     .as_ref()
                     .expect("non-Markdown SVG labels are prepared before emission"),
                 true,
+                typed_label_fill_style.as_deref(),
             );
         }
         out.push_str("</g></g>");
@@ -446,14 +468,31 @@ fn render_flowchart_node_label_with_wrapper(
             out.push_str("</a>");
         }
     }
+    let typography_applicable =
+        flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels);
     super::emission::FlowchartNodeLabelEmissionReceipt::verified()
         .with_prepared_typography_reach(
-            flowchart_node_label_typography_is_applicable(&label_text_plain, ctx.node_html_labels),
+            typography_applicable,
             prepared_svg_label.as_ref().is_some_and(
                 crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
             ),
         )
+        .with_label_fill_reach(
+            typography_applicable,
+            common.label_emission.has_typed_label_fill(),
+        )
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
+}
+
+fn append_typed_label_fill(style: &mut String, fill: &str) {
+    if !style.is_empty() {
+        style.push(';');
+    }
+    let _ = write!(
+        style,
+        "fill:{fill} !important;color:{} !important",
+        if fill == "none" { "transparent" } else { fill }
+    );
 }
 
 fn flowchart_node_label_typography_is_applicable(text: &str, html_labels: bool) -> bool {

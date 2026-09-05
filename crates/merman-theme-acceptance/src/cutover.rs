@@ -24,6 +24,16 @@ use merman_render::__private::{
 };
 
 const FLOWCHART_NODE_SOURCE: &str = "flowchart LR\nA[Alpha]\nB[Beta]\n";
+const FLOWCHART_NODE_LABEL_SOURCE: &str = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+A[Alpha]
+B[Beta]
+"#;
 const FLOWCHART_EDGE_SOURCE: &str =
     "flowchart LR\nA[Alpha] o--o B[Beta]\nB x--x C[Gamma]\nC <--> D[Delta]\n";
 const FLOWCHART_ANIMATED_EDGE_SOURCE: &str = "flowchart LR\nA[Alpha] circles@o--o B[Beta]\nB crosses@x--x C[Gamma]\nC points@<--> D[Delta]\ncircles@{ animate: true }\ncrosses@{ animate: true }\npoints@{ animate: true }\n";
@@ -369,11 +379,14 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node, _) => Ok(FLOWCHART_NODE_SOURCE),
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, _) => Ok(FLOWCHART_NODE_LABEL_SOURCE),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(FLOWCHART_EDGE_SOURCE)
         }
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Cluster, _) => Ok(FLOWCHART_CLUSTER_SOURCE),
-        (DiagramFamilyId::SWIMLANE, ThemeTarget::Node, _) => Ok(SWIMLANE_NODE_SOURCE),
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::Node | ThemeTarget::NodeLabel, _) => {
+            Ok(SWIMLANE_NODE_SOURCE)
+        }
         (DiagramFamilyId::SWIMLANE, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(SWIMLANE_EDGE_SOURCE)
         }
@@ -1367,11 +1380,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_246_routes_and_274_artifact_witnesses() {
+    fn route_inventory_retains_254_routes_and_282_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 246);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 274);
+        assert_eq!(inventory.len(), 254);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 282);
     }
 
     #[test]

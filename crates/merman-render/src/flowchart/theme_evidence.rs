@@ -265,6 +265,7 @@ pub(crate) struct FlowchartNodeThemeEmission {
     pub(crate) stroke_width: FlowchartThemeFacetEmission,
     pub(crate) stroke_dasharray: FlowchartThemeFacetEmission,
     pub(crate) radius: FlowchartThemeFacetEmission,
+    pub(crate) label_fill: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_stack: Option<FlowchartThemeFacetEmission>,
     pub(crate) font_size: Option<FlowchartThemeFacetEmission>,
 }
@@ -298,6 +299,7 @@ impl FlowchartNodeThemeEmission {
             stroke_width: FlowchartThemeFacetEmission::absent(),
             stroke_dasharray: FlowchartThemeFacetEmission::absent(),
             radius: FlowchartThemeFacetEmission::absent(),
+            label_fill: None,
             font_stack: None,
             font_size: None,
         }
@@ -306,6 +308,7 @@ impl FlowchartNodeThemeEmission {
 
 #[derive(Debug, Default)]
 struct FlowchartLabelThemeStyle {
+    fill: Option<FlowchartPaintOutcome>,
     font_stack: Option<FlowchartTypographyOutcome>,
     font_size: Option<FlowchartTypographyOutcome>,
     padding: Option<FlowchartPaddingOutcome>,
@@ -853,6 +856,25 @@ impl FlowchartNodeThemeStyle {
             )
     }
 
+    pub(crate) fn label_fill_value(
+        &self,
+        precedence: FlowchartFacetPrecedence,
+        channel_emitted: bool,
+    ) -> Option<&str> {
+        (!precedence.overrides_theme() && channel_emitted)
+            .then(|| {
+                self.label
+                    .fill
+                    .as_ref()
+                    .and_then(FlowchartPaintOutcome::value)
+            })
+            .flatten()
+    }
+
+    pub(crate) fn has_label_fill_route(&self) -> bool {
+        self.label.fill.is_some()
+    }
+
     pub(crate) fn append_inline_style(
         &self,
         out: &mut String,
@@ -921,13 +943,25 @@ fn resolve_label_theme_style(
                 rule_index,
                 FamilyThemeRuleFacet::Typography(property),
             ),
-            ResolvedStyleProperty::Fill => record_incomplete_label_facet(
-                theme,
-                &mut resolved,
-                rule_index,
-                FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
-                    .unwrap_or_else(|| panic!("winning {target:?} fill has a concrete facet")),
-            ),
+            ResolvedStyleProperty::Fill => {
+                if let Some(facet) = FamilyThemeRuleFacet::fill(style.fill_resolution().specified())
+                {
+                    resolved.fill = resolve_paint(
+                        theme,
+                        rule_index,
+                        style.fill_resolution(),
+                        FamilyThemeRuleFacet::fill,
+                    );
+                    if resolved.fill.is_none()
+                        && theme.rule_facet_disposition(rule_index, facet)
+                            == Some(FamilyThemeDisposition::TypedAdapter)
+                    {
+                        resolved.incomplete_rules.insert(rule_index);
+                    }
+                } else {
+                    resolved.incomplete_rules.insert(rule_index);
+                }
+            }
             ResolvedStyleProperty::Stroke => record_incomplete_label_facet(
                 theme,
                 &mut resolved,
@@ -1430,7 +1464,10 @@ impl FlowchartThemeEvidenceRecorder {
             .node
             .incomplete_rules
             .extend(style.incomplete_rules.iter().copied());
-        if emission.font_stack.is_some() || emission.font_size.is_some() {
+        if emission.label_fill.is_some()
+            || emission.font_stack.is_some()
+            || emission.font_size.is_some()
+        {
             state.node_label.emitted = true;
             state
                 .node_label
@@ -1442,6 +1479,14 @@ impl FlowchartThemeEvidenceRecorder {
                     .residual_rules
                     .entry(*rule_index)
                     .or_insert(*reason);
+            }
+            if let Some(label_fill_emission) = emission.label_fill {
+                record_paint_outcome(
+                    &mut state.node_label,
+                    style.label.fill.as_ref(),
+                    label_fill_emission.precedence,
+                    label_fill_emission.verified,
+                );
             }
             if let Some(font_stack_emission) = emission.font_stack {
                 record_typography_outcome(
@@ -1970,6 +2015,7 @@ mod tests {
             stroke_width: FlowchartThemeFacetEmission::new(no_override(), stroke_width),
             stroke_dasharray: FlowchartThemeFacetEmission::new(no_override(), stroke_dasharray),
             radius: FlowchartThemeFacetEmission::new(no_override(), radius),
+            label_fill: None,
             font_stack: None,
             font_size: None,
         }

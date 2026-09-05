@@ -210,6 +210,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         compiled_styles.source_font_size_status(),
         ctx.node_typography_config_ownership.font_size,
     );
+    let label_fill_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
+        compiled_styles.source_label_foreground_status(),
+        ctx.node_label_fill_config_override,
+    );
     let node_theme = crate::flowchart::FlowchartNodeThemeStyle::resolve(
         ctx.resolved_theme,
         ctx.node_theme_ordinals.get(node_id).copied(),
@@ -227,6 +231,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let typed_radius_selected = typed_radius.is_some();
     let typed_font_stack_selected = node_theme.font_stack_selected(font_stack_precedence);
     let typed_font_size_selected = node_theme.font_size_selected(font_size_precedence);
+    let typed_label_fill = node_theme.label_fill_value(label_fill_precedence, true);
     let mut theme_style = String::new();
     node_theme.append_inline_style(
         &mut theme_style,
@@ -271,8 +276,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .or_else(|| node_theme.stroke_dasharray_value(stroke_dasharray_precedence, true))
         .unwrap_or("0 0")
         .trim();
-    let label_emission =
-        label::FlowchartNodeLabelEmissionPlan::new(node_classes, node_styles, &compiled_styles);
+    let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
+        node_classes,
+        node_styles,
+        &compiled_styles,
+        typed_label_fill,
+    );
 
     let common = FlowchartNodeRenderCommon {
         node_id,
@@ -392,8 +401,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         compiled_styles.shape_source_evidence(node_id, shape_outcome.emission(), |class_id| {
             wrapper_classes.contains(class_id)
         });
-    let (font_stack_emission, font_size_emission) =
-        label_receipt.map_or((None, None), |label_receipt| {
+    let (font_stack_emission, font_size_emission, label_fill_emission) =
+        label_receipt.map_or((None, None, None), |label_receipt| {
             source_evidence
                 .residuals
                 .extend(compiled_styles.label_source_residuals(node_id, label_receipt));
@@ -416,6 +425,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                         ),
                         typed_font_size_selected && reach.is_verified(),
                     )
+                }),
+                label_receipt.label_fill_reach().and_then(|reach| {
+                    node_theme.has_label_fill_route().then(|| {
+                        crate::flowchart::FlowchartThemeFacetEmission::new(
+                            crate::flowchart::FlowchartFacetPrecedence::new(
+                                compiled_styles
+                                    .emitted_source_label_foreground_status(label_receipt),
+                                ctx.node_label_fill_config_override,
+                            ),
+                            typed_label_fill.is_some() && reach.is_verified(),
+                        )
+                    })
                 }),
             )
         });
@@ -460,6 +481,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                     ),
                     typed_radius_selected && shape_outcome.emission().typed_radius_verified(),
                 ),
+                label_fill: label_fill_emission,
                 font_stack: font_stack_emission,
                 font_size: font_size_emission,
             },

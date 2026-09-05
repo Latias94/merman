@@ -25,6 +25,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub node_fill_color: String,
     pub node_stroke_width: f32,
     pub node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
+    pub node_label_fill_config_override: bool,
     pub node_border_config_override: bool,
     pub node_fill_config_override: bool,
     pub node_stroke_width_config_override: bool,
@@ -111,6 +112,15 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .unwrap_or(1.3);
     let node_typography_config_ownership =
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
+    let node_label_fill_config_override = [
+        "themeVariables.primaryTextColor",
+        "themeVariables.nodeTextColor",
+        "themeVariables.textColor",
+    ]
+    .into_iter()
+    .any(|path| {
+        merman_core::__private::config_path_overrides_typed_default(effective_config, path)
+    });
     let node_border_config_override = merman_core::__private::config_path_overrides_typed_default(
         effective_config,
         "themeVariables.nodeBorder",
@@ -171,6 +181,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         node_fill_color,
         node_stroke_width,
         node_typography_config_ownership,
+        node_label_fill_config_override,
         node_border_config_override,
         node_fill_config_override,
         node_stroke_width_config_override,

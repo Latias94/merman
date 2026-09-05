@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 43;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 44;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x49, 0xd3, 0xb6, 0x6d, 0x1b, 0x76, 0x05, 0xf4, 0x04, 0xd6, 0xf8, 0xa0, 0x38, 0x8b, 0x28, 0x43,
-    0xb2, 0x9f, 0xbc, 0x5d, 0x72, 0x01, 0x74, 0x3a, 0xd5, 0x7e, 0x58, 0xad, 0xce, 0x58, 0x11, 0xd1,
+    0x99, 0x5b, 0xb3, 0x4b, 0xfc, 0x18, 0xfe, 0xb6, 0x39, 0x6c, 0x43, 0xab, 0x14, 0x69, 0xfa, 0x42,
+    0xd8, 0x40, 0xce, 0xd4, 0x6d, 0x2d, 0x9e, 0xbb, 0xe2, 0xe7, 0xb2, 0xcd, 0x24, 0x98, 0xf8, 0x8b,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 246] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 254] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -389,6 +389,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 246] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::FLOWCHART,
@@ -539,6 +569,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 246] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::SWIMLANE,
@@ -2899,7 +2959,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 43);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 44);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

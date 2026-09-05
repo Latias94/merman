@@ -10,7 +10,7 @@ use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyProperty
 ///
 /// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
 /// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 36;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 37;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -243,7 +243,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "flowchart",
         target: "node-label",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["font-size", "font-stack"],
+        facets: &["fill", "font-size", "font-stack"],
     },
     RuleClaim {
         family: "flowchart",
@@ -712,7 +712,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "swimlane",
         target: "node-label",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["font-size", "font-stack"],
+        facets: &["fill", "font-size", "font-stack"],
     },
     RuleClaim {
         family: "swimlane",
@@ -1028,12 +1028,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     },
     RuleClaim {
         family: "flowchart",
-        target: "node-label",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "flowchart",
         target: "text",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
@@ -1235,12 +1229,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         target: "marker",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill", "stroke-paint"],
-    },
-    RuleClaim {
-        family: "swimlane",
-        target: "node-label",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
     },
     RuleClaim {
         family: "swimlane",

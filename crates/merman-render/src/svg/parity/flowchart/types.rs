@@ -61,6 +61,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
     pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
         crate::flowchart::FlowchartTypographyConfigOwnership,
+    pub(in crate::svg::parity::flowchart) node_label_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_border_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
     pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,

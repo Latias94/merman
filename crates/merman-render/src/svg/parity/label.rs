@@ -353,7 +353,25 @@ fn write_svg_text_markdown_lines(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text, None);
+    write_svg_text_markdown_lines_with_style(
+        out,
+        lines,
+        include_style.then_some(""),
+        center_text,
+        include_row_class,
+        entity_mode,
+    );
+}
+
+fn write_svg_text_markdown_lines_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    lines: &[Vec<(String, bool, bool)>],
+    style: Option<&str>,
+    center_text: bool,
+    include_row_class: bool,
+    entity_mode: SvgTextEntityMode,
+) {
+    open_svg_text(out, style, center_text, None);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class, 1.1);
@@ -477,6 +495,30 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
         out,
         &lines,
         include_style,
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    style: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    text_style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        text_style,
+        max_width_px,
+    );
+    write_svg_text_markdown_lines_with_style(
+        out,
+        &lines,
+        Some(style),
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
