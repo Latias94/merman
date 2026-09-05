@@ -1,6 +1,6 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{LayoutOptions, RenderFamilyKind, SvgRenderOptions};
+use merman::svg::{LayoutOptions, RenderFamilyKind, SvgRenderOptions, SvgSerializationRoute};
 use merman::{
     OperationControl, OperationExecutionPath, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
@@ -35,6 +35,10 @@ fn completed_svg_evidence_records_the_canonical_execution_path() {
         OperationExecutionPath::Renderer
     );
     assert_eq!(output.evidence().measurement_routes().len(), 4);
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
 }
 
 #[test]

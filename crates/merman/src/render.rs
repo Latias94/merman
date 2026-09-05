@@ -219,6 +219,7 @@ impl RenderEvidence {
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
+    serialization_route: merman_render::family::SvgSerializationRoute,
 }
 
 /// Successful renderer-neutral DrawingList output and the evidence for its operation.
@@ -272,10 +273,12 @@ impl SvgOutput {
         svg: String,
         session: merman_render::environment::RenderSession,
         required_capabilities: Vec<RenderCapability>,
+        serialization_route: merman_render::family::SvgSerializationRoute,
     ) -> Self {
         Self {
             svg,
             evidence: RenderEvidence::from_session(session, required_capabilities),
+            serialization_route,
         }
     }
 
@@ -285,6 +288,11 @@ impl SvgOutput {
 
     pub fn evidence(&self) -> &RenderEvidence {
         &self.evidence
+    }
+
+    /// Returns the actual SVG serializer route used for this result.
+    pub const fn serialization_route(&self) -> merman_render::family::SvgSerializationRoute {
+        self.serialization_route
     }
 
     pub fn into_parts(self) -> (String, RenderEvidence) {
@@ -1025,8 +1033,14 @@ fn render_svg_target(
         None => rendered,
     };
     let required_capabilities = rendered.required_capabilities().to_vec();
+    let serialization_route = rendered.serialization_route();
     let (svg, _, _, session) = rendered.into_parts();
-    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
+    Ok(Some(SvgOutput::new(
+        svg,
+        session,
+        required_capabilities,
+        serialization_route,
+    )))
 }
 
 #[cfg(feature = "svg")]

@@ -1,7 +1,7 @@
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
-use merman_render::family;
+use merman_render::family::{self, SvgSerializationRoute};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
@@ -62,6 +62,35 @@ fn architecture_prepared_artifact_renders_the_typed_family() {
         .expect("render Architecture artifact");
 
     assert!(svg.svg().contains(r#"id="typed-architecture-service-api""#));
+}
+
+#[test]
+fn prepared_svg_reports_the_serializer_route_used_for_each_request() {
+    let canonical = family::prepare(
+        parse_for_render("info"),
+        &LayoutOptions::default(),
+        render_session(),
+    )
+    .expect("prepare Info artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render canonical Info SVG");
+    assert_eq!(
+        canonical.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+
+    let bridged = family::prepare(
+        parse_for_render("flowchart TD\n  A --> B\n"),
+        &LayoutOptions::default(),
+        render_session(),
+    )
+    .expect("prepare Flowchart artifact")
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .expect("render bridged Flowchart SVG");
+    assert_eq!(
+        bridged.serialization_route(),
+        SvgSerializationRoute::LegacyBridge
+    );
 }
 
 #[cfg(not(feature = "layout-cytoscape"))]

@@ -54,6 +54,13 @@ obligations, and effect disposition remain source-backed.  Unsupported browser-o
 remain explicit DrawingList errors or bounded raster fallbacks; they must not be hidden by the
 bridge.
 
+The table is a family-level default, not a promise about every request.  The typed SVG result
+exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the
+renderer-neutral document, while `legacy-bridge` records an explicit compatibility path selected
+for a legacy family, a browser-only effect, or a diagnostic request.  This distinction is useful
+for migration telemetry and prevents an effect-specific fallback from being mistaken for complete
+canonical coverage.
+
 ## Exercised effect accounting
 
 `fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by

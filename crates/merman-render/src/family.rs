@@ -758,6 +758,24 @@ impl GanttTimeAxisDiagnostics {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SvgSerializationRoute {
+    /// The SVG was encoded directly from the canonical renderer-neutral document.
+    CanonicalDocument,
+    /// The family/effect/debug request used the explicit legacy SVG compatibility bridge.
+    LegacyBridge,
+}
+
+impl SvgSerializationRoute {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CanonicalDocument => "canonical-document",
+            Self::LegacyBridge => "legacy-bridge",
+        }
+    }
+}
+
 /// A completed family SVG produced by the canonical typed render operation.
 ///
 /// Root completion evidence is private to the renderer and cannot be named by callers:
@@ -778,6 +796,7 @@ pub struct RenderedFamilySvg {
     family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
     required_capabilities: Vec<RenderCapability>,
+    serialization_route: SvgSerializationRoute,
     session: RenderSession,
 }
 
@@ -797,6 +816,15 @@ impl RenderedFamilySvg {
     /// Returns the optional capabilities admitted during this artifact's preparation.
     pub fn required_capabilities(&self) -> &[RenderCapability] {
         &self.required_capabilities
+    }
+
+    /// Returns the actual SVG serializer route used for this result.
+    ///
+    /// A family admitted to the canonical cohort can still use the explicit bridge for a
+    /// browser-only effect or a diagnostic request.  Exposing the route keeps that distinction
+    /// observable instead of making the family-level coverage row look like a per-request claim.
+    pub const fn serialization_route(&self) -> SvgSerializationRoute {
+        self.serialization_route
     }
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
@@ -836,6 +864,7 @@ impl RenderedFamilySvg {
             svg,
             family_kind: self.family_kind,
             metadata: self.metadata,
+            serialization_route: self.serialization_route,
             session: self.session,
         })
     }
@@ -861,12 +890,17 @@ pub struct RenderedResvgCompatibleSvg {
     svg: ResvgCompatibleSvg,
     family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
+    serialization_route: SvgSerializationRoute,
     session: RenderSession,
 }
 
 impl RenderedResvgCompatibleSvg {
     pub fn svg(&self) -> &ResvgCompatibleSvg {
         &self.svg
+    }
+
+    pub const fn serialization_route(&self) -> SvgSerializationRoute {
+        self.serialization_route
     }
 
     pub fn into_parts(
@@ -1018,7 +1052,7 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let svg = render_family_artifact_svg(&self, options, render_debug)?;
+        let (svg, serialization_route) = render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         if let Some((destination, staging, _)) = trace_stage {
@@ -1040,6 +1074,7 @@ impl FamilyRenderArtifact {
             family_kind,
             metadata,
             required_capabilities,
+            serialization_route,
             session,
         })
     }
@@ -1061,14 +1096,15 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<String> {
+) -> Result<(String, SvgSerializationRoute)> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
 
     let use_legacy_bridge = debug.include_timing_diagnostics
         || debug.flowchart_edge_trace().is_some()
         || !canonical_svg_family_enabled(artifact.family.kind());
     if use_legacy_bridge {
-        return render_legacy_family_artifact_svg(artifact, &options, debug);
+        return render_legacy_family_artifact_svg(artifact, &options, debug)
+            .map(|svg| (svg, SvgSerializationRoute::LegacyBridge));
     }
 
     // The canonical document serializer is admitted family-by-family.  This keeps the existing
@@ -1088,13 +1124,15 @@ fn render_family_artifact_svg(
             debug,
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
-        ),
+        )
+        .map(|svg| (svg, SvgSerializationRoute::CanonicalDocument)),
         Err(Error::DrawingListUnavailable { .. }) => {
             // A family may still contain a browser-only effect that the SVG adapter can emit
             // faithfully while the renderer-neutral contract is not yet able to represent it.
             // Keep this as an explicit, measurable migration bridge rather than hiding a partial
             // DrawingList behind the SVG target.
             render_legacy_family_artifact_svg(artifact, &options, debug)
+                .map(|svg| (svg, SvgSerializationRoute::LegacyBridge))
         }
         Err(error) => Err(error),
     }
@@ -2483,7 +2521,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             drop(plan);
 
             let hits_before_render = flowchart.svg_label_sidecar().prepared_hit_count(owner);
-            let svg = render_family_artifact_svg(
+            let (svg, _) = render_family_artifact_svg(
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
@@ -2618,7 +2656,7 @@ linkStyle 0 font-size:12px,font-style:italic
             drop(plan);
 
             let hits_before_render = swimlane.svg_label_sidecar().prepared_hit_count(owner);
-            let svg = render_family_artifact_svg(
+            let (svg, _) = render_family_artifact_svg(
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
