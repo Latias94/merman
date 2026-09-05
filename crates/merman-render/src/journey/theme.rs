@@ -175,7 +175,7 @@ impl JourneyTaskTheme {
                 theme,
                 &style,
                 &[ThemeTarget::JourneyTask],
-                DirectStaticSelectorDomain::Unqualified,
+                DirectStaticSelectorDomain::Default,
             ) {
                 if journey_fill_source_owned(effective_config, task.num) {
                     source_owned_fill_rules.insert(fill.rule_index());
@@ -193,7 +193,7 @@ impl JourneyTaskTheme {
                 theme,
                 &style,
                 &[ThemeTarget::JourneyTask],
-                DirectStaticSelectorDomain::Unqualified,
+                DirectStaticSelectorDomain::Default,
             ) {
                 typed_stroke_rules.insert(stroke.rule_index());
                 expectation.stroke = Some(JourneyTaskPaint {
@@ -297,7 +297,9 @@ impl JourneyTaskTheme {
                         }
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                             FamilyThemeRuleFacet::Fill(_),
                         ) => {
                             let wins = occurrence_fill_winners.get(&rule_index).copied();
@@ -325,7 +327,9 @@ impl JourneyTaskTheme {
                         }
                         (
                             FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
+                            FamilyThemeSelectorShape::Static {
+                                variant: None | Some(ThemeVariant::Default),
+                            },
                             FamilyThemeRuleFacet::Stroke(_),
                         ) => {
                             if occurrence_stroke_winners.get(&rule_index).copied()

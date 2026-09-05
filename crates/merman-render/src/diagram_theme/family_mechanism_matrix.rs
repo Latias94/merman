@@ -1767,7 +1767,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::JOURNEY
         && target == ThemeTarget::JourneyTask
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -3635,6 +3640,32 @@ mod tests {
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+    }
+
+    #[test]
+    fn journey_owns_unqualified_and_default_task_scalar_paints() {
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#123456").expect("valid Journey task paint"),
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::JourneyTask,
+                    ThemeStylePatch::default()
+                        .with_fill(paint.clone())
+                        .with_stroke(paint.clone()),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                assert!(
+                    compile_rule_routes(DiagramFamilyId::JOURNEY, 0, &rule)
+                        .iter()
+                        .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter),
+                    "variant={variant:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -5554,7 +5585,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 82);
+        assert_eq!(qualified.len(), 86);
         assert_eq!(
             qualified
                 .iter()
@@ -5589,6 +5620,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::SANKEY)
                 .count(),
             2
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::JOURNEY)
+                .count(),
+            4
         );
         assert_eq!(
             qualified

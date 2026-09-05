@@ -10,17 +10,33 @@ use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn journey_task_paint_theme() -> merman_render::diagram_theme::DiagramTheme {
+    journey_task_paint_theme_with_variant(
+        None,
+        CanvasPaint::solid("#123456").expect("valid Journey task fill"),
+        CanvasPaint::solid("#654321").expect("valid Journey task stroke"),
+    )
+}
+
+fn journey_task_paint_theme_with_variant(
+    variant: Option<ThemeVariant>,
+    fill: CanvasPaint,
+    stroke: CanvasPaint,
+) -> merman_render::diagram_theme::DiagramTheme {
+    let mut fill_rule = ThemeRule::new(
+        ThemeTarget::JourneyTask,
+        ThemeStylePatch::default().with_fill(fill),
+    );
+    let mut stroke_rule = ThemeRule::new(
+        ThemeTarget::JourneyTask,
+        ThemeStylePatch::default().with_stroke(stroke),
+    );
+    if let Some(variant) = variant {
+        fill_rule = fill_rule.with_variant(variant);
+        stroke_rule = stroke_rule.with_variant(variant);
+    }
     let styles = ThemeRuleSet::default()
-        .with_rule(ThemeRule::new(
-            ThemeTarget::JourneyTask,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#123456").expect("valid Journey task fill")),
-        ))
-        .with_rule(ThemeRule::new(
-            ThemeTarget::JourneyTask,
-            ThemeStylePatch::default()
-                .with_stroke(CanvasPaint::solid("#654321").expect("valid Journey task stroke")),
-        ));
+        .with_rule(fill_rule)
+        .with_rule(stroke_rule);
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile Journey task paint theme")
@@ -169,6 +185,110 @@ fn journey_task_static_paint_reaches_terminal_rect_and_is_fully_accounted() {
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn journey_task_explicit_default_paint_reaches_terminal_rect_and_is_fully_accounted() {
+    for (fill, stroke, expected_fill, expected_stroke) in [
+        (
+            CanvasPaint::solid("#123456").expect("valid Journey task fill"),
+            CanvasPaint::solid("#654321").expect("valid Journey task stroke"),
+            "#123456",
+            "#654321",
+        ),
+        (
+            CanvasPaint::Transparent,
+            CanvasPaint::Transparent,
+            "transparent",
+            "transparent",
+        ),
+    ] {
+        let theme =
+            journey_task_paint_theme_with_variant(Some(ThemeVariant::Default), fill, stroke);
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "journey\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse explicitly default-themed Journey")
+            .expect("detect explicitly default-themed Journey");
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin strict portable Journey session");
+        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .expect("prepare explicitly default-themed Journey");
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("journey-task-default-paint".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render explicitly default-themed Journey SVG");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG XML");
+        let task = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|token| token == "task")
+                    })
+            })
+            .expect("Journey task rect");
+        let style = task.attribute("style").expect("typed task paint style");
+        assert!(
+            style.contains(&format!("fill:{expected_fill};")),
+            "task style: {style}"
+        );
+        assert!(
+            style.contains(&format!("stroke:{expected_stroke};")),
+            "task style: {style}"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_task_explicit_default_paint_is_not_applicable_without_tasks() {
+    let theme = journey_task_paint_theme_with_variant(
+        Some(ThemeVariant::Default),
+        CanvasPaint::solid("#123456").expect("valid Journey task fill"),
+        CanvasPaint::solid("#654321").expect("valid Journey task stroke"),
+    );
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+        .parse_diagram_for_render_model_sync("journey\n", ParseOptions::strict())
+        .expect("parse empty Journey")
+        .expect("detect empty Journey");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict portable empty Journey session");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare empty Journey");
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("journey-task-default-paint-empty".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render empty Journey SVG");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
