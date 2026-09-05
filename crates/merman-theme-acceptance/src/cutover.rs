@@ -170,6 +170,11 @@ title Cutover treemap title
 const RAILROAD_TITLE_SOURCE: &str = r#"railroad-beta
 expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
+// Links are painted after labels in Mermaid's Sankey renderer. Keep this witness's links
+// transparent so the route-local PNG proof observes the intended text terminal rather than a
+// later, opaque link stroke covering the glyphs.
+const SANKEY_TEXT_SOURCE: &str =
+    "---\nconfig:\n  sankey:\n    linkColor: transparent\n---\nsankey-beta\nA,B,10\n";
 const REQUIREMENT_PAINT_SOURCE: &str = r#"requirementDiagram
 requirement req1 {
   id: 1
@@ -397,6 +402,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(RAILROAD_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::SANKEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SANKEY_TEXT_SOURCE)
         }
         (
             DiagramFamilyId::REQUIREMENT,
@@ -1340,11 +1348,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_200_routes_and_216_artifact_witnesses() {
+    fn route_inventory_retains_204_routes_and_220_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 200);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 216);
+        assert_eq!(inventory.len(), 204);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 220);
     }
 
     #[test]

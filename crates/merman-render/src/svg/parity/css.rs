@@ -1453,7 +1453,7 @@ where
     I: SvgDiagramIdValue,
 {
     let mut out = String::new();
-    write_sankey_css_inner(&mut out, diagram_id, effective_config, None)
+    write_sankey_css_inner(&mut out, diagram_id, effective_config, None, None)
         .expect("String-backed Sankey CSS emission cannot fail");
     out
 }
@@ -1463,11 +1463,18 @@ pub(super) fn write_sankey_css_with_font_family<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     font_family_css: &str,
+    text_fill_css: Option<&str>,
 ) -> Result<crate::sankey::SankeyTypographyCssEmission>
 where
     I: SvgDiagramIdValue,
 {
-    write_sankey_css_inner(out, diagram_id, effective_config, Some(font_family_css))
+    write_sankey_css_inner(
+        out,
+        diagram_id,
+        effective_config,
+        Some(font_family_css),
+        text_fill_css,
+    )
 }
 
 fn write_sankey_css_inner<I>(
@@ -1475,6 +1482,7 @@ fn write_sankey_css_inner<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     font_family_css: Option<&str>,
+    text_fill_css: Option<&str>,
 ) -> Result<crate::sankey::SankeyTypographyCssEmission>
 where
     I: SvgDiagramIdValue,
@@ -1482,11 +1490,14 @@ where
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let values = InfoCssValues::new(
+    let mut values = InfoCssValues::new(
         effective_config,
         InfoCssFontSizeSource::ThemeThenTopLevel,
         font_family_css,
     );
+    if let Some(text_fill_css) = text_fill_css {
+        values.text_color = text_fill_css.to_owned();
+    }
     let base_font_emission = values.write_prefix_with_font_emission(out, diagram_id)?;
     let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
         .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
@@ -1522,6 +1533,8 @@ where
         crate::sankey::SankeyTypographyCssEmission::from_successful_writes(
             values.font_family,
             all_font_surfaces_match,
+            values.text_color.clone(),
+            values.text_color,
         ),
     )
 }

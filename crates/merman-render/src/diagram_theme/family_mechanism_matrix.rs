@@ -542,6 +542,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::SANKEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         _ => None,
     }
 }
@@ -1287,6 +1290,23 @@ pub(super) fn classify_rule_facet(
                 | ThemeTarget::PacketFieldLabel
                 | ThemeTarget::Title
         )
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SANKEY
+        && target == ThemeTarget::Text
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {

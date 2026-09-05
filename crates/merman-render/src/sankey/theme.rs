@@ -8,8 +8,8 @@ use crate::diagram_theme::{
     ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    InheritedFontStackOutcome, InheritedFontStackPlan, resolve_direct_static_fill,
 };
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -43,6 +43,9 @@ impl SankeyLabelSurface {
 pub(crate) struct SankeyTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
+    text_fill: Option<DirectStaticPaint>,
+    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
+    config_owns_text_fill: bool,
     terminal_receipt: OnceLock<SankeyTypographyTerminalSeal>,
 }
 
@@ -57,6 +60,48 @@ impl SankeyTypographyThemePlan {
                 effective_config,
             ),
             evidence: FamilyThemeEvidence::from_theme(theme),
+            text_fill: theme.and_then(|theme| {
+                let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+                resolve_direct_static_fill(
+                    theme,
+                    &style,
+                    &[ThemeTarget::Text],
+                    DirectStaticSelectorDomain::Default,
+                )
+            }),
+            text_fill_routes: theme
+                .map(|theme| {
+                    theme
+                        .family_mechanism_routes()
+                        .iter()
+                        .copied()
+                        .filter_map(|route| match route.mechanism() {
+                            crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
+                                rule_index,
+                                target: ThemeTarget::Text,
+                                facet: crate::diagram_theme::FamilyThemeRuleFacet::Fill(_),
+                                selector,
+                                ..
+                            } if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                                && matches!(
+                                    selector,
+                                    crate::diagram_theme::FamilyThemeSelectorShape::Static {
+                                        variant: None | Some(ThemeVariant::Default)
+                                    }
+                                ) =>
+                            {
+                                Some((theme.family_mechanism_key(route), rule_index))
+                            }
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            config_owns_text_fill: theme.is_some()
+                && merman_core::__private::config_path_overrides_typed_default(
+                    effective_config,
+                    "themeVariables.textColor",
+                ),
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -70,8 +115,7 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         outlined_labels: bool,
     ) -> Option<SankeyTypographyThemeReceipt<'_>> {
-        self.inherited_font_stack
-            .typography_requested()
+        (self.inherited_font_stack.typography_requested() || self.text_fill.is_some())
             .then(|| SankeyTypographyThemeReceipt::new(self, label_count, outlined_labels))
     }
 
@@ -81,38 +125,78 @@ impl SankeyTypographyThemePlan {
             .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
     }
 
+    pub(crate) fn text_fill_css(&self) -> Option<&str> {
+        (!self.config_owns_text_fill)
+            .then_some(self.text_fill.as_ref())
+            .flatten()
+            .map(DirectStaticPaint::css)
+    }
+
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
-            self.inherited_font_stack
-                .mark_unsupported_typography_evidence(&mut evidence, true);
             if self.inherited_font_stack.typed_font_stack_requested() {
+                self.inherited_font_stack
+                    .mark_unsupported_typography_evidence(&mut evidence, true);
                 evidence.mark_residual(
                     FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack),
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
+            for (key, _) in &self.text_fill_routes {
+                if self.config_owns_text_fill {
+                    evidence.mark_not_applicable(key.clone());
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            }
             return evidence;
         };
         self.inherited_font_stack
             .mark_unsupported_typography_evidence(&mut evidence, receipt.has_visible_label);
-        if !self.inherited_font_stack.typed_font_stack_requested() {
-            return evidence;
-        }
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if !receipt.has_visible_label {
-            evidence.mark_not_applicable(key);
-            return evidence;
-        }
-        if self.inherited_font_stack.typed_font_stack_active() {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+        if self.inherited_font_stack.typed_font_stack_requested() {
+            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+            if !receipt.has_visible_label {
+                evidence.mark_not_applicable(key);
+            } else if self.inherited_font_stack.typed_font_stack_active() {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                match self.inherited_font_stack.outcome() {
+                    InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
+                    InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography)
+                    }
+                    InheritedFontStackOutcome::Inactive => {}
                 }
-                InheritedFontStackOutcome::Inactive => {}
+            }
+        }
+        for (key, rule_index) in &self.text_fill_routes {
+            if self.config_owns_text_fill {
+                evidence.mark_not_applicable(key.clone());
+            } else if self
+                .text_fill
+                .as_ref()
+                .is_some_and(|fill| fill.rule_index() == *rule_index)
+            {
+                if !receipt.has_visible_label {
+                    evidence.mark_not_applicable(key.clone());
+                } else if let Some(fill) = self.text_fill.as_ref() {
+                    if receipt.text_fill_css.as_deref() == Some(fill.css()) {
+                        evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+                    } else {
+                        evidence.mark_residual(
+                            key.clone(),
+                            FamilyThemeResidualReason::UnsupportedPaint,
+                        );
+                    }
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            } else {
+                evidence.mark_not_applicable(key.clone());
             }
         }
         evidence
@@ -124,16 +208,22 @@ impl SankeyTypographyThemePlan {
 pub(crate) struct SankeyTypographyCssEmission {
     font_family_css: String,
     all_font_surfaces_match: bool,
+    text_fill_css: String,
+    label_foreground_fill_css: String,
 }
 
 impl SankeyTypographyCssEmission {
     pub(crate) fn from_successful_writes(
         font_family_css: String,
         all_font_surfaces_match: bool,
+        text_fill_css: String,
+        label_foreground_fill_css: String,
     ) -> Self {
         Self {
             font_family_css,
             all_font_surfaces_match,
+            text_fill_css,
+            label_foreground_fill_css,
         }
     }
 }
@@ -144,6 +234,7 @@ pub(crate) struct SankeyTypographyThemeReceipt<'a> {
     expected_labels_per_pass: usize,
     outlined_labels: bool,
     expected_font_family_css: &'a str,
+    expected_text_fill_css: Option<&'a str>,
     css_emitted: bool,
     next_pass: usize,
     labels_in_pass: usize,
@@ -154,6 +245,7 @@ pub(crate) struct SankeyTypographyThemeReceipt<'a> {
 #[derive(Debug)]
 struct SankeyTypographyTerminalSeal {
     has_visible_label: bool,
+    text_fill_css: Option<String>,
 }
 
 impl<'a> SankeyTypographyThemeReceipt<'a> {
@@ -167,6 +259,7 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
             expected_labels_per_pass,
             outlined_labels,
             expected_font_family_css: plan.font_family_css(),
+            expected_text_fill_css: plan.text_fill_css(),
             css_emitted: false,
             next_pass: if expected_labels_per_pass == 0 {
                 expected_pass_count
@@ -182,7 +275,13 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
     pub(crate) fn record_css_emission(&mut self, emission: SankeyTypographyCssEmission) {
         self.valid &= !self.css_emitted
             && emission.all_font_surfaces_match
-            && emission.font_family_css == self.expected_font_family_css;
+            && emission.font_family_css == self.expected_font_family_css
+            && self
+                .expected_text_fill_css()
+                .is_none_or(|expected| emission.text_fill_css == expected)
+            && self
+                .expected_text_fill_css()
+                .is_none_or(|expected| emission.label_foreground_fill_css == expected);
         self.css_emitted = true;
     }
 
@@ -224,7 +323,12 @@ impl<'a> SankeyTypographyThemeReceipt<'a> {
             && self.labels_in_pass == 0)
             .then_some(SankeyTypographyTerminalSeal {
                 has_visible_label: self.has_visible_label,
+                text_fill_css: self.expected_text_fill_css.map(str::to_owned),
             })
+    }
+
+    fn expected_text_fill_css(&self) -> Option<&str> {
+        self.expected_text_fill_css
     }
 }
 
@@ -529,17 +633,22 @@ mod tests {
     fn typography_css_emission(
         font_family_css: &str,
         all_font_surfaces_match: bool,
+        text_fill_css: &str,
+        label_foreground_fill_css: &str,
     ) -> SankeyTypographyCssEmission {
         SankeyTypographyCssEmission::from_successful_writes(
             font_family_css.to_owned(),
             all_font_surfaces_match,
+            text_fill_css.to_owned(),
+            label_foreground_fill_css.to_owned(),
         )
     }
 
     fn expected_typography_css_emission(
         plan: &SankeyTypographyThemePlan,
     ) -> SankeyTypographyCssEmission {
-        typography_css_emission(plan.font_family_css(), true)
+        let text_fill_css = plan.text_fill_css().unwrap_or("#333");
+        typography_css_emission(plan.font_family_css(), true, text_fill_css, text_fill_css)
     }
 
     fn palette_plan(config: serde_json::Value) -> SankeyNodePalettePlan {
@@ -671,7 +780,12 @@ mod tests {
         let mut receipt = wrong_font
             .begin_terminal_receipt(1, false)
             .expect("typed Sankey typography receipt");
-        receipt.record_css_emission(typography_css_emission("WrongSankeyFamily", true));
+        receipt.record_css_emission(typography_css_emission(
+            "WrongSankeyFamily",
+            true,
+            "#333",
+            "#333",
+        ));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!wrong_font.record_terminal(receipt));
         assert_eq!(wrong_font.finish_evidence().residuals().len(), 1);
@@ -684,6 +798,8 @@ mod tests {
         receipt.record_css_emission(typography_css_emission(
             inconsistent_surfaces.font_family_css(),
             false,
+            "#333",
+            "#333",
         ));
         receipt.record_label(SankeyLabelSurface::Plain, true);
         assert!(!inconsistent_surfaces.record_terminal(receipt));

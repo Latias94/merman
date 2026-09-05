@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 33;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 34;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x1a, 0xb7, 0x8f, 0xc8, 0x46, 0x1d, 0xd7, 0x4b, 0x37, 0x75, 0xae, 0x16, 0x19, 0x4c, 0xc7, 0xbe,
-    0x85, 0xcd, 0x31, 0x5a, 0x10, 0xdc, 0x87, 0x86, 0x3e, 0x42, 0x06, 0xc3, 0x5d, 0xa5, 0xa2, 0xa4,
+    0xce, 0x13, 0x4d, 0x99, 0xde, 0x3a, 0x8b, 0x50, 0xd5, 0xa1, 0x54, 0x33, 0xe6, 0xb7, 0x7f, 0xd0,
+    0x59, 0x26, 0x3e, 0x82, 0xf7, 0x8c, 0x81, 0x1b, 0xf8, 0x30, 0xb1, 0x14, 0x84, 0x3b, 0x80, 0xb8,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 200] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 204] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -984,6 +984,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 200] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SANKEY,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::SANKEY,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SANKEY,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SANKEY,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
     ),
     route_variant(

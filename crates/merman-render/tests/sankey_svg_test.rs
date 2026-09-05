@@ -2,9 +2,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget, ThemeTextStyle,
-    TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -39,6 +39,17 @@ fn sankey_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
             TypographySpec::default().with_family_style(DiagramFamilyId::SANKEY, typography),
         ))
         .expect("compile Sankey typography theme")
+}
+
+fn sankey_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::SANKEY);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Sankey text fill theme")
 }
 
 fn render_sankey_with_theme_requirement(
@@ -91,6 +102,16 @@ fn sankey_node_fills(svg: &str) -> Vec<String> {
                 .to_string()
         })
         .collect()
+}
+
+fn sankey_style_text(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("valid Sankey SVG");
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Sankey SVG stylesheet")
+        .to_owned()
 }
 
 fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
@@ -210,6 +231,38 @@ A,B,10
         svg.contains(".sankey-label-bg"),
         "expected outlined label CSS: {svg}"
     );
+}
+
+#[test]
+fn sankey_typed_text_fill_reaches_root_and_outlined_label_foreground() {
+    let theme = sankey_text_fill_theme(CanvasPaint::solid("#123456").expect("valid fill"));
+    let source = concat!(
+        "---\n",
+        "config:\n",
+        "  sankey:\n",
+        "    labelStyle: outlined\n",
+        "---\n",
+        "sankey-beta\n",
+        "A,B,10\n",
+    );
+    let rendered = render_sankey_with_theme_and_engine(source, &theme, Engine::new());
+    let style = sankey_style_text(rendered.svg());
+    let root_rule = style
+        .split_once('}')
+        .map(|(rule, _)| rule)
+        .expect("Sankey root CSS rule");
+    assert!(
+        root_rule.contains("#sankey-theme{") && root_rule.contains("fill:#123456;"),
+        "{style}"
+    );
+    assert!(
+        style.contains("#sankey-theme .sankey-label-fg{fill:#123456;}"),
+        "{style}"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

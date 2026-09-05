@@ -286,6 +286,9 @@ pub(crate) fn render_sankey_diagram_svg(
     let suffix = render_settings.suffix;
     let link_color = render_settings.link_color;
     let outlined_labels = render_settings.outlined_labels;
+    let text_fill_attr = typography_theme
+        .text_fill_css()
+        .map(|fill| format!(r#" fill="{}""#, escape_attr(fill)));
     let mut typography_receipt =
         typography_theme.begin_terminal_receipt(layout.nodes.len(), outlined_labels);
 
@@ -363,6 +366,7 @@ pub(crate) fn render_sankey_diagram_svg(
         diagram_id,
         effective_config,
         typography_theme.font_family_css(),
+        typography_theme.text_fill_css(),
     )?;
     if let Some(receipt) = &mut typography_receipt {
         receipt.record_css_emission(typography_css_emission);
@@ -450,8 +454,9 @@ pub(crate) fn render_sankey_diagram_svg(
                 .unwrap_or_default();
             let _ = write!(
                 out,
-                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">{text}</text>"#,
+                r#"<text{class_attr}{fill_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">{text}</text>"#,
                 class_attr = class_attr,
+                fill_attr = text_fill_attr.as_deref().unwrap_or_default(),
                 x = fmt(x),
                 y = fmt(y),
                 dy = dy,

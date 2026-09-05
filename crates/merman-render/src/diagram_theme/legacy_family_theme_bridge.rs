@@ -563,7 +563,6 @@ fn legacy_family_dispatch(
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
         DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::SANKEY
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
         DiagramFamilyId::STATE
@@ -573,6 +572,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
         | DiagramFamilyId::PIE
+        | DiagramFamilyId::SANKEY
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::RAILROAD
