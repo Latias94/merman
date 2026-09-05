@@ -1197,7 +1197,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     RuleClaim {
         family: "sequence",
         target: "message",
-        kind: SupportClaimKind::LegacyPartial,
+        kind: SupportClaimKind::TypedPartial,
         facets: &["fill"],
     },
     RuleClaim {

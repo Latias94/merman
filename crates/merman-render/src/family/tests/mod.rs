@@ -7521,23 +7521,32 @@ fn sequence_unsupported_lifeline_gradient_fails_closed_after_actor_line_emission
 }
 
 #[test]
-fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission() {
-    for (paint, expected_stroke) in [
+fn require_portable_accepts_sequence_message_scalar_paints_after_line_emission() {
+    for (facet, paint, expected_stroke) in [
         (
+            "stroke",
             CanvasPaint::solid("#2563eb").expect("valid Message stroke"),
             "#2563eb",
         ),
-        (CanvasPaint::Transparent, "transparent"),
+        ("stroke", CanvasPaint::Transparent, "transparent"),
+        (
+            "fill",
+            CanvasPaint::solid("#ef4444").expect("valid Message fill"),
+            "#ef4444",
+        ),
+        ("fill", CanvasPaint::Transparent, "transparent"),
     ] {
+        let patch = match facet {
+            "fill" => ThemeStylePatch::default().with_fill(paint),
+            "stroke" => ThemeStylePatch::default().with_stroke(paint),
+            _ => unreachable!("test fixture only contains Message fill/stroke facets"),
+        };
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
                     ThemeRuleSet::default().with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Message,
-                            ThemeStylePatch::default().with_stroke(paint),
-                        )
-                        .for_family(DiagramFamilyId::SEQUENCE),
+                        ThemeRule::new(ThemeTarget::Message, patch)
+                            .for_family(DiagramFamilyId::SEQUENCE),
                     ),
                 ),
             )
@@ -7560,13 +7569,13 @@ fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission(
         )
         .expect("Sequence Message theme should prepare")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("Sequence Message stroke should be proven by the terminal writer");
+        .expect("Sequence Message paint should be proven by the terminal writer");
 
         let expected_css =
             format!("#merman .messageLine0,#merman .messageLine1{{stroke:{expected_stroke};}}");
         assert!(
             rendered.svg().contains(&expected_css),
-            "Sequence SVG should contain the typed Message stroke: {}",
+            "Sequence SVG should contain the typed Message {facet}: {}",
             rendered.svg()
         );
         assert!(
@@ -7590,7 +7599,7 @@ fn require_portable_accepts_sequence_message_scalar_strokes_after_line_emission(
 }
 
 #[test]
-fn sequence_message_stroke_winner_ignores_shadowed_compatibility_fill() {
+fn sequence_message_stroke_winner_marks_shadowed_fill_not_applicable() {
     for stroke_first in [false, true] {
         let fill_rule = ThemeRule::new(
             ThemeTarget::Message,
@@ -7654,12 +7663,14 @@ fn sequence_message_stroke_winner_ignores_shadowed_compatibility_fill() {
                 target: ThemeTarget::Message,
             }]
         );
-        assert!(
-            rendered
-                .style_report()
-                .theme_not_applicable_mechanisms()
-                .is_empty(),
-            "compatibility-only fill must stay outside native family evidence"
+        let fill_index = usize::from(stroke_first);
+        assert_eq!(
+            rendered.style_report().theme_not_applicable_mechanisms(),
+            &[FamilyThemeMechanismKey::Rule {
+                index: fill_index,
+                target: ThemeTarget::Message,
+            }],
+            "a shadowed Message fill winner is not the terminal signal-color owner"
         );
         assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
         assert!(rendered.style_report().theme_residuals().is_empty());

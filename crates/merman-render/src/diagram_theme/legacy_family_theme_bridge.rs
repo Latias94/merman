@@ -2469,9 +2469,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xf7, 0x72, 0xa7, 0x87, 0xfc, 0x26, 0x92, 0xd4, 0xa3, 0x27, 0xd6, 0x24, 0xe5, 0xdf,
-            0xa6, 0x38, 0xb4, 0x92, 0xa9, 0xe8, 0xec, 0xab, 0x44, 0x55, 0x42, 0xda, 0x84, 0xa6,
-            0x6c, 0xbe, 0x35, 0xc2,
+            0x1f, 0x75, 0xa7, 0x94, 0x2e, 0xc7, 0xbf, 0x81, 0x2e, 0x41, 0xe7, 0x25, 0xa5, 0x03,
+            0xa7, 0xc0, 0x1d, 0x0e, 0xcb, 0xa5, 0x96, 0x17, 0x32, 0xe6, 0x0c, 0x0a, 0xad, 0x3d,
+            0x4a, 0x6b, 0x5b, 0x82,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0x53, 0x8b, 0xdb, 0xf5, 0x9e, 0x50, 0x01, 0xae, 0xc6, 0x9a, 0xd0, 0xef, 0x20, 0x17,
@@ -2486,7 +2486,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 328);
+        assert_eq!(status.matrix_route_count(), 324);
         assert_eq!(status.matrix_family_count(), 20);
         assert_eq!(status.dispatched_family_count(), 20);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
@@ -4415,43 +4415,58 @@ mod tests {
     }
 
     #[test]
-    fn typed_sequence_message_stroke_suppresses_only_its_legacy_projection() {
-        let stroke_spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Message,
-                    ThemeStylePatch::default().with_stroke(solid("#2563eb")),
-                )
-                .for_family(DiagramFamilyId::SEQUENCE),
+    fn typed_sequence_message_paints_suppress_the_shared_legacy_projection() {
+        for (facet, patch) in [
+            (
+                "fill",
+                ThemeStylePatch::default().with_fill(solid("#ef4444")),
             ),
-        );
-        let bridge = bridge(&stroke_spec);
-        let artifact = bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
-
-        assert!(artifact.overlay.is_empty());
-        assert!(artifact.contribution_ids.is_empty());
-        assert!(
-            !bridge.owns_contribution_id("merman.legacy-family-theme.v1.sequence.message.stroke")
-        );
-
-        let fill_spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Message,
-                    ThemeStylePatch::default().with_fill(solid("#ef4444")),
-                )
-                .for_family(DiagramFamilyId::SEQUENCE),
+            (
+                "stroke",
+                ThemeStylePatch::default().with_stroke(solid("#2563eb")),
             ),
-        );
-        let parsed = parse(&fill_spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut rule = ThemeRule::new(ThemeTarget::Message, patch.clone())
+                    .for_family(DiagramFamilyId::SEQUENCE);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let bridge = bridge(&spec);
+                let artifact = bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
 
-        assert_eq!(fallback_contribution_count(&parsed), 1);
-        assert_eq!(
-            parsed
-                .effective_config
-                .get_str("themeVariables.signalColor"),
-            Some("#ef4444")
-        );
+                assert!(artifact.overlay.is_empty(), "{facet} {variant:?}");
+                assert!(artifact.contribution_ids.is_empty(), "{facet} {variant:?}");
+                assert!(
+                    !bridge.owns_contribution_id(
+                        "merman.legacy-family-theme.v1.sequence.message.stroke"
+                    ),
+                    "{facet} {variant:?}"
+                );
+
+                let parsed = parse(&spec, "sequenceDiagram\nAlice->>Bob: Hello\n");
+                let baseline = parse(
+                    &DiagramThemeSpec::default(),
+                    "sequenceDiagram\nAlice->>Bob: Hello\n",
+                );
+                assert_eq!(
+                    fallback_contribution_count(&parsed),
+                    0,
+                    "typed Message {facet} must not create a compatibility contribution"
+                );
+                assert_eq!(
+                    parsed
+                        .effective_config
+                        .get_str("themeVariables.signalColor"),
+                    baseline
+                        .effective_config
+                        .get_str("themeVariables.signalColor"),
+                    "typed Message {facet} must not mutate the legacy signalColor"
+                );
+            }
+        }
     }
 
     #[test]

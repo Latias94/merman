@@ -363,11 +363,11 @@ impl SequenceLifelineThemeEmission {
 
 /// Winner and terminal-emission facts produced by the Sequence Message line writer.
 ///
-/// Message directly owns only unqualified static stroke in this tranche. The receipt also retains
-/// fill winners because Mermaid's legacy `signalColor` projection selects stroke-or-fill, and a
-/// direct stroke winner must explicitly account for any shadowed fill rule. Candidate and emitted
-/// counts stay separate so a compiled route cannot claim evidence unless every concrete terminal
-/// line or path reached the writer-owned checkpoint.
+/// Message owns one shared Mermaid `signalColor` projection. The receipt retains both fill and
+/// stroke winners because an effective stroke takes precedence over fill, while a fill winner is
+/// projected into the same signal-color CSS declarations. Candidate and emitted counts stay
+/// separate so a compiled route cannot claim evidence unless every concrete terminal line or path
+/// reached the writer-owned checkpoint.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceMessageThemeReceipt {
     line: SequenceLineThemeReceipt,
@@ -412,6 +412,7 @@ impl SequenceMessageThemeReceipt {
 pub(super) struct SequenceMessageThemeState {
     pub(super) stroke_emitted: bool,
     pub(super) stroke_overridden: bool,
+    pub(super) selected_property: Option<ResolvedStyleProperty>,
     pub(super) receipt: SequenceMessageThemeReceipt,
 }
 
@@ -419,15 +420,24 @@ impl SequenceMessageThemeState {
     pub(super) fn merge(&mut self, emission: SequenceMessageThemeEmission) {
         self.stroke_emitted |= emission.stroke_emitted;
         self.stroke_overridden |= emission.stroke_overridden;
+        if let Some(selected_property) = emission.selected_property {
+            debug_assert!(
+                self.selected_property.is_none()
+                    || self.selected_property == Some(selected_property),
+                "one Sequence artifact must resolve one stable Message paint winner"
+            );
+            self.selected_property.get_or_insert(selected_property);
+        }
         self.receipt.merge(emission.receipt);
     }
 }
 
-/// Complete writer-owned emission facts for the Sequence Message stroke tranche.
+/// Complete writer-owned emission facts for the shared Sequence Message signal-color tranche.
 #[derive(Debug)]
 pub(crate) struct SequenceMessageThemeEmission {
     pub(super) stroke_emitted: bool,
     pub(super) stroke_overridden: bool,
+    pub(super) selected_property: Option<ResolvedStyleProperty>,
     pub(super) receipt: SequenceMessageThemeReceipt,
 }
 
@@ -435,6 +445,7 @@ impl SequenceMessageThemeEmission {
     pub(crate) fn from_terminal_writer(
         typed_stroke: Option<&str>,
         stroke_overridden: bool,
+        selected_property: Option<ResolvedStyleProperty>,
         receipt: SequenceMessageThemeReceipt,
     ) -> Self {
         let has_lines = receipt.candidate_count() != 0;
@@ -442,6 +453,7 @@ impl SequenceMessageThemeEmission {
         Self {
             stroke_emitted: complete_line_emission && typed_stroke.is_some(),
             stroke_overridden: has_lines && stroke_overridden,
+            selected_property,
             receipt,
         }
     }

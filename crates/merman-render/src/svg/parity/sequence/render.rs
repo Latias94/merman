@@ -468,6 +468,7 @@ fn render_sequence_diagram_svg_inner(
         crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
             message_theme.typed_stroke.as_deref(),
             message_stroke_overridden,
+            message_theme.selected_property,
             message_theme.receipt,
         ),
     );
@@ -557,6 +558,7 @@ struct SequenceLifelineThemeResolution {
 #[derive(Default)]
 struct SequenceMessageThemeResolution {
     typed_stroke: Option<String>,
+    selected_property: Option<crate::diagram_theme::ResolvedStyleProperty>,
     receipt: crate::sequence::SequenceMessageThemeReceipt,
 }
 
@@ -704,8 +706,8 @@ fn resolve_sequence_message_theme(
     stroke_overridden: bool,
 ) -> Result<SequenceMessageThemeResolution> {
     use crate::diagram_theme::{
-        FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
-        FamilyThemeSelectorShape, ThemeTarget, ThemeVariant,
+        FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
+        ResolvedStyleProperty, ThemeTarget, ThemeVariant,
     };
 
     if !has_lines {
@@ -715,7 +717,6 @@ fn resolve_sequence_message_theme(
         return Ok(SequenceMessageThemeResolution::default());
     };
     let mut has_rule_routes = false;
-    let mut has_typed_stroke = false;
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Message,
@@ -729,17 +730,11 @@ fn resolve_sequence_message_theme(
         else {
             continue;
         };
-        match facet {
-            FamilyThemeRuleFacet::Fill(_) => has_rule_routes = true,
-            FamilyThemeRuleFacet::Stroke(kind) => {
-                has_rule_routes = true;
-                has_typed_stroke |= route.disposition() == FamilyThemeDisposition::TypedAdapter
-                    && matches!(
-                        kind,
-                        FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-                    );
-            }
-            _ => {}
+        if matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+        ) {
+            has_rule_routes = true;
         }
     }
     if !has_rule_routes {
@@ -754,11 +749,27 @@ fn resolve_sequence_message_theme(
     )?;
     let mut receipt = crate::sequence::SequenceMessageThemeReceipt::default();
     receipt.record_static_style(&style);
-    let typed_stroke = (!stroke_overridden && has_typed_stroke)
-        .then(|| css_paint(style.stroke()))
+    // Mermaid has one signalColor for the entire Message surface. A winning stroke is the
+    // primary source; when it is absent, a winning fill is projected into that same CSS color.
+    // Keep the selected property even when its paint cannot be emitted so evidence can account
+    // for the losing facet and fail closed for unsupported winners.
+    let selected_property = if style.stroke_resolution().winner().is_some() {
+        Some(ResolvedStyleProperty::Stroke)
+    } else if style.fill_resolution().winner().is_some() {
+        Some(ResolvedStyleProperty::Fill)
+    } else {
+        None
+    };
+    let typed_stroke = (!stroke_overridden)
+        .then(|| match selected_property {
+            Some(ResolvedStyleProperty::Stroke) => typed_static_sequence_stroke(theme, &style),
+            Some(ResolvedStyleProperty::Fill) => typed_static_sequence_fill(theme, &style),
+            _ => None,
+        })
         .flatten();
     Ok(SequenceMessageThemeResolution {
         typed_stroke,
+        selected_property,
         receipt,
     })
 }

@@ -397,9 +397,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             Ok(SEQUENCE_NOTE_SOURCE)
         }
         (DiagramFamilyId::SEQUENCE, ThemeTarget::Activation, _) => Ok(SEQUENCE_ACTIVATION_SOURCE),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(SEQUENCE_MESSAGE_SOURCE)
-        }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Message,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(SEQUENCE_MESSAGE_SOURCE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::MessageLabel, ThemeRouteCutoverFacet::Fill) => {
             Ok(SEQUENCE_ROLE_LABEL_SOURCE)
         }
@@ -1365,11 +1367,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_232_routes_and_260_artifact_witnesses() {
+    fn route_inventory_retains_236_routes_and_264_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 232);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 260);
+        assert_eq!(inventory.len(), 236);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 264);
     }
 
     #[test]

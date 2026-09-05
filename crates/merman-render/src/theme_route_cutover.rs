@@ -695,6 +695,22 @@ impl ThemeRouteCutoverDescriptor {
             .contains(ThemeRouteCutoverProjection::LifelineStroke)
     }
 
+    /// Returns the SVG paint channel used by the renderer for this semantic route.
+    ///
+    /// Sequence Message fill and stroke share Mermaid's `signalColor` projection. The Message
+    /// fill route is therefore observed in the emitted stroke channel during native raster
+    /// admission, while its semantic facet remains `Fill` in the route identity and evidence.
+    pub fn raster_paint_facet(self) -> ThemeRouteCutoverFacet {
+        if self.family_id() == DiagramFamilyId::SEQUENCE
+            && self.target() == ThemeTarget::Message
+            && matches!(self.facet(), ThemeRouteCutoverFacet::Fill)
+        {
+            ThemeRouteCutoverFacet::Stroke
+        } else {
+            self.facet()
+        }
+    }
+
     /// Returns the route-local solid paint used by the private raster cutover witness.
     ///
     /// The value is renderer-owned so the acceptance harness cannot silently choose a different
@@ -1018,6 +1034,25 @@ mod tests {
             ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE,
         );
         assert!(!descriptor.requires_renderer_raster_binding_receipt());
+    }
+
+    #[test]
+    fn sequence_message_fill_is_observed_in_the_shared_stroke_channel() {
+        let descriptor = ThemeRouteCutoverDescriptor::new(
+            ThemeRouteCutoverId::new(
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverValue::Solid,
+            ),
+            ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE,
+        );
+
+        assert_eq!(
+            descriptor.raster_paint_facet(),
+            ThemeRouteCutoverFacet::Stroke
+        );
     }
 
     #[test]

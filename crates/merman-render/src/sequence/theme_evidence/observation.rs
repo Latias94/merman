@@ -149,10 +149,20 @@ pub(super) fn observe_message_rule(
     {
         return;
     }
+    if matches!(
+        facet,
+        FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_)
+    ) && message.selected_property != Some(style_property_for_facet(facet))
+    {
+        return;
+    }
     match (disposition, facet) {
         (
             FamilyThemeDisposition::TypedAdapter,
-            FamilyThemeRuleFacet::Stroke(
+            FamilyThemeRuleFacet::Fill(
+                kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
+            )
+            | FamilyThemeRuleFacet::Stroke(
                 kind @ (FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid),
             ),
         ) => {

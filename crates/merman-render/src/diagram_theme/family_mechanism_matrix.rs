@@ -474,9 +474,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Lifeline,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_LIFELINE_STROKE),
-        (DiagramFamilyId::SEQUENCE, ThemeTarget::Message, ThemeRouteCutoverFacet::Stroke) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE)
-        }
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::Message,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_STROKE),
         (DiagramFamilyId::SEQUENCE, ThemeTarget::MessageLabel, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_MESSAGE_LABEL_FILL)
         }
@@ -1398,7 +1400,9 @@ pub(super) fn classify_rule_facet(
         )
         && matches!(
             facet,
-            FamilyThemeRuleFacet::Stroke(
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -1478,8 +1482,7 @@ pub(super) fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    )
-        && target == ThemeTarget::Cluster
+    ) && target == ThemeTarget::Cluster
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -4306,7 +4309,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_message_owns_static_scalar_strokes_and_default_variant() {
+    fn sequence_message_owns_static_scalar_fill_and_stroke_with_default_variant() {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#123456").expect("valid Message stroke"),
@@ -4332,15 +4335,30 @@ mod tests {
             );
         }
 
-        let fill = ThemeRule::new(
-            ThemeTarget::Message,
-            ThemeStylePatch::default()
-                .with_fill(CanvasPaint::solid("#abcdef").expect("valid Message fill")),
-        );
-        assert_eq!(
-            compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &fill)[0].disposition(),
-            FamilyThemeDisposition::LegacyCompatibility
-        );
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#abcdef").expect("valid Message fill"),
+        ] {
+            let fill = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_fill(paint.clone()),
+            );
+            assert_eq!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &fill)[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+
+            let explicit_default = ThemeRule::new(
+                ThemeTarget::Message,
+                ThemeStylePatch::default().with_fill(paint),
+            )
+            .with_variant(ThemeVariant::Default);
+            assert_eq!(
+                compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)[0]
+                    .disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+        }
     }
 
     #[test]
@@ -5309,6 +5327,20 @@ mod tests {
             (
                 DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Message,
+                Fill,
+                Transparent,
+                vec!["message.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
+                Fill,
+                Solid,
+                vec!["message.stroke"],
+            ),
+            (
+                DiagramFamilyId::SEQUENCE,
+                ThemeTarget::Message,
                 Stroke,
                 Transparent,
                 vec!["message.stroke"],
@@ -5639,7 +5671,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 108);
+        assert_eq!(qualified.len(), 110);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -5655,7 +5687,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::SEQUENCE)
                 .count(),
-            30
+            32
         );
         assert_eq!(
             qualified

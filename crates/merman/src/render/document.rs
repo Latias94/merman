@@ -591,7 +591,7 @@ impl RenderedDocument {
             ));
         }
 
-        let facet = match solid_route.facet() {
+        let facet = match solid_route.raster_paint_facet() {
             ThemeRouteCutoverFacet::Fill => merman_export::RasterPaintCutoverFacet::Fill,
             ThemeRouteCutoverFacet::Stroke => merman_export::RasterPaintCutoverFacet::Stroke,
         };

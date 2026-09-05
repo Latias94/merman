@@ -137,6 +137,7 @@ mod tests {
             recorder.record_message_emission(SequenceMessageThemeEmission::from_terminal_writer(
                 Some("#2563eb"),
                 false,
+                Some(crate::diagram_theme::ResolvedStyleProperty::Stroke),
                 receipt,
             ));
 
