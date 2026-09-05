@@ -2474,9 +2474,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xe2, 0x2e, 0xe6, 0x35, 0xa4, 0x7a, 0xc5, 0x14, 0xa5, 0x07, 0x57, 0x7e, 0x89, 0xee,
-            0x1d, 0x1e, 0x3d, 0xcc, 0xd5, 0xd1, 0xa1, 0x72, 0xa8, 0x48, 0x7d, 0x34, 0x09, 0x47,
-            0xe3, 0xcb, 0xcd, 0x98,
+            0xf1, 0xc1, 0x6a, 0x5d, 0x5e, 0x4b, 0x25, 0xf1, 0x7d, 0x76, 0xd2, 0xc1, 0x1e, 0x00,
+            0x9b, 0x89, 0x3e, 0x26, 0xdd, 0xfc, 0x20, 0x3a, 0x1c, 0x4b, 0x4d, 0x1f, 0x8e, 0x37,
+            0xa5, 0xbd, 0x55, 0x3b,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0x53, 0x8b, 0xdb, 0xf5, 0x9e, 0x50, 0x01, 0xae, 0xc6, 0x9a, 0xd0, 0xef, 0x20, 0x17,
@@ -2491,7 +2491,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 340);
+        assert_eq!(status.matrix_route_count(), 336);
         assert_eq!(status.matrix_family_count(), 20);
         assert_eq!(status.dispatched_family_count(), 20);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
@@ -4083,12 +4083,15 @@ mod tests {
                 .with_styles(ThemeRuleSet::default().with_rule(edge).with_rule(marker));
             let artifact = bridge(&spec).compile_for_family(family);
 
-            assert!(artifact.contribution_ids.iter().any(|id| {
-                id == &format!(
-                    "merman.legacy-family-theme.v1.{}.edge.stroke",
-                    family.as_str(),
-                )
-            }));
+            let edge_contribution = format!(
+                "merman.legacy-family-theme.v1.{}.edge.stroke",
+                family.as_str(),
+            );
+            assert_eq!(
+                artifact.contribution_ids.contains(&edge_contribution),
+                family == DiagramFamilyId::BLOCK,
+                "edge stroke bridge ownership must follow the family matrix for {family:?}",
+            );
             assert!(!artifact.contribution_ids.iter().any(|id| {
                 id == &format!(
                     "merman.legacy-family-theme.v1.{}.marker.paint-from-edge",

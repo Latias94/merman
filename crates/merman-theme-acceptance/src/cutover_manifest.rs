@@ -11,13 +11,14 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 38;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 39;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x58, 0x67, 0xe8, 0x94, 0x02, 0xb1, 0x87, 0x21, 0x56, 0xd1, 0xf0, 0xa4, 0xd5, 0x8a, 0x1a, 0x91,
-    0x44, 0xfd, 0xc2, 0xd2, 0x51, 0x8a, 0x0a, 0xdc, 0xdc, 0x87, 0x69, 0x85, 0x47, 0x5b, 0x7b, 0x22,
+    0x78, 0xaa, 0x72, 0xa7, 0xf0, 0xc8, 0xaf, 0xd9, 0xc5, 0x28, 0x2d, 0xd7, 0x5d, 0xc9, 0x0f,
+    0x94, 0xda, 0x06, 0x6e, 0x86, 0x2b, 0xc4, 0x47, 0x5e, 0x8c, 0xde, 0xa7, 0x3d, 0x74, 0xd8,
+    0x12, 0x84,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +330,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 220] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 224] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -372,6 +373,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 220] = [
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Cluster,
@@ -470,6 +487,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 220] = [
     route(
         DiagramFamilyId::SWIMLANE,
         ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SWIMLANE,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_PROJECTIONS,
@@ -2445,6 +2478,27 @@ mod tests {
                 }
         }));
 
+        for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
+            let edge_default = ACTIVE_ROUTES
+                .iter()
+                .filter(|route| {
+                    route.id.family_id() == family
+                        && route.id.target() == ThemeTarget::Edge
+                        && route.id.facet() == ThemeRouteCutoverFacet::Stroke
+                        && route.id.selector()
+                            == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(edge_default.len(), 2, "family={family:?}");
+            assert!(edge_default.iter().all(|route| {
+                route.projections == EDGE_STROKE_PROJECTIONS
+                    && matches!(
+                        route.id.value(),
+                        ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
+                    )
+            }));
+        }
+
         let gantt_routes = ACTIVE_ROUTES
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::GANTT)
@@ -2635,7 +2689,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 38);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 39);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

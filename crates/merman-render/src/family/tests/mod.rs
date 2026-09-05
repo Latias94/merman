@@ -85,17 +85,25 @@ fn class_rule_theme(rule: ThemeRule) -> DiagramTheme {
 }
 
 fn flowchart_edge_stroke_theme(family: DiagramFamilyId, paint: CanvasPaint) -> DiagramTheme {
+    flowchart_edge_stroke_theme_with_variant(family, paint, None)
+}
+
+fn flowchart_edge_stroke_theme_with_variant(
+    family: DiagramFamilyId,
+    paint: CanvasPaint,
+    variant: Option<crate::diagram_theme::ThemeVariant>,
+) -> DiagramTheme {
+    let mut rule = ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(paint),
+    )
+    .for_family(family);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
     DiagramThemeCompiler::new()
         .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Edge,
-                        ThemeStylePatch::default().with_stroke(paint),
-                    )
-                    .for_family(family),
-                ),
-            ),
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
         )
         .expect("compile Flowchart Edge stroke theme")
 }
@@ -6468,6 +6476,57 @@ fn require_portable_accepts_swimlane_transparent_edge_stroke_after_svg_emission(
         }]
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
+}
+
+#[test]
+fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke() {
+    for (family, source) in [
+        (DiagramFamilyId::FLOWCHART, "flowchart LR\nA --> B\n"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart LR\nA --> B\n",
+        ),
+    ] {
+        for (paint, expected_css) in [
+            (CanvasPaint::solid("#ef4444").unwrap(), "stroke:#ef4444 !important"),
+            (CanvasPaint::Transparent, "stroke:none !important"),
+        ] {
+            let theme = flowchart_edge_stroke_theme_with_variant(
+                family,
+                paint,
+                Some(crate::diagram_theme::ThemeVariant::Default),
+            );
+            let parsed = theme
+                .install_parse_compatibility(Engine::new())
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .expect("Flowchart-family source should produce a render model");
+            let rendered = prepare(
+                parsed,
+                &LayoutOptions::default(),
+                crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                    .begin_session_with_theme(&theme)
+                    .expect("begin strict explicit Default edge session"),
+            )
+            .expect("prepare explicit Default Edge stroke")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("explicit Default Edge stroke should satisfy strict portability");
+
+            assert_eq!(rendered.family_id(), family);
+            assert!(flowchart_edge_path_style(rendered.svg()).contains(expected_css));
+            let marker_id = flowchart_edge_marker_id(rendered.svg());
+            assert!(!flowchart_marker_contains(rendered.svg(), &marker_id, expected_css));
+            assert_eq!(
+                rendered.style_report().theme_applied_mechanisms(),
+                &[FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Edge,
+                }]
+            );
+            assert!(rendered.style_report().theme_residuals().is_empty());
+        }
+    }
 }
 
 #[test]

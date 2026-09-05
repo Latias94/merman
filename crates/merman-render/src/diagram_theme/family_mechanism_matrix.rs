@@ -2114,6 +2114,25 @@ pub(super) fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+    ) && target == ThemeTarget::Edge
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
     ) && target == ThemeTarget::Node
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
@@ -3872,7 +3891,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_and_swimlane_only_own_unqualified_scalar_edge_stroke() {
+    fn flowchart_and_swimlane_own_static_scalar_edge_stroke() {
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             for variant in [None, Some(ThemeVariant::Default)] {
                 for paint in [
@@ -3890,11 +3909,7 @@ mod tests {
                     assert_eq!(routes.len(), 1);
                     assert_eq!(
                         routes[0].disposition(),
-                        if variant.is_none() {
-                            FamilyThemeDisposition::TypedAdapter
-                        } else {
-                            FamilyThemeDisposition::LegacyCompatibility
-                        }
+                        FamilyThemeDisposition::TypedAdapter
                     );
                 }
             }
@@ -5640,7 +5655,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 96);
+        assert_eq!(qualified.len(), 100);
         assert_eq!(
             qualified
                 .iter()
@@ -5735,8 +5750,36 @@ mod tests {
 
         for route in qualified {
             let projections = route.projections().iter().collect::<Vec<_>>();
-            assert_eq!(projections.len(), 1, "route={route:?}");
-            if route.family_id() == DiagramFamilyId::GANTT {
+            let expected_projection_count = if matches!(
+                route.family_id(),
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            ) && route.target() == ThemeTarget::Edge
+                && route.facet() == ThemeRouteCutoverFacet::Stroke
+            {
+                2
+            } else {
+                1
+            };
+            assert_eq!(
+                projections.len(),
+                expected_projection_count,
+                "route={route:?}"
+            );
+            if matches!(
+                route.family_id(),
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+            ) && route.target() == ThemeTarget::Edge
+                && route.facet() == ThemeRouteCutoverFacet::Stroke
+            {
+                assert_eq!(
+                    projections,
+                    vec![
+                        ThemeRouteCutoverProjection::EdgeStroke,
+                        ThemeRouteCutoverProjection::MarkerPaintFromEdge,
+                    ],
+                    "route={route:?}"
+                );
+            } else if route.family_id() == DiagramFamilyId::GANTT {
                 let expected = match (route.target(), route.selector(), route.facet()) {
                     (
                         ThemeTarget::Title,
