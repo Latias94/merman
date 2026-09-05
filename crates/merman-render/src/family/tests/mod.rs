@@ -11499,6 +11499,33 @@ fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
 }
 
 #[test]
+fn layout_json_can_reuse_the_caller_owned_compatibility_projection() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "treemap\ntitle Product Map\n\"Root\"\n  \"Leaf\": 42\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse Treemap render model")
+        .expect("detect Treemap family");
+    let compatibility = parsed
+        .model()
+        .compatibility_json(parsed.metadata())
+        .expect("project Treemap compatibility JSON");
+
+    let from_supplied = prepare(parsed.clone(), &LayoutOptions::default(), session())
+        .expect("prepare Treemap family artifact")
+        .layout_json_with_compatibility_json(compatibility.clone())
+        .expect("assemble layout JSON from supplied semantic projection");
+    let from_family = prepare(parsed, &LayoutOptions::default(), session())
+        .expect("prepare second Treemap family artifact")
+        .layout_json()
+        .expect("assemble layout JSON from family projection");
+
+    assert_eq!(from_supplied, from_family);
+    assert_eq!(from_supplied["semantic"], compatibility);
+}
+
+#[test]
 fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
     let source = "flowchart TD\nA --> B";
     let artifact = prepare_with_model_item_limit(source, 3).unwrap();

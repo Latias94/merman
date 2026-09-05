@@ -3261,6 +3261,24 @@ impl FamilyRenderArtifact {
         GanttTimeAxisDiagnostics::from_layout(artifact.pair().layout())
     }
 
+    /// Builds the public layout projection from a compatibility JSON value produced by the
+    /// operation's semantic artifact.
+    ///
+    /// The workspace facade computes compatibility JSON while it still owns the caller's
+    /// [`merman_core::OperationControl`]. Keeping that projection outside this renderer artifact
+    /// prevents a second, uncontrolled family projection and ensures semantic projection failures
+    /// retain the core error category at the facade boundary. The value is intentionally supplied
+    /// by the caller rather than revalidated here: it is paired with this artifact by the
+    /// canonical parse operation.
+    #[doc(hidden)]
+    pub fn layout_json_with_compatibility_json(
+        &self,
+        semantic: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        self.assemble_layout_json(semantic)
+    }
+
     pub fn layout_json(&self) -> Result<serde_json::Value> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let semantic = self
@@ -3278,7 +3296,12 @@ impl FamilyRenderArtifact {
             .as_ref()
             .map_err(|message| Error::InvalidModel {
                 message: message.clone(),
-            })?;
+            })
+            .map(clone_json_value_nonrecursive)?;
+        self.assemble_layout_json(semantic)
+    }
+
+    fn assemble_layout_json(&self, semantic: serde_json::Value) -> Result<serde_json::Value> {
         let layout = serde_json::to_value(self.family.layout_projection())?;
 
         let mut metadata = serde_json::Map::new();
@@ -3306,10 +3329,7 @@ impl FamilyRenderArtifact {
 
         let mut projection = serde_json::Map::new();
         projection.insert("meta".to_string(), serde_json::Value::Object(metadata));
-        projection.insert(
-            "semantic".to_string(),
-            clone_json_value_nonrecursive(semantic),
-        );
+        projection.insert("semantic".to_string(), semantic);
         projection.insert("layout".to_string(), layout);
         self.context.session().checkpoint(OperationPhase::Emit)?;
         Ok(serde_json::Value::Object(projection))

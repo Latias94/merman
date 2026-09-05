@@ -685,8 +685,9 @@ fn joined_style_json_content_bytes(
     Ok(total)
 }
 
-// Keep the raw declaration-byte helper for existing tests and internal callers; the complete JSON
-// preflight uses the escaping-aware variant above.
+// Keep the raw declaration-byte helper only as a test oracle; production preflight must use the
+// escaping-aware JSON size calculation above.
+#[cfg(test)]
 fn joined_style_bytes(
     styles: &[String],
     control: &crate::OperationControl,

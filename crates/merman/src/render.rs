@@ -844,6 +844,10 @@ fn render_layout_json_target(
             target: "layout-json",
         });
     }
+    // Project the semantic payload while the facade still owns the caller's operation control.
+    // The family artifact only assembles the envelope; it must not silently re-run an
+    // uncontrolled compatibility projection during layout emission.
+    let compatibility = semantic.compatibility_json()?;
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         operation.theme.as_ref(),
@@ -853,7 +857,9 @@ fn render_layout_json_target(
     let artifact = merman_render::family::prepare(parsed, &request.layout, session)
         .map_err(RenderError::from)?;
     let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact.layout_json().map_err(RenderError::from)?;
+    let layout = artifact
+        .layout_json_with_compatibility_json(compatibility)
+        .map_err(RenderError::from)?;
     Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
 }
 
