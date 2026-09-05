@@ -614,7 +614,9 @@ fn estimate_class_style_arrays<'a>(
         if !class_def.styles.is_empty() {
             class_style_bytes.insert(
                 id.as_str(),
-                2usize.saturating_add(joined_style_json_content_bytes(&class_def.styles, control)?),
+                json_array_overhead(1).saturating_add(
+                    joined_style_json_content_bytes(&class_def.styles, control)?.saturating_add(2),
+                ),
             );
         }
     }
@@ -2289,6 +2291,48 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
         assert_eq!(
             output["root"]["children"][511]["cssCompiledStyles"],
             output["nodes"][511]["cssCompiledStyles"]
+        );
+    }
+
+    #[test]
+    fn treemap_compatibility_preflight_estimate_covers_serialized_output() {
+        let model = TreemapDiagramRenderModel {
+            title: Some("title \"with\" controls\n".to_string()),
+            acc_title: Some("acc".to_string()),
+            acc_descr: Some("description".to_string()),
+            root: TreemapNodeRenderModel {
+                name: "root".to_string(),
+                children: Some(vec![TreemapNodeRenderModel {
+                    name: "leaf \"\u{0001}".to_string(),
+                    children: None,
+                    value: Some(json!({"nested": ["value", true, null]})),
+                    class_selector: Some("shared".to_string()),
+                    css_compiled_styles: None,
+                }]),
+                value: None,
+                class_selector: None,
+                css_compiled_styles: None,
+            },
+            classes: std::collections::BTreeMap::from([(
+                "shared".to_string(),
+                TreemapClassDefRenderModel {
+                    id: "shared".to_string(),
+                    styles: vec!["fill:\"quoted\"".to_string(), "stroke:#123".to_string()],
+                    text_styles: vec!["font-size:12px".to_string()],
+                },
+            )]),
+        };
+        let meta = meta();
+        let control = crate::OperationControl::new();
+        let class_style_bytes = estimate_class_style_arrays(&model.classes, &control).unwrap();
+        let estimate =
+            estimate_compatibility_json_bytes(&model, &meta, &class_style_bytes, &control).unwrap();
+        let output = render_model_to_compat_json(&model, &meta).unwrap();
+        let actual = serde_json::to_vec(&output).unwrap().len();
+
+        assert!(
+            estimate >= actual,
+            "preflight estimate {estimate} must cover serialized output {actual}"
         );
     }
 
