@@ -12,14 +12,15 @@ fn workspace_root() -> PathBuf {
 }
 
 fn edge_labels_group(svg: &str) -> &str {
-    let start = svg
-        .find(r#"<g class="edgeLabels">"#)
+    let edge_labels = Regex::new(r#"<g\b[^>]*class="[^"]*edgeLabels[^"]*"[^>]*>"#)
+        .expect("edgeLabels regex")
+        .find(svg)
         .expect("expected edgeLabels group");
-    let end = svg[start..]
-        .find(r#"<g class="nodes">"#)
-        .map(|idx| start + idx)
+    let nodes = Regex::new(r#"<g\b[^>]*class="[^"]*nodes[^"]*"[^>]*>"#)
+        .expect("nodes regex")
+        .find_at(svg, edge_labels.end())
         .expect("expected nodes group after edgeLabels");
-    &svg[start..end]
+    &svg[edge_labels.start()..nodes.start()]
 }
 
 fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
@@ -39,15 +40,15 @@ fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
         .to_owned()
 }
 
-fn entity_transform(svg: &str, entity_id: &str) -> (f64, f64) {
+fn entity_box_position(svg: &str, entity_id: &str) -> (f64, f64) {
     let re = Regex::new(&format!(
-        r#"id="merman-{}"[^>]*transform="translate\(([^,]+), ([^)]+)\)""#,
+        r#"(?s)<g id="merman-{}"[^>]*>.*?<rect x="([^"]+)" y="([^"]+)"[^>]*data-merman-resource="er\.entity\.\d+\.box""#,
         regex::escape(entity_id)
     ))
-    .expect("entity transform regex");
+    .expect("entity box regex");
     let captures = re
         .captures(svg)
-        .unwrap_or_else(|| panic!("missing transform for {entity_id}: {svg}"));
+        .unwrap_or_else(|| panic!("missing box for {entity_id}: {svg}"));
     (
         captures[1].parse().expect("entity x"),
         captures[2].parse().expect("entity y"),
@@ -121,9 +122,14 @@ fn er_svg_recursive_relationship_is_one_logical_edge_and_one_label() {
     assert!(svg.contains(r#"data-id="id_entity-CUSTOMER-0_entity-CUSTOMER-0_0""#));
     assert!(!svg.contains("cyclic-special"));
     assert_eq!(
-        svg.matches(">refers<").count(),
+        svg.matches(r#"data-merman-semantic-id="er.edge.0.label""#)
+            .count(),
         1,
-        "the logical recursive relationship should own one relationship label: {svg}"
+        "the logical recursive relationship should own one label semantic: {svg}"
+    );
+    assert!(
+        edge_labels_group(&svg).contains(r#"<span class="edgeLabel">refers</span>"#),
+        "the relationship label semantic should expose one visible label"
     );
 }
 
@@ -178,8 +184,8 @@ erDiagram
     let titled_svg = render_er_svg_from_text(titled, &SvgRenderOptions::default());
 
     assert_eq!(
-        entity_transform(&untitled_svg, "entity-A-0"),
-        entity_transform(&titled_svg, "entity-A-0")
+        entity_box_position(&untitled_svg, "entity-A-0"),
+        entity_box_position(&titled_svg, "entity-A-0")
     );
     assert!(root_view_box(&titled_svg)[1] < 0.0);
 }
@@ -218,11 +224,15 @@ erDiagram
     let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     let edge_labels = edge_labels_group(&svg);
-    assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));
+    assert!(
+        svg.contains(r#"class="nodeLabel markdown-node-label""#),
+        "expected ER entity labels to keep the HTML label class when root htmlLabels=true: {svg}"
+    );
     assert!(
         edge_labels.contains(r#"class="labelBkg""#)
-            && edge_labels.contains(r#"<foreignObject width=""#),
-        "expected ER relationship labels to keep HTML foreignObject output when root htmlLabels=true"
+            && edge_labels.contains("<foreignObject")
+            && edge_labels.contains(r#"class="edgeLabel""#),
+        "expected ER relationship labels to keep HTML foreignObject output when root htmlLabels=true: {edge_labels}"
     );
 }
 
@@ -236,11 +246,32 @@ erDiagram
     let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     let edge_labels = edge_labels_group(&svg);
+    let background_re =
+        Regex::new(r#"<rect\b[^>]*class="background"[^>]*>"#).expect("background regex");
     assert!(
-        edge_labels.contains(r#"<rect class="background""#)
-            && edge_labels.contains(">owns</tspan>")
+        background_re.is_match(edge_labels)
+            && edge_labels.contains(">owns</text>")
             && edge_labels.contains(r#"text-anchor="middle""#)
             && !edge_labels.contains("<foreignObject"),
-        "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
+        "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset: {edge_labels}"
+    );
+}
+
+#[test]
+fn er_svg_entity_labels_keep_mermaid_foreignobject_shell_when_disabled() {
+    let text = r#"%%{init: {"htmlLabels": false}}%%
+erDiagram
+  A {
+    string id
+  }
+  A ||--|| B : owns
+"#;
+
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
+
+    assert!(svg.contains("<foreignObject"));
+    assert!(
+        svg.contains(r#"class="nodeLabel markdown-node-label""#),
+        "expected ER entity labels to retain Mermaid's foreignObject label shell: {svg}"
     );
 }

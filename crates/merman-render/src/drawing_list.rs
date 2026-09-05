@@ -486,6 +486,14 @@ pub(crate) struct C4SvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct ErSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) data_look: String,
+    pub(crate) relationship_html_labels: bool,
+    pub(crate) entity_html_labels: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [

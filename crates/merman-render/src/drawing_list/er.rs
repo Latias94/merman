@@ -8,12 +8,17 @@ use super::{
     ErSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
     theme_color,
 };
-use crate::config::{config_f64_explicit_css_px, config_string};
+use crate::config::{config_bool, config_f64_explicit_css_px, config_string};
 use crate::drawing_list::support::{stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
+use crate::er::{
+    ErBoxLabel, ErEntityMeasure, ErEntityMeasurementSettings, er_box_label_metrics,
+    measure_entity_box,
+};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutNode};
 use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
+use crate::text::TextMeasurer as _;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
@@ -52,7 +57,7 @@ struct ErBuilder<'a> {
     relationships_by_index: HashMap<usize, &'a ErRelationshipRenderModel>,
     font: FontDescriptor,
     font_size: f64,
-    line_height: f64,
+    relationship_font_size: f64,
     text_obligation: TextObligation,
     node_fill: Color,
     node_stroke: Color,
@@ -61,13 +66,31 @@ struct ErBuilder<'a> {
     cluster_fill: Color,
     cluster_stroke: Color,
     cluster_text: Color,
+    title_text: Color,
     edge_label_background: Color,
+    row_odd_fill: Color,
+    row_even_fill: Color,
+    label_style: crate::text::TextStyle,
+    attr_style: crate::text::TextStyle,
+    entity_measurement: ErEntityMeasurementSettings,
+    use_max_width: bool,
+    data_look: String,
+    relationship_html_labels: bool,
+    entity_html_labels: bool,
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
 }
 
 impl<'a> ErBuilder<'a> {
+    fn is_elk_layout(&self) -> bool {
+        crate::er::ErConfigView::new(self.metadata.effective_config.as_value()).is_elk_layout()
+    }
+
     fn new(
         pair: &'a ErPair,
         metadata: &'a ParseMetadata,
@@ -84,6 +107,26 @@ impl<'a> ErBuilder<'a> {
                 "hand-drawn ER output is RoughJS-owned and has no stable vector equivalent in DrawingList v1",
             ));
         }
+        if look.is_neo() {
+            return Err(unavailable(
+                "neo ER output relies on SVG drop-shadow filters that are not represented by DrawingList v1",
+            ));
+        }
+        if !look.as_str().eq_ignore_ascii_case("classic") {
+            return Err(unavailable(format!(
+                "ER look `{}` has no defined DrawingList v1 effect mapping",
+                look.as_str()
+            )));
+        }
+        if config
+            .get("theme")
+            .and_then(Value::as_str)
+            .is_some_and(|theme| matches!(theme, "redux-color" | "redux-dark-color"))
+        {
+            return Err(unavailable(
+                "ER redux color themes require per-entity palette semantics that are not yet represented by DrawingList v1",
+            ));
+        }
         if config
             .get("themeCSS")
             .and_then(Value::as_str)
@@ -93,6 +136,12 @@ impl<'a> ErBuilder<'a> {
                 "themeCSS is an unresolved SVG cascade input for ER DrawingList output",
             ));
         }
+        if config_bool(config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+            return Err(unavailable(
+                "ER gradients are owned by the SVG cascade and are not yet represented by the portable paint contract",
+            ));
+        }
+        let settings = crate::er::ErConfigView::new(config).render_settings();
         let bounds = layout
             .bounds
             .as_ref()
@@ -120,7 +169,10 @@ impl<'a> ErBuilder<'a> {
         let cluster_fill = theme_color(config, "clusterBkg", "#ffffde")?;
         let cluster_stroke = theme_color(config, "clusterBorder", "#aaaa33")?;
         let cluster_text = theme_color(config, "titleColor", "#333333")?;
+        let title_text = theme_color(config, "titleColor", "#333333")?;
         let edge_label_background = theme_color(config, "edgeLabelBackground", "#e8e8e8")?;
+        let row_odd_fill = theme_color(config, "rowOdd", "hsl(240, 100%, 100%)")?;
+        let row_even_fill = theme_color(config, "rowEven", "hsl(240, 100%, 97.2745098039%)")?;
 
         unique_layout_nodes(layout)?;
         let edges = if layout.render_edges.is_empty() {
@@ -151,7 +203,7 @@ impl<'a> ErBuilder<'a> {
             relationships_by_index,
             font,
             font_size,
-            line_height: (font_size * 1.35).max(1.0),
+            relationship_font_size: 14.0,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             node_fill,
             node_stroke,
@@ -160,7 +212,19 @@ impl<'a> ErBuilder<'a> {
             cluster_fill,
             cluster_stroke,
             cluster_text,
+            title_text,
             edge_label_background,
+            row_odd_fill,
+            row_even_fill,
+            label_style: settings.label_style.clone(),
+            attr_style: settings.attr_style.clone(),
+            entity_measurement: settings.entity_measurement,
+            use_max_width: settings.use_max_width,
+            data_look: settings.diagram_look,
+            relationship_html_labels: settings.relationship_html_labels,
+            // Mermaid's ER box renderer keeps entity labels in foreignObject shells even when
+            // `htmlLabels` is false; that flag changes measurement/padding, not this DOM shape.
+            entity_html_labels: true,
             resources: Vec::new(),
             commands: vec![
                 DrawingCommand::Save,
@@ -179,20 +243,101 @@ impl<'a> ErBuilder<'a> {
                 description: model.acc_descr.clone(),
                 link: None,
             }],
+            semantic_classes: BTreeMap::new(),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
         };
         builder.preflight()?;
         Ok(builder)
     }
 
     fn build(&mut self) -> Result<RenderDocument> {
-        for (index, cluster) in self.layout.clusters.iter().enumerate() {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            self.emit_cluster(index, cluster)?;
+        self.semantic_classes
+            .insert("er.root".to_string(), "root".to_string());
+        self.semantic_classes
+            .insert("er.clusters".to_string(), "clusters".to_string());
+        self.semantic_classes.insert(
+            "er.edges".to_string(),
+            if self.is_elk_layout() {
+                "edges edgePath"
+            } else {
+                "edgePaths"
+            }
+            .to_string(),
+        );
+        self.semantic_classes
+            .insert("er.edgeLabels".to_string(), "edgeLabels".to_string());
+        self.semantic_classes
+            .insert("er.nodes".to_string(), "nodes".to_string());
+        for (id, description) in [
+            ("er.root", "ER diagram root"),
+            ("er.clusters", "ER subgraph clusters"),
+            ("er.edges", "ER relationship edges"),
+            ("er.edgeLabels", "ER relationship labels"),
+            ("er.nodes", "ER entities"),
+        ] {
+            self.semantics.push(SemanticAnnotation {
+                id: id.to_string(),
+                role: SemanticRole::Group,
+                title: None,
+                description: Some(description.to_string()),
+                link: None,
+            });
         }
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "er.root".to_string(),
+        });
+
+        // ELK's common painter lowers edges before clusters; Dagre keeps clusters before edges.
+        // The public command order follows the same source-backed z-order so SVG and native hosts
+        // observe identical overlap semantics.
+        if self.is_elk_layout() {
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "er.edges".to_string(),
+            });
+            for (index, edge) in self.edges.clone().iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_edge(index, edge)?;
+            }
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "er.clusters".to_string(),
+            });
+            for (index, cluster) in self.layout.clusters.iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_cluster(index, cluster)?;
+            }
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+        } else {
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "er.clusters".to_string(),
+            });
+            for (index, cluster) in self.layout.clusters.iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_cluster(index, cluster)?;
+            }
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "er.edges".to_string(),
+            });
+            for (index, edge) in self.edges.clone().iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_edge(index, edge)?;
+            }
+            self.commands.push(DrawingCommand::EndSemanticGroup);
+        }
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "er.edgeLabels".to_string(),
+        });
         for (index, edge) in self.edges.clone().iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            self.emit_edge(index, edge)?;
+            self.emit_edge_label(index, edge)?;
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "er.nodes".to_string(),
+        });
         for (index, node) in self.layout.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             if node.is_cluster || node.id.contains("---") {
@@ -201,31 +346,18 @@ impl<'a> ErBuilder<'a> {
             self.emit_entity(index, node)?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        if let Some(title) = self.diagram_title() {
+            self.emit_title(&title)?;
+        }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
 
-        let bounds = self
-            .layout
-            .bounds
-            .as_ref()
-            .expect("validated in constructor");
-        let padding = self
-            .metadata
-            .effective_config
-            .as_value()
-            .get("er")
-            .and_then(|er| er.get("diagramPadding"))
-            .and_then(Value::as_f64)
-            .unwrap_or(20.0)
-            .max(0.0);
+        let viewport = self.viewport(self.diagram_title().as_deref())?;
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x - padding,
-                bounds.min_y - padding,
-                bounds.max_x - bounds.min_x + 2.0 * padding,
-                bounds.max_y - bounds.min_y + 2.0 * padding,
-            )),
+            viewport: Viewport::new(viewport),
             policy: self.policy,
             resources: std::mem::take(&mut self.resources),
             commands: std::mem::take(&mut self.commands),
@@ -248,6 +380,14 @@ impl<'a> ErBuilder<'a> {
                 family: RenderFamilyKind::Er,
                 body: SvgStructureBody::Er(ErSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.use_max_width,
+                    data_look: self.data_look.clone(),
+                    relationship_html_labels: self.relationship_html_labels,
+                    entity_html_labels: self.entity_html_labels,
+                    semantic_classes: std::mem::take(&mut self.semantic_classes),
+                    path_classes: std::mem::take(&mut self.path_classes),
+                    text_classes: std::mem::take(&mut self.text_classes),
+                    dom_ids: std::mem::take(&mut self.dom_ids),
                 }),
             },
         })
@@ -318,6 +458,9 @@ impl<'a> ErBuilder<'a> {
                 ));
             }
         }
+        if let Some(title) = self.diagram_title() {
+            plain_text(&title).map_err(unavailable)?;
+        }
         for node in &self.layout.nodes {
             validate_layout_node(node)?;
         }
@@ -347,6 +490,15 @@ impl<'a> ErBuilder<'a> {
 
     fn emit_cluster(&mut self, index: usize, cluster: &LayoutCluster) -> Result<()> {
         let semantic_id = format!("er.group.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "cluster".to_string());
+        self.path_classes.insert(
+            format!("{semantic_id}.box"),
+            "basic label-container".to_string(),
+        );
+        self.text_classes
+            .insert(semantic_id.clone(), "nodeLabel".to_string());
+        self.dom_ids.insert(semantic_id.clone(), cluster.id.clone());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -391,6 +543,21 @@ impl<'a> ErBuilder<'a> {
     fn emit_edge(&mut self, index: usize, edge: &LayoutEdge) -> Result<()> {
         let relation = relationship_for_edge(edge, &self.relationships_by_index);
         let semantic_id = format!("er.edge.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgePath".to_string());
+        let pattern = if edge.stroke_dasharray.as_deref() == Some("8,8") {
+            "dashed"
+        } else {
+            "solid"
+        };
+        self.path_classes.insert(
+            format!("{semantic_id}.route"),
+            format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine"),
+        );
+        self.path_classes
+            .insert(format!("{semantic_id}.marker.start"), "marker".to_string());
+        self.path_classes
+            .insert(format!("{semantic_id}.marker.end"), "marker".to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -430,17 +597,38 @@ impl<'a> ErBuilder<'a> {
                 .or_else(|| Some(format!("{} → {}", edge.from, edge.to))),
             link: None,
         });
-        if let (Some(relation), Some(label)) = (relation, edge.label.as_ref()) {
-            if !relation.role_a.trim().is_empty() {
-                self.emit_label(
-                    &format!("{semantic_id}.label"),
-                    &relation.role_a,
-                    label,
-                    "ER relationship label".to_string(),
-                )?;
-            }
-        }
         Ok(())
+    }
+
+    fn emit_edge_label(&mut self, index: usize, edge: &LayoutEdge) -> Result<()> {
+        let Some(relation) = relationship_for_edge(edge, &self.relationships_by_index) else {
+            return Ok(());
+        };
+        let Some(label) = edge.label.as_ref() else {
+            return Ok(());
+        };
+        if relation.role_a.trim().is_empty() {
+            return Ok(());
+        }
+        let semantic_id = format!("er.edge.{index}.label");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
+        self.path_classes.insert(
+            format!("{semantic_id}.background"),
+            "background".to_string(),
+        );
+        self.text_classes
+            .insert(semantic_id.clone(), "edgeLabel".to_string());
+        self.dom_ids.insert(
+            semantic_id.clone(),
+            edge_dom_id(edge, &self.model.relationships),
+        );
+        self.emit_label(
+            &semantic_id,
+            &relation.role_a,
+            label,
+            "ER relationship label".to_string(),
+        )
     }
 
     fn emit_cardinality_marker(
@@ -502,12 +690,13 @@ impl<'a> ErBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.draw_text(
+        self.draw_text_sized(
             &text,
             Point::new(label.x, label.y),
             bounds,
             self.node_text,
             self.font.clone(),
+            self.relationship_font_size,
             TextAnchor::Middle,
             TextBaseline::Middle,
         );
@@ -522,13 +711,148 @@ impl<'a> ErBuilder<'a> {
         Ok(())
     }
 
+    fn diagram_title(&self) -> Option<String> {
+        self.metadata
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    fn title_top_margin(&self) -> f64 {
+        crate::er::ErConfigView::new(self.metadata.effective_config.as_value())
+            .render_settings()
+            .title_top_margin
+            .max(0.0)
+    }
+
+    fn viewport(&self, title: Option<&str>) -> Result<Rect> {
+        let bounds = self
+            .layout
+            .bounds
+            .as_ref()
+            .ok_or_else(|| invalid("ER layout did not provide root bounds"))?;
+        let mut min_x = bounds.min_x;
+        let mut min_y = bounds.min_y;
+        let mut max_x = bounds.max_x;
+        let mut max_y = bounds.max_y;
+        if let Some(title) = title {
+            let style = crate::text::TextStyle {
+                font_family: Some(self.font.families.join(", ")),
+                font_size: self.font_size,
+                font_weight: Some("700".to_string()),
+                font_style: Some("normal".to_string()),
+            };
+            let measurer = self
+                .session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let width = measurer
+                .measure_svg_raw_text_bbox_width_px(title, &style)
+                .max(1.0);
+            let height = measurer
+                .measure_svg_simple_text_bbox_height_px(title, &style)
+                .max(1.0);
+            let x = (bounds.min_x + bounds.max_x) / 2.0;
+            let y = bounds.min_y - self.title_top_margin();
+            min_x = min_x.min(x - width / 2.0);
+            max_x = max_x.max(x + width / 2.0);
+            min_y = min_y.min(y - height);
+            max_y = max_y.max(y);
+        }
+        let padding = self
+            .metadata
+            .effective_config
+            .as_value()
+            .get("er")
+            .and_then(|er| er.get("diagramPadding"))
+            .and_then(Value::as_f64)
+            .unwrap_or(20.0)
+            .max(0.0);
+        Ok(Rect::new(
+            min_x - padding,
+            min_y - padding,
+            (max_x - min_x + 2.0 * padding).max(1.0),
+            (max_y - min_y + 2.0 * padding).max(1.0),
+        ))
+    }
+
+    fn emit_title(&mut self, title: &str) -> Result<()> {
+        let bounds = self
+            .layout
+            .bounds
+            .as_ref()
+            .ok_or_else(|| invalid("ER layout did not provide root bounds"))?;
+        let origin = Point::new(
+            (bounds.min_x + bounds.max_x) / 2.0,
+            bounds.min_y - self.title_top_margin(),
+        );
+        self.semantic_classes
+            .insert("er.title".to_string(), "erDiagramTitleText".to_string());
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "er.title".to_string(),
+        });
+        self.draw_text_sized(
+            title,
+            origin,
+            Rect::new(
+                bounds.min_x,
+                origin.y - self.font_size,
+                (bounds.max_x - bounds.min_x).max(1.0),
+                self.font_size,
+            ),
+            self.title_text,
+            FontDescriptor {
+                weight: 700,
+                ..self.font.clone()
+            },
+            self.font_size,
+            TextAnchor::Middle,
+            TextBaseline::Alphabetic,
+        );
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.text_classes
+            .insert("er.title".to_string(), "erDiagramTitleText".to_string());
+        self.semantics.push(SemanticAnnotation {
+            id: "er.title".to_string(),
+            role: SemanticRole::Label,
+            title: Some(title.to_string()),
+            description: None,
+            link: None,
+        });
+        Ok(())
+    }
+
     fn emit_entity(&mut self, index: usize, layout_node: &LayoutNode) -> Result<()> {
         let entity = self
             .entities_by_id
             .get(layout_node.id.as_str())
             .copied()
             .ok_or_else(|| invalid(format!("ER layout node `{}` has no entity", layout_node.id)))?;
+        let measure = self.measure_entity(entity);
+        if (measure.width - layout_node.width).abs() > 1e-3
+            || (measure.height - layout_node.height).abs() > 1e-3
+        {
+            return Err(invalid(format!(
+                "ER entity measured size mismatch for {}: layout=({},{}), measure=({}, {})",
+                entity.id, layout_node.width, layout_node.height, measure.width, measure.height
+            )));
+        }
         let semantic_id = format!("er.entity.{index}");
+        self.semantic_classes
+            .insert(semantic_id.clone(), "node default".to_string());
+        self.dom_ids.insert(semantic_id.clone(), entity.id.clone());
+        self.path_classes.insert(
+            format!("{semantic_id}.box"),
+            "basic label-container".to_string(),
+        );
+        let text_class = if entity.attributes.is_empty() {
+            "nodeLabel markdown-node-label"
+        } else {
+            "nodeLabel"
+        };
+        self.text_classes
+            .insert(semantic_id.clone(), text_class.to_string());
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -553,46 +877,22 @@ impl<'a> ErBuilder<'a> {
         } else {
             plain_text(&entity.alias).map_err(unavailable)?
         };
-        let mut rows = Vec::with_capacity(entity.attributes.len() + 1);
-        rows.push(name.clone());
-        for attribute in &entity.attributes {
-            rows.push(attribute_text(attribute)?);
-        }
-        let line_height = self.line_height.max(1.0);
-        let total_height = line_height * rows.len() as f64;
-        let first_y = layout_node.y - total_height / 2.0 + line_height / 2.0;
-        for (row_index, row) in rows.iter().enumerate() {
+        if entity.attributes.is_empty() {
+            let label_width = measure.label_html_width.max(0.0);
+            let label_height = measure.label_height.max(1.0);
+            self.text_classes
+                .insert(format!("{semantic_id}#0"), text_class.to_string());
             self.draw_text(
-                row,
-                Point::new(layout_node.x, first_y + row_index as f64 * line_height),
-                Rect::new(
-                    bounds.x + 8.0,
-                    first_y + row_index as f64 * line_height - line_height / 2.0,
-                    (bounds.width - 16.0).max(1.0),
-                    line_height,
-                ),
+                &name,
+                Point::new(layout_node.x, layout_node.y),
+                centered_rect(layout_node.x, layout_node.y, label_width, label_height),
                 self.node_text,
-                FontDescriptor {
-                    weight: if row_index == 0 { 700 } else { 400 },
-                    ..self.font.clone()
-                },
+                self.font.clone(),
                 TextAnchor::Middle,
                 TextBaseline::Middle,
             );
-            if row_index == 0 && !entity.attributes.is_empty() {
-                self.add_path(
-                    format!("{semantic_id}.divider"),
-                    line_path(
-                        Point::new(bounds.x, first_y + line_height / 2.0),
-                        Point::new(bounds.x + bounds.width, first_y + line_height / 2.0),
-                    ),
-                    PathStyle {
-                        fill_rule: FillRule::NonZero,
-                        fill: None,
-                        stroke: Some(stroke(self.node_stroke, 1.0)),
-                    },
-                )?;
-            }
+        } else {
+            self.emit_entity_attribute_table(&semantic_id, &measure, bounds)?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -602,6 +902,210 @@ impl<'a> ErBuilder<'a> {
             description: Some(format!("Entity {}", entity.id)),
             link: None,
         });
+        Ok(())
+    }
+
+    fn measure_entity(&self, entity: &ErEntityRenderModel) -> ErEntityMeasure {
+        let measurer = self.session.text_measurer(TextMeasurementPhase::Layout);
+        measure_entity_box(
+            entity,
+            &measurer,
+            &self.label_style,
+            &self.attr_style,
+            self.entity_measurement,
+        )
+    }
+
+    fn emit_entity_attribute_table(
+        &mut self,
+        semantic_id: &str,
+        measure: &ErEntityMeasure,
+        bounds: Rect,
+    ) -> Result<()> {
+        let line_height = (self.font_size * 1.5).max(1.0);
+        let name_row_height = (measure.label_height + measure.text_padding).max(1.0);
+        let separator_y = bounds.y + name_row_height;
+        let mut row_layouts = Vec::with_capacity(measure.rows.len());
+        let mut row_top = separator_y;
+        for row in &measure.rows {
+            let row_height = row.height.max(1.0);
+            row_layouts.push((row_top, row_height));
+            row_top += row_height;
+        }
+
+        for (row_index, (row_y, row_height)) in row_layouts.iter().copied().enumerate() {
+            let row_id = format!("{semantic_id}.row.{row_index}");
+            self.path_classes.insert(
+                row_id.clone(),
+                if row_index % 2 == 0 {
+                    "row-rect-odd"
+                } else {
+                    "row-rect-even"
+                }
+                .to_string(),
+            );
+            self.add_path(
+                row_id,
+                rectangle_path(Rect::new(bounds.x, row_y, bounds.width, row_height)),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(if row_index % 2 == 0 {
+                        self.row_odd_fill
+                    } else {
+                        self.row_even_fill
+                    })),
+                    stroke: None,
+                },
+            )?;
+        }
+
+        let name_width = measure.label_html_width.max(0.0);
+        let name_bounds = Rect::new(
+            bounds.x + (bounds.width - name_width) / 2.0,
+            bounds.y + name_row_height / 2.0 - line_height / 2.0,
+            name_width,
+            line_height,
+        );
+        self.text_classes
+            .insert(format!("{semantic_id}#0"), "nodeLabel".to_string());
+        self.draw_text(
+            measure.label.rendered_text(),
+            Point::new(
+                bounds.x + bounds.width / 2.0,
+                name_bounds.y + line_height / 2.0,
+            ),
+            name_bounds,
+            self.node_text,
+            self.font.clone(),
+            TextAnchor::Middle,
+            TextBaseline::Middle,
+        );
+
+        let padding = if self.entity_measurement.html_labels_raw {
+            self.entity_measurement.diagram_padding
+        } else {
+            self.entity_measurement.diagram_padding * 1.25
+        };
+        let left_text_x = bounds.x + padding / 2.0;
+        let cell_xs = [
+            left_text_x,
+            left_text_x + measure.type_col_w,
+            left_text_x + measure.type_col_w + measure.name_col_w,
+            left_text_x + measure.type_col_w + measure.name_col_w + measure.key_col_w,
+        ];
+        let measurer = self.session.text_measurer(TextMeasurementPhase::Layout);
+        for (row_index, row) in measure.rows.iter().enumerate() {
+            let (row_y, row_height) = row_layouts[row_index];
+            let cell_y = row_y + row_height / 2.0 - line_height / 2.0;
+            let cells = [
+                (
+                    row.type_label.rendered_text(),
+                    er_box_label_metrics(&row.type_label, &measurer, &self.attr_style)
+                        .width
+                        .max(0.0),
+                ),
+                (
+                    row.name_label.rendered_text(),
+                    er_box_label_metrics(&row.name_label, &measurer, &self.attr_style)
+                        .width
+                        .max(0.0),
+                ),
+                (
+                    row.key_label.rendered_text(),
+                    er_box_label_metrics(&row.key_label, &measurer, &self.attr_style)
+                        .width
+                        .max(0.0),
+                ),
+                (
+                    row.comment_label.rendered_text(),
+                    er_box_label_metrics(&row.comment_label, &measurer, &self.attr_style)
+                        .width
+                        .max(0.0),
+                ),
+            ];
+            for (cell_index, (text, width)) in cells.into_iter().enumerate() {
+                let text_index = 1 + row_index * 4 + cell_index;
+                self.text_classes.insert(
+                    format!("{semantic_id}#{text_index}"),
+                    "nodeLabel".to_string(),
+                );
+                let height = if text.trim().is_empty() {
+                    0.0
+                } else {
+                    line_height
+                };
+                self.draw_text(
+                    text,
+                    Point::new(cell_xs[cell_index], cell_y + line_height / 2.0),
+                    Rect::new(cell_xs[cell_index], cell_y, width, height),
+                    self.node_text,
+                    self.font.clone(),
+                    TextAnchor::Start,
+                    TextBaseline::Middle,
+                );
+            }
+        }
+
+        let mut divider_xs = vec![bounds.x + measure.type_col_w];
+        if measure.has_key {
+            divider_xs.push(bounds.x + measure.type_col_w + measure.name_col_w);
+        }
+        if measure.has_comment {
+            divider_xs.push(bounds.x + measure.type_col_w + measure.name_col_w + measure.key_col_w);
+        }
+        for (index, x) in divider_xs.into_iter().enumerate() {
+            let divider_id = format!("{semantic_id}.divider.column.{index}");
+            self.path_classes
+                .insert(divider_id.clone(), "divider".to_string());
+            self.add_path(
+                divider_id,
+                line_path(
+                    Point::new(x, separator_y),
+                    Point::new(x, bounds.y + bounds.height),
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: Some(stroke(self.node_stroke, 1.0)),
+                },
+            )?;
+        }
+
+        let header_id = format!("{semantic_id}.divider.header");
+        self.path_classes
+            .insert(header_id.clone(), "divider".to_string());
+        self.add_path(
+            header_id,
+            line_path(
+                Point::new(bounds.x, separator_y),
+                Point::new(bounds.x + bounds.width, separator_y),
+            ),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(stroke(self.node_stroke, 1.0)),
+            },
+        )?;
+        for (row_index, (row_y, row_height)) in row_layouts.iter().copied().enumerate() {
+            if row_index + 1 == row_layouts.len() {
+                continue;
+            }
+            let divider_id = format!("{semantic_id}.divider.row.{row_index}");
+            self.path_classes
+                .insert(divider_id.clone(), "divider".to_string());
+            self.add_path(
+                divider_id,
+                line_path(
+                    Point::new(bounds.x, row_y + row_height),
+                    Point::new(bounds.x + bounds.width, row_y + row_height),
+                ),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: Some(stroke(self.node_stroke, 1.0)),
+                },
+            )?;
+        }
         Ok(())
     }
 
@@ -615,6 +1119,29 @@ impl<'a> ErBuilder<'a> {
         anchor: TextAnchor,
         baseline: TextBaseline,
     ) {
+        self.draw_text_sized(
+            text,
+            origin,
+            bounds,
+            fill,
+            font,
+            self.font_size,
+            anchor,
+            baseline,
+        );
+    }
+
+    fn draw_text_sized(
+        &mut self,
+        text: &str,
+        origin: Point,
+        bounds: Rect,
+        fill: Color,
+        font: FontDescriptor,
+        font_size: f64,
+        anchor: TextAnchor,
+        baseline: TextBaseline,
+    ) {
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
                 text: text.to_string(),
@@ -622,9 +1149,9 @@ impl<'a> ErBuilder<'a> {
                 bounds,
                 style: TextStyle {
                     font,
-                    font_size: self.font_size,
+                    font_size,
                     letter_spacing: 0.0,
-                    line_height: self.line_height,
+                    line_height: (font_size * 1.35).max(1.0),
                     fill: Paint::solid(fill),
                 },
                 anchor,
@@ -661,29 +1188,21 @@ fn relationship_for_edge<'a>(
     relationships.get(&index).copied()
 }
 
-fn attribute_text(attribute: &ErAttributeRenderModel) -> Result<String> {
-    let mut text = format!(
-        "{} {}",
-        plain_text(&attribute.ty).map_err(unavailable)?,
-        plain_text(&attribute.name).map_err(unavailable)?
-    );
-    if !attribute.keys.is_empty() {
-        text.push_str(" [");
-        text.push_str(
-            &attribute
-                .keys
-                .iter()
-                .map(|key| plain_text(key).map_err(unavailable))
-                .collect::<Result<Vec<_>>>()?
-                .join(", "),
-        );
-        text.push(']');
-    }
-    if !attribute.comment.trim().is_empty() {
-        text.push_str(" : ");
-        text.push_str(&plain_text(&attribute.comment).map_err(unavailable)?);
-    }
-    Ok(text)
+fn edge_dom_id(edge: &LayoutEdge, relationships: &[ErRelationshipRenderModel]) -> String {
+    let Some(rest) = edge.id.strip_prefix("er-rel-") else {
+        return edge.id.clone();
+    };
+    let Some(index) = rest
+        .split('-')
+        .next()
+        .and_then(|value| value.parse::<usize>().ok())
+    else {
+        return edge.id.clone();
+    };
+    let Some(relation) = relationships.get(index) else {
+        return edge.id.clone();
+    };
+    format!("id_{}_{}_{}", relation.entity_a, relation.entity_b, index)
 }
 
 fn validate_attribute(attribute: &ErAttributeRenderModel) -> std::result::Result<(), String> {
@@ -701,27 +1220,50 @@ fn validate_attribute(attribute: &ErAttributeRenderModel) -> std::result::Result
 }
 
 fn plain_text(raw: &str) -> std::result::Result<String, String> {
-    let decoded = crate::entities::decode_entities_minimal(raw);
-    if decoded.contains("**") || decoded.contains("__") || contains_html_tag(&decoded) {
-        return Err("contains styled Markdown or HTML markup".to_string());
+    let label = ErBoxLabel::from_source(raw);
+    let rooted = format!(
+        "<merman-fragment>{}</merman-fragment>",
+        label.xhtml_fragment()
+    );
+    let document = roxmltree::Document::parse(&rooted)
+        .map_err(|_| "contains invalid XHTML label markup".to_string())?;
+    let root = document.root_element();
+    let mut output = String::new();
+    let mut paragraph_seen = false;
+    for child in root.children() {
+        if child.is_text() {
+            let text = child.text().unwrap_or_default();
+            if paragraph_seen && !text.trim().is_empty() {
+                return Err("contains text outside its portable paragraph".to_string());
+            }
+            if !paragraph_seen {
+                output.push_str(text);
+            }
+            continue;
+        }
+        if !child.is_element()
+            || paragraph_seen
+            || child.tag_name().name() != "p"
+            || child.attributes().next().is_some()
+        {
+            return Err("contains styled Markdown or HTML markup".to_string());
+        }
+        paragraph_seen = true;
+        for inline in child.children() {
+            if inline.is_text() {
+                output.push_str(inline.text().unwrap_or_default());
+            } else if inline.is_element()
+                && inline.tag_name().name() == "br"
+                && inline.attributes().next().is_none()
+                && inline.children().next().is_none()
+            {
+                output.push('\n');
+            } else {
+                return Err("contains styled Markdown or HTML markup".to_string());
+            }
+        }
     }
-    Ok(decoded
-        .replace("<br />", "\n")
-        .replace("<br/>", "\n")
-        .replace("<br>", "\n")
-        .lines()
-        .map(str::trim)
-        .collect::<Vec<_>>()
-        .join("\n"))
-}
-
-fn contains_html_tag(text: &str) -> bool {
-    const TAGS: [&str; 14] = [
-        "<a", "</a", "<b", "</b", "<div", "</div", "<em", "</em", "<i", "</i", "<p", "</p",
-        "<span", "</span",
-    ];
-    let lower = text.to_ascii_lowercase();
-    TAGS.iter().any(|tag| lower.contains(tag))
+    Ok(output.lines().map(str::trim).collect::<Vec<_>>().join("\n"))
 }
 
 fn centered_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {

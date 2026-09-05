@@ -1037,3 +1037,72 @@ fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
     }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() {
+    let svg = render_svg(
+        r#"erDiagram
+  CAR ||--o{ NAMED-DRIVER : allows
+  CAR {
+    string registrationNumber
+    string make
+    string model
+  }
+  NAMED-DRIVER {
+    string license
+  }
+"#,
+        "er-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical ER SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("erDiagram"));
+    assert!(root.attribute("viewBox").is_some());
+    for class in [
+        "root",
+        "edgePaths",
+        "edgeLabels",
+        "nodes",
+        "relationshipLine",
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            }),
+            "expected canonical ER class {class:?}"
+        );
+    }
+    for semantic_id in ["er.document", "er.entity.0", "er.edge.0", "er.edge.0.label"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("data-merman-semantic-id") == Some(semantic_id)),
+            "expected canonical ER semantic id {semantic_id:?}"
+        );
+    }
+    assert!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("row-rect-odd"))
+            .count()
+            >= 2
+    );
+    assert!(document.descendants().any(|node| {
+        node.attribute("data-merman-resource")
+            .is_some_and(|id| id == "er.entity.0.divider.column.0")
+    }));
+    for text in ["CAR", "string", "registrationNumber", "make", "model"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("span") && node.text() == Some(text)),
+            "expected canonical ER table cell text {text:?}"
+        );
+    }
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("span") && node.text() == Some("string registrationNumber")
+    }));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

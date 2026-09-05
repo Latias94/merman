@@ -201,6 +201,27 @@ fn er_emits_typed_entities_attribute_rows_relationships_and_cardinality() {
         merman_display_list::DrawingResource::Path(path)
             if path.id.as_str().contains("er.edge.0.marker")
     )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "er.entity.0.row.0"
+    )));
+    assert!(document.resources.iter().any(|resource| matches!(
+        resource,
+        merman_display_list::DrawingResource::Path(path)
+            if path.id.as_str() == "er.entity.0.divider.column.0"
+    )));
+    for text in ["string", "id", "PK", "name"] {
+        assert!(document.commands.iter().any(|command| matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == text
+        )));
+    }
+    assert!(!document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.text.contains("string id")
+    )));
     assert!(document.semantics.iter().any(|semantic| {
         semantic.role == merman_display_list::SemanticRole::Node
             && semantic.title.as_deref() == Some("CUSTOMER")
@@ -209,6 +230,36 @@ fn er_emits_typed_entities_attribute_rows_relationships_and_cardinality() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("places")
     }));
+}
+
+#[test]
+fn er_rejects_svg_only_effects_instead_of_silently_flattening_them() {
+    for (source, expected) in [
+        (
+            "%%{init: {\"look\": \"neo\"}}%%\nerDiagram\n  A ||--|| B : owns\n",
+            "drop-shadow filters",
+        ),
+        (
+            "---\nconfig:\n  theme: redux-color\n---\nerDiagram\n  A ||--|| B : owns\n",
+            "per-entity palette semantics",
+        ),
+        (
+            "erDiagram\n  \"This **is** _Markdown_\"\n",
+            "styled Markdown",
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect_err("SVG-only ER effects must remain explicit");
+        assert!(
+            error.to_string().contains(expected),
+            "expected {expected:?} in {error}"
+        );
+    }
 }
 
 #[test]

@@ -269,6 +269,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::State(_)) {
             chrome.dom.aria_attr_order = root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby;
         }
+        if matches!(self.svg_body, SvgStructureBody::Er(_)) {
+            chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
+            chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
+        }
         if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
             chrome.dom.fixed_height_placement = root_svg::SvgRootFixedHeightPlacement::AfterXmlns;
             chrome.dom.fixed_style_placement = root_svg::RootStylePlacement::Tail;
@@ -394,6 +398,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::Er(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
             SvgStructureBody::Venn(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -514,6 +525,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::state::canonical_state_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Er(_) => Some((
+                false,
+                super::er_css(self.diagram_id.as_str(), self.effective_config)?,
+            )),
             SvgStructureBody::Venn(_) => Some((
                 false,
                 super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)
@@ -608,6 +623,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Sankey(_)
                 | SvgStructureBody::Requirement(_)
                 | SvgStructureBody::State(_)
+                | SvgStructureBody::Er(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Railroad(_)
                 | SvgStructureBody::EventModeling(_)
@@ -631,6 +647,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::GitGraph(_) => Some("gitGraph"),
             SvgStructureBody::Requirement(_) => Some("requirementDiagram"),
             SvgStructureBody::State(_) => Some("statediagram"),
+            SvgStructureBody::Er(_) => Some("erDiagram"),
             _ => None,
         }
     }
@@ -654,6 +671,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Treemap(_)
             | SvgStructureBody::Requirement(_)
             | SvgStructureBody::State(_)
+            | SvgStructureBody::Er(_)
             | SvgStructureBody::XyChart(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
@@ -1023,7 +1041,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         })?;
         let svg_id = self.semantic_svg_id(semantic_id)?;
         let role_class = semantic_role_class(semantic.role);
-        let visible = self.debug_visibility(semantic.role);
+        let visible = if matches!(self.svg_body, SvgStructureBody::Er(_))
+            && is_er_container_semantic(semantic_id)
+        {
+            true
+        } else {
+            self.debug_visibility(semantic.role)
+        };
         let security = MermaidNavigationSecurity::from_security_level_loose(
             self.effective_config
                 .get("securityLevel")
@@ -1070,7 +1094,18 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         let semantic_extra_class = self.semantic_extra_class(semantic_id).map(str::to_owned);
-        if matches!(self.svg_body, SvgStructureBody::Timeline(_))
+        if matches!(self.svg_body, SvgStructureBody::Er(_))
+            && is_er_container_semantic(semantic_id)
+            && let Some(class) = semantic_extra_class.as_deref()
+        {
+            write!(
+                self.output,
+                " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
+                escaped_attr(semantic.id.as_str()),
+                escaped_attr(class),
+            )
+            .map_err(|_| invalid("failed to write ER container semantic group"))?;
+        } else if matches!(self.svg_body, SvgStructureBody::Timeline(_))
             && let Some(class) = semantic_extra_class.as_deref()
         {
             // Timeline's current Mermaid DOM uses the family class as the complete group class;
@@ -1181,6 +1216,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::State(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Er(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             _ => None,
         }
     }
@@ -1193,11 +1231,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::State(body) => (Some(&body.semantic_looks), None),
             _ => (None, None),
         };
-        let Some(looks) = looks else {
-            return String::new();
-        };
         let mut attrs = String::new();
-        if let Some(look) = looks.get(semantic_id) {
+        if let Some(looks) = looks
+            && let Some(look) = looks.get(semantic_id)
+        {
             attrs.push_str(" data-look=\"");
             escape_attr_into(&mut attrs, look);
             attrs.push('"');
@@ -1206,6 +1243,20 @@ impl<'a> DocumentSvgEncoder<'a> {
             attrs.push_str(" data-color-id=\"");
             escape_attr_into(&mut attrs, color_id);
             attrs.push('"');
+        }
+        if let SvgStructureBody::Er(body) = self.svg_body {
+            if !body.data_look.is_empty() {
+                attrs.push_str(" data-look=\"");
+                escape_attr_into(&mut attrs, body.data_look.as_str());
+                attrs.push('"');
+            }
+            if let Some(dom_id) = body.dom_ids.get(semantic_id)
+                && semantic_id.ends_with(".label")
+            {
+                attrs.push_str(" data-id=\"");
+                escape_attr_into(&mut attrs, dom_id);
+                attrs.push('"');
+            }
         }
         attrs
     }
@@ -1468,6 +1519,20 @@ impl<'a> DocumentSvgEncoder<'a> {
                 }
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::Er(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if (raw_id.ends_with(".box") || raw_id.ends_with(".background"))
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if raw_id.ends_with(".divider")
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+        }
         let path_data = {
             let path = self.path_resource(path_id)?;
             path_d(&path.segments)
@@ -1726,13 +1791,26 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
-        self.output.push_str("<text");
         let semantic_id = self.current_semantic_id().map(str::to_owned);
+        let text_index = self.record_text_index();
+        if let SvgStructureBody::Er(body) = self.svg_body
+            && semantic_id.as_deref() != Some("er.title")
+        {
+            let relationship_label = semantic_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("er.edge.") && id.ends_with(".label"));
+            if (!relationship_label && body.entity_html_labels)
+                || (relationship_label && body.relationship_html_labels)
+            {
+                return self.emit_er_html_text(run, semantic_id.as_deref(), text_index);
+            }
+        }
+
+        self.output.push_str("<text");
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id);
             self.write_sidecar_dom_id(semantic_id);
         }
-        let text_index = self.record_text_index();
         if let Some(class) = self.text_class(run, text_index) {
             let class = class.into_owned();
             self.output.push_str(" class=\"");
@@ -1856,6 +1934,46 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn emit_er_html_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+        text_index: Option<usize>,
+    ) -> Result<()> {
+        let class = self
+            .text_class(run, text_index)
+            .unwrap_or(Cow::Borrowed("nodeLabel"));
+        let wrapper_class = if semantic_id.is_some_and(|id| id.ends_with(".label")) {
+            "label edgeLabel"
+        } else {
+            "label"
+        };
+        let bounds = run.bounds;
+        write!(
+            self.output,
+            "<g class=\"{}\" transform=\"translate({}, {})\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"><foreignObject x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"labelBkg\" style=\"display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;\"><span class=\"{}\">",
+            wrapper_class,
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height),
+            fmt(bounds.width.max(0.0)),
+            fmt(bounds.height.max(0.0)),
+            escaped_attr(class.as_ref()),
+        )
+        .map_err(|_| invalid("failed to write ER HTML text wrapper"))?;
+        for (index, line) in run.text.split('\n').enumerate() {
+            if index > 0 {
+                self.output.push_str("<br/>");
+            }
+            escape_xml_into(&mut self.output, line);
+        }
+        self.output.push_str("</span></div></foreignObject></g>");
+        Ok(())
+    }
+
     fn path_class(&self, path_id: &ResourceId) -> Option<Cow<'static, str>> {
         if matches!(self.svg_body, SvgStructureBody::Error(_))
             && path_id.as_str().starts_with("error.icon.")
@@ -1937,6 +2055,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Er(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -1999,6 +2122,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn write_sidecar_dom_id(&mut self, key: &str) {
         let raw_id = match self.svg_body {
             SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
+            SvgStructureBody::Er(body) => body.dom_ids.get(key),
             _ => None,
         };
         let Some(raw_id) = raw_id else {
@@ -2088,6 +2212,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Er(body) => {
+                let semantic_id = self.current_semantic_id()?;
+                let class = text_index
+                    .and_then(|index| body.text_classes.get(&format!("{semantic_id}#{index}")))
+                    .or_else(|| body.text_classes.get(semantic_id))?;
+                Some(Cow::Owned(class.clone()))
+            }
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
                 Some(id) if id.starts_with("radar.legend.") => {
@@ -2347,6 +2478,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
         }
+        if let SvgStructureBody::Er(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
         self.semantic_svg_ids
             .get(id)
             .cloned()
@@ -2357,6 +2493,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         let resource = self.svg_resource_id(id)?;
         Ok(format!("{resource}-clip"))
     }
+}
+
+fn is_er_container_semantic(semantic_id: &str) -> bool {
+    matches!(
+        semantic_id,
+        "er.root" | "er.clusters" | "er.edges" | "er.edgeLabels" | "er.nodes"
+    )
 }
 
 fn default_diagram_id(family: RenderFamilyKind) -> &'static str {
