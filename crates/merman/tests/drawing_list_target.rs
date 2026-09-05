@@ -4,7 +4,7 @@ use merman::{
     DrawingListRequest, Engine, MermaidConfig, OperationControl, RenderError, RenderOutput,
     RenderRequest, Renderer,
 };
-use merman_display_list::DrawingListPolicy;
+use merman_display_list::{DrawingListLimits, DrawingListPolicy};
 
 #[test]
 fn error_diagram_has_a_complete_renderer_neutral_output() {
@@ -81,6 +81,32 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
             .iter()
             .any(|semantic| semantic.role == merman_display_list::SemanticRole::Edge)
     );
+}
+
+#[test]
+fn drawing_list_footprint_limit_is_reported_as_a_resource_limit() {
+    let request = DrawingListRequest {
+        limits: DrawingListLimits {
+            max_commands: 0,
+            ..DrawingListLimits::default()
+        },
+        ..DrawingListRequest::default()
+    };
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "flowchart TD\nA --> B\n",
+            OperationControl::new(),
+            request,
+        ))
+        .expect_err("a zero command budget must reject before returning a document");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual > limit.maximum
+    ));
 }
 
 #[test]
