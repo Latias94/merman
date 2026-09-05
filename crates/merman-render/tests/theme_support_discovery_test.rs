@@ -468,7 +468,7 @@ fn compatibility_only_route_is_conditional_without_claiming_direct_support() {
     assert_eq!(
         support.reason_ids(),
         [
-            "theme-support.legacy-compatibility-only",
+            "theme-support.family-owned-consumer-present",
             "theme-support.public-value-domain-partial",
         ]
     );
