@@ -266,8 +266,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
+    let target_boundary = if is_elk_layout {
+        boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
+    } else {
+        None
+    };
     let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
-        collapse_short_terminal_marker_stub(&mut line_data, edge.edge_type.as_deref())
+        collapse_short_terminal_marker_stub(
+            &mut line_data,
+            edge.edge_type.as_deref(),
+            target_boundary,
+        )
     } else {
         false
     };
