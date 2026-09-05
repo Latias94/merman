@@ -330,10 +330,6 @@ impl GitGraphTheme {
             self.node_border
         }
     }
-
-    fn gradient_paint(&self, id: ResourceId) -> Paint {
-        Paint::resource(id)
-    }
 }
 
 struct GitGraphBuilder<'a> {
@@ -352,7 +348,6 @@ struct GitGraphBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
-    gradient_resource: Option<ResourceId>,
 }
 
 impl<'a> GitGraphBuilder<'a> {
@@ -405,7 +400,6 @@ impl<'a> GitGraphBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
-            gradient_resource: None,
         })
     }
 
@@ -748,25 +742,31 @@ impl<'a> GitGraphBuilder<'a> {
                 format!("branchLabelBkg label{branch_class_index}"),
             );
             let gradient_id = if self.theme.use_neo && self.theme.use_gradient {
-                let gradient_id = self.gradient_resource.get_or_insert_with(|| {
-                    let gradient_id = ResourceId::new("gitgraph.gradient");
-                    self.resources
-                        .push(DrawingResource::LinearGradient(gradient_resource(
-                            gradient_id.clone(),
-                            rect,
-                            self.theme.gradient_start,
-                            self.theme.gradient_stop,
-                        )));
-                    gradient_id
-                });
-                Some(gradient_id.clone())
+                // Mermaid's GitGraph gradient is objectBoundingBox, so every branch label gets
+                // the same color ramp relative to its own box.  The public DrawingList uses
+                // document-space gradients; emit one resource per label to preserve that visual
+                // meaning for all renderer-neutral hosts instead of reusing the first label's
+                // coordinates for every branch.
+                let gradient_id = if index == 0 {
+                    ResourceId::new("gitgraph.gradient")
+                } else {
+                    ResourceId::new(format!("gitgraph.gradient.{index}"))
+                };
+                self.resources
+                    .push(DrawingResource::LinearGradient(gradient_resource(
+                        gradient_id.clone(),
+                        rect,
+                        self.theme.gradient_start,
+                        self.theme.gradient_stop,
+                    )));
+                Some(gradient_id)
             } else {
                 None
             };
-            let background_paint = gradient_id.as_ref().map_or_else(
-                || Paint::solid(fill),
-                |id| self.theme.gradient_paint(id.clone()),
-            );
+            // Mermaid applies the neo gradient to the label border; the label background remains
+            // the resolved theme color.  The SVG serializer intentionally omits the legacy CSS
+            // gradient rule for canonical documents, so these inline paints remain authoritative.
+            let background_paint = Paint::solid(fill);
             let stroke_style = (border_width > 0.0).then(|| {
                 gradient_id.map_or_else(
                     || stroke(border, border_width),

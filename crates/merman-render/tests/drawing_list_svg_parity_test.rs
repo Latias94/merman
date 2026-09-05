@@ -1101,6 +1101,66 @@ fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
 }
 
 #[test]
+fn gitgraph_canonical_svg_scopes_gradient_coordinates_to_each_branch_label() {
+    let svg = render_svg(
+        r##"%%{init: {"theme": "neo", "themeVariables": {"useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
+gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+  checkout main
+  branch feature
+  checkout feature
+  commit id: "C"
+"##,
+        "gitgraph-gradient-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical GitGraph SVG is XML");
+    let gradients = document
+        .descendants()
+        .filter(|node| node.has_tag_name("linearGradient"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        gradients.len(),
+        3,
+        "each branch label needs its own gradient: {svg}"
+    );
+    assert!(gradients.iter().all(|gradient| {
+        gradient.attribute("gradientUnits") == Some("userSpaceOnUse")
+            && gradient.attribute("x1").is_some()
+            && gradient.attribute("x2").is_some()
+            && gradient.attribute("x1") != gradient.attribute("x2")
+    }));
+
+    let label_rects = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|token| token == "branchLabelBkg")
+                })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        label_rects.len(),
+        3,
+        "expected one gradient-backed label rect per branch"
+    );
+    let gradient_refs = label_rects
+        .iter()
+        .filter_map(|rect| rect.attribute("stroke"))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        gradient_refs.len(),
+        3,
+        "branch labels must not share one document-space gradient"
+    );
+}
+
+#[test]
 fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() {
     let svg = render_svg(
         r#"erDiagram
