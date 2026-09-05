@@ -3308,6 +3308,127 @@ C --> D@{ shape: browser, label: "browser" }
 }
 
 #[test]
+fn flowchart_hand_drawn_triangle_uses_rough_fill_and_is_deterministic() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg,
+        render_flowchart_svg_from_text(source),
+        "handDrawn triangle output must be deterministic"
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn triangle SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn triangle node");
+    let shape_group = node
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("outer-path")
+        })
+        .expect("handDrawn triangle shape group");
+    let paths: Vec<_> = shape_group
+        .descendants()
+        .filter(|element| element.has_tag_name("path"))
+        .collect();
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#123456")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "triangle must emit a non-empty RoughJS hachure fill path: {svg}"
+    );
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#654321")
+                && path
+                    .attribute("stroke-width")
+                    .and_then(|value| value.parse::<f64>().ok())
+                    .is_some_and(|value| (value - 1.3).abs() <= 1e-6)
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "triangle must emit a non-empty RoughJS outline path: {svg}"
+    );
+
+    let classic_svg = render_flowchart_svg_from_text(
+        r#"flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:#123456,stroke:#654321
+"#,
+    );
+    let classic_document = roxmltree::Document::parse(&classic_svg).expect("valid classic SVG");
+    let classic_node = classic_document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("classic triangle node");
+    assert!(
+        classic_node.descendants().any(|path| {
+            path.has_tag_name("path")
+                && path.attribute("fill") == Some("#123456")
+                && path.attribute("stroke") == Some("none")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "classic triangle must retain a solid fill path: {classic_svg}"
+    );
+    assert!(
+        !classic_node.descendants().any(|path| {
+            path.has_tag_name("path") && path.attribute("stroke-width") == Some("4")
+        }),
+        "classic triangle must not use the handDrawn fill sketch: {classic_svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_triangle_falls_back_as_one_classic_shape_for_non_hex_colors() {
+    let svg = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: triangle, label: "Extract" }
+style A fill:red,stroke:blue
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn triangle fallback SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn triangle fallback node");
+    assert!(
+        node.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("class") == Some("outer-path")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "unsupported rough colors must retain the complete triangle geometry: {svg}"
+    );
+    assert!(
+        !node.descendants().any(|element| {
+            element.has_tag_name("path") && element.attribute("stroke-width") == Some("4")
+        }),
+        "unsupported rough colors must not emit a partial handDrawn triangle: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_hand_drawn_object_shapes_preserve_inline_style_and_fallback_consistently() {
     let styled = render_flowchart_svg_from_text(
         r#"%%{init: {"look": "handDrawn"}}%%

@@ -6,7 +6,7 @@ use crate::svg::parity::util;
 
 use super::super::geom::path_from_points;
 use super::super::helpers;
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::{roughjs_paths_for_hand_drawn_svg_path, roughjs_paths_for_svg_path};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -30,7 +30,46 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     let tw = w + metrics.height;
     let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
     let path_data = path_from_points(&pts);
-    let (fill_d, stroke_d) =
+    if common.look_is_hand_drawn() {
+        let rough_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_hand_drawn_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        });
+        if let Some((fill_d, stroke_d)) =
+            rough_paths.filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty())
+        {
+            let _ = write!(
+                out,
+                r#"<g transform="translate({},{})" class="outer-path" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"#,
+                util::fmt(-h / 2.0),
+                util::fmt(h / 2.0),
+                escape_attr(common.rough_group_style),
+                escape_attr(&fill_d),
+                escape_attr(common.fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(common.stroke_color),
+                util::fmt(common.stroke_width as f64),
+                escape_attr(common.stroke_dasharray),
+            );
+        } else {
+            // Keep unsupported CSS colors on the complete classic geometry. Do not emit a
+            // partial hand-drawn shape with empty paths when RoughJS admission fails.
+            let _ = write!(
+                out,
+                r#"<path d="{}" class="outer-path" transform="translate({}, {})" style="{}"/>"#,
+                escape_attr(&path_data),
+                util::fmt(-h / 2.0),
+                util::fmt(h / 2.0),
+                escape_attr(common.style),
+            );
+        }
+    } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -41,22 +80,32 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
                 common.hand_drawn_seed,
             )
         })
-        .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-
-    let _ = write!(
-        out,
-        r#"<g transform="translate({},{})" class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
-        util::fmt(-h / 2.0),
-        util::fmt(h / 2.0),
-        escape_attr(&fill_d),
-        escape_attr(common.fill_color),
-        escape_attr(common.style),
-        escape_attr(&stroke_d),
-        escape_attr(common.stroke_color),
-        util::fmt(common.stroke_width as f64),
-        escape_attr(common.stroke_dasharray),
-        escape_attr(common.style),
-    );
+        .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty())
+    {
+        let _ = write!(
+            out,
+            r#"<g transform="translate({},{})" class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
+            util::fmt(-h / 2.0),
+            util::fmt(h / 2.0),
+            escape_attr(&fill_d),
+            escape_attr(common.fill_color),
+            escape_attr(common.style),
+            escape_attr(&stroke_d),
+            escape_attr(common.stroke_color),
+            util::fmt(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<path d="{}" class="outer-path" transform="translate({}, {})" style="{}"/>"#,
+            escape_attr(&path_data),
+            util::fmt(-h / 2.0),
+            util::fmt(h / 2.0),
+            escape_attr(common.style),
+        );
+    }
 
     let node_text_style = flowchart_effective_text_style_for_node_classes(
         &ctx.text_style,
