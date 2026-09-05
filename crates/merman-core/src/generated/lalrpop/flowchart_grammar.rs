@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: 01f8268e19d176143086f7405bc41a7508455c809a27c88178f04d1275ed9d9b
+// sha3: 9fb62183d977e6bdf08b5ede4e82f6c76376f3942adc3b96bcaf667bac673951
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
@@ -492,6 +492,7 @@ mod __parse__FlowchartAst {
         }).collect()
     }
     fn __expected_tokens_from_states<
+        '__0,
     >(
         __states: &[i8],
         _: core::marker::PhantomData<()>,
@@ -505,12 +506,13 @@ mod __parse__FlowchartAst {
             }
         }).collect()
     }
-    struct __StateMachine<>
+    struct __StateMachine<'__0>
     where
     {
+        edge_budget: &'__0 std::cell::Cell<usize>,
         __phantom: core::marker::PhantomData<()>,
     }
-    impl<> __state_machine::ParserDefinition for __StateMachine<>
+    impl<'__0> __state_machine::ParserDefinition for __StateMachine<'__0>
     where
     {
         type Location = usize;
@@ -592,6 +594,7 @@ mod __parse__FlowchartAst {
             symbols: &mut alloc::vec::Vec<__state_machine::SymbolTriple<Self>>,
         ) -> Option<__state_machine::ParseResult<Self>> {
             __reduce(
+                self.edge_budget,
                 action,
                 start_location,
                 states,
@@ -695,10 +698,11 @@ mod __parse__FlowchartAst {
         }
     }
     fn __simulate_reduce<
+        '__0,
     >(
         __reduce_index: i8,
         _: core::marker::PhantomData<()>,
-    ) -> __state_machine::SimulatedReduce<__StateMachine<>>
+    ) -> __state_machine::SimulatedReduce<__StateMachine<'__0>>
     {
         match __reduce_index {
             0 => {
@@ -1113,6 +1117,7 @@ mod __parse__FlowchartAst {
             __TOKENS: IntoIterator<Item=__TOKEN>,
         >(
             &self,
+            edge_budget: &std::cell::Cell<usize>,
             __tokens0: __TOKENS,
         ) -> Result<FlowchartAst, __lalrpop_util::ParseError<usize, Tok, crate::diagrams::flowchart::LexError>>
         {
@@ -1120,6 +1125,7 @@ mod __parse__FlowchartAst {
             let mut __tokens = __tokens.map(|t| __ToTriple::to_triple(t));
             __state_machine::Parser::drive(
                 __StateMachine {
+                    edge_budget,
                     __phantom: core::marker::PhantomData::<()>,
                 },
                 __tokens,
@@ -1127,6 +1133,7 @@ mod __parse__FlowchartAst {
         }
     }
     fn __accepts<
+        '__0,
     >(
         __error_state: Option<i8>,
         __states: &[i8],
@@ -1160,6 +1167,7 @@ mod __parse__FlowchartAst {
     }
     fn __reduce<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __action: i8,
         __lookahead_start: Option<&usize>,
         __states: &mut alloc::vec::Vec<i8>,
@@ -1169,206 +1177,217 @@ mod __parse__FlowchartAst {
     {
         let (__pop_states, __nonterminal) = match __action {
             0 => {
-                __reduce0(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce0(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             1 => {
-                __reduce1(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce1(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             2 => {
-                __reduce2(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Chain = NodeGroup, EdgeSeg+ => ActionFn(23);
+                assert!(__symbols.len() >= 2);
+                let __sym1 = __pop_Variant18(__symbols);
+                let __sym0 = __pop_Variant21(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym1.2.clone();
+                let __nt = match super::__action23::<>(edge_budget, __sym0, __sym1) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant13(__nt), __end));
+                (2, 2)
             }
             3 => {
-                __reduce3(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce3(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             4 => {
-                __reduce4(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce4(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             5 => {
-                __reduce5(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce5(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             6 => {
-                __reduce6(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce6(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             7 => {
-                __reduce7(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce7(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             8 => {
-                __reduce8(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce8(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             9 => {
-                __reduce9(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce9(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             10 => {
-                __reduce10(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce10(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             11 => {
-                __reduce11(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce11(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             12 => {
-                __reduce12(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce12(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             13 => {
-                __reduce13(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce13(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             14 => {
-                __reduce14(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce14(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             15 => {
-                __reduce15(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce15(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             16 => {
-                __reduce16(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce16(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             17 => {
-                __reduce17(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce17(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             18 => {
-                __reduce18(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce18(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             19 => {
-                __reduce19(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce19(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             20 => {
-                __reduce20(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce20(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             21 => {
-                __reduce21(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce21(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             22 => {
-                __reduce22(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce22(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             23 => {
-                __reduce23(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce23(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             24 => {
-                __reduce24(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce24(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             25 => {
-                __reduce25(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce25(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             26 => {
-                __reduce26(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce26(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             27 => {
-                __reduce27(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce27(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             28 => {
-                __reduce28(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce28(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             29 => {
-                __reduce29(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce29(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             30 => {
-                __reduce30(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce30(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             31 => {
-                __reduce31(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce31(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             32 => {
-                __reduce32(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce32(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             33 => {
-                __reduce33(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce33(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             34 => {
-                __reduce34(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce34(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             35 => {
-                __reduce35(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce35(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             36 => {
-                __reduce36(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce36(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             37 => {
-                __reduce37(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce37(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             38 => {
-                __reduce38(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce38(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             39 => {
-                __reduce39(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce39(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             40 => {
-                __reduce40(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce40(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             41 => {
-                __reduce41(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce41(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             42 => {
-                __reduce42(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce42(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             43 => {
-                __reduce43(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce43(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             44 => {
-                __reduce44(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce44(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             45 => {
-                __reduce45(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce45(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             46 => {
-                __reduce46(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce46(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             47 => {
-                __reduce47(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce47(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             48 => {
-                __reduce48(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce48(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             49 => {
-                __reduce49(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce49(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             50 => {
-                __reduce50(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce50(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             51 => {
-                __reduce51(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce51(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             52 => {
-                __reduce52(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce52(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             53 => {
-                __reduce53(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce53(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             54 => {
-                __reduce54(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce54(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             55 => {
-                __reduce55(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce55(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             56 => {
-                __reduce56(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce56(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             57 => {
-                __reduce57(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce57(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             58 => {
-                __reduce58(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce58(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             59 => {
-                __reduce59(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce59(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             60 => {
-                __reduce60(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce60(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             61 => {
-                __reduce61(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce61(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             62 => {
-                __reduce62(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce62(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             63 => {
-                __reduce63(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce63(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             64 => {
-                __reduce64(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce64(edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             65 => {
                 // __FlowchartAst = FlowchartAst => ActionFn(0);
                 let __sym0 = __pop_Variant19(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = super::__action0::<>(__sym0);
+                let __nt = super::__action0::<>(edge_budget, __sym0);
                 return Some(Ok(__nt));
             }
             _ => panic!("invalid action code {__action}")
@@ -1676,6 +1695,7 @@ mod __parse__FlowchartAst {
     }
     fn __reduce0<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1684,12 +1704,13 @@ mod __parse__FlowchartAst {
         // @L =  => ActionFn(54);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action54::<>(&__start, &__end);
+        let __nt = super::__action54::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (0, 0)
     }
     fn __reduce1<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1698,29 +1719,13 @@ mod __parse__FlowchartAst {
         // @R =  => ActionFn(51);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action51::<>(&__start, &__end);
+        let __nt = super::__action51::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (0, 1)
     }
-    fn __reduce2<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Chain = NodeGroup, EdgeSeg+ => ActionFn(23);
-        assert!(__symbols.len() >= 2);
-        let __sym1 = __pop_Variant18(__symbols);
-        let __sym0 = __pop_Variant21(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym1.2.clone();
-        let __nt = super::__action23::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant13(__nt), __end));
-        (2, 2)
-    }
     fn __reduce3<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1732,12 +1737,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action35::<>(__sym0, __sym1);
+        let __nt = super::__action35::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant14(__nt), __end));
         (2, 3)
     }
     fn __reduce4<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1746,12 +1752,13 @@ mod __parse__FlowchartAst {
         // ClassOpt =  => ActionFn(36);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action36::<>(&__start, &__end);
+        let __nt = super::__action36::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant14(__nt), __end));
         (0, 3)
     }
     fn __reduce5<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1761,12 +1768,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action52::<>(__sym0);
+        let __nt = super::__action52::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 4)
     }
     fn __reduce6<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1775,12 +1783,13 @@ mod __parse__FlowchartAst {
         // Direction? =  => ActionFn(53);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action53::<>(&__start, &__end);
+        let __nt = super::__action53::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 4)
     }
     fn __reduce7<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1790,12 +1799,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action45::<>(__sym0);
+        let __nt = super::__action45::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 5)
     }
     fn __reduce8<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1804,12 +1814,13 @@ mod __parse__FlowchartAst {
         // EdgeId? =  => ActionFn(46);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action46::<>(&__start, &__end);
+        let __nt = super::__action46::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 5)
     }
     fn __reduce9<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1819,12 +1830,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant5(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action43::<>(__sym0);
+        let __nt = super::__action43::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant16(__nt), __end));
         (1, 6)
     }
     fn __reduce10<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1833,12 +1845,13 @@ mod __parse__FlowchartAst {
         // EdgeLabel? =  => ActionFn(44);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action44::<>(&__start, &__end);
+        let __nt = super::__action44::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant16(__nt), __end));
         (0, 6)
     }
     fn __reduce11<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1852,12 +1865,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action85::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action85::<>(edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (4, 7)
     }
     fn __reduce12<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1870,12 +1884,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action86::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action86::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (3, 7)
     }
     fn __reduce13<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1888,12 +1903,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action87::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action87::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (3, 7)
     }
     fn __reduce14<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1905,12 +1921,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action88::<>(__sym0, __sym1);
+        let __nt = super::__action88::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (2, 7)
     }
     fn __reduce15<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1920,12 +1937,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant17(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action49::<>(__sym0);
+        let __nt = super::__action49::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant18(__nt), __end));
         (1, 8)
     }
     fn __reduce16<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1937,12 +1955,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant18(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action50::<>(__sym0, __sym1);
+        let __nt = super::__action50::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant18(__nt), __end));
         (2, 8)
     }
     fn __reduce17<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1956,12 +1975,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant24(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action1::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action1::<>(edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant19(__nt), __end));
         (4, 9)
     }
     fn __reduce18<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1973,12 +1993,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action75::<>(__sym0, __sym1);
+        let __nt = super::__action75::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
     fn __reduce19<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1988,12 +2009,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action76::<>(__sym0);
+        let __nt = super::__action76::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
     fn __reduce20<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2005,12 +2027,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action77::<>(__sym0, __sym1);
+        let __nt = super::__action77::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
     fn __reduce21<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2020,12 +2043,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action78::<>(__sym0);
+        let __nt = super::__action78::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
     fn __reduce22<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2037,12 +2061,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action79::<>(__sym0, __sym1);
+        let __nt = super::__action79::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
     fn __reduce23<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2052,12 +2077,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action80::<>(__sym0);
+        let __nt = super::__action80::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
     fn __reduce24<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2069,12 +2095,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action81::<>(__sym0, __sym1);
+        let __nt = super::__action81::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
     fn __reduce25<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2084,12 +2111,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action82::<>(__sym0);
+        let __nt = super::__action82::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
     fn __reduce26<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2099,12 +2127,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action89::<>(__sym0);
+        let __nt = super::__action89::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (1, 11)
     }
     fn __reduce27<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2116,12 +2145,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action90::<>(__sym0, __sym1);
+        let __nt = super::__action90::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (2, 11)
     }
     fn __reduce28<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2133,12 +2163,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action28::<>(__sym0, __sym1);
+        let __nt = super::__action28::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (2, 12)
     }
     fn __reduce29<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2150,12 +2181,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action29::<>(__sym0, __sym1);
+        let __nt = super::__action29::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 13)
     }
     fn __reduce30<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2164,12 +2196,13 @@ mod __parse__FlowchartAst {
         // NodeGroupRest* =  => ActionFn(41);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action41::<>(&__start, &__end);
+        let __nt = super::__action41::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (0, 14)
     }
     fn __reduce31<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2179,12 +2212,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant23(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action42::<>(__sym0);
+        let __nt = super::__action42::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (1, 14)
     }
     fn __reduce32<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2194,12 +2228,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action39::<>(__sym0);
+        let __nt = super::__action39::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (1, 15)
     }
     fn __reduce33<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2211,12 +2246,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant23(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action40::<>(__sym0, __sym1);
+        let __nt = super::__action40::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (2, 15)
     }
     fn __reduce34<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2230,12 +2266,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action91::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action91::<>(edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (4, 16)
     }
     fn __reduce35<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2248,12 +2285,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action92::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action92::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 16)
     }
     fn __reduce36<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2265,12 +2303,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action70::<>(__sym0, __sym1);
+        let __nt = super::__action70::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 16)
     }
     fn __reduce37<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2284,12 +2323,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action93::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action93::<>(edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (4, 17)
     }
     fn __reduce38<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2302,12 +2342,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action94::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action94::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 17)
     }
     fn __reduce39<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2320,12 +2361,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action72::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action72::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 17)
     }
     fn __reduce40<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2337,12 +2379,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action73::<>(__sym0, __sym1);
+        let __nt = super::__action73::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 17)
     }
     fn __reduce41<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2351,12 +2394,13 @@ mod __parse__FlowchartAst {
         // Seps =  => ActionFn(10);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action10::<>(&__start, &__end);
+        let __nt = super::__action10::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (0, 18)
     }
     fn __reduce42<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2368,12 +2412,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action11::<>(__sym0, __sym1);
+        let __nt = super::__action11::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (2, 18)
     }
     fn __reduce43<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2385,12 +2430,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action24::<>(__sym0, __sym1);
+        let __nt = super::__action24::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (2, 19)
     }
     fn __reduce44<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2400,12 +2446,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action37::<>(__sym0);
+        let __nt = super::__action37::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 20)
     }
     fn __reduce45<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2414,12 +2461,13 @@ mod __parse__FlowchartAst {
         // ShapeData? =  => ActionFn(38);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action38::<>(&__start, &__end);
+        let __nt = super::__action38::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 20)
     }
     fn __reduce46<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2429,12 +2477,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant13(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action12::<>(__sym0);
+        let __nt = super::__action12::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce47<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2446,12 +2495,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action74::<>(__sym0, __sym1);
+        let __nt = super::__action74::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (2, 21)
     }
     fn __reduce48<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2461,12 +2511,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant21(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action14::<>(__sym0);
+        let __nt = super::__action14::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce49<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2476,12 +2527,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action15::<>(__sym0);
+        let __nt = super::__action15::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce50<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2491,12 +2543,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant27(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action16::<>(__sym0);
+        let __nt = super::__action16::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce51<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2506,12 +2559,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action17::<>(__sym0);
+        let __nt = super::__action17::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce52<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2521,12 +2575,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action18::<>(__sym0);
+        let __nt = super::__action18::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce53<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2536,12 +2591,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant8(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action19::<>(__sym0);
+        let __nt = super::__action19::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce54<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2551,12 +2607,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action20::<>(__sym0);
+        let __nt = super::__action20::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce55<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2566,12 +2623,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant10(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action21::<>(__sym0);
+        let __nt = super::__action21::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce56<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2581,12 +2639,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant11(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action22::<>(__sym0);
+        let __nt = super::__action22::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant25(__nt), __end));
         (1, 21)
     }
     fn __reduce57<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2599,12 +2658,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant24(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action8::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action8::<>(edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (3, 22)
     }
     fn __reduce58<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2614,12 +2674,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant24(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action9::<>(__sym0);
+        let __nt = super::__action9::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (1, 22)
     }
     fn __reduce59<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2628,12 +2689,13 @@ mod __parse__FlowchartAst {
         // Statements =  => ActionFn(6);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action6::<>(&__start, &__end);
+        let __nt = super::__action6::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (0, 23)
     }
     fn __reduce60<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2645,12 +2707,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant25(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action7::<>(__sym0, __sym1);
+        let __nt = super::__action7::<>(edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (2, 23)
     }
     fn __reduce61<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2665,12 +2728,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action95::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action95::<>(edge_budget, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
         (5, 24)
     }
     fn __reduce62<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2684,12 +2748,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action96::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action96::<>(edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
         (4, 24)
     }
     fn __reduce63<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2699,12 +2764,13 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant6(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action47::<>(__sym0);
+        let __nt = super::__action47::<>(edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant28(__nt), __end));
         (1, 25)
     }
     fn __reduce64<
     >(
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2713,7 +2779,7 @@ mod __parse__FlowchartAst {
         // SubgraphHeader? =  => ActionFn(48);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action48::<>(&__start, &__end);
+        let __nt = super::__action48::<>(edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant28(__nt), __end));
         (0, 25)
     }
@@ -2721,18 +2787,22 @@ mod __parse__FlowchartAst {
 #[allow(unused_imports)]
 pub use self::__parse__FlowchartAst::FlowchartAstParser;
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action0<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, FlowchartAst, usize),
 ) -> FlowchartAst
 {
     __0
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action1<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, _lead, _): (usize, (), usize),
     (_, h, _): (usize, (String, Option<String>, SourceSpan), usize),
     (_, _s, _): (usize, (), usize),
@@ -2745,9 +2815,11 @@ fn __action1<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action2<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2757,9 +2829,11 @@ fn __action2<
     ("graph".to_string(), d, SourceSpan::new(l, r))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action3<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2769,9 +2843,11 @@ fn __action3<
     ("flowchart".to_string(), d, SourceSpan::new(l, r))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action4<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2781,9 +2857,11 @@ fn __action4<
     ("flowchart-elk".to_string(), d, SourceSpan::new(l, r))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action5<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2793,9 +2871,11 @@ fn __action5<
     ("swimlane-beta".to_string(), d, SourceSpan::new(l, r))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action6<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Vec<Stmt>
@@ -2803,9 +2883,11 @@ fn __action6<
     Vec::new()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action7<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, s, _): (usize, Stmt, usize),
     (_, rest, _): (usize, Vec<Stmt>, usize),
 ) -> Vec<Stmt>
@@ -2817,9 +2899,11 @@ fn __action7<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action8<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, _sep, _): (usize, (), usize),
     (_, s, _): (usize, Stmt, usize),
     (_, rest, _): (usize, Vec<Stmt>, usize),
@@ -2832,45 +2916,55 @@ fn __action8<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action9<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, (), usize),
 ) -> Vec<Stmt>
 {
     Vec::new()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action10<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action11<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action12<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, (Vec<Vec<Node>>, Vec<Vec<Edge>>), usize),
 ) -> Stmt
 {
     Stmt::Chain { node_groups: c.0, edge_groups: c.1 }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action13<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -2884,93 +2978,113 @@ fn __action13<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action14<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, g, _): (usize, Vec<Node>, usize),
 ) -> Stmt
 {
     Stmt::Chain { node_groups: vec![g], edge_groups: Vec::new() }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action15<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, n, _): (usize, Node, usize),
 ) -> Stmt
 {
     Stmt::Node(Box::new(n))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action16<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, sg, _): (usize, SubgraphBlock, usize),
 ) -> Stmt
 {
     Stmt::Subgraph(sg)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action17<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, d, _): (usize, DirectionStatementToken, usize),
 ) -> Stmt
 {
     Stmt::Direction(d.direction)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action18<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, s, _): (usize, StyleStmt, usize),
 ) -> Stmt
 {
     Stmt::Style(s)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action19<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClassDefStmt, usize),
 ) -> Stmt
 {
     Stmt::ClassDef(c)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action20<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClassAssignStmt, usize),
 ) -> Stmt
 {
     Stmt::ClassAssign(c)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action21<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClickStmt, usize),
 ) -> Stmt
 {
     Stmt::Click(c)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action22<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, ls, _): (usize, LinkStyleStmt, usize),
 ) -> Stmt
 {
     Stmt::LinkStyle(ls)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action23<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, start, _): (usize, Vec<Node>, usize),
     (_, segs, _): (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize),
-) -> (Vec<Vec<Node>>, Vec<Vec<Edge>>)
+) -> Result<(Vec<Vec<Node>>, Vec<Vec<Edge>>),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
     {
     let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
@@ -2978,7 +3092,30 @@ fn __action23<
 
     let mut prev_group = start;
     for (eid, link, label, next_group) in segs {
-      let mut segment_edges: Vec<Edge> = Vec::new();
+      let expansion_span = prev_group
+        .first()
+        .and_then(|node| node.id_span)
+        .or_else(|| next_group.first().and_then(|node| node.id_span));
+      let requested_edges = prev_group.len().checked_mul(next_group.len()).ok_or_else(|| {
+        crate::diagrams::flowchart::flowchart_edge_limit_error(
+          "Flowchart edge limit exceeded: edge-group expansion exceeds the maxEdges budget",
+          expansion_span,
+        )
+      })?;
+      let remaining_edges = edge_budget.get();
+      if requested_edges > remaining_edges {
+        return Err(lalrpop_util::ParseError::User {
+          error: crate::diagrams::flowchart::flowchart_edge_limit_error(
+            format!(
+              "Flowchart edge limit exceeded: this edge group would create {requested_edges} edges, but only {remaining_edges} of the maxEdges budget remain",
+            ),
+            expansion_span,
+          ),
+        });
+      }
+      edge_budget.set(remaining_edges - requested_edges);
+
+      let mut segment_edges: Vec<Edge> = Vec::with_capacity(requested_edges);
       for from in &prev_group {
         for to in &next_group {
           let is_last_start = from.id == prev_group[prev_group.len() - 1].id;
@@ -3015,22 +3152,26 @@ fn __action23<
       prev_group = next_group;
     }
 
-    (node_groups, edge_groups)
+    Ok((node_groups, edge_groups))
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action24<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action25<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, Option<SubgraphHeader>, usize),
     (_, _s, _): (usize, (), usize),
@@ -3041,9 +3182,11 @@ fn __action25<
     SubgraphBlock { header: h.unwrap_or_default(), statements: inner }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action26<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, eid, _): (usize, Option<String>, usize),
     (_, a, _): (usize, ArrowToken, usize),
     (_, l, _): (usize, Option<LabeledText>, usize),
@@ -3053,9 +3196,11 @@ fn __action26<
     (eid, a.link, l, n)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action27<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, first, _): (usize, Node, usize),
     (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -3067,9 +3212,11 @@ fn __action27<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action28<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, first, _): (usize, Node, usize),
     (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -3081,9 +3228,11 @@ fn __action28<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action29<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, n, _): (usize, Node, usize),
 ) -> Node
@@ -3091,9 +3240,11 @@ fn __action29<
     n
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action30<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3133,9 +3284,11 @@ fn __action30<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action31<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3172,9 +3325,11 @@ fn __action31<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action32<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3214,9 +3369,11 @@ fn __action32<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action33<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3250,9 +3407,11 @@ fn __action33<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action34<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3289,9 +3448,11 @@ fn __action34<
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action35<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, c, _): (usize, String, usize),
 ) -> Vec<String>
@@ -3299,9 +3460,11 @@ fn __action35<
     vec![c]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action36<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Vec<String>
@@ -3309,18 +3472,22 @@ fn __action36<
     Vec::new()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action37<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
     Some(__0)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action38<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3328,18 +3495,22 @@ fn __action38<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action39<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Node, usize),
 ) -> alloc::vec::Vec<Node>
 {
     alloc::vec![__0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action40<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
     (_, e, _): (usize, Node, usize),
 ) -> alloc::vec::Vec<Node>
@@ -3347,9 +3518,11 @@ fn __action40<
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action41<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> alloc::vec::Vec<Node>
@@ -3357,27 +3530,33 @@ fn __action41<
     alloc::vec![]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action42<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> alloc::vec::Vec<Node>
 {
     v
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action43<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, LabeledText, usize),
 ) -> Option<LabeledText>
 {
     Some(__0)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action44<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<LabeledText>
@@ -3385,18 +3564,22 @@ fn __action44<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action45<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
     Some(__0)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action46<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3404,18 +3587,22 @@ fn __action46<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action47<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, SubgraphHeader, usize),
 ) -> Option<SubgraphHeader>
 {
     Some(__0)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action48<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<SubgraphHeader>
@@ -3423,18 +3610,22 @@ fn __action48<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action49<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>), usize),
 ) -> alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>
 {
     alloc::vec![__0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action50<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize),
     (_, e, _): (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>), usize),
 ) -> alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>
@@ -3442,9 +3633,11 @@ fn __action50<
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::needless_lifetimes)]
 fn __action51<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> usize
@@ -3452,18 +3645,22 @@ fn __action51<
     *__lookbehind
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action52<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
     Some(__0)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action53<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3471,9 +3668,11 @@ fn __action53<
     None
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::needless_lifetimes)]
 fn __action54<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> usize
@@ -3481,10 +3680,12 @@ fn __action54<
     *__lookahead
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action55<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3493,11 +3694,13 @@ fn __action55<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action2(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3505,10 +3708,12 @@ fn __action55<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action56<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3517,11 +3722,13 @@ fn __action56<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action3(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3529,10 +3736,12 @@ fn __action56<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action57<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3541,11 +3750,13 @@ fn __action57<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action4(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3553,10 +3764,12 @@ fn __action57<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action58<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3565,11 +3778,13 @@ fn __action58<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action5(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3577,10 +3792,12 @@ fn __action58<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action59<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, NodeLabelToken, usize),
@@ -3591,11 +3808,13 @@ fn __action59<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action30(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3605,10 +3824,12 @@ fn __action59<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action60<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, Vec<String>, usize),
@@ -3617,11 +3838,13 @@ fn __action60<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action31(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3629,10 +3852,12 @@ fn __action60<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action61<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, NodeLabelToken, usize),
@@ -3643,11 +3868,13 @@ fn __action61<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action32(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3657,10 +3884,12 @@ fn __action61<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action62<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, String, usize),
@@ -3670,11 +3899,13 @@ fn __action62<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action33(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3683,10 +3914,12 @@ fn __action62<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action63<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, Vec<String>, usize),
@@ -3695,11 +3928,13 @@ fn __action63<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action34(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3707,10 +3942,12 @@ fn __action63<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action64<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, String, usize),
@@ -3719,11 +3956,13 @@ fn __action64<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action54(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action13(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3731,10 +3970,12 @@ fn __action64<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action65<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -3742,21 +3983,25 @@ fn __action65<
     let __start0 = __1.2;
     let __end0 = __1.2;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action55(
+        edge_budget,
         __0,
         __1,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action66<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -3764,21 +4009,25 @@ fn __action66<
     let __start0 = __1.2;
     let __end0 = __1.2;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action56(
+        edge_budget,
         __0,
         __1,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action67<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -3786,21 +4035,25 @@ fn __action67<
     let __start0 = __1.2;
     let __end0 = __1.2;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action57(
+        edge_budget,
         __0,
         __1,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action68<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -3808,21 +4061,25 @@ fn __action68<
     let __start0 = __1.2;
     let __end0 = __1.2;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action58(
+        edge_budget,
         __0,
         __1,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action69<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Option<String>, usize),
@@ -3832,11 +4089,13 @@ fn __action69<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action59(
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -3845,10 +4104,12 @@ fn __action69<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action70<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, Vec<String>, usize),
 ) -> Node
@@ -3856,21 +4117,25 @@ fn __action70<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action60(
+        edge_budget,
         __0,
         __temp0,
         __1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action71<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Option<String>, usize),
@@ -3880,11 +4145,13 @@ fn __action71<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action61(
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -3893,10 +4160,12 @@ fn __action71<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action72<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, String, usize),
     __2: (usize, Vec<String>, usize),
@@ -3905,11 +4174,13 @@ fn __action72<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action62(
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -3917,10 +4188,12 @@ fn __action72<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action73<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, Vec<String>, usize),
 ) -> Node
@@ -3928,21 +4201,25 @@ fn __action73<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action63(
+        edge_budget,
         __0,
         __temp0,
         __1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action74<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, String, usize),
 ) -> Stmt
@@ -3950,21 +4227,25 @@ fn __action74<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action51(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action64(
+        edge_budget,
         __0,
         __temp0,
         __1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action75<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -3972,39 +4253,47 @@ fn __action75<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action52(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action65(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action76<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
     let __start0 = __0.2;
     let __end0 = __0.2;
     let __temp0 = __action53(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action65(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action77<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4012,39 +4301,47 @@ fn __action77<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action52(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action66(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action78<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
     let __start0 = __0.2;
     let __end0 = __0.2;
     let __temp0 = __action53(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action66(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action79<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4052,39 +4349,47 @@ fn __action79<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action52(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action67(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action80<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
     let __start0 = __0.2;
     let __end0 = __0.2;
     let __temp0 = __action53(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action67(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action81<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4092,39 +4397,47 @@ fn __action81<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action52(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action68(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action82<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
     let __start0 = __0.2;
     let __end0 = __0.2;
     let __temp0 = __action53(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action68(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action83<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, Option<LabeledText>, usize),
@@ -4134,10 +4447,12 @@ fn __action83<
     let __start0 = __0.0;
     let __end0 = __0.2;
     let __temp0 = __action45(
+        edge_budget,
         __0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action26(
+        edge_budget,
         __temp0,
         __1,
         __2,
@@ -4145,10 +4460,12 @@ fn __action83<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action84<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, Option<LabeledText>, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4157,11 +4474,13 @@ fn __action84<
     let __start0 = __0.0;
     let __end0 = __0.0;
     let __temp0 = __action46(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action26(
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -4169,10 +4488,12 @@ fn __action84<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action85<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, LabeledText, usize),
@@ -4182,10 +4503,12 @@ fn __action85<
     let __start0 = __2.0;
     let __end0 = __2.2;
     let __temp0 = __action43(
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action83(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4193,10 +4516,12 @@ fn __action85<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action86<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4205,11 +4530,13 @@ fn __action86<
     let __start0 = __1.2;
     let __end0 = __2.0;
     let __temp0 = __action44(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action83(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4217,10 +4544,12 @@ fn __action86<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action87<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, LabeledText, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4229,20 +4558,24 @@ fn __action87<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action43(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action84(
+        edge_budget,
         __0,
         __temp0,
         __2,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action88<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4250,41 +4583,49 @@ fn __action88<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action44(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action84(
+        edge_budget,
         __0,
         __temp0,
         __1,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action89<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Node, usize),
 ) -> Vec<Node>
 {
     let __start0 = __0.2;
     let __end0 = __0.2;
     let __temp0 = __action41(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action27(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action90<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Node, usize),
     __1: (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -4292,19 +4633,23 @@ fn __action90<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action42(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action27(
+        edge_budget,
         __0,
         __temp0,
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action91<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, String, usize),
@@ -4314,10 +4659,12 @@ fn __action91<
     let __start0 = __2.0;
     let __end0 = __2.2;
     let __temp0 = __action37(
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action69(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4325,10 +4672,12 @@ fn __action91<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action92<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Vec<String>, usize),
@@ -4337,11 +4686,13 @@ fn __action92<
     let __start0 = __1.2;
     let __end0 = __2.0;
     let __temp0 = __action38(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action69(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4349,10 +4700,12 @@ fn __action92<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action93<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, String, usize),
@@ -4362,10 +4715,12 @@ fn __action93<
     let __start0 = __2.0;
     let __end0 = __2.2;
     let __temp0 = __action37(
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action71(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4373,10 +4728,12 @@ fn __action93<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action94<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Vec<String>, usize),
@@ -4385,11 +4742,13 @@ fn __action94<
     let __start0 = __1.2;
     let __end0 = __2.0;
     let __temp0 = __action38(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action71(
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4397,10 +4756,12 @@ fn __action94<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action95<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, SubgraphHeader, usize),
     __2: (usize, (), usize),
@@ -4411,10 +4772,12 @@ fn __action95<
     let __start0 = __1.0;
     let __end0 = __1.2;
     let __temp0 = __action47(
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action25(
+        edge_budget,
         __0,
         __temp0,
         __2,
@@ -4423,10 +4786,12 @@ fn __action95<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action96<
 >(
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, (), usize),
     __2: (usize, Vec<Stmt>, usize),
@@ -4436,11 +4801,13 @@ fn __action96<
     let __start0 = __0.2;
     let __end0 = __1.0;
     let __temp0 = __action48(
+        edge_budget,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action25(
+        edge_budget,
         __0,
         __temp0,
         __1,

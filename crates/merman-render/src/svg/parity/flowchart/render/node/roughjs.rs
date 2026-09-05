@@ -360,6 +360,73 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     Some((fill_d?, stroke_d?))
 }
 
+/// Render a rectangle with Mermaid's default hand-drawn fill and stroke options.
+pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_rect(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    randomness: &RoughRandomness,
+) -> Option<(String, String)> {
+    // Keep the hand-drawn path and classic fallback on the same admission boundary. The generic
+    // rectangle helper intentionally substitutes black for unsupported colors for older callers;
+    // a hand-drawn object shape must instead fall back as a whole when either color is not
+    // representable by roughr.
+    parse_hex_color_to_srgba(fill)?;
+    parse_hex_color_to_srgba(stroke)?;
+    roughjs_hachure_paths_for_rect(
+        x,
+        y,
+        w,
+        h,
+        fill,
+        stroke,
+        stroke_width,
+        stroke_dasharray,
+        HAND_DRAWN_FILL_WEIGHT,
+        HAND_DRAWN_HACHURE_GAP,
+        HAND_DRAWN_ROUGHNESS,
+        randomness,
+    )
+}
+
+pub(in crate::svg::parity) fn roughjs_hand_drawn_line_path(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    randomness: &RoughRandomness,
+) -> Option<String> {
+    let stroke = parse_hex_color_to_srgba(stroke)?;
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
+    let mut options = roughr::core::OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .roughness(HAND_DRAWN_ROUGHNESS)
+        .bowing(1.0)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .build()
+        .ok()?;
+
+    Some(ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+        x1,
+        y1,
+        x2,
+        y2,
+        &mut options,
+    )))
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     points: &[(f64, f64)],
     fill: &str,

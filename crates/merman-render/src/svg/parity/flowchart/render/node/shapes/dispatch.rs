@@ -67,7 +67,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_cylinder(out, ctx, common, label);
         }
         FlowchartShape::Datastore => {
-            super::render_datastore(out, common);
+            super::render_datastore(out, common, details);
         }
         FlowchartShape::Delay => {
             super::render_delay(out, ctx, common, label, details);

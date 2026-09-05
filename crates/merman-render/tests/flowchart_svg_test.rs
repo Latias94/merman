@@ -3371,6 +3371,95 @@ style A fill:red,stroke:blue
 }
 
 #[test]
+fn flowchart_hand_drawn_datastore_uses_rough_fill_and_double_border_lines() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
+flowchart TB
+A@{ shape: datastore, label: "Store" }
+style A fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    let repeat = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg, repeat,
+        "handDrawn datastore output must be deterministic"
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn datastore SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn datastore node");
+    let shape_group = node
+        .children()
+        .find(|element| {
+            element.has_tag_name("g") && element.attribute("class") == Some("basic label-container")
+        })
+        .expect("handDrawn datastore shape group");
+    let paths: Vec<_> = shape_group
+        .descendants()
+        .filter(|element| element.has_tag_name("path"))
+        .collect();
+    assert!(
+        paths.iter().any(|path| {
+            path.attribute("stroke") == Some("#123456")
+                && path.attribute("stroke-width") == Some("4")
+                && path.attribute("stroke-dasharray") == Some("0 0")
+                && !path.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "datastore must emit a non-empty RoughJS hachure fill path: {svg}"
+    );
+    assert_eq!(
+        paths
+            .iter()
+            .filter(|path| {
+                path.attribute("stroke") == Some("#654321")
+                    && path.attribute("stroke-width") == Some("1.3")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            })
+            .count(),
+        2,
+        "datastore must emit rough top and bottom border lines: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hand_drawn_datastore_falls_back_as_one_shape_for_non_hex_colors() {
+    let svg = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "handDrawn"}}%%
+flowchart TB
+A@{ shape: datastore, label: "Store" }
+style A fill:red,stroke:blue
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid datastore fallback SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("A")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("datastore fallback node");
+    assert!(
+        node.descendants().any(|element| {
+            element.has_tag_name("rect")
+                && element.attribute("class") == Some("basic label-container")
+        }),
+        "unsupported rough colors must retain the classic datastore shape: {svg}"
+    );
+    assert!(
+        !node.descendants().any(|element| {
+            element.has_tag_name("path") && element.attribute("stroke-width") == Some("4")
+        }),
+        "unsupported rough colors must not emit a partial handDrawn shape: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_collapsed_subgraph_renders_as_one_leaf_and_redirects_boundary_edges() {
     let svg = render_flowchart_svg_from_text(
         r#"flowchart TD
