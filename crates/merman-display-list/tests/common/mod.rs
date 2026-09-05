@@ -201,17 +201,28 @@ pub fn extended_document() -> DrawingListDocument {
             blend_mode: BlendMode::SoftLight,
         },
     );
+    // Keep the clip inside its own save scope so the layer/semantic/clip/state nesting remains
+    // valid and mirrors the SVG serializer's strict LIFO group contract.
+    document.commands.insert(6, DrawingCommand::Save);
     document.commands.insert(
-        2,
+        7,
         DrawingCommand::ClipPath {
             path: path_id,
             fill_rule: FillRule::EvenOdd,
         },
     );
+    let semantic_end_index = document
+        .commands
+        .iter()
+        .position(|command| matches!(command, DrawingCommand::EndSemanticGroup))
+        .expect("fixture has a semantic group end");
+    document
+        .commands
+        .insert(semantic_end_index, DrawingCommand::Restore);
     let restore_index = document
         .commands
         .iter()
-        .position(|command| matches!(command, DrawingCommand::Restore))
+        .rposition(|command| matches!(command, DrawingCommand::Restore))
         .expect("fixture has a restore command");
     document
         .commands

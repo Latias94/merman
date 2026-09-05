@@ -167,6 +167,13 @@ pub struct DrawingListFootprint {
     pub max_nesting_depth: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GroupScope {
+    Layer,
+    Semantic,
+    Clip,
+}
+
 impl DrawingListFootprint {
     /// Converts the footprint to conservative operation work units.
     ///
@@ -317,16 +324,24 @@ impl DrawingListDocument {
         let mut layer_depth = 0usize;
         let mut clip_depth = 0usize;
         let mut state_scopes = Vec::new();
+        let mut group_scopes = Vec::new();
         for command in &self.commands {
             match command {
                 DrawingCommand::Save => {
                     state_depth = state_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList state footprint overflows usize")
                     })?;
-                    state_scopes.push((semantic_depth, layer_depth, clip_depth));
+                    state_scopes.push((
+                        semantic_depth,
+                        layer_depth,
+                        clip_depth,
+                        group_scopes.len(),
+                    ));
                 }
                 DrawingCommand::Restore => {
-                    let Some((saved_semantic, saved_layer, saved_clip)) = state_scopes.pop() else {
+                    let Some((saved_semantic, saved_layer, saved_clip, saved_group_len)) =
+                        state_scopes.pop()
+                    else {
                         return Err(DrawingListError::invalid(
                             "DrawingList footprint found restore without save",
                         ));
@@ -341,6 +356,17 @@ impl DrawingListDocument {
                             "DrawingList footprint found an invalid clip scope",
                         ));
                     }
+                    while group_scopes.len() > saved_group_len {
+                        match group_scopes.pop() {
+                            Some(GroupScope::Clip) => {}
+                            Some(GroupScope::Layer | GroupScope::Semantic) => {
+                                return Err(DrawingListError::invalid(
+                                    "DrawingList footprint found restore across an open group",
+                                ));
+                            }
+                            None => break,
+                        }
+                    }
                     clip_depth = saved_clip;
                     state_depth = state_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList state footprint underflows usize")
@@ -350,8 +376,14 @@ impl DrawingListDocument {
                     layer_depth = layer_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList layer footprint overflows usize")
                     })?;
+                    group_scopes.push(GroupScope::Layer);
                 }
                 DrawingCommand::EndLayer => {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer)) {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found layer end out of order",
+                        ));
+                    }
                     layer_depth = layer_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid(
                             "DrawingList footprint found layer end without begin",
@@ -359,16 +391,28 @@ impl DrawingListDocument {
                     })?;
                 }
                 DrawingCommand::ClipPath { .. } => {
+                    if state_depth == 0 {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found clip path without save",
+                        ));
+                    }
                     clip_depth = clip_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList clip footprint overflows usize")
                     })?;
+                    group_scopes.push(GroupScope::Clip);
                 }
                 DrawingCommand::BeginSemanticGroup { .. } => {
                     semantic_depth = semantic_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList semantic footprint overflows usize")
                     })?;
+                    group_scopes.push(GroupScope::Semantic);
                 }
                 DrawingCommand::EndSemanticGroup => {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic)) {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found semantic group end out of order",
+                        ));
+                    }
                     semantic_depth = semantic_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid(
                             "DrawingList footprint found semantic end without begin",
@@ -414,6 +458,7 @@ impl DrawingListDocument {
             || semantic_depth != 0
             || layer_depth != 0
             || clip_depth != 0
+            || !group_scopes.is_empty()
         {
             return Err(DrawingListError::invalid(
                 "DrawingList footprint found unbalanced command scopes",
@@ -585,6 +630,7 @@ impl DrawingListDocument {
         let mut semantic_depth = 0usize;
         let mut layer_depth = 0usize;
         let mut clip_depth = 0usize;
+        let mut group_scopes = Vec::new();
         let mut text_bytes = 0usize;
         let mut glyph_count = 0usize;
         for command in &self.commands {
@@ -595,11 +641,20 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("state depth overflows usize"))?;
                     validate_count("nesting_depth", state_depth, limits.max_nesting_depth)?;
-                    state_scopes.push((semantic_depth, layer_depth, clip_depth));
+                    state_scopes.push((
+                        semantic_depth,
+                        layer_depth,
+                        clip_depth,
+                        group_scopes.len(),
+                    ));
                 }
                 DrawingCommand::Restore => {
-                    let Some((saved_semantic_depth, saved_layer_depth, saved_clip_depth)) =
-                        state_scopes.pop()
+                    let Some((
+                        saved_semantic_depth,
+                        saved_layer_depth,
+                        saved_clip_depth,
+                        saved_group_len,
+                    )) = state_scopes.pop()
                     else {
                         return Err(DrawingListError::invalid("restore without matching save"));
                     };
@@ -618,6 +673,17 @@ impl DrawingListDocument {
                             "clip scope cannot end before its save scope",
                         ));
                     }
+                    while group_scopes.len() > saved_group_len {
+                        match group_scopes.pop() {
+                            Some(GroupScope::Clip) => {}
+                            Some(GroupScope::Layer | GroupScope::Semantic) => {
+                                return Err(DrawingListError::invalid(
+                                    "restore cannot cross an open semantic or layer group",
+                                ));
+                            }
+                            None => break,
+                        }
+                    }
                     clip_depth = saved_clip_depth;
                     state_depth = state_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("restore without matching save")
@@ -628,8 +694,14 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("layer depth overflows usize"))?;
                     validate_count("nesting_depth", layer_depth, limits.max_nesting_depth)?;
+                    group_scopes.push(GroupScope::Layer);
                 }
                 DrawingCommand::EndLayer => {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer)) {
+                        return Err(DrawingListError::invalid(
+                            "layer end does not match the open group",
+                        ));
+                    }
                     layer_depth = layer_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("layer end without matching begin")
                     })?;
@@ -662,6 +734,7 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("clip depth overflows usize"))?;
                     validate_count("nesting_depth", clip_depth, limits.max_nesting_depth)?;
+                    group_scopes.push(GroupScope::Clip);
                 }
                 DrawingCommand::DrawImage { image, .. } => {
                     if !image_ids.contains(image) {
@@ -681,8 +754,14 @@ impl DrawingListDocument {
                         DrawingListError::invalid("semantic depth overflows usize")
                     })?;
                     validate_count("nesting_depth", semantic_depth, limits.max_nesting_depth)?;
+                    group_scopes.push(GroupScope::Semantic);
                 }
                 DrawingCommand::EndSemanticGroup => {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic)) {
+                        return Err(DrawingListError::invalid(
+                            "semantic group end does not match the open group",
+                        ));
+                    }
                     semantic_depth = semantic_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("semantic group end without matching begin")
                     })?;
@@ -756,6 +835,9 @@ impl DrawingListDocument {
             return Err(DrawingListError::invalid(
                 "save/restore scopes are unbalanced",
             ));
+        }
+        if !group_scopes.is_empty() {
+            return Err(DrawingListError::invalid("group scopes are unbalanced"));
         }
         if clip_depth != 0 {
             return Err(DrawingListError::invalid("clip scopes are unbalanced"));

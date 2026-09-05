@@ -87,6 +87,28 @@ fn validator_enforces_save_scopes_for_clips_and_groups() {
 }
 
 #[test]
+fn validator_rejects_non_lifo_group_endings() {
+    let mut document = sample_document();
+    document.commands = vec![
+        DrawingCommand::Save,
+        DrawingCommand::BeginLayer {
+            bounds: Rect::new(0.0, 0.0, 120.0, 80.0),
+            opacity: 1.0,
+            blend_mode: merman_display_list::BlendMode::Normal,
+        },
+        DrawingCommand::BeginSemanticGroup {
+            semantic_id: "node.a".into(),
+        },
+        DrawingCommand::EndLayer,
+        DrawingCommand::EndSemanticGroup,
+        DrawingCommand::Restore,
+    ];
+
+    assert!(document.validate().is_err());
+    assert!(document.footprint().is_err());
+}
+
+#[test]
 fn validator_enforces_exact_command_and_numeric_boundaries() {
     let document = sample_document();
     let exact = DrawingListLimits {
@@ -150,7 +172,7 @@ fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
     assert_eq!(footprint.font_bytes, 4);
     assert_eq!(footprint.text_bytes, "A node".len());
     assert_eq!(footprint.glyphs, 1);
-    assert_eq!(footprint.max_nesting_depth, 4);
+    assert_eq!(footprint.max_nesting_depth, 5);
     assert!(footprint.work_units().unwrap() > footprint.commands);
 }
 
