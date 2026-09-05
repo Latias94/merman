@@ -12,18 +12,35 @@ use serde_json::json;
 const CLUSTER_SOURCE: &str = "flowchart TD\nsubgraph Group[Group]\nA\nend\n";
 
 fn cluster_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
+    cluster_theme_with_variant(None, fill, stroke)
+}
+
+fn cluster_theme_with_variant(
+    variant: Option<merman_render::diagram_theme::ThemeVariant>,
+    fill: CanvasPaint,
+    stroke: CanvasPaint,
+) -> DiagramTheme {
+    let mut fill_rule = ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default().with_fill(fill),
+    );
+    let mut stroke_rule = ThemeRule::new(
+        ThemeTarget::Cluster,
+        ThemeStylePatch::default().with_stroke(stroke),
+    );
+    if let Some(variant) = variant {
+        fill_rule = fill_rule.with_variant(variant);
+        stroke_rule = stroke_rule.with_variant(variant);
+    }
+    fill_rule = fill_rule.for_family(merman_render::DiagramFamilyId::FLOWCHART);
+    stroke_rule = stroke_rule.for_family(merman_render::DiagramFamilyId::FLOWCHART);
+
     DiagramThemeCompiler::new()
         .compile(
             DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Cluster,
-                        ThemeStylePatch::default()
-                            .with_fill(fill)
-                            .with_stroke(stroke),
-                    )
-                    .for_family(merman_render::DiagramFamilyId::FLOWCHART),
-                ),
+                ThemeRuleSet::default()
+                    .with_rule(fill_rule)
+                    .with_rule(stroke_rule),
             ),
         )
         .expect("compile Flowchart Cluster theme")
@@ -252,6 +269,84 @@ fn flowchart_cluster_transparent_paint_is_terminal_and_portable() {
                 svg.matches("style=\"stroke:none !important\"").count() >= 2,
                 "transparent Cluster fill and stroke must reach both hand-drawn writers"
             );
+        }
+    }
+}
+
+#[test]
+fn flowchart_cluster_explicit_default_paint_reaches_terminal_writers_and_evidence() {
+    for (fill, stroke, expected_fill, expected_stroke) in [
+        (
+            CanvasPaint::solid("#ef4444").expect("valid explicit-Default fill"),
+            CanvasPaint::solid("#2563eb").expect("valid explicit-Default stroke"),
+            "#ef4444",
+            "#2563eb",
+        ),
+        (
+            CanvasPaint::Transparent,
+            CanvasPaint::Transparent,
+            "none",
+            "none",
+        ),
+    ] {
+        let theme = cluster_theme_with_variant(
+            Some(merman_render::diagram_theme::ThemeVariant::Default),
+            fill,
+            stroke,
+        );
+
+        for look in ["classic", "handDrawn"] {
+            let rendered = try_render(
+                CLUSTER_SOURCE,
+                &theme,
+                MermaidConfig::from_value(json!({
+                    "look": look,
+                    "handDrawnSeed": 7
+                })),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("render explicitly default-themed Flowchart Cluster");
+
+            if look == "classic" {
+                let document = roxmltree::Document::parse(rendered.svg())
+                    .expect("valid explicitly default-themed Flowchart SVG");
+                let cluster = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect")
+                            && node.attribute("style").is_some_and(|style| {
+                                style.contains(&format!("fill:{expected_fill} !important"))
+                            })
+                    })
+                    .expect("explicitly default-themed Cluster rect");
+                let style = cluster.attribute("style").expect("Cluster rect style");
+                assert!(
+                    style.contains(&format!("stroke:{expected_stroke} !important")),
+                    "Cluster rect style: {style}"
+                );
+            } else {
+                assert!(
+                    rendered
+                        .svg()
+                        .contains(&format!("style=\"stroke:{expected_fill} !important\"")),
+                    "explicitly default-themed Cluster fill must reach hachure writer"
+                );
+                assert!(
+                    rendered
+                        .svg()
+                        .contains(&format!("style=\"stroke:{expected_stroke} !important\"")),
+                    "explicitly default-themed Cluster stroke must reach border writer"
+                );
+            }
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "look={look}");
+            assert_eq!(evidence.accounted_count(), 2, "look={look}");
+            assert_eq!(evidence.applied_count(), 2, "look={look}");
+            assert_eq!(evidence.not_applicable_count(), 0, "look={look}");
+            assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
+            assert_eq!(evidence.compatibility_residual_count(), 0, "look={look}");
         }
     }
 }

@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 36;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 37;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x4b, 0xa9, 0x52, 0x23, 0x4d, 0x74, 0x42, 0x7d, 0x45, 0x6d, 0x8b, 0x7b, 0x44, 0x1e, 0xa7, 0xe4,
-    0x7a, 0x5e, 0x3f, 0xc6, 0xd1, 0xe5, 0x62, 0xf5, 0x19, 0x5b, 0x78, 0xc1, 0x63, 0x9d, 0x7a, 0x3b,
+    0xbd, 0x08, 0xc2, 0x21, 0xdc, 0x51, 0xb1, 0x4f, 0x21, 0x10, 0x15, 0xc9, 0xe3, 0x75, 0xdd, 0x7f,
+    0x64, 0xc2, 0x76, 0xe0, 0x52, 0x09, 0xfb, 0xff, 0x46, 0xb3, 0x4a, 0xfa, 0xe2, 0xcb, 0xee, 0xbd,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 212] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 216] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -396,6 +396,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 212] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Cluster,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        CLUSTER_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        CLUSTER_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::FLOWCHART,
+        ThemeTarget::Cluster,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         CLUSTER_STROKE_PROJECTIONS,
@@ -2202,7 +2234,8 @@ mod tests {
     use merman_render::diagram_theme::ThemeVariant;
 
     use super::{
-        ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
+        ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CLUSTER_FILL_PROJECTIONS,
+        CLUSTER_STROKE_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
         CutoverAuthorizationManifest, EDGE_STROKE_ONLY_PROJECTIONS,
         GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, NODE_FILL_PROJECTIONS,
         NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS,
@@ -2343,6 +2376,24 @@ mod tests {
                 .iter()
                 .any(|route| { route.id.target() == ThemeTarget::SequenceNumberLabel })
         );
+
+        let flowchart_cluster_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::FLOWCHART
+                    && route.id.target() == ThemeTarget::Cluster
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(flowchart_cluster_default.len(), 4);
+        assert!(flowchart_cluster_default.iter().all(|route| {
+            route.projections
+                == match route.id.facet() {
+                    ThemeRouteCutoverFacet::Fill => CLUSTER_FILL_PROJECTIONS,
+                    ThemeRouteCutoverFacet::Stroke => CLUSTER_STROKE_PROJECTIONS,
+                }
+        }));
 
         let gantt_routes = ACTIVE_ROUTES
             .iter()
@@ -2534,7 +2585,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 36);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 37);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

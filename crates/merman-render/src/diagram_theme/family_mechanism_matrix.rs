@@ -1480,10 +1480,27 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if matches!(
-        family,
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    ) && target == ThemeTarget::Cluster
+    if family == DiagramFamilyId::FLOWCHART
+        && target == ThemeTarget::Cluster
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SWIMLANE
+        && target == ThemeTarget::Cluster
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && matches!(
             facet,
@@ -4476,15 +4493,18 @@ mod tests {
                     .with_stroke(paint.clone()),
             )
             .with_variant(ThemeVariant::Default);
-            for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
-                assert!(
-                    compile_rule_routes(family, 0, &explicit_default)
-                        .iter()
-                        .all(|route| {
-                            route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-                        })
-                );
-            }
+            assert!(
+                compile_rule_routes(DiagramFamilyId::FLOWCHART, 0, &explicit_default)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
+            );
+            assert!(
+                compile_rule_routes(DiagramFamilyId::SWIMLANE, 0, &explicit_default)
+                    .iter()
+                    .all(|route| {
+                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
+                    })
+            );
         }
 
         for paint_kind in [
@@ -5617,7 +5637,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 88);
+        assert_eq!(qualified.len(), 92);
         assert_eq!(
             qualified
                 .iter()
