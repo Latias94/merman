@@ -1543,11 +1543,13 @@ fn add_class(
     id: &str,
     style: &str,
 ) {
-    let mut style_class = classes.get(id).cloned().unwrap_or_else(|| StyleClassDef {
-        id: id.to_string(),
-        styles: Vec::new(),
-        text_styles: Vec::new(),
-    });
+    let style_class = classes
+        .entry(id.to_string())
+        .or_insert_with(|| StyleClassDef {
+            id: id.to_string(),
+            styles: Vec::new(),
+            text_styles: Vec::new(),
+        });
 
     const PLACEHOLDER: &str = "ก์ก์ก์";
     let replaced = style.replace("\\,", PLACEHOLDER);
@@ -1560,8 +1562,6 @@ fn add_class(
         }
         style_class.styles.push(s.to_string());
     }
-
-    classes.insert(id.to_string(), style_class);
 }
 
 fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
@@ -2235,6 +2235,27 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
         assert_eq!(
             model["root"]["children"][0]["cssCompiledStyles"][0],
             json!("fill:#f96;stroke:#333;stroke-width:2px")
+        );
+    }
+
+    #[test]
+    fn treemap_duplicate_classdefs_append_styles_in_source_order() {
+        let model = parse(
+            r#"treemap
+"Root":::important
+classDef important fill:#f96
+classDef important stroke:#333
+"Leaf": 1:::important
+"#,
+        );
+
+        assert_eq!(
+            model["classes"]["important"]["styles"],
+            json!(["fill:#f96", "stroke:#333"])
+        );
+        assert_eq!(
+            model["root"]["children"][0]["cssCompiledStyles"],
+            json!(["fill:#f96;stroke:#333"])
         );
     }
 
