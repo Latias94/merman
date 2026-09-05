@@ -1214,3 +1214,81 @@ annotation 1,[0.68, 0.62] "Platform boundary"
     );
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn c4_canonical_svg_keeps_shapes_boundaries_relations_and_accessibility() {
+    let svg = render_svg(
+        r#"C4Context
+accDescr: Internal platform relationships
+title Platform map
+Enterprise_Boundary(platform, "Platform") {
+  Person(user, "User")
+  System(api, "API", "Core API", $shape="component")
+  System(worker, "Worker")
+}
+Rel(user, api, "Uses", "HTTPS")
+Rel(api, worker, "Publishes", "Events")
+"#,
+        "c4-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical C4 SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("c4"));
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-c4-parity")
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("id") == Some("c4-parity-user")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.contains("c4-person"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("circle")
+            && node.attribute("data-merman-resource") == Some("c4.shape.0.head")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.attribute("class") == Some("c4-name")
+            && node
+                .attribute("style")
+                .is_some_and(|style| style.contains("fill: #ffffff !important;"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("polygon")
+            && node.attribute("data-merman-resource") == Some("c4.shape.1.shape")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node.attribute("data-merman-resource") == Some("c4.boundary.1.box")
+            && node.attribute("stroke-dasharray") == Some("7,7")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-merman-resource") == Some("c4.relation.1.route")
+            && node.attribute("d").is_some_and(|path| path.contains(" Q "))
+    }));
+    for text in [
+        "Platform map",
+        "Platform",
+        "[ENTERPRISE]",
+        "[HTTPS]",
+        "[Events]",
+    ] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("tspan") && node.text() == Some(text)),
+            "expected canonical C4 text {text:?}"
+        );
+    }
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("marker"))
+    );
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

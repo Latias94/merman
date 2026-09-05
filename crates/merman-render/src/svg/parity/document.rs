@@ -202,6 +202,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         let (title, description) = match self.svg_body {
+            SvgStructureBody::C4(body) => (body.acc_title.clone(), body.acc_description.clone()),
             SvgStructureBody::Wardley(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
             }
@@ -466,6 +467,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
+            SvgStructureBody::C4(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width))),
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -614,6 +620,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                     || self.session.checkpoint(OperationPhase::Emit),
                 )?,
             )),
+            SvgStructureBody::C4(_) => Some((
+                false,
+                super::c4::c4_css(self.diagram_id.as_str(), self.effective_config),
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -659,6 +669,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Radar(_)
                 | SvgStructureBody::XyChart(_)
                 | SvgStructureBody::Block(_)
+                | SvgStructureBody::C4(_)
         ) {
             self.output.push_str("<g/>");
         }
@@ -698,7 +709,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::State(_)
             | SvgStructureBody::Er(_)
             | SvgStructureBody::XyChart(_)
-            | SvgStructureBody::Wardley(_) => {
+            | SvgStructureBody::Wardley(_)
+            | SvgStructureBody::C4(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
                     other => other,
@@ -1146,8 +1158,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 class,
             )
             .map_err(|_| invalid("failed to write Timeline semantic group"))?;
-        } else if matches!(self.svg_body, SvgStructureBody::Block(_))
-            && let Some(class) = semantic_extra_class.as_deref()
+        } else if matches!(
+            self.svg_body,
+            SvgStructureBody::Block(_) | SvgStructureBody::C4(_)
+        ) && let Some(class) = semantic_extra_class.as_deref()
         {
             write!(
                 self.output,
@@ -1155,7 +1169,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 escaped_attr(semantic.id.as_str()),
                 escaped_attr(class),
             )
-            .map_err(|_| invalid("failed to write Block semantic group"))?;
+            .map_err(|_| invalid("failed to write family semantic group"))?;
         } else {
             write!(
                 self.output,
@@ -1258,6 +1272,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Block(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::C4(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Wardley(body) => {
@@ -1597,6 +1614,30 @@ impl<'a> DocumentSvgEncoder<'a> {
                 }
             }
         }
+        if matches!(self.svg_body, SvgStructureBody::C4(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if raw_id.ends_with(".route")
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if (raw_id.ends_with(".box") || raw_id.ends_with(".shape") || raw_id.ends_with(".body"))
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+            if raw_id.ends_with(".head")
+                && let Some((center, radius)) = circle_from_path(path)
+            {
+                return self.emit_circle(path_id, center, radius, style);
+            }
+            if (raw_id.ends_with(".shape") || raw_id.contains(".marker."))
+                && let Some(points) = polygon_from_path(path)
+            {
+                return self.emit_polygon(path_id, &points, style);
+            }
+        }
         if matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
             let raw_id = path_id.as_str();
             let path = self.path_resource(path_id)?;
@@ -1846,6 +1887,35 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn emit_polygon(
+        &mut self,
+        path_id: &ResourceId,
+        points: &[Point],
+        style: &PathStyle,
+    ) -> Result<()> {
+        self.output.push_str("<polygon points=\"");
+        for (index, point) in points.iter().enumerate() {
+            if index > 0 {
+                self.output.push(' ');
+            }
+            write!(self.output, "{},{}", fmt(point.x), fmt(point.y))
+                .map_err(|_| invalid("failed to write SVG polygon"))?;
+        }
+        self.output.push('"');
+        self.write_sidecar_dom_id(path_id.as_str());
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push('"');
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
     fn emit_line(
         &mut self,
         path_id: &ResourceId,
@@ -1905,6 +1975,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         let text_index = self.record_text_index();
         if matches!(self.svg_body, SvgStructureBody::Block(_)) {
             return self.emit_block_html_text(run, semantic_id.as_deref(), text_index);
+        }
+        if matches!(self.svg_body, SvgStructureBody::C4(_)) {
+            return self.emit_c4_text(run, text_index);
         }
         if let SvgStructureBody::Er(body) = self.svg_body
             && semantic_id.as_deref() != Some("er.title")
@@ -2042,6 +2115,77 @@ impl<'a> DocumentSvgEncoder<'a> {
                 escape_xml_into(&mut self.output, line);
                 self.output.push_str("</tspan>");
             }
+        }
+        self.output.push_str("</text>");
+        Ok(())
+    }
+
+    fn emit_c4_text(&mut self, run: &TextRun, text_index: Option<usize>) -> Result<()> {
+        self.output.push_str("<text");
+        if let Some(class) = self
+            .text_class(run, text_index)
+            .map(|class| class.into_owned())
+        {
+            self.output.push_str(" class=\"");
+            escape_attr_into(&mut self.output, class.as_str());
+            self.output.push('"');
+        }
+        write!(
+            self.output,
+            " x=\"{}\" y=\"{}\" dominant-baseline=\"middle\" direction=\"{}\" font-style=\"{}\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"",
+            fmt(run.origin.x),
+            fmt(run.origin.y),
+            text_direction(run.direction),
+            font_style(run.style.font.style),
+            fmt(run.bounds.x),
+            fmt(run.bounds.y),
+            fmt(run.bounds.width),
+            fmt(run.bounds.height),
+        )
+        .map_err(|_| invalid("failed to write C4 text metadata"))?;
+        if let Some(language) = run.language.as_deref() {
+            self.output.push_str(" xml:lang=\"");
+            escape_attr_into(&mut self.output, language);
+            self.output.push('"');
+        }
+        let families = self.font_families(&run.style.font);
+        self.output.push_str(" style=\"");
+        write!(
+            self.output,
+            "text-anchor: {}; font-size: {}px; font-weight: {}; font-family: {};",
+            text_anchor(run.anchor),
+            fmt(run.style.font_size),
+            run.style.font.weight,
+            escaped_attr(families.as_str()),
+        )
+        .map_err(|_| invalid("failed to write C4 text style"))?;
+        if self
+            .current_semantic_id()
+            .is_some_and(|id| id.starts_with("c4.shape."))
+            && let Paint::Solid { color } = &run.style.fill
+        {
+            write!(self.output, " fill: {} !important;", color_css(*color),)
+                .map_err(|_| invalid("failed to write C4 shape text fill"))?;
+        }
+        self.output.push('"');
+        self.write_paint("fill", &run.style.fill)?;
+        self.write_state_attrs();
+        self.output.push('>');
+        for (index, line) in run.text.split('\n').enumerate() {
+            self.output.push_str("<tspan");
+            if index > 0 {
+                write!(
+                    self.output,
+                    " x=\"{}\" dy=\"{}\"",
+                    fmt(run.origin.x),
+                    fmt(run.style.line_height),
+                )
+                .map_err(|_| invalid("failed to write multiline C4 text"))?;
+            }
+            self.output
+                .push_str(" alignment-baseline=\"mathematical\">");
+            escape_xml_into(&mut self.output, line);
+            self.output.push_str("</tspan>");
         }
         self.output.push_str("</text>");
         Ok(())
@@ -2268,6 +2412,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::C4(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if let SvgStructureBody::Wardley(body) = self.svg_body
             && let Some(class) = body.path_classes.get(path_id.as_str())
         {
@@ -2450,6 +2599,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 Some(Cow::Owned(class.clone()))
             }
             SvgStructureBody::Block(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::C4(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
@@ -2726,6 +2879,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
         }
+        if let SvgStructureBody::C4(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
         self.semantic_svg_ids
             .get(id)
             .cloned()
@@ -2922,6 +3080,26 @@ fn line_from_path(path: &PathResource) -> Option<(Point, Point)> {
         return None;
     };
     Some((*start, *end))
+}
+
+fn polygon_from_path(path: &PathResource) -> Option<Vec<Point>> {
+    let (first, rest) = path.segments.split_first()?;
+    let PathSegment::MoveTo { to: first } = first else {
+        return None;
+    };
+    let (last, lines) = rest.split_last()?;
+    if !matches!(last, PathSegment::Close) || lines.len() < 2 {
+        return None;
+    }
+    let mut points = Vec::with_capacity(lines.len() + 1);
+    points.push(*first);
+    for segment in lines {
+        let PathSegment::LineTo { to } = segment else {
+            return None;
+        };
+        points.push(*to);
+    }
+    Some(points)
 }
 
 fn circle_from_path(path: &PathResource) -> Option<(Point, f64)> {

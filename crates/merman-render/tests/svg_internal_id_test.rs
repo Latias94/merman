@@ -87,7 +87,7 @@ fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
 }
 
 #[test]
-fn c4_marker_ids_are_prefixed_with_diagram_svg_id() {
+fn c4_canonical_svg_expands_arrowheads_and_scopes_shape_ids() {
     let svg = render_svg_from_text(
         r#"C4Context
 Person(customer, "Customer")
@@ -96,7 +96,15 @@ Rel(customer, system, "Uses")"#,
         "m15-c4",
     );
 
-    assert_scoped_marker(&svg, "m15-c4", "arrowhead");
+    assert_scoped_definition_id(&svg, "m15-c4", "customer");
+    assert!(
+        !svg.contains("<marker"),
+        "canonical C4 should not depend on SVG marker definitions:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"data-merman-resource="c4.relation.0.marker.end""#),
+        "canonical C4 should keep explicit relationship arrowhead geometry:\n{svg}"
+    );
 }
 
 #[test]

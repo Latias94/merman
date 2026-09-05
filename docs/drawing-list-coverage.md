@@ -16,33 +16,33 @@ inventory row fails at test time.  The current inventory is:
 | --- | --- | --- |
 | Error | yes | canonical |
 | Mindmap | yes | legacy bridge |
-| State | yes | legacy bridge |
+| State | yes | canonical |
 | Sequence | yes | legacy bridge |
 | ZenUML | yes | legacy bridge |
 | Flowchart | yes | legacy bridge |
 | Swimlane | yes | legacy bridge |
 | Architecture | yes | legacy bridge |
 | Class | yes | legacy bridge |
-| C4 | yes | legacy bridge |
+| C4 | yes | canonical |
 | Cynefin | yes | canonical |
-| Wardley | yes | legacy bridge |
+| Wardley | yes | canonical |
 | Railroad | yes | canonical |
-| Kanban | yes | legacy bridge |
+| Kanban | yes | canonical |
 | Gantt | yes | canonical |
 | Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | canonical |
 | Journey | yes | canonical |
-| Requirement | yes | legacy bridge |
+| Requirement | yes | canonical |
 | Sankey | yes | canonical |
 | Radar | yes | canonical |
 | Info | yes | canonical |
-| Treemap | yes | legacy bridge |
-| Block | yes | legacy bridge |
-| ER | yes | legacy bridge |
+| Treemap | yes | canonical |
+| Block | yes | canonical |
+| ER | yes | canonical |
 | QuadrantChart | yes | canonical |
 | XYChart | yes | canonical |
-| GitGraph | yes | legacy bridge |
+| GitGraph | yes | canonical |
 | TreeView | yes | canonical |
 | Ishikawa | yes | canonical |
 | EventModeling | yes | canonical |

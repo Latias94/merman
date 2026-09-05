@@ -496,6 +496,13 @@ pub(crate) struct ClassSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct C4SvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) acc_title: Option<String>,
+    pub(crate) acc_description: Option<String>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the renderer-neutral ER document.

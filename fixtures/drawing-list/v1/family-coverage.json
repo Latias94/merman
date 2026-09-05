@@ -10,7 +10,7 @@
     { "id": "swimlane", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "architecture", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "class", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "c4", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "c4", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "cynefin", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "wardley", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "railroad", "document_adapter": "direct", "svg_serializer": "canonical" },

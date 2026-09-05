@@ -221,16 +221,16 @@ UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offset
         .descendants()
         .find(|node| {
             matches!(node.tag_name().name(), "line" | "path")
-                && node.attribute("stroke") == Some("blue")
+                && node.attribute("stroke") == Some("#0000ff")
         })
         .expect("relationship line");
 
-    assert_eq!(calls.attribute("fill"), Some("red"));
+    assert_eq!(calls.attribute("fill"), Some("#ff0000"));
     assert!(calls.attribute("style").is_some_and(|style| {
         style.contains("text-anchor: middle") && style.contains("font-family:")
     }));
-    assert_eq!(technology.attribute("fill"), Some("red"));
+    assert_eq!(technology.attribute("fill"), Some("#ff0000"));
     assert_eq!(technology.attribute("font-style"), Some("italic"));
     assert_eq!(line.attribute("stroke-width"), Some("1"));
-    assert_eq!(line.attribute("style"), Some("fill: none;"));
+    assert_eq!(line.attribute("fill"), Some("none"));
 }
