@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 35;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 36;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xa2, 0xbf, 0x97, 0x9e, 0x5d, 0xc9, 0xec, 0x37, 0xb1, 0xf7, 0x5d, 0xd0, 0x1e, 0x59, 0xcc, 0x6e,
-    0xd4, 0x0c, 0xac, 0x31, 0x27, 0x77, 0x2f, 0x2e, 0x7e, 0x9b, 0x06, 0x50, 0xf9, 0xea, 0xfe, 0x70,
+    0x4b, 0xa9, 0x52, 0x23, 0x4d, 0x74, 0x42, 0x7d, 0x45, 0x6d, 0x8b, 0x7b, 0x44, 0x1e, 0xa7, 0xe4,
+    0x7a, 0x5e, 0x3f, 0xc6, 0xd1, 0xe5, 0x62, 0xf5, 0x19, 0x5b, 0x78, 0xc1, 0x63, 0x9d, 0x7a, 0x3b,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 208] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 212] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1316,6 +1316,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 208] = [
     route(
         DiagramFamilyId::EVENT_MODELING,
         ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CYNEFIN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::CYNEFIN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CYNEFIN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::CYNEFIN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
@@ -2504,7 +2534,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 35);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 36);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

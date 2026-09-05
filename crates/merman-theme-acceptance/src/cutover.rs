@@ -209,6 +209,18 @@ union A,B["Shared"]:3
 const ISHIKAWA_TEXT_SOURCE: &str = "ishikawa-beta\n Root cause\n  Process\n   Slow step\n   Missing spec\n  People\n   Missing owner\n";
 const EVENT_MODELING_TEXT_SOURCE: &str =
     "eventmodeling\ntf 01 ui View\ntf 02 cmd Run ->> 01\ntf 03 evt Done ->> 02\n";
+const CYNEFIN_TEXT_SOURCE: &str = r#"---
+config:
+  cynefin:
+    showDomainDescriptions: false
+---
+cynefin-beta
+clear
+"Runbook"
+complex
+"Retrospective"
+clear --> complex : "Probe"
+"#;
 const CLASS_EDGE_SOURCE: &str = r#"classDiagram
   A *-- B
   C <|-- D
@@ -438,6 +450,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(EVENT_MODELING_TEXT_SOURCE)
+        }
+        (DiagramFamilyId::CYNEFIN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(CYNEFIN_TEXT_SOURCE)
         }
         (DiagramFamilyId::CLASS, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(CLASS_EDGE_SOURCE)
@@ -1057,6 +1072,12 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             // compositing for Mermaid's default edge-label background.
             "edgeLabelBackground": "#ECECFF"
         }),
+        (DiagramFamilyId::CYNEFIN, ThemeTarget::Text) => serde_json::json!({
+            // Cynefin emits plain SVG text without prepared-label tokens. Pin the deterministic
+            // route witness to the embedded catalog face so native raster admission can classify
+            // every visible text glyph without a host fallback.
+            "fontFamily": "Excalifont"
+        }),
         _ => serde_json::json!({}),
     };
     Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
@@ -1348,11 +1369,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_208_routes_and_224_artifact_witnesses() {
+    fn route_inventory_retains_212_routes_and_228_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 208);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 224);
+        assert_eq!(inventory.len(), 212);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 228);
     }
 
     #[test]

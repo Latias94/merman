@@ -412,6 +412,9 @@ fn write_cynefin_css(
     surface_receipt: &mut crate::cynefin::CynefinSurfaceReceipt,
 ) -> Result<()> {
     let id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
+    let text_color = typography_theme
+        .text_fill_css()
+        .unwrap_or(theme.text_color.as_str());
     let parts = info_css_parts_with_font_family(
         diagram_id,
         effective_config,
@@ -437,10 +440,10 @@ fn write_cynefin_css(
         fmt(theme.domain_font_size),
         theme.label_color,
         fmt((theme.item_font_size - 1.0).max(1.0)),
-        theme.text_color,
+        text_color,
         theme.boundary_color,
         fmt(theme.item_font_size),
-        theme.text_color,
+        text_color,
         theme.boundary_color,
         theme.boundary_color,
         fmt(theme.boundary_width),
@@ -451,12 +454,17 @@ fn write_cynefin_css(
         fmt(theme.arrow_width),
         theme.arrow_color,
         fmt((theme.item_font_size - 1.0).max(1.0)),
-        theme.text_color,
+        text_color,
         fmt(theme.domain_font_size + 2.0),
         theme.label_color
     );
     out.push_str(&parts.root_rule);
     out.checkpoint()?;
-    surface_receipt.record_css_emission(&parts.font_family, &parts.font_family, &parts.font_family);
+    surface_receipt.record_css_emission(
+        &parts.font_family,
+        &parts.font_family,
+        &parts.font_family,
+        text_color,
+    );
     Ok(())
 }

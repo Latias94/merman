@@ -7,8 +7,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
-    ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -93,6 +94,62 @@ fn cynefin_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
         ))
         .expect("compile Cynefin typography theme")
 }
+
+fn cynefin_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::CYNEFIN);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Cynefin text fill theme")
+}
+
+fn cynefin_default_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::CYNEFIN)
+    .with_variant(ThemeVariant::Default);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile explicit-Default Cynefin text fill theme")
+}
+
+fn cynefin_stylesheet(svg: &str) -> String {
+    roxmltree::Document::parse(svg)
+        .expect("valid Cynefin SVG")
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Cynefin stylesheet")
+        .to_owned()
+}
+
+fn cynefin_rule_body<'a>(stylesheet: &'a str, diagram_id: &str, selector: &str) -> &'a str {
+    let rule = format!("#{diagram_id} {selector}{{");
+    let body = stylesheet
+        .split_once(&rule)
+        .unwrap_or_else(|| panic!("missing Cynefin rule {rule:?}"))
+        .1;
+    let end = body.find('}').expect("Cynefin CSS rule closes");
+    &body[..end]
+}
+
+const CYNEFIN_TEXT_FILL_SOURCE: &str = r#"---
+config:
+  cynefin:
+    showDomainDescriptions: true
+---
+cynefin-beta
+clear
+"Runbook"
+complex
+"Retrospective"
+clear --> complex : "Probe"
+"#;
 
 fn try_render_cynefin_with_theme(
     source: &str,
@@ -211,6 +268,158 @@ complex
         !body_svg.contains(">Frontmatter title</text>"),
         "body title should override frontmatter like Mermaid 11.16: {body_svg}"
     );
+}
+
+#[test]
+fn cynefin_typed_text_fill_reaches_all_visible_text_selectors() {
+    for (case, fill, expected_fill) in [
+        (
+            "solid",
+            CanvasPaint::solid("#123456").expect("valid Cynefin text fill"),
+            "#123456",
+        ),
+        ("transparent", CanvasPaint::Transparent, "transparent"),
+    ] {
+        let theme = cynefin_text_fill_theme(fill);
+        let diagram_id = format!("cynefin-text-fill-{case}");
+        let (_, rendered) = try_render_cynefin_with_theme(
+            CYNEFIN_TEXT_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+            &portable_cynefin_environment(),
+            &diagram_id,
+        )
+        .expect("render strict portable Cynefin text fill");
+
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
+            let body = cynefin_rule_body(&stylesheet, &diagram_id, selector);
+            assert!(
+                body.contains(&format!("fill:{expected_fill};")),
+                "Cynefin {selector} did not receive {case} text.fill: {body}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "case={case}");
+        assert_eq!(evidence.accounted_count(), 1, "case={case}");
+        assert_eq!(evidence.applied_count(), 1, "case={case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "case={case}"
+        );
+    }
+}
+
+#[test]
+fn cynefin_explicit_text_color_outranks_typed_text_fill() {
+    let theme = cynefin_text_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid Cynefin typed text fill"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "cynefin": { "textColor": "#fedcba" }
+        }
+    })));
+    let (_, rendered) = try_render_cynefin_with_theme(
+        CYNEFIN_TEXT_FILL_SOURCE,
+        &theme,
+        engine,
+        &portable_cynefin_environment(),
+        "cynefin-site-text-fill",
+    )
+    .expect("render site-owned Cynefin text fill");
+
+    let stylesheet = cynefin_stylesheet(rendered.svg());
+    for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
+        let body = cynefin_rule_body(&stylesheet, "cynefin-site-text-fill", selector);
+        assert!(body.contains("fill:#fedcba;"), "{selector}: {body}");
+        assert!(
+            !body.contains("#123456"),
+            "typed fill leaked into {selector}"
+        );
+    }
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn cynefin_explicit_default_text_fill_reaches_the_typed_terminal() {
+    let theme = cynefin_default_text_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid explicit-Default Cynefin text fill"),
+    );
+    let (_, rendered) = try_render_cynefin_with_theme(
+        CYNEFIN_TEXT_FILL_SOURCE,
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "cynefin-default-text-fill",
+    )
+    .expect("render explicit-Default Cynefin text fill");
+
+    let stylesheet = cynefin_stylesheet(rendered.svg());
+    for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
+        assert!(
+            cynefin_rule_body(&stylesheet, "cynefin-default-text-fill", selector)
+                .contains("fill:#123456;"),
+            "{selector} did not receive explicit-Default text.fill"
+        );
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn cynefin_text_fill_is_not_applicable_without_visible_text_surfaces() {
+    let theme = cynefin_text_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid empty Cynefin text fill"),
+    );
+    let source = r#"---
+config:
+  cynefin:
+    showDomainDescriptions: false
+---
+cynefin-beta
+"#;
+    let (_, rendered) = try_render_cynefin_with_theme(
+        source,
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "cynefin-empty-text-fill",
+    )
+    .expect("render empty Cynefin text surface");
+
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid empty Cynefin SVG");
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && matches!(
+                node.attribute("class"),
+                Some("cynefinSubtitle" | "cynefinItemText" | "cynefinArrowLabel")
+            )
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[derive(Debug)]

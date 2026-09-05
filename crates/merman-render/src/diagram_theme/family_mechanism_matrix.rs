@@ -514,6 +514,7 @@ fn legacy_bridge_projections(
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
         (
             DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::CYNEFIN
             | DiagramFamilyId::EVENT_MODELING
             | DiagramFamilyId::ISHIKAWA,
             ThemeTarget::Text,
@@ -1865,6 +1866,23 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::ZENUML && target == ThemeTarget::Text {
         return FamilyThemeDisposition::Unsupported;
+    }
+    if family == DiagramFamilyId::CYNEFIN
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if matches!(
         family,
@@ -4785,6 +4803,20 @@ mod tests {
                 vec!["edge.stroke", "marker.paint-from-edge"],
             ),
             (
+                DiagramFamilyId::CYNEFIN,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::CYNEFIN,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::ER,
                 ThemeTarget::Text,
                 Fill,
@@ -5585,7 +5617,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 86);
+        assert_eq!(qualified.len(), 88);
         assert_eq!(
             qualified
                 .iter()
@@ -5632,6 +5664,13 @@ mod tests {
             qualified
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::ARCHITECTURE)
+                .count(),
+            2
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::CYNEFIN)
                 .count(),
             2
         );
@@ -6286,12 +6325,17 @@ mod tests {
                 }
             }
 
-            let expected_text_disposition =
-                if matches!(family, DiagramFamilyId::ARCHITECTURE | DiagramFamilyId::ER) {
-                    FamilyThemeDisposition::TypedAdapter
-                } else {
-                    FamilyThemeDisposition::LegacyCompatibility
-                };
+            let expected_text_disposition = if matches!(
+                family,
+                DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::CYNEFIN
+                    | DiagramFamilyId::ER
+                    | DiagramFamilyId::SANKEY
+            ) {
+                FamilyThemeDisposition::TypedAdapter
+            } else {
+                FamilyThemeDisposition::LegacyCompatibility
+            };
             assert_eq!(
                 classify_rule_facet(
                     family,

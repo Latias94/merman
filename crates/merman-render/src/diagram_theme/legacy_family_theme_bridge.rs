@@ -561,10 +561,9 @@ fn legacy_family_dispatch(
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
-        DiagramFamilyId::C4
-        | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::TREEMAP
-        | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
+        DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP | DiagramFamilyId::VENN => {
+            LegacyFamilyDispatch::Text
+        }
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
@@ -575,6 +574,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::CYNEFIN
         | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
@@ -2461,6 +2461,7 @@ mod tests {
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
                 DiagramFamilyId::ARCHITECTURE,
+                DiagramFamilyId::CYNEFIN,
                 DiagramFamilyId::WARDLEY,
                 DiagramFamilyId::PIE,
                 DiagramFamilyId::RAILROAD,
@@ -2473,26 +2474,26 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x9a, 0x01, 0xf5, 0x5f, 0x4a, 0xaf, 0xe5, 0xc8, 0x76, 0x4f, 0x07, 0x79, 0x1d, 0x87,
-            0xd6, 0x78, 0x1b, 0x96, 0x89, 0xb4, 0xa3, 0x1b, 0x6c, 0x5b, 0x01, 0x34, 0x39, 0xbb,
-            0xc4, 0xa1, 0x96, 0x64,
+            0x84, 0xdd, 0x4c, 0x70, 0xb6, 0x62, 0x1a, 0x96, 0xda, 0x1a, 0x6f, 0xa9, 0x44, 0x7c,
+            0x85, 0x3a, 0x31, 0x02, 0x55, 0xb5, 0x98, 0x71, 0x14, 0xb5, 0xc1, 0xbd, 0x94, 0xd8,
+            0x99, 0x56, 0x71, 0x98,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0x62, 0x81, 0x58, 0xfd, 0xc5, 0xb4, 0xac, 0xb2, 0xab, 0x6a, 0x09, 0x67, 0xdf, 0x0a,
-            0x29, 0x1f, 0x5e, 0x8b, 0xc9, 0xee, 0xbf, 0x16, 0x6e, 0x4e, 0x21, 0x79, 0xdc, 0xee,
-            0xed, 0xb1, 0xf5, 0x7e,
+            0x53, 0x8b, 0xdb, 0xf5, 0x9e, 0x50, 0x01, 0xae, 0xc6, 0x9a, 0xd0, 0xef, 0x20, 0x17,
+            0x25, 0x97, 0x7c, 0xf6, 0x91, 0xc8, 0xe4, 0xea, 0xff, 0xc8, 0xda, 0x56, 0xf1, 0x7e,
+            0xbc, 0x09, 0x3d, 0xbc,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0xf0, 0x78, 0x90, 0x9a, 0x20, 0xa2, 0x31, 0x95, 0x53, 0x9e, 0x91, 0x42, 0x4a, 0x33,
-            0x40, 0x20, 0xd2, 0x15, 0xa1, 0x14, 0x82, 0x54, 0x2a, 0xb1, 0x2c, 0x65, 0xec, 0xad,
-            0xe8, 0xb2, 0xf8, 0xf5,
+            0x71, 0x4c, 0x29, 0xe9, 0xc5, 0x6c, 0x18, 0x3f, 0x3e, 0x7e, 0x34, 0xe0, 0x19, 0x8e,
+            0x32, 0xb8, 0xd4, 0xf9, 0x7a, 0x68, 0x2c, 0x18, 0xf0, 0x00, 0xcb, 0x78, 0x87, 0x92,
+            0x01, 0x43, 0xc1, 0x39,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 352);
-        assert_eq!(status.matrix_family_count(), 21);
-        assert_eq!(status.dispatched_family_count(), 21);
+        assert_eq!(status.matrix_route_count(), 348);
+        assert_eq!(status.matrix_family_count(), 20);
+        assert_eq!(status.dispatched_family_count(), 20);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
         assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
         assert_eq!(
@@ -2619,8 +2620,12 @@ mod tests {
                 let text_id = format!("{CONTRIBUTION_ID_PREFIX}{}.text.fill", family.as_str());
                 let title_id = format!("{CONTRIBUTION_ID_PREFIX}{}.title.fill", family.as_str());
 
-                let expects_text_bridge = family != DiagramFamilyId::ARCHITECTURE
-                    || variant == Some(ThemeVariant::Default);
+                let expects_text_bridge = !matches!(
+                    family,
+                    DiagramFamilyId::ARCHITECTURE
+                        | DiagramFamilyId::CYNEFIN
+                        | DiagramFamilyId::SANKEY
+                );
                 assert_eq!(
                     artifact.contribution_ids.contains(&text_id),
                     expects_text_bridge,

@@ -4,11 +4,12 @@ use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTypographyProperty,
+    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, unsupported_residual_for_facet,
+    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    InheritedFontStackOutcome, InheritedFontStackPlan, resolve_direct_static_fill,
+    unsupported_residual_for_facet,
 };
 use crate::model::CynefinDiagramLayout;
 
@@ -52,6 +53,7 @@ pub(crate) struct CynefinSurfaceReceipt {
     root_font_family_css: Option<Box<str>>,
     inherited_font_family_css: Option<Box<str>>,
     root_variable_font_family_css: Option<Box<str>>,
+    text_fill_css: Option<Box<str>>,
     css_emission_unique: bool,
     expected_text_counts: [usize; CYNEFIN_TEXT_ROLE_COUNT],
     emitted_text_counts: [usize; CYNEFIN_TEXT_ROLE_COUNT],
@@ -68,6 +70,7 @@ impl CynefinSurfaceReceipt {
             root_font_family_css: None,
             inherited_font_family_css: None,
             root_variable_font_family_css: None,
+            text_fill_css: None,
             css_emission_unique: true,
             expected_text_counts,
             emitted_text_counts: [0; CYNEFIN_TEXT_ROLE_COUNT],
@@ -80,10 +83,12 @@ impl CynefinSurfaceReceipt {
         root_font_family_css: &str,
         inherited_font_family_css: &str,
         root_variable_font_family_css: &str,
+        text_fill_css: &str,
     ) {
         if self.root_font_family_css.is_some()
             || self.inherited_font_family_css.is_some()
             || self.root_variable_font_family_css.is_some()
+            || self.text_fill_css.is_some()
         {
             self.css_emission_unique = false;
             return;
@@ -96,6 +101,7 @@ impl CynefinSurfaceReceipt {
         self.root_font_family_css = Some(root_font_family_css.into());
         self.inherited_font_family_css = Some(inherited_font_family_css.into());
         self.root_variable_font_family_css = Some(root_variable_font_family_css.into());
+        self.text_fill_css = Some(text_fill_css.into());
     }
 
     pub(crate) fn record_text(&mut self, role: CynefinTextRole, emitted_class: &str, text: &str) {
@@ -121,6 +127,33 @@ impl CynefinSurfaceReceipt {
             && self.emitted_text_counts == self.expected_text_counts
             && self.terminal_matches
     }
+
+    fn has_visible_text_fill_surface(&self) -> bool {
+        self.expected_text_counts[CynefinTextRole::Subtitle.index()]
+            .saturating_add(self.expected_text_counts[CynefinTextRole::Item.index()])
+            .saturating_add(self.expected_text_counts[CynefinTextRole::TransitionLabel.index()])
+            != 0
+    }
+
+    fn text_fill_counts_match(&self) -> bool {
+        [
+            CynefinTextRole::Subtitle,
+            CynefinTextRole::Item,
+            CynefinTextRole::TransitionLabel,
+        ]
+        .into_iter()
+        .all(|role| {
+            self.emitted_text_counts[role.index()] == self.expected_text_counts[role.index()]
+        })
+    }
+
+    fn proves_text_fill(&self, expected_fill_css: &str) -> bool {
+        self.css_emission_unique
+            && self.has_visible_text_fill_surface()
+            && self.text_fill_counts_match()
+            && self.text_fill_css.as_deref() == Some(expected_fill_css)
+            && self.terminal_matches
+    }
 }
 
 /// Final inherited Cynefin font shared by layout measurement, terminal CSS, and evidence.
@@ -129,6 +162,9 @@ pub(crate) struct CynefinTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[CynefinUnsupportedRoute]>,
+    text_fill: Option<DirectStaticPaint>,
+    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
+    config_owns_text_fill: bool,
     terminal_receipt: OnceLock<CynefinSurfaceReceipt>,
 }
 
@@ -143,6 +179,52 @@ impl CynefinTypographyThemePlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
     ) -> Self {
+        let text_fill = theme.and_then(|theme| {
+            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+            resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Default,
+            )
+        });
+        let text_fill_routes = theme
+            .map(|theme| {
+                theme
+                    .family_mechanism_routes()
+                    .iter()
+                    .copied()
+                    .filter_map(|route| match route.mechanism() {
+                        FamilyThemeMechanism::RuleFacet {
+                            rule_index,
+                            target: ThemeTarget::Text,
+                            facet: crate::diagram_theme::FamilyThemeRuleFacet::Fill(_),
+                            selector,
+                            ..
+                        } if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                            && matches!(
+                                selector,
+                                crate::diagram_theme::FamilyThemeSelectorShape::Static {
+                                    variant: None | Some(ThemeVariant::Default)
+                                }
+                            ) =>
+                        {
+                            Some((theme.family_mechanism_key(route), rule_index))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            })
+            .unwrap_or_default();
+        let config_owns_text_fill = theme.is_some()
+            && (merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.textColor",
+            ) || merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.cynefin.textColor",
+            ));
         Self {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
@@ -150,12 +232,22 @@ impl CynefinTypographyThemePlan {
             ),
             evidence: FamilyThemeEvidence::from_theme(theme),
             unsupported_routes: cynefin_unsupported_routes(theme),
+            text_fill,
+            text_fill_routes,
+            config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
         }
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
         self.inherited_font_stack.font_family_css()
+    }
+
+    pub(crate) fn text_fill_css(&self) -> Option<&str> {
+        (!self.config_owns_text_fill)
+            .then_some(self.text_fill.as_ref())
+            .flatten()
+            .map(DirectStaticPaint::css)
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -214,6 +306,14 @@ impl CynefinTypographyThemePlan {
             evidence.mark_residual(route.key.clone(), route.reason);
         }
         let Some(receipt) = self.terminal_receipt.get() else {
+            for (key, _) in &self.text_fill_routes {
+                if self.config_owns_text_fill {
+                    evidence.mark_not_applicable(key.clone());
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            }
             return evidence;
         };
         self.inherited_font_stack
@@ -240,6 +340,28 @@ impl CynefinTypographyThemePlan {
                     evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                 }
                 InheritedFontStackOutcome::Inactive => {}
+            }
+        }
+        for (key, rule_index) in &self.text_fill_routes {
+            if self.config_owns_text_fill {
+                evidence.mark_not_applicable(key.clone());
+            } else if !receipt.has_visible_text_fill_surface() {
+                evidence.mark_not_applicable(key.clone());
+            } else if self
+                .text_fill
+                .as_ref()
+                .is_some_and(|fill| fill.rule_index() == *rule_index)
+            {
+                if let Some(fill) = self.text_fill.as_ref()
+                    && receipt.proves_text_fill(fill.css())
+                {
+                    evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            } else {
+                evidence.mark_not_applicable(key.clone());
             }
         }
         evidence
@@ -308,7 +430,7 @@ mod tests {
     #[test]
     fn cynefin_font_stack_receipt_rejects_missing_and_mismatched_writer_events() {
         let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 0, 0, 0, 0]);
-        receipt.record_css_emission("monospace", "monospace", "monospace");
+        receipt.record_css_emission("monospace", "monospace", "monospace", "#333");
         receipt.record_text(CynefinTextRole::DomainLabel, "wrong-class", "Complex");
         assert!(!receipt.proves_font_stack());
 
@@ -322,10 +444,19 @@ mod tests {
     }
 
     #[test]
+    fn cynefin_text_fill_receipt_requires_every_visible_text_role() {
+        let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 1, 1, 0, 0]);
+        receipt.record_css_emission("monospace", "monospace", "monospace", "#333");
+        receipt.record_text(CynefinTextRole::Subtitle, "cynefinSubtitle", "Model");
+
+        assert!(!receipt.proves_text_fill("#333"));
+    }
+
+    #[test]
     fn unverified_cynefin_writer_receipt_is_a_strict_typography_residual() {
         let plan = typed_plan();
         let mut receipt = CynefinSurfaceReceipt::new("monospace", [1, 0, 0, 0, 0]);
-        receipt.record_css_emission("monospace", "monospace", "serif");
+        receipt.record_css_emission("monospace", "monospace", "serif", "#333");
         receipt.record_text(
             CynefinTextRole::DomainLabel,
             "cynefinDomainLabel",
