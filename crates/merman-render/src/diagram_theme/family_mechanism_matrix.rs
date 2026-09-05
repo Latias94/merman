@@ -5138,6 +5138,20 @@ mod tests {
                 vec!["requirement.paint"],
             ),
             (
+                DiagramFamilyId::SANKEY,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::SANKEY,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Actor,
                 Fill,
@@ -5540,7 +5554,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 80);
+        assert_eq!(qualified.len(), 82);
         assert_eq!(
             qualified
                 .iter()
@@ -5568,6 +5582,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::BLOCK)
                 .count(),
             4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::SANKEY)
+                .count(),
+            2
         );
         assert_eq!(
             qualified
