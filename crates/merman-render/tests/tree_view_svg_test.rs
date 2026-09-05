@@ -584,6 +584,76 @@ fn tree_view_node_label_fill_overrides_the_generic_text_fallback() {
 }
 
 #[test]
+fn tree_view_explicit_default_scalar_paints_reach_typed_css_and_portable_evidence() {
+    let source = "treeView-beta\nRoot/\n    Child\n";
+    let cases = [
+        (
+            ThemeTarget::NodeLabel,
+            false,
+            ".treeView-node-label",
+            "#123456",
+        ),
+        (ThemeTarget::Text, false, ".treeView-node-label", "#234567"),
+        (ThemeTarget::Edge, false, ".treeView-node-line", "#345678"),
+        (ThemeTarget::Edge, true, ".treeView-node-line", "#456789"),
+    ];
+
+    for (target, stroke, selector, expected_color) in cases {
+        let paint = CanvasPaint::solid(expected_color).expect("valid Tree View paint");
+        let style = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let rule = ThemeRule::new(target, style)
+            .for_family(DiagramFamilyId::TREE_VIEW)
+            .with_variant(ThemeVariant::Default);
+        let theme = tree_view_rules_theme([rule]);
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-view-explicit-default-paint",
+        )
+        .expect("explicit Default Tree View paint must be portable");
+
+        let stylesheet = tree_view_stylesheet(rendered.svg());
+        assert!(
+            tree_view_css_rule(&stylesheet, selector).contains(&format!(
+                "{}: {}",
+                if selector == ".treeView-node-line" {
+                    "stroke"
+                } else {
+                    "fill"
+                },
+                expected_color
+            )),
+            "typed Tree View CSS did not consume {target:?} Default paint: {stylesheet}"
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "target={target:?}");
+        assert_eq!(evidence.accounted_count(), 1, "target={target:?}");
+        assert_eq!(evidence.applied_count(), 1, "target={target:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "target={target:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "target={target:?}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "target={target:?}"
+        );
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "target={target:?}"
+        );
+    }
+}
+
+#[test]
 fn tree_view_static_edge_width_reaches_layout_bounds_endpoints_svg_and_evidence() {
     let source = "treeView-beta\nRoot/\n    Child\n";
     let baseline_layout = layout_tree_view(source, &RenderEnvironment::deterministic());

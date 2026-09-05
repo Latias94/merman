@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 41;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 42;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x9c, 0x20, 0x81, 0xe6, 0x04, 0x27, 0x45, 0xee, 0x42, 0xba, 0x52, 0x30, 0x0a, 0xe6, 0x75, 0xb1,
-    0x1b, 0xc9, 0xf6, 0xd7, 0x84, 0xc4, 0x41, 0x19, 0xa7, 0x5a, 0x99, 0xdf, 0x8a, 0x0d, 0x4e, 0xbe,
+    0xb3, 0x4a, 0x73, 0xc8, 0x54, 0xf1, 0x6a, 0x51, 0xa8, 0x6e, 0x96, 0x7f, 0xf6, 0xc0, 0xad, 0x4d,
+    0xf8, 0x53, 0x74, 0xeb, 0x85, 0x4f, 0xa3, 0x02, 0x7d, 0x08, 0x73, 0x0a, 0x61, 0x7b, 0x77, 0x06,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 236] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 244] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -2029,6 +2029,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 236] = [
         ThemeRouteCutoverValue::Transparent,
         EDGE_STROKE_ONLY_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::TREE_VIEW,
         ThemeTarget::Edge,
@@ -2055,6 +2087,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 236] = [
         ThemeTarget::NodeLabel,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
         NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
@@ -2069,6 +2117,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 236] = [
         ThemeTarget::Text,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
         NODE_LABEL_FILL_PROJECTIONS,
     ),
     route(
@@ -2787,11 +2851,39 @@ mod tests {
                     _ => return false,
                 }
         }));
+
+        let tree_view_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::TREE_VIEW
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(tree_view_default.len(), 8);
+        assert!(tree_view_default.iter().all(|route| {
+            route.projections
+                == match (route.id.target(), route.id.facet()) {
+                    (ThemeTarget::Edge, ThemeRouteCutoverFacet::Fill)
+                    | (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+                        EDGE_STROKE_ONLY_PROJECTIONS
+                    }
+                    (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill)
+                    | (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+                        NODE_LABEL_FILL_PROJECTIONS
+                    }
+                    _ => return false,
+                }
+                && matches!(
+                    route.id.value(),
+                    ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
+                )
+        }));
     }
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 41);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 42);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

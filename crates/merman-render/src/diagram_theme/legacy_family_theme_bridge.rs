@@ -780,9 +780,9 @@ fn compile_mindmap_family(
 
 /// Projects only Tree View paint routes that still require compatibility.
 ///
-/// Unqualified label and line paint are owned by the family terminal writer and are suppressed by
-/// the matrix-aware reader. Explicit `Default` label/line routes and Marker paint retain their
-/// historical nested Mermaid variables until their own terminal cutovers are authorized.
+/// Unqualified and explicit `Default` label/line paint are owned by the family terminal writer and
+/// are suppressed by the matrix-aware reader. Marker paint still retains its historical nested
+/// Mermaid variable until that terminal cutover is authorized.
 fn compile_tree_view_family(
     builder: &mut OverlayBuilder,
     reader: &FamilyStyleReader,
@@ -1977,10 +1977,13 @@ mod tests {
     }
 
     #[test]
-    fn tree_view_bridge_keeps_explicit_default_label_line_and_edge_icon_fallback() {
+    fn tree_view_bridge_does_not_project_typed_default_label_or_line_and_keeps_marker() {
         let source = "treeView-beta\nroot\n  child\n";
         let label = "#123456";
         let line = "#654321";
+        let text = "#abcdef";
+        let edge_fill = "#fedcba";
+        let icon = "#112233";
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
@@ -1993,33 +1996,72 @@ mod tests {
                 )
                 .with_rule(
                     ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid(text)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW)
+                    .with_variant(ThemeVariant::Default),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(solid(edge_fill)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW)
+                    .with_variant(ThemeVariant::Default),
+                )
+                .with_rule(
+                    ThemeRule::new(
                         ThemeTarget::Edge,
                         ThemeStylePatch::default().with_stroke(solid(line)),
                     )
                     .for_family(DiagramFamilyId::TREE_VIEW)
                     .with_variant(ThemeVariant::Default),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Marker,
+                        ThemeStylePatch::default().with_stroke(solid(icon)),
+                    )
+                    .for_family(DiagramFamilyId::TREE_VIEW),
                 ),
         );
 
         let parsed = parse(&spec, source);
 
-        assert_eq!(
+        assert_ne!(
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.labelColor"),
-            Some(label)
+            Some(label),
+            "typed Default NodeLabel.fill must not be projected"
         );
-        assert_eq!(
+        assert_ne!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.labelColor"),
+            Some(text),
+            "typed Default Text.fill must not be projected"
+        );
+        assert_ne!(
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.lineColor"),
-            Some(line)
+            Some(line),
+            "typed Default Edge.stroke must not be projected"
+        );
+        assert_ne!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.treeView.lineColor"),
+            Some(edge_fill),
+            "typed Default Edge.fill must not be projected"
         );
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.iconColor"),
-            Some(line)
+            Some(icon)
         );
         let evidence = theme_parse_evidence(&parsed);
         let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
@@ -2028,11 +2070,7 @@ mod tests {
                 .iter()
                 .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from([
-                "themeVariables.treeView.iconColor",
-                "themeVariables.treeView.labelColor",
-                "themeVariables.treeView.lineColor",
-            ])
+            BTreeSet::from(["themeVariables.treeView.iconColor"])
         );
     }
 

@@ -1625,7 +1625,12 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::TREE_VIEW
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             (target, facet),
             (
@@ -3830,7 +3835,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_view_scalar_paint_keeps_explicit_default_on_the_compatibility_route() {
+    fn tree_view_scalar_paint_owns_unqualified_and_explicit_default_routes() {
         let fill = CanvasPaint::solid("#123456").expect("valid Tree View fill");
         let stroke = CanvasPaint::solid("#654321").expect("valid Tree View stroke");
         for (target, style) in [
@@ -3871,7 +3876,7 @@ mod tests {
             assert_eq!(default.len(), 1, "target={target:?}");
             assert_eq!(
                 default[0].disposition(),
-                FamilyThemeDisposition::LegacyCompatibility,
+                FamilyThemeDisposition::TypedAdapter,
                 "target={target:?}"
             );
         }
