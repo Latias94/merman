@@ -2,19 +2,18 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the prepared `0.3.0` alpha.6 candidate and requires Typst `0.15.0` or newer. The candidate is not a claim that `0.3.0` has been published to Typst Universe.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents the published `0.3.0` package, released to Typst Universe on September 1, 2026, and requires Typst `0.15.0` or newer.
 
 ## Quick Start
 
-For the published Typst Universe channel, keep using the verified `0.2.0` package:
+For the published Typst Universe channel, import `0.3.0`:
 
 ```typst
-#import "@preview/merman:0.2.0": mermaid
+#import "@preview/merman:0.3.0": mermaid
 ```
 
-To test the alpha.6 `0.3.0` candidate, build or obtain the package from this repository and pass
-its parent package root with `typst compile --package-path <package-root> document.typ`; then import
-the candidate version:
+For source-snapshot testing, build or obtain the package from this repository and pass its parent
+package root with `typst compile --package-path <package-root> document.typ`; the import remains:
 
 ```typst
 #import "@preview/merman:0.3.0": mermaid

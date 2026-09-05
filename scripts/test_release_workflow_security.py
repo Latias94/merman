@@ -304,6 +304,36 @@ jobs:
         self.assertNotIn("cargo yank", text)
         self.assertNotIn("--token \"$CARGO_REGISTRY_TOKEN\"", text)
 
+    def test_release_preflight_keeps_prerelease_and_surface_contract_gates(self) -> None:
+        preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
+        crates = read(WORKFLOW_ROOT / "release-crates.yml")
+        for workflow_name, text in (
+            ("release-preflight.yml", preflight),
+            ("release-crates.yml", crates),
+        ):
+            with self.subTest(workflow=workflow_name):
+                self.assertIn(
+                    "scripts/release_surface_contract.py --version \"$VERSION\"",
+                    text,
+                )
+                self.assertIn("scripts/verify_prerelease_compatibility.py", text)
+                self.assertIn("previous_tag=", text)
+
+    def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
+        self,
+    ) -> None:
+        contract = read(ROOT / "scripts" / "release_surface_contract.py")
+        for surface in (
+            "rust-crates-and-ffi-source",
+            "android-aar",
+            "apple-xcframework",
+            "python-wheel",
+            "flutter-pub",
+        ):
+            with self.subTest(surface=surface):
+                self.assertIn(surface, contract)
+        self.assertIn("merman-android-jni must remain publish = false", contract)
+
     def test_roughr_semver_gate_is_pinned_before_publication(self) -> None:
         workflows = {
             WORKFLOW_ROOT / "release-preflight.yml": (
@@ -349,6 +379,27 @@ jobs:
                 with self.subTest(path=path.relative_to(ROOT).as_posix()):
                     assert_no_npm_provenance_disable(self, read(path))
 
+    def test_release_package_workflows_pin_node_toolchain(self) -> None:
+        expected = 'node-version: "24.13.1"'
+        for path in (
+            WORKFLOW_ROOT / "release-web.yml",
+            WORKFLOW_ROOT / "release-node.yml",
+            WORKFLOW_ROOT / "release-preflight.yml",
+        ):
+            text = read(path)
+            with self.subTest(path=path.name):
+                self.assertIn(expected, text)
+                self.assertNotIn('node-version: "24"', text)
+        for path in (
+            WORKFLOW_ROOT / "release-node.yml",
+            WORKFLOW_ROOT / "release-preflight.yml",
+        ):
+            text = read(path)
+            with self.subTest(path=path.name, image="alpine"):
+                self.assertIn("NODE_IMAGE=node:24.13.1-alpine3.22", text)
+            with self.subTest(path=path.name, image="bullseye"):
+                self.assertIn("NODE_IMAGE=node:24.13.1-bullseye", text)
+
         for package_json in [
             ROOT / "platforms" / "web" / "package.json",
             ROOT / "platforms" / "node" / "package.json",
@@ -390,6 +441,48 @@ jobs:
         self.assertIn("--require-exact", publish)
         self.assertIn("PyPI did not expose the exact wheel set", publish)
 
+    def test_python_release_pins_single_target_macos_wheel_tag(self) -> None:
+        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
+        self.assertIn("Pin single-target macOS wheel platform", build)
+        self.assertIn("if: runner.os == 'macOS'", build)
+        self.assertIn('test "$(uname -m)" = "arm64"', build)
+        self.assertIn("macosx-11.0-arm64", build)
+        self.assertLess(
+            build.index("Pin single-target macOS wheel platform"),
+            build.index("- name: Build wheel"),
+        )
+
+    def test_python_release_isolates_and_bootstraps_the_final_smoke_venv(self) -> None:
+        build = workflow_job(read(WORKFLOW_ROOT / "release-python.yml"), "build")
+        self.assertIn('VENV_DIR="$RUNNER_TEMP/python-final-wheel-smoke"', build)
+        self.assertIn('python -m venv "$VENV_DIR"', build)
+        self.assertNotIn("target/python-final-wheel-smoke", build)
+        self.assertIn('"$PYTHON" -m ensurepip --upgrade', build)
+        self.assertLess(
+            build.index('"$PYTHON" -m ensurepip --upgrade'),
+            build.index('"$PYTHON" -m pip install --no-deps'),
+        )
+
+    def test_web_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-web.yml")
+        validate = workflow_job(text, "validate-inputs")
+        build = workflow_job(text, "build")
+        publish = workflow_job(text, "publish")
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", validate)
+        self.assertIn("recovery requires source_ref to be the exact 40-character source commit", validate)
+        self.assertIn("if: ${{ needs.validate-inputs.outputs.recovery_run_id == '' }}", build)
+        self.assertIn("if: ${{ always() && inputs.publish_to_npm", publish)
+        self.assertIn("Verify recovery run identity", publish)
+        self.assertIn(".github/workflows/release-web.yml", publish)
+        self.assertIn("REPOSITORY: ${{ github.repository }}", publish)
+        self.assertNotIn("GITHUB_REPOSITORY: ${{ github.repository }}", publish)
+        self.assertIn("Download exact Web package group from recovery run", publish)
+        self.assertIn("run-id: ${{ needs.validate-inputs.outputs.recovery_run_id }}", publish)
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
+        self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
+
     def test_pubdev_skip_existing_is_guarded_by_archive_reconciliation(self) -> None:
         text = read(WORKFLOW_ROOT / "release-flutter.yml")
         self.assertIn("python3 -m scripts.reconcile_pub_package", text)
@@ -423,13 +516,29 @@ jobs:
                 self.assertIn("commits/$RELEASE_TAG", job)
                 self.assertIn('test "$observed" = "$SOURCE_SHA"', job)
 
-    def test_node_publish_uses_only_the_same_run_package_group(self) -> None:
+    def test_node_publish_can_reuse_an_exact_prior_package_group_artifact(self) -> None:
         text = read(WORKFLOW_ROOT / "release-node.yml")
+        validate = workflow_job(text, "validate-inputs")
+        loader = workflow_job(text, "loader")
+        wasm = workflow_job(text, "node-wasm-package")
+        platform = workflow_job(text, "platform")
+        package_group = workflow_job(text, "package-group")
         publish = workflow_job(text, "publish")
-        self.assertNotIn("recovery_run_id", text)
-        self.assertNotIn("run-id:", publish)
-        self.assertNotIn("github-token:", publish)
-        self.assertIn("needs:\n      - validate-inputs\n      - package-group", publish)
+        self.assertIn("recovery_run_id:", text)
+        self.assertIn("recovery_run_id requires publish_to_npm=true", validate)
+        self.assertIn("recovery requires source_ref to be the exact 40-character source commit", validate)
+        for job in (loader, wasm, platform, package_group):
+            self.assertIn("needs.validate-inputs.outputs.recovery_run_id == ''", job)
+        self.assertIn("always() && inputs.publish_to_npm", publish)
+        self.assertIn("Verify recovery run identity", publish)
+        self.assertIn(".github/workflows/release-node.yml", publish)
+        self.assertIn("REPOSITORY: ${{ github.repository }}", publish)
+        self.assertNotIn("GITHUB_REPOSITORY: ${{ github.repository }}", publish)
+        self.assertIn("Download exact Node package group from recovery run", publish)
+        self.assertIn("run-id: ${{ needs.validate-inputs.outputs.recovery_run_id }}", publish)
+        self.assertIn("github-token: ${{ github.token }}", publish)
+        self.assertIn('SOURCE_SHA="$SOURCE_REF"', publish)
+        self.assertIn('SOURCE_SHA="$BUILD_SOURCE_SHA"', publish)
 
     def test_performance_pull_requests_are_read_only_and_summary_only(self) -> None:
         text = read(WORKFLOW_ROOT / "performance.yml")

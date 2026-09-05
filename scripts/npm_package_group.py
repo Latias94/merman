@@ -15,8 +15,9 @@ from typing import Any, Protocol
 INTEGRITY_RE = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
 NPM_DIST_TAG_RE = re.compile(r"[a-z][a-z0-9-]*\Z")
 NPMJS_REGISTRY_URL = "https://registry.npmjs.org"
-DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS = 5
-DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS = 2.0
+# npm's package metadata can take close to a minute to appear after a publish.
+DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS = 13
+DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS = 5.0
 
 
 class PackageGroupError(ValueError):

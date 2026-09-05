@@ -8,12 +8,12 @@ Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Da
 
 ## Install
 
-The published pub.dev prerelease channel currently ends at `0.8.0-alpha.5`. Alpha.6 is a prepared
-source candidate and is not available from pub.dev until its Native Assets matrix is published.
-Install the published channel with:
+The published pub.dev prerelease channel includes `0.8.0-alpha.6`, built from the immutable
+Flutter release tag with its complete Native Assets matrix. Pin the exact version when pairing
+the Dart facade with its native libraries:
 
 ```sh
-flutter pub add 'merman:^0.8.0-alpha.5'
+flutter pub add 'merman:0.8.0-alpha.6'
 ```
 
 For alpha.6 source development, check out the exact commit accepted by release preflight and use a local path dependency:

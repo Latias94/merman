@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.8.0a6] - 2026-09-02
 
-This section describes the prepared alpha.6 source candidate. The PyPI prerelease channel remains independently published and may still resolve an earlier package until the matching wheel and native artifact are authorized.
+This section describes alpha.6, published to PyPI on 2026-09-04 with matching macOS arm64, manylinux x86_64, and Windows x86_64 wheels.
 
 ### Breaking changes
 

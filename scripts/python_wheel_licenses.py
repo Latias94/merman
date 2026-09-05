@@ -17,6 +17,11 @@ PYTHON_ARTIFACT_PROFILE_ID = "python-uniffi-native"
 TARGET_REPORT_ROOT = Path("platforms/python/legal/rust-cargo-dependencies")
 PACKAGE_REPORT = Path("THIRD_PARTY_LICENSES/rust-cargo-dependencies.json")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+WHEEL_PLATFORM_BY_RUST_TARGET = {
+    "aarch64-apple-darwin": "macosx-11.0-arm64",
+    "x86_64-pc-windows-msvc": "win-amd64",
+    "x86_64-unknown-linux-gnu": "linux-x86_64",
+}
 
 
 class PythonWheelLicenseError(RuntimeError):
@@ -131,6 +136,15 @@ def install_target_report(root: Path, package_dir: Path, target: str) -> None:
     destination.write_bytes(encoded)
 
 
+def wheel_platform_for_target(target: str) -> str:
+    try:
+        return WHEEL_PLATFORM_BY_RUST_TARGET[target]
+    except KeyError as error:
+        raise PythonWheelLicenseError(
+            f"unsupported Rust target for a Python wheel: {target}"
+        ) from error
+
+
 def wheel_target(wheel: Path) -> str:
     name = wheel.name.lower()
     candidates: list[str] = []
@@ -156,7 +170,12 @@ def verify_wheel_license_report(
     root: Path = REPO_ROOT,
     expected_target: str | None = None,
 ) -> str:
-    target = expected_target or wheel_target(wheel)
+    tagged_target = wheel_target(wheel)
+    target = expected_target or tagged_target
+    if expected_target is not None and tagged_target != expected_target:
+        raise PythonWheelLicenseError(
+            f"{wheel} platform tag identifies {tagged_target}, not {expected_target}"
+        )
     _, expected = load_target_report(root, target)
     suffix = f".dist-info/licenses/{PACKAGE_REPORT.as_posix()}"
     try:

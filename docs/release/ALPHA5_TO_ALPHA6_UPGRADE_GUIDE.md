@@ -54,7 +54,7 @@ Generated bindings and native artifacts are version-coupled. Runtime catalogs an
 
 - Flutter now uses Dart `package_ffi` and Native Assets with Dart `3.10` / Flutter `3.38` minimums; legacy plugin registrars, platform wrapper glue, and `openMermanLibrary()` are removed, while `Merman.open()` remains the default facade.
 - The default Android, Apple, Python, and Flutter artifacts bundle SVG, Cytoscape/ELK layout, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters; inspect the runtime catalog before calling optional operations.
-- Typst package `0.3.0` is an independently versioned alpha.6 candidate and is not implied to be present in Typst Universe; the published registry line remains `0.2.0` until the manual package submission is authorized.
+- Typst package `0.3.0` is independently versioned and was published to Typst Universe on 2026-09-01 from the alpha.6 source line; its availability is still separate from the workspace tag and must not be inferred for other channels.
 - The alpha.6 source README and package changelogs distinguish the published workspace/crates.io/CLI surfaces from independent alpha.5 channels; a registry install on one channel is not evidence that another package has been rebuilt from the alpha.6 source revision.
 
 ## Capability and output compatibility

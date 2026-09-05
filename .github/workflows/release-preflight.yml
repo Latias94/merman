@@ -136,6 +136,27 @@ jobs:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
+      - name: Verify static release surface contract
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release_surface_contract.py --version "$VERSION"
+
+      - name: Compile prerelease lanes from fresh Cargo resolutions
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            python3 scripts/verify_prerelease_compatibility.py \
+              --version "$VERSION" \
+              --previous-version "${previous_tag#v}"
+          else
+            python3 scripts/verify_prerelease_compatibility.py \
+              --version "$VERSION" \
+              --allow-missing-previous
+          fi
+
       - name: Verify release changelog projections
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -434,7 +455,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
@@ -511,7 +532,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -568,7 +589,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -665,7 +686,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.musl \
-            --build-arg NODE_IMAGE=node:24-alpine3.22 \
+            --build-arg NODE_IMAGE=node:24.13.1-alpine3.22 \
             --build-arg RUST_IMAGE=rust:1.95-alpine3.22 \
             --tag merman-node-musl:ci \
             platforms/node
@@ -710,7 +731,7 @@ jobs:
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
@@ -749,7 +770,7 @@ jobs:
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
 
@@ -889,7 +910,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.13.1"
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
 

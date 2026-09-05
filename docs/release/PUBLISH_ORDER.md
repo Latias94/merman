@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 ## Version Decision
 
@@ -19,6 +19,31 @@ verified package-group manifests and workflow artifacts identify that commit. Be
 publication was a manual bootstrap, those npm registry artifacts do not expose npm provenance
 attestations; documentation must not imply either an attestation or cross-channel byte identity.
 
+## Alpha.6 Backfill Snapshot
+
+Observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. This is a dated operator snapshot, not machine release authority; re-query each owning registry or GitHub Release immediately before any mutation.
+
+| Surface | Observed state | Backfill action |
+| --- | --- | --- |
+| Workspace crates and FFI source (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm`) | `0.8.0-alpha.6` visible on crates.io | No action |
+| CLI/LSP archives | Present on the alpha.6 GitHub Release | No action |
+| Typst `@preview/merman:0.3.0` | Published on 2026-09-01 from the alpha.6 source line | No action; reconcile docs only |
+| Python `merman` | PyPI exposes `0.8.0a6` with the three expected wheels, and the same hashes are attached to the alpha.6 GitHub Release | No action; reconciled by `release-python.yml` run `33862859069` |
+| Android AAR | `merman-android-v0.8.0-alpha.6.aar` is attached to the alpha.6 GitHub Release | No action; reconciled by `release-android.yml` run `33858143487` |
+| Apple XCFramework | `Merman.xcframework-v0.8.0-alpha.6.zip` and its checksum are attached to the alpha.6 GitHub Release | No action; reconciled by `release-apple.yml` run `33858143156` |
+| Web npm group | All five public packages expose `0.8.0-alpha.6`, the `alpha` tag, the original package-group integrities, and npm provenance attestations | No action; recovered from original run `33858142954` by `release-web.yml` run `33865637706` |
+| Node npm group | The exact seven-package alpha.6 artifact from pinned-toolchain run `33869785698` (artifact `9936094987`) is verified; `@mermanjs/node-wasm` still needs its first registry publication | Maintainer 2FA bootstrap from that exact artifact, then configure Trusted Publishing for all seven names |
+| Flutter `merman` | pub.dev exposes `0.8.0-alpha.6` from the pushed `flutter-v0.8.0-alpha.6` tag | No action; published by tag-triggered run `33862063296` |
+
+The Python wheel and Flutter package archive were built before this post-publication documentation
+reconciliation, so their immutable alpha.6 payloads may retain prepared-candidate wording in
+embedded README or changelog text. The current source guidance is corrected on `main`; the
+immutable payloads are not rewritten, and the wording correction will ship with the next version.
+
+VS Code currently produces GitHub Actions VSIX artifacts only, Homebrew validates stable formulae, and
+Android Maven Central and the Typst wrapper do not share the workspace crates.io publication path.
+Those surfaces are not additional alpha.6 registry mutations in this backfill.
+
 Rationale:
 
 - crates.io versions are immutable and `0.8.0-alpha.1` has already started the 0.8 release line.
@@ -34,6 +59,15 @@ separately published alpha.5 channels do not share a source snapshot with the wo
 implication. The independently versioned VS Code extension, Typst wrapper, and `roughr-merman`
 remain on their own release axes. The `tree-sitter-mermaid` language distribution also has an
 independent version axis.
+
+For every prerelease, coupled workspace dependency requirements are exact (`=X.Y.Z-alpha.N`,
+`=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`). This is a source-manifest rule, not a lockfile preference:
+fresh consumers must never be allowed to select a newer sibling package for an older facade. Stable
+workspace releases keep ordinary compatible requirements. The four binding source crates remain in
+the crates.io graph; native platform bytes are delivered by their owner workflows and are not
+implied by the presence of the source crates. Registry tarballs are immutable; if a published
+prerelease contains a moving sibling requirement, the correction takes effect only in a later
+release (or a new compatibility line), not by editing the already-published version in this tree.
 Version `0.1.0` is published on crates.io and npm from tag `tree-sitter-mermaid-v0.1.0`, commit
 `34ddaccbfb8b4a7a502e67122b2cd709b4989e19`. Its standalone GitHub Release is intentionally
 deferred so it can be announced alongside the next Merman product release; the two releases retain
@@ -41,11 +75,11 @@ their own tags and version identities.
 
 ## Typst Package Surface
 
-The Typst wrapper is an independent publication surface. The current candidate is `@preview/merman:0.3.0`, built from the prepared Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the published Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
+The Typst wrapper is an independent publication surface. `@preview/merman:0.3.0` was published to Typst Universe on 2026-09-01 from the Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and the existing ABI 2 exports. The package version changes because the shipped implementation closure and size characteristics are materially different, while the wrapper protocol remains compatible.
 
-Before a Typst registry submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. These are prepare/preflight checks only; manual Typst Universe submission requires explicit channel authorization. After submission, query the registry for the exact `0.3.0` package and update the package README and this file with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. The 0.3.0 submission is complete; after any future submission, query the registry for the exact package and update the package README and this file with observed publication evidence.
 
 ## Publish Order
 
@@ -145,15 +179,17 @@ loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
 For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
-immutable source and record its workflow run id. Download the verified
+immutable source and record its workflow run id. For alpha.6, the approved candidate is run
+`33869785698` with artifact `9936094987`, built with Node `24.13.1`. Download the verified
 `merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
 WASM tarball, and then the loader directly under the requested final tag with a maintainer's
 2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
 record that the bootstrap version remains without npm provenance; Trusted Publishing cannot add an
 attestation to an existing tarball. From the next version onward, dispatch `release-node.yml` with
 `publish_to_npm=true`; that run builds, verifies, and publishes its own same-run package group. If
-its publish job fails, rerun that job within the same workflow run; a later run must build and verify
-a new package group from the reviewed source. Do not keep an npm token in GitHub Actions.
+its publish job fails, rerun that job within the same workflow run. When a new run is unavoidable,
+pass `recovery_run_id` with the exact source SHA so the workflow downloads and verifies the original
+package-group artifact instead of rebuilding it. Do not keep an npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
@@ -169,7 +205,8 @@ python3 tools/publish.py --list-crates-io-packages
 cargo semver-checks check-release -p roughr-merman --color always
 cargo check -p merman-ffi
 cargo check -p merman-uniffi
-cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
+cargo check -p merman-wasm
+cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi -p merman-wasm
 ```
 
 The `roughr-merman` check uses the latest published compatible registry version as its baseline.
@@ -179,7 +216,8 @@ pin `cargo-semver-checks` so the result does not depend on a maintainer's local 
 For crates.io packaging, prefer publish dry-runs once registry dependencies are available. The
 release workflow packages every member of a topological batch first and records the exact `.crate`
 digest. It then requires all missing members in that batch to pass this gate before the first real
-publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, and `merman-uniffi`.
+publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and
+`merman-wasm`.
 
 ```bash
 cargo publish -p merman-render --locked --dry-run --registry crates-io
@@ -187,6 +225,7 @@ cargo publish -p merman-export --locked --dry-run --registry crates-io
 cargo publish -p merman-bindings-core --locked --dry-run --registry crates-io
 cargo publish -p merman-ffi --locked --dry-run --registry crates-io
 cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
+cargo publish -p merman-wasm --locked --dry-run --registry crates-io
 ```
 
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package
