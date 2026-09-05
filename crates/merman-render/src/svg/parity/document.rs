@@ -491,6 +491,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.use_max_width,
             )
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width))),
+            SvgStructureBody::Zenuml(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             #[cfg(feature = "layout-cytoscape")]
             SvgStructureBody::Architecture(body) => {
                 Ok(root_svg::RootViewportSpec::mermaid_or_intrinsic(
@@ -657,6 +661,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::c4::c4_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            SvgStructureBody::Zenuml(_) => Some((false, super::zenuml::zenuml_css().to_string())),
             #[cfg(feature = "layout-cytoscape")]
             SvgStructureBody::Architecture(_) => Some((
                 false,
@@ -1135,13 +1140,72 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn begin_semantic_group(&mut self, semantic_id: &str) -> Result<()> {
-        let semantic = self.semantics.get(semantic_id).ok_or_else(|| {
+        let semantic = self.semantics.get(semantic_id).cloned().ok_or_else(|| {
             invalid(format!(
                 "SVG semantic group references unknown id {semantic_id}"
             ))
         })?;
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.begin_mindmap_semantic_group(semantic_id);
+        }
+        if matches!(self.svg_body, SvgStructureBody::Zenuml(_))
+            && let Some(class) = self.semantic_extra_class(semantic_id).map(str::to_owned)
+        {
+            let visible = self.debug_visibility(semantic.role);
+            let security = MermaidNavigationSecurity::from_security_level_loose(
+                self.effective_config
+                    .get("securityLevel")
+                    .and_then(Value::as_str)
+                    == Some("loose"),
+            );
+            let link = semantic
+                .link
+                .as_deref()
+                .and_then(|value| prepare_mermaid_navigation_uri(value, security));
+            let linked = link.is_some();
+            if let Some(link) = link {
+                self.output.push_str("<a href=\"");
+                escape_attr_into(&mut self.output, link.as_str());
+                self.output.push_str("\">");
+            }
+            self.output.push_str("<g class=\"");
+            escape_attr_into(&mut self.output, class.as_str());
+            self.output.push_str("\"");
+            self.output.push_str(" id=\"");
+            let svg_id = self.semantic_svg_id(semantic_id)?;
+            escape_attr_into(&mut self.output, svg_id.as_str());
+            self.output.push_str("\"");
+            if let SvgStructureBody::Zenuml(body) = self.svg_body
+                && let Some(statement_id) = body.semantic_data_statements.get(semantic_id)
+            {
+                self.output.push_str(" data-statement=\"");
+                escape_attr_into(&mut self.output, statement_id);
+                self.output.push('"');
+            }
+            self.output
+                .push_str(" role=\"group\" data-merman-semantic-id=\"");
+            escape_attr_into(&mut self.output, semantic_id);
+            self.output.push('"');
+            if !visible {
+                self.output.push_str(" display=\"none\"");
+            }
+            self.output.push('>');
+            if let Some(title) = semantic.title.as_deref() {
+                self.output.push_str("<title>");
+                escape_xml_into(&mut self.output, title);
+                self.output.push_str("</title>");
+            }
+            if let Some(description) = semantic.description.as_deref() {
+                self.output.push_str("<desc>");
+                escape_xml_into(&mut self.output, description);
+                self.output.push_str("</desc>");
+            }
+            self.groups.push(GroupKind::Semantic {
+                linked,
+                emitted: true,
+                semantic_id: semantic_id.to_owned(),
+            });
+            return Ok(());
         }
         let svg_id = self.semantic_svg_id(semantic_id)?;
         let role_class = semantic_role_class(semantic.role);
@@ -1447,6 +1511,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Wardley(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            SvgStructureBody::Zenuml(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             _ => None,
         }
     }
@@ -1526,6 +1593,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.emit_mindmap_path(path_id, style);
+        }
+        if matches!(self.svg_body, SvgStructureBody::Zenuml(_)) {
+            return self.emit_zenuml_path(path_id, style);
         }
         #[cfg(feature = "layout-cytoscape")]
         if matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
@@ -1917,6 +1987,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_path_style(style)?;
         self.write_state_attrs();
@@ -1924,6 +1995,45 @@ impl<'a> DocumentSvgEncoder<'a> {
         escape_attr_into(&mut self.output, path_id.as_str());
         self.output.push_str("\"/>");
         Ok(())
+    }
+
+    fn emit_zenuml_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        let raw_id = path_id.as_str();
+        let path = self.path_resource(path_id)?.clone();
+        if raw_id == "zenuml.frame.outer" || raw_id == "zenuml.frame.inner" {
+            if let Some((bounds, radius)) = rounded_rectangle_from_path(&path) {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+        }
+        if raw_id.ends_with(".line")
+            || raw_id.ends_with(".header")
+            || raw_id.ends_with(".separator")
+        {
+            if let Some((start, end)) = line_from_path(&path) {
+                return self.emit_line(path_id, start, end, style);
+            }
+        }
+        if raw_id.ends_with(".box")
+            || raw_id.ends_with(".bar")
+            || raw_id.ends_with(".border")
+            || raw_id.ends_with(".background")
+        {
+            if let Some((bounds, radius)) = rounded_rectangle_from_path(&path) {
+                if radius > 0.0 {
+                    return self.emit_rounded_rect(path_id, bounds, radius, style);
+                }
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if let Some(bounds) = rectangle_from_path(&path) {
+                return self.emit_rect(path_id, bounds, style);
+            }
+        }
+        if raw_id.contains(".return.") && raw_id.ends_with(".icon.circle") {
+            if let Some((center, radius)) = circle_from_path(&path) {
+                return self.emit_circle(path_id, center, radius, style);
+            }
+        }
+        self.emit_path_as_standard(path_id, &path, style)
     }
 
     fn emit_mindmap_path(&mut self, path_id: &ResourceId, _style: &PathStyle) -> Result<()> {
@@ -2152,6 +2262,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push_str("\"");
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_path_style(style)?;
         self.write_state_attrs();
@@ -2232,6 +2343,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2262,6 +2374,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2295,6 +2408,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2324,6 +2438,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2356,6 +2471,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2409,6 +2525,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             {
                 return self.emit_er_html_text(run, semantic_id.as_deref(), text_index);
             }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Zenuml(_)) {
+            return self.emit_zenuml_text(run, semantic_id.as_deref(), text_index);
         }
 
         self.output.push_str("<text");
@@ -2539,6 +2658,75 @@ impl<'a> DocumentSvgEncoder<'a> {
                 escape_xml_into(&mut self.output, line);
                 self.output.push_str("</tspan>");
             }
+        }
+        self.output.push_str("</text>");
+        Ok(())
+    }
+
+    fn emit_zenuml_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+        text_index: Option<usize>,
+    ) -> Result<()> {
+        self.output.push_str("<text");
+        write!(
+            self.output,
+            " x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\" font-family=\"{}\" font-weight=\"{}\" font-style=\"{}\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"",
+            fmt(run.origin.x),
+            fmt(run.origin.y),
+            text_anchor(run.anchor),
+            text_baseline(run.baseline),
+            text_direction(run.direction),
+            fmt(run.style.font_size),
+            fmt(run.style.letter_spacing),
+            escaped_attr(self.font_families(&run.style.font).as_str()),
+            run.style.font.weight,
+            font_style(run.style.font.style),
+            fmt(run.bounds.x),
+            fmt(run.bounds.y),
+            fmt(run.bounds.width),
+            fmt(run.bounds.height),
+        )
+        .map_err(|_| invalid("failed to write ZenUML text attributes"))?;
+        if let Some(language) = run.language.as_deref() {
+            self.output.push_str(" xml:lang=\"");
+            escape_attr_into(&mut self.output, language);
+            self.output.push('"');
+        }
+        if let Some(semantic_id) = semantic_id
+            && let SvgStructureBody::Zenuml(body) = self.svg_body
+            && let Some(statement_id) = body.semantic_data_statements.get(semantic_id)
+        {
+            self.output.push_str(" data-statement=\"");
+            escape_attr_into(&mut self.output, statement_id);
+            self.output.push('"');
+        }
+        self.write_paint("fill", &run.style.fill)?;
+        self.write_state_attrs();
+        if let Some(class) = self
+            .text_class(run, text_index)
+            .map(|class| class.into_owned())
+        {
+            self.output.push_str(" class=\"");
+            escape_attr_into(&mut self.output, class.as_str());
+            self.output.push('"');
+        }
+        self.output.push('>');
+        let mut lines = run.text.split('\n');
+        if let Some(first) = lines.next() {
+            escape_xml_into(&mut self.output, first);
+        }
+        for line in lines {
+            write!(
+                self.output,
+                "<tspan x=\"{}\" dy=\"{}\">",
+                fmt(run.origin.x),
+                fmt(run.style.line_height),
+            )
+            .map_err(|_| invalid("failed to write ZenUML multiline text"))?;
+            escape_xml_into(&mut self.output, line);
+            self.output.push_str("</tspan>");
         }
         self.output.push_str("</text>");
         Ok(())
@@ -2920,6 +3108,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Zenuml(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -2947,6 +3140,17 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         None
+    }
+
+    fn write_zenuml_path_attrs(&mut self, path_id: &str) {
+        let SvgStructureBody::Zenuml(body) = self.svg_body else {
+            return;
+        };
+        if let Some(icon) = body.path_data_icons.get(path_id) {
+            self.output.push_str(" data-icon=\"");
+            escape_attr_into(&mut self.output, icon);
+            self.output.push('"');
+        }
     }
 
     fn write_gantt_dom_id(&mut self, key: &str) {
@@ -3115,6 +3319,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Zenuml(body) => {
+                let semantic_id = self.current_semantic_id()?;
+                let class = text_index
+                    .and_then(|index| body.text_classes.get(&format!("{semantic_id}#{index}")))?;
+                Some(Cow::Owned(class.clone()))
+            }
             SvgStructureBody::Radar(_) => match self.current_semantic_id() {
                 Some(id) if id.starts_with("radar.axis.") => Some(Cow::Borrowed("radarAxisLabel")),
                 Some(id) if id.starts_with("radar.legend.") => {

@@ -5,7 +5,7 @@
     { "id": "mindmap", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "state", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "sequence", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "zenuml", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "zenuml", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "flowchart", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "swimlane", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "architecture", "document_adapter": "direct", "svg_serializer": "canonical" },

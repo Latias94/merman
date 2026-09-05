@@ -61,6 +61,12 @@ const LINE_HEIGHT_FACTOR: f64 = 1.2;
 #[derive(Debug, Clone)]
 pub(crate) struct ZenumlSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) path_data_icons: BTreeMap<String, String>,
+    pub(crate) semantic_data_statements: BTreeMap<String, String>,
 }
 
 pub(crate) fn build_zenuml_document(
@@ -109,6 +115,7 @@ struct ZenUmlBuilder<'a> {
     header_y: f64,
     view_width: f64,
     view_height: f64,
+    use_max_width: bool,
     font: FontDescriptor,
     text_obligation: TextObligation,
     palette: TextPalette,
@@ -116,6 +123,13 @@ struct ZenUmlBuilder<'a> {
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
     participant_by_name: HashMap<&'a str, &'a ZenumlParticipantLayout>,
+    semantic_stack: Vec<String>,
+    semantic_text_counts: BTreeMap<String, usize>,
+    svg_semantic_classes: BTreeMap<String, String>,
+    svg_path_classes: BTreeMap<String, String>,
+    svg_text_classes: BTreeMap<String, String>,
+    svg_path_data_icons: BTreeMap<String, String>,
+    svg_semantic_data_statements: BTreeMap<String, String>,
 }
 
 impl<'a> ZenUmlBuilder<'a> {
@@ -191,6 +205,11 @@ impl<'a> ZenUmlBuilder<'a> {
         let view_width =
             layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;
         let view_height = layout.height + CONTENT_PADDING * 2.0 + FRAME_HEADER_HEIGHT - 1.0;
+        let use_max_width = config
+            .get("sequence")
+            .and_then(|sequence| sequence.get("useMaxWidth"))
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
         validate_positive_finite(view_width, "ZenUML viewport width")?;
         validate_positive_finite(view_height, "ZenUML viewport height")?;
 
@@ -204,6 +223,7 @@ impl<'a> ZenUmlBuilder<'a> {
             header_y,
             view_width,
             view_height,
+            use_max_width,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             palette,
@@ -222,6 +242,13 @@ impl<'a> ZenUmlBuilder<'a> {
                 link: None,
             }],
             participant_by_name,
+            semantic_stack: vec!["zenuml.document".to_string()],
+            semantic_text_counts: BTreeMap::new(),
+            svg_semantic_classes: BTreeMap::new(),
+            svg_path_classes: BTreeMap::new(),
+            svg_text_classes: BTreeMap::new(),
+            svg_path_data_icons: BTreeMap::new(),
+            svg_semantic_data_statements: BTreeMap::new(),
         })
     }
 
@@ -241,6 +268,10 @@ impl<'a> ZenUmlBuilder<'a> {
         self.emit_comments()?;
 
         self.commands.push(DrawingCommand::EndSemanticGroup);
+        debug_assert_eq!(
+            self.semantic_stack.pop().as_deref(),
+            Some("zenuml.document")
+        );
         self.commands.push(DrawingCommand::Restore);
         let viewport = Viewport::new(Rect::new(0.0, 0.0, self.view_width, self.view_height));
         let document = DrawingListDocument {
@@ -269,6 +300,12 @@ impl<'a> ZenUmlBuilder<'a> {
                 family: RenderFamilyKind::Zenuml,
                 body: SvgStructureBody::Zenuml(ZenumlSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.use_max_width,
+                    semantic_classes: self.svg_semantic_classes,
+                    path_classes: self.svg_path_classes,
+                    text_classes: self.svg_text_classes,
+                    path_data_icons: self.svg_path_data_icons,
+                    semantic_data_statements: self.svg_semantic_data_statements,
                 }),
             },
         })
@@ -637,6 +674,8 @@ impl<'a> ZenUmlBuilder<'a> {
                 Some(occurrence.statement_id.clone()),
                 "ZenUML occurrence",
             );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), occurrence.statement_id.clone());
             self.add_path(
                 format!("{id}.bar"),
                 rounded_rect_path(
@@ -683,6 +722,8 @@ impl<'a> ZenUmlBuilder<'a> {
             Some(portable_text(&message.label, "ZenUML message label")?),
             "ZenUML message",
         );
+        self.svg_semantic_data_statements
+            .insert(id.clone(), message.statement_id.clone());
         let left_to_right = message.from_x < message.to_x;
         let from_x = if left_to_right {
             message.from_x + 1.0
@@ -763,6 +804,8 @@ impl<'a> ZenUmlBuilder<'a> {
                 Some(portable_text(&call.label, "ZenUML self-call label")?),
                 "ZenUML self-call",
             );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), call.statement_id.clone());
             let asynchronous = call.arrow_style == ZenumlArrowStyle::Open;
             let svg_y = call.y + if asynchronous { 20.0 } else { 14.0 };
             let end_x = if asynchronous { 1.0 } else { 14.0 };
@@ -853,6 +896,8 @@ impl<'a> ZenUmlBuilder<'a> {
                 )?),
                 "ZenUML creation",
             );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), creation.statement_id.clone());
             self.emit_creation_geometry(&id, creation)?;
             self.end_semantic();
         }
@@ -935,6 +980,17 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Edge,
                 Some(portable_text(&returned.label, "ZenUML return label")?),
                 "ZenUML return",
+            );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), returned.statement_id.clone());
+            self.svg_semantic_classes.insert(
+                id.clone(),
+                if returned.is_self {
+                    "return return-self"
+                } else {
+                    "return"
+                }
+                .to_string(),
             );
             if returned.is_self {
                 let icon_x = returned.from_x + 4.0;
@@ -1050,6 +1106,15 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Group,
                 Some(portable_text(&fragment.label, "ZenUML fragment label")?),
                 "ZenUML fragment",
+            );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), fragment.statement_id.clone());
+            self.svg_semantic_classes.insert(
+                id.clone(),
+                format!(
+                    "fragment fragment-{}",
+                    fragment_kind_css_suffix(fragment.kind)
+                ),
             );
             self.emit_fragment_geometry(&id, fragment)?;
             self.end_semantic();
@@ -1305,6 +1370,8 @@ impl<'a> ZenUmlBuilder<'a> {
                 Some(portable_text(&divider.label, "ZenUML divider label")?),
                 "ZenUML divider",
             );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), divider.statement_id.clone());
             let label = divider
                 .label
                 .trim()
@@ -1378,6 +1445,8 @@ impl<'a> ZenUmlBuilder<'a> {
                 Some(portable_text(&comment.text, "ZenUML comment")?),
                 "ZenUML comment",
             );
+            self.svg_semantic_data_statements
+                .insert(id.clone(), comment.statement_id.clone());
             let style = comment_text_spec(&comment.style, self.palette.comment, self.session)?;
             let text =
                 resolve_zenuml_emojis_in_text(&portable_text(&comment.text, "ZenUML comment")?);
@@ -1411,6 +1480,10 @@ impl<'a> ZenUmlBuilder<'a> {
         title: Option<String>,
         description: &str,
     ) {
+        if let Some(class) = zenuml_semantic_class(id) {
+            self.svg_semantic_classes
+                .insert(id.to_string(), class.to_string());
+        }
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: id.to_string(),
         });
@@ -1421,10 +1494,12 @@ impl<'a> ZenUmlBuilder<'a> {
             description: Some(description.to_string()),
             link: None,
         });
+        self.semantic_stack.push(id.to_string());
     }
 
     fn end_semantic(&mut self) {
         self.commands.push(DrawingCommand::EndSemanticGroup);
+        debug_assert!(self.semantic_stack.pop().is_some());
     }
 
     fn x(&self, value: f64) -> f64 {
@@ -1483,6 +1558,19 @@ impl<'a> ZenUmlBuilder<'a> {
         letter_spacing: Option<f64>,
     ) -> Result<()> {
         let id = id.into();
+        let semantic_id =
+            self.semantic_stack.last().cloned().ok_or_else(|| {
+                invalid(format!("ZenUML text `{id}` is outside a semantic group"))
+            })?;
+        let text_index = self
+            .semantic_text_counts
+            .entry(semantic_id.clone())
+            .or_default();
+        if let Some(class) = zenuml_text_class(&id) {
+            self.svg_text_classes
+                .insert(format!("{semantic_id}#{text_index}"), class.to_string());
+        }
+        *text_index = text_index.saturating_add(1);
         if !origin.x.is_finite() || !origin.y.is_finite() {
             return Err(invalid(format!("ZenUML text `{id}` has invalid origin")));
         }
@@ -1607,13 +1695,15 @@ impl<'a> ZenUmlBuilder<'a> {
             )));
         }
         for (index, shape) in shapes.into_iter().enumerate() {
+            let path_id = format!("{id}.{index}");
             let segments = shape
                 .segments
                 .into_iter()
                 .map(|segment| transform_asset_segment(segment, x, y, scale, view_box))
                 .collect::<Vec<_>>();
             if let Some(style) = shape.style.to_path_style(scale)? {
-                self.add_path(format!("{id}.{index}"), segments, style)?;
+                self.add_path(path_id.clone(), segments, style)?;
+                self.svg_path_data_icons.insert(path_id, key.to_string());
             }
         }
         Ok(())
@@ -1629,6 +1719,10 @@ impl<'a> ZenUmlBuilder<'a> {
             return Err(invalid("ZenUML path has no geometry"));
         }
         let id = ResourceId::new(id.into());
+        if let Some(class) = zenuml_path_class(id.as_str()) {
+            self.svg_path_classes
+                .insert(id.as_str().to_string(), class.to_string());
+        }
         self.resources.push(DrawingResource::Path(PathResource {
             id: id.clone(),
             segments,
@@ -2233,6 +2327,146 @@ fn fragment_icon_key(kind: ZenumlLayoutFragmentKind) -> &'static str {
         ZenumlLayoutFragmentKind::Section => "fragment-section",
         ZenumlLayoutFragmentKind::TryCatchFinally => "fragment-tcf",
         ZenumlLayoutFragmentKind::Reference => "fragment-ref",
+    }
+}
+
+fn zenuml_semantic_class(id: &str) -> Option<&'static str> {
+    if id.starts_with("zenuml.group.") {
+        Some("participant-group")
+    } else if id.starts_with("zenuml.lifeline.") {
+        Some("lifeline")
+    } else if id.starts_with("zenuml.participant.") {
+        Some("participant")
+    } else if id.starts_with("zenuml.occurrence.") {
+        Some("occurrence")
+    } else if id.starts_with("zenuml.message.") {
+        Some("message")
+    } else if id.starts_with("zenuml.self-call.") {
+        Some("message self-call")
+    } else if id.starts_with("zenuml.creation.") {
+        Some("creation")
+    } else if id.starts_with("zenuml.return.") {
+        Some("return")
+    } else if id.starts_with("zenuml.fragment.") {
+        Some("fragment")
+    } else if id.starts_with("zenuml.divider.") {
+        Some("divider")
+    } else if id.starts_with("zenuml.comment.") {
+        Some("comment")
+    } else {
+        None
+    }
+}
+
+fn fragment_kind_css_suffix(kind: ZenumlLayoutFragmentKind) -> &'static str {
+    match kind {
+        ZenumlLayoutFragmentKind::Loop => "loop",
+        ZenumlLayoutFragmentKind::Alternative => "alt",
+        ZenumlLayoutFragmentKind::Parallel => "par",
+        ZenumlLayoutFragmentKind::Optional => "opt",
+        ZenumlLayoutFragmentKind::Critical => "critical",
+        ZenumlLayoutFragmentKind::Section => "section",
+        ZenumlLayoutFragmentKind::TryCatchFinally => "tcf",
+        ZenumlLayoutFragmentKind::Reference => "ref",
+    }
+}
+
+fn zenuml_path_class(id: &str) -> Option<&'static str> {
+    if id == "zenuml.frame.outer" {
+        Some("frame-border-outer")
+    } else if id == "zenuml.frame.inner" {
+        Some("frame-border-inner")
+    } else if id == "zenuml.frame.header" {
+        Some("frame-header-line")
+    } else if id.contains(".group.") && id.ends_with(".outline") {
+        Some("group-outline")
+    } else if id.contains(".group.") && id.ends_with(".title.background") {
+        Some("group-title-bg")
+    } else if id.contains(".lifeline.") && id.ends_with(".line") {
+        Some("lifeline")
+    } else if id.contains(".participant.") && id.ends_with(".box") {
+        Some("participant-box")
+    } else if id.contains(".participant.") && id.contains(".icon.") {
+        Some("participant-icon")
+    } else if id.contains(".occurrence.") && id.ends_with(".bar") {
+        Some("occurrence")
+    } else if id.contains(".message.") && id.ends_with(".line") {
+        Some("message-line")
+    } else if id.contains(".message.") && id.ends_with(".arrow") {
+        Some("arrow-head")
+    } else if id.contains(".self-call.") && id.ends_with(".route") {
+        Some("message-line")
+    } else if id.contains(".self-call.") && id.ends_with(".arrow") {
+        Some("arrow-head")
+    } else if id.contains(".creation.") && id.ends_with(".line") {
+        Some("message-line")
+    } else if id.contains(".creation.") && id.ends_with(".arrow") {
+        Some("arrow-open")
+    } else if id.contains(".return.") && id.ends_with(".line") {
+        Some("return-line")
+    } else if id.contains(".return.") && id.ends_with(".arrow") {
+        Some("return-arrow")
+    } else if id.contains(".return.") && id.contains(".icon.") {
+        Some("return-icon")
+    } else if id.contains(".fragment.") && id.ends_with(".border") {
+        Some("fragment-border")
+    } else if id.contains(".fragment.") && id.ends_with(".header") {
+        Some("fragment-header")
+    } else if id.contains(".fragment.") && id.contains(".icon.") {
+        Some("fragment-icon")
+    } else if id.contains(".fragment.") && id.ends_with(".separator") {
+        Some("fragment-separator")
+    } else if id.contains(".fragment.") && id.ends_with(".background") {
+        Some("fragment-section-background")
+    } else if id.contains(".divider.") && id.ends_with(".background") {
+        Some("divider-bg")
+    } else if id.contains(".divider.") && id.contains(".line.") {
+        Some("divider-line")
+    } else {
+        None
+    }
+}
+
+fn zenuml_text_class(id: &str) -> Option<&'static str> {
+    if id == "zenuml.frame.title" {
+        Some("frame-title")
+    } else if id.contains(".group.") && id.ends_with(".title") {
+        Some("group-title-text")
+    } else if id.ends_with(".emoji") {
+        Some("participant-emoji")
+    } else if id.ends_with(".stereotype") {
+        Some("stereotype-label")
+    } else if id.contains(".participant.") && id.ends_with(".label") {
+        Some("participant-label")
+    } else if (id.contains(".message.") || id.contains(".self-call.") || id.contains(".creation."))
+        && id.ends_with(".label")
+    {
+        Some("message-label")
+    } else if (id.contains(".message.")
+        || id.contains(".self-call.")
+        || id.contains(".creation.")
+        || id.contains(".return.")
+        || id.contains(".fragment."))
+        && id.ends_with(".number")
+    {
+        Some("seq-number")
+    } else if id.contains(".return.") && id.ends_with(".label") {
+        Some("return-label")
+    } else if id.contains(".fragment.") && id.ends_with(".kind") {
+        Some("fragment-label")
+    } else if id.contains(".fragment.") && id.ends_with(".condition.open")
+        || id.contains(".fragment.") && id.ends_with(".condition.inner")
+        || id.contains(".fragment.") && id.ends_with(".condition.close")
+    {
+        Some("fragment-condition")
+    } else if id.contains(".fragment.") && id.contains(".section.") {
+        Some("fragment-section-label")
+    } else if id.contains(".divider.") && id.ends_with(".label") {
+        Some("divider-label")
+    } else if id.contains(".comment.") && id.contains(".line.") {
+        Some("comment-text")
+    } else {
+        None
     }
 }
 

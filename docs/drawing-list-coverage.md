@@ -18,7 +18,7 @@ inventory row fails at test time.  The current inventory is:
 | Mindmap | yes | canonical |
 | State | yes | canonical |
 | Sequence | yes | legacy bridge |
-| ZenUML | yes | legacy bridge |
+| ZenUML | yes | canonical |
 | Flowchart | yes | legacy bridge |
 | Swimlane | yes | legacy bridge |
 | Architecture | yes | canonical |

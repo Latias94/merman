@@ -1458,3 +1458,39 @@ fn mindmap_canonical_svg_keeps_dom_routes_shapes_and_html_labels() {
     assert!(svg.contains("#mindmap-parity .edge{"));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn zenuml_canonical_svg_keeps_typed_geometry_and_statement_roles() {
+    let svg = render_svg("zenuml\nA->B: hello\n", "zenuml-parity");
+    let document = roxmltree::Document::parse(&svg).expect("canonical ZenUML SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("zenuml"));
+    assert!(root.attribute("viewBox").is_some());
+    assert!(
+        root.attribute("style")
+            .is_some_and(|style| style.starts_with("max-width: "))
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("g") && node.attribute("class") == Some("participant")
+        })
+    );
+    let message = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("message"))
+        .expect("canonical ZenUML message semantic group");
+    assert_eq!(
+        message.attribute("data-statement"),
+        Some("zenuml-statement-0")
+    );
+    assert!(message.descendants().any(|node| {
+        node.has_tag_name("line") && node.attribute("class") == Some("message-line")
+    }));
+    assert!(message.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("class") == Some("message-label")
+    }));
+    assert!(svg.contains("data-merman-resource=\"zenuml.message.0.line\""));
+    assert!(!svg.contains("zenuml-content"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}
