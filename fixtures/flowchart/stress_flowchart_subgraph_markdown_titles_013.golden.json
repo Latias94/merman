@@ -124,7 +124,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "markdown"
       },
       {
@@ -138,7 +137,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "markdown"
       }
     ]

@@ -149,9 +149,9 @@ state Explicit {
     };
 
     assert_eq!(node("Implicit")["dir"], json!("TB"));
-    assert_eq!(node("Implicit")["explicitDir"], json!(false));
+    assert!(node("Implicit").get("explicitDir").is_none());
     assert_eq!(node("Explicit")["dir"], json!("LR"));
-    assert_eq!(node("Explicit")["explicitDir"], json!(true));
+    assert!(node("Explicit").get("explicitDir").is_none());
     assert!(node("A").get("explicitDir").is_none());
     assert!(node("B").get("explicitDir").is_none());
 }

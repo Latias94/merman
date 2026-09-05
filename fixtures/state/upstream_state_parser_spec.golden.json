@@ -139,7 +139,6 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true,
-        "explicitDir": false,
         "description": []
       },
       {
@@ -198,8 +197,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -238,7 +236,6 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true,
-        "explicitDir": false,
         "description": []
       },
       {

@@ -507,7 +507,7 @@ P --> y
 }
 
 #[test]
-fn state_layout_extracts_explicit_direction_composite_with_external_edge() {
+fn state_layout_keeps_explicit_direction_composite_with_external_edge_in_parent_graph() {
     let layout = layout_state_from_text(
         r#"stateDiagram-v2
 state Composite {
@@ -529,8 +529,8 @@ B --> Outside: external
     let b = node("B");
 
     assert!(
-        b.x > a.x && (b.y - a.y).abs() < 1e-6,
-        "explicit LR direction must govern the extracted composite layout: A={a:?}, B={b:?}"
+        (b.y - a.y).abs() > 1e-6,
+        "an explicit nested direction must not extract a composite with external edges: A={a:?}, B={b:?}"
     );
     assert!(
         layout

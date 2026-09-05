@@ -12,6 +12,7 @@ pub(crate) struct ClassConfigView<'a> {
     effective_config: &'a Value,
     flowchart_config: &'a Value,
     class_config: &'a Value,
+    state_config: &'a Value,
     theme_variables: &'a Value,
 }
 
@@ -21,6 +22,7 @@ impl<'a> ClassConfigView<'a> {
             effective_config,
             flowchart_config: effective_config.get("flowchart").unwrap_or(&Value::Null),
             class_config: effective_config.get("class").unwrap_or(&Value::Null),
+            state_config: effective_config.get("state").unwrap_or(&Value::Null),
             theme_variables: effective_config
                 .get("themeVariables")
                 .unwrap_or(&Value::Null),
@@ -54,6 +56,10 @@ impl<'a> ClassConfigView<'a> {
         config_f64(self.flowchart_config, &[key])
     }
 
+    fn state_compat_f64(&self, key: &str) -> Option<f64> {
+        config_f64(self.state_config, &[key])
+    }
+
     fn class_compat_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.class_config, &[key])
     }
@@ -67,9 +73,8 @@ impl<'a> ClassConfigView<'a> {
     }
 
     pub(super) fn layout_settings(&self) -> ClassLayoutSettings {
-        let conf = self.diagram_config();
-        let nodesep = config_f64(conf, &["nodeSpacing"]).unwrap_or(50.0);
-        let ranksep = config_f64(conf, &["rankSpacing"]).unwrap_or(50.0);
+        let nodesep = self.layout_spacing("nodeSpacing");
+        let ranksep = self.layout_spacing("rankSpacing");
 
         let node_html_labels = self.root_bool("htmlLabels").unwrap_or(true);
         let edge_html_labels = self
@@ -104,6 +109,22 @@ impl<'a> ClassConfigView<'a> {
             )
             .unwrap_or(0.0),
         }
+    }
+
+    fn layout_spacing(&self, key: &str) -> f64 {
+        let renderer_spacing = self
+            .state_compat_f64(key)
+            .filter(|value| *value != 0.0)
+            .unwrap_or(50.0);
+        [
+            self.root_compat_f64(key),
+            Some(renderer_spacing),
+            self.flowchart_compat_f64(key),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|value| *value != 0.0)
+        .unwrap_or(50.0)
     }
 
     fn text_style_for_wrap_mode(&self, wrap_mode: WrapMode) -> TextStyle {
@@ -255,13 +276,17 @@ mod tests {
             },
             "flowchart": {
                 "htmlLabels": true,
-                "nodeSpacing": "70",
-                "rankSpacing": "80",
+                "nodeSpacing": "11",
+                "rankSpacing": "12",
                 "padding": "17",
                 "subGraphTitleMargin": {
                     "top": "3",
                     "bottom": "4"
                 }
+            },
+            "state": {
+                "nodeSpacing": "70",
+                "rankSpacing": "80"
             },
             "class": {
                 "padding": "30",
@@ -292,6 +317,26 @@ mod tests {
         assert_eq!(settings.wrap_probe_font_size, 18.0);
         assert_eq!(settings.title_margin_top, 3.0);
         assert_eq!(settings.title_margin_bottom, 4.0);
+    }
+
+    #[test]
+    fn class_layout_settings_use_root_spacing_before_renderer_spacing() {
+        let cfg = json!({
+            "nodeSpacing": 90,
+            "rankSpacing": "91",
+            "state": {
+                "nodeSpacing": 70,
+                "rankSpacing": 80
+            },
+            "flowchart": {
+                "nodeSpacing": 11,
+                "rankSpacing": 12
+            }
+        });
+        let settings = ClassConfigView::new(&cfg).layout_settings();
+
+        assert_eq!(settings.nodesep, 90.0);
+        assert_eq!(settings.ranksep, 91.0);
     }
 
     #[test]

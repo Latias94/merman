@@ -15,6 +15,7 @@ const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 pub(crate) struct RequirementConfigView<'a> {
     effective_config: &'a Value,
     requirement_config: &'a Value,
+    state_config: &'a Value,
 }
 
 impl<'a> RequirementConfigView<'a> {
@@ -22,19 +23,14 @@ impl<'a> RequirementConfigView<'a> {
         Self {
             effective_config,
             requirement_config: effective_config.get("requirement").unwrap_or(&Value::Null),
+            state_config: effective_config.get("state").unwrap_or(&Value::Null),
         }
     }
 
     pub(crate) fn layout_settings(&self) -> RequirementLayoutSettings {
         RequirementLayoutSettings {
-            nodesep: self
-                .root_f64("nodeSpacing")
-                .or_else(|| self.config_f64(&["flowchart", "nodeSpacing"]))
-                .unwrap_or(DEFAULT_NODE_SPACING),
-            ranksep: self
-                .root_f64("rankSpacing")
-                .or_else(|| self.config_f64(&["flowchart", "rankSpacing"]))
-                .unwrap_or(DEFAULT_RANK_SPACING),
+            nodesep: self.layout_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
+            ranksep: self.layout_spacing("rankSpacing", DEFAULT_RANK_SPACING),
             font_family: self.font_family(),
             font_size: self.font_size(),
             calculation_font_family: self.calculation_font_family(),
@@ -68,6 +64,23 @@ impl<'a> RequirementConfigView<'a> {
 
     fn root_f64(&self, key: &str) -> Option<f64> {
         self.config_f64(&[key])
+    }
+
+    fn state_f64(&self, key: &str) -> Option<f64> {
+        config_f64(self.state_config, &[key])
+    }
+
+    fn layout_spacing(&self, key: &str, default: f64) -> f64 {
+        let renderer_spacing = self.state_f64(key).unwrap_or(default);
+        [
+            self.root_f64(key),
+            Some(renderer_spacing),
+            self.config_f64(&["flowchart", key]),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|value| *value != 0.0)
+        .unwrap_or(default)
     }
 
     fn requirement_bool(&self, key: &str) -> Option<bool> {
@@ -148,6 +161,10 @@ mod tests {
         let cfg = json!({
             "nodeSpacing": "0",
             "rankSpacing": 70,
+            "state": {
+                "nodeSpacing": 0,
+                "rankSpacing": 60
+            },
             "flowchart": {
                 "nodeSpacing": 11,
                 "rankSpacing": 12
@@ -159,7 +176,7 @@ mod tests {
         });
         let settings = RequirementConfigView::new(&cfg).layout_settings();
 
-        assert_eq!(settings.nodesep, 0.0);
+        assert_eq!(settings.nodesep, 11.0);
         assert_eq!(settings.ranksep, 70.0);
         assert_eq!(settings.font_family, "Courier New");
         assert_eq!(settings.font_size, 18.0);
@@ -171,8 +188,26 @@ mod tests {
     }
 
     #[test]
-    fn requirement_layout_settings_fall_back_to_flowchart_spacing() {
+    fn requirement_layout_settings_default_renderer_spacing_precedes_flowchart_spacing() {
         let cfg = json!({
+            "flowchart": {
+                "nodeSpacing": "33",
+                "rankSpacing": 44
+            }
+        });
+        let settings = RequirementConfigView::new(&cfg).layout_settings();
+
+        assert_eq!(settings.nodesep, DEFAULT_NODE_SPACING);
+        assert_eq!(settings.ranksep, DEFAULT_RANK_SPACING);
+    }
+
+    #[test]
+    fn requirement_layout_settings_use_flowchart_spacing_when_renderer_spacing_is_zero() {
+        let cfg = json!({
+            "state": {
+                "nodeSpacing": 0,
+                "rankSpacing": 0
+            },
             "flowchart": {
                 "nodeSpacing": "33",
                 "rankSpacing": 44

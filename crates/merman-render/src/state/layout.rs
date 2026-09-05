@@ -142,7 +142,6 @@ struct StateDagreInput {
     dagre_id_by_semantic_id: HashMap<String, String>,
     note_group_canonical_by_semantic_id: HashMap<String, String>,
     dir_by_dagre_id: HashMap<String, Option<String>>,
-    explicit_dir_ids: HashSet<String>,
     text_style: TextStyle,
     wrap_mode: WrapMode,
     wrapping_width: f64,
@@ -467,7 +466,6 @@ fn state_find_safe_anchor_node<W: StatePreparationWorkControl>(
 fn prepare_graph<W: StatePreparationWorkControl>(
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_dir: &impl Fn(&str) -> Option<String>,
-    cluster_has_explicit_dir: &impl Fn(&str) -> bool,
     root_cluster_id: Option<String>,
     work_control: &mut W,
 ) -> Result<PreparedGraph> {
@@ -480,12 +478,7 @@ fn prepare_graph<W: StatePreparationWorkControl>(
     let mut stack: Vec<Vec<String>> = vec![Vec::new()];
     while let Some(path) = stack.pop() {
         let prepared = prepared_graph_at_path_mut(&mut root, &path)?;
-        let mut child_ids = prepare_graph_one_level(
-            prepared,
-            cluster_dir,
-            cluster_has_explicit_dir,
-            work_control,
-        )?;
+        let mut child_ids = prepare_graph_one_level(prepared, cluster_dir, work_control)?;
         child_ids.reverse();
         for child_id in child_ids {
             let mut child_path = path.clone();
@@ -516,7 +509,6 @@ fn prepared_graph_at_path_mut<'a>(
 fn prepare_graph_one_level<W: StatePreparationWorkControl>(
     prepared: &mut PreparedGraph,
     cluster_dir: &impl Fn(&str) -> Option<String>,
-    cluster_has_explicit_dir: &impl Fn(&str) -> bool,
     work_control: &mut W,
 ) -> Result<Vec<String>> {
     let graph = &mut prepared.graph;
@@ -649,8 +641,7 @@ fn prepare_graph_one_level<W: StatePreparationWorkControl>(
     }
 
     // Extract clusters without external connections into subgraphs for nested layout. Mermaid
-    // 11.16 also extracts a cluster with an explicit direction even when an edge crosses its
-    // boundary, so that the authored direction still governs its internal layout.
+    // 11.17.2 does not let an explicit direction override the external-connection guard.
     //
     // Mermaid@11.12.2 `dagre-wrapper` extractor does not require clusters to be root-level. It
     // extracts any cluster node that has children and no external connections, then relies on the
@@ -661,8 +652,7 @@ fn prepare_graph_one_level<W: StatePreparationWorkControl>(
         if graph.children(&id).is_empty() {
             continue;
         }
-        let has_explicit_dir = cluster_has_explicit_dir(&id);
-        if *external.get(&id).unwrap_or(&false) && !has_explicit_dir {
+        if *external.get(&id).unwrap_or(&false) {
             continue;
         }
         candidate_roots.push(id);
@@ -1485,7 +1475,6 @@ fn build_state_diagram_dagre_input(
     }
     let mut dagre_id_by_semantic_id: HashMap<String, String> = HashMap::new();
     let mut dir_by_dagre_id: HashMap<String, Option<String>> = HashMap::new();
-    let mut explicit_dir_ids: HashSet<String> = HashSet::new();
     for n in &model.nodes {
         let layout_semantic_id = note_group_canonical_by_semantic_id
             .get(&n.id)
@@ -1496,9 +1485,6 @@ fn build_state_diagram_dagre_input(
             .unwrap_or_else(|| dagre_id_for_node(n));
         dagre_id_by_semantic_id.insert(n.id.clone(), dagre_id.clone());
         dir_by_dagre_id.insert(dagre_id.clone(), n.dir.as_ref().map(|s| normalize_dir(s)));
-        if n.explicit_dir == Some(true) {
-            explicit_dir_ids.insert(dagre_id);
-        }
     }
 
     let StateLayoutSettings {
@@ -1754,7 +1740,6 @@ fn build_state_diagram_dagre_input(
         dagre_id_by_semantic_id,
         note_group_canonical_by_semantic_id,
         dir_by_dagre_id,
-        explicit_dir_ids,
         text_style,
         wrap_mode,
         wrapping_width,
@@ -1776,7 +1761,6 @@ fn layout_state_diagram_inner(
         dagre_id_by_semantic_id,
         note_group_canonical_by_semantic_id,
         dir_by_dagre_id,
-        explicit_dir_ids,
         text_style,
         wrap_mode,
         wrapping_width,
@@ -1785,15 +1769,7 @@ fn layout_state_diagram_inner(
 
     let cluster_dir =
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
-    let cluster_has_explicit_dir = |id: &str| explicit_dir_ids.contains(id);
-
-    let mut prepared = prepare_graph(
-        graph,
-        &cluster_dir,
-        &cluster_has_explicit_dir,
-        None,
-        work_control,
-    )?;
+    let mut prepared = prepare_graph(graph, &cluster_dir, None, work_control)?;
     let (fragments, _layout_bounds) = layout_prepared(&mut prepared, work_control)?;
 
     let semantic_ids: HashSet<&str> = model

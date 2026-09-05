@@ -134,11 +134,9 @@ pub struct StateDiagramRenderNode {
     pub css_styles: Vec<String>,
     #[serde(default)]
     pub dir: Option<String>,
-    #[serde(
-        default,
-        rename = "explicitDir",
-        skip_serializing_if = "Option::is_none"
-    )]
+    // Kept as parser-internal provenance for the ASCII adapter. Mermaid 11.17.2 no longer
+    // exposes this rollback-era field in the render model or compatibility JSON.
+    #[serde(skip)]
     pub explicit_dir: Option<bool>,
     #[serde(default)]
     pub padding: Option<f64>,
@@ -324,9 +322,6 @@ fn state_node_to_compat_json(node: &StateDiagramRenderNode, look: &Value) -> Val
     out.insert("look".to_string(), look.clone());
     out.insert("parentId".to_string(), json!(&node.parent_id));
     out.insert("centerLabel".to_string(), Value::Bool(true));
-    if let Some(explicit_dir) = node.explicit_dir {
-        out.insert("explicitDir".to_string(), Value::Bool(explicit_dir));
-    }
     if let Some(description) = &node.description {
         out.insert("description".to_string(), json!(description));
     }

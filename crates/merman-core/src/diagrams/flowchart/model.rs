@@ -635,7 +635,9 @@ pub struct FlowSubgraph {
     pub id: String,
     pub title: String,
     pub dir: Option<String>,
-    #[serde(default, rename = "hasExplicitDir")]
+    // Kept as parser-internal provenance for the ASCII adapter. Mermaid 11.17.2 no longer
+    // exposes this rollback-era field in the render model or compatibility JSON.
+    #[serde(skip)]
     pub has_explicit_dir: bool,
     #[serde(default, rename = "labelType")]
     pub label_type: Option<String>,

@@ -1576,6 +1576,37 @@ AS2>"`@for@ AS@`"]
 }
 
 #[test]
+fn parse_diagram_flowchart_rejects_constructs_mermaid_rejects() {
+    let engine = Engine::new();
+
+    for invalid in [
+        "flowchart TD\nA[@page Rule] --> B[Size]\n",
+        "flowchart TD\nN1[rabbit@node1<br/>Disc Node]\n",
+        "flowchart TD\nA -->|@page| B\n",
+        r#"flowchart BT
+M["myapp"] --> R["root (\"\")"]
+"#,
+        "graph TB\nsubgraph Broker 1\n    P[a]\nend\nZK[z] --> Broker 1\n",
+    ] {
+        assert!(
+            block_on(engine.parse_diagram(invalid, ParseOptions::strict())).is_err(),
+            "Mermaid rejects {invalid:?}",
+        );
+    }
+
+    for valid in [
+        "flowchart TD\nF[Use Mixin with @content]\n",
+        "flowchart TD\nA@{ shape: rect } --> B\n",
+        "flowchart TD\nA e1@--> B\n",
+        "graph TB\nsubgraph Broker 1\n    P[a]\nend\n",
+    ] {
+        block_on(engine.parse_diagram(valid, ParseOptions::strict()))
+            .expect("valid Mermaid flowchart")
+            .expect("flowchart detected");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_unique_edge_ids_with_groups() {
     let engine = Engine::new();
 
@@ -2128,7 +2159,7 @@ fn parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec() {
     .unwrap_err();
     assert!(
         err.to_string()
-            .contains("Unterminated node label (missing `]`)")
+            .contains("Invalid text label: contains structural characters; quote it to use them")
     );
 
     let err = block_on(engine.parse_diagram(
@@ -2462,7 +2493,6 @@ fn parse_diagram_flowchart_supports_subgraph_block() {
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2484,7 +2514,6 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }, {
             "id": "Outer",
@@ -2493,7 +2522,6 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2515,7 +2543,6 @@ fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2537,7 +2564,6 @@ fn parse_diagram_flowchart_subgraph_title_with_spaces_uses_auto_id() {
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2559,10 +2585,11 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
             "classes": [],
             "styles": [],
             "dir": "TD",
-            "hasExplicitDir": true,
             "labelType": "text"
         }])
     );
+    let typed = parse_typed_flowchart(text);
+    assert!(typed.subgraphs[0].has_explicit_dir);
 }
 
 #[test]
@@ -2575,7 +2602,10 @@ fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
         .unwrap()
         .unwrap();
     assert_eq!(res.model["subgraphs"][0]["dir"], json!("LR"));
-    assert_eq!(res.model["subgraphs"][0]["hasExplicitDir"], json!(false));
+    assert!(res.model["subgraphs"][0].get("hasExplicitDir").is_none());
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
+        .expect("flowchart typed model");
+    assert!(!typed.subgraphs[0].has_explicit_dir);
 }
 
 #[test]
@@ -2594,7 +2624,6 @@ fn parse_diagram_flowchart_subgraph_tab_indentation_matches_mermaid_membership_o
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2723,7 +2752,6 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }, {
             "id": "X",
@@ -2732,7 +2760,6 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
             "classes": [],
             "styles": [],
             "dir": null,
-            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );

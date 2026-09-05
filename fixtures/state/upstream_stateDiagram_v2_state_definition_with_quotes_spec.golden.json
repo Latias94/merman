@@ -96,8 +96,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
