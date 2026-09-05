@@ -24,12 +24,20 @@ fn swimlane_cluster_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
 }
 
 fn compile_swimlane_cluster_theme(style: ThemeStylePatch) -> DiagramTheme {
+    compile_swimlane_cluster_theme_with_variant(None, style)
+}
+
+fn compile_swimlane_cluster_theme_with_variant(
+    variant: Option<merman_render::diagram_theme::ThemeVariant>,
+    style: ThemeStylePatch,
+) -> DiagramTheme {
+    let mut rule =
+        ThemeRule::new(ThemeTarget::Cluster, style).for_family(DiagramFamilyId::SWIMLANE);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
     DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                ThemeRule::new(ThemeTarget::Cluster, style).for_family(DiagramFamilyId::SWIMLANE),
-            )),
-        )
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
         .expect("compile Swimlane Cluster theme")
 }
 
@@ -437,5 +445,57 @@ fn swimlane_cluster_transparent_paint_reaches_classic_lane_terminals() {
         );
         assert_eq!(fill, "none", "{class_name}");
         assert_eq!(stroke, "none", "{class_name}");
+    }
+}
+
+#[test]
+fn swimlane_cluster_explicit_default_paint_reaches_terminal_writers_and_evidence() {
+    for (fill, stroke, expected_fill, expected_stroke) in [
+        (
+            CanvasPaint::solid("#ef4444").expect("valid explicit-Default fill"),
+            CanvasPaint::solid("#2563eb").expect("valid explicit-Default stroke"),
+            "#ef4444",
+            "#2563eb",
+        ),
+        (
+            CanvasPaint::Transparent,
+            CanvasPaint::Transparent,
+            "none",
+            "none",
+        ),
+    ] {
+        let theme = compile_swimlane_cluster_theme_with_variant(
+            Some(merman_render::diagram_theme::ThemeVariant::Default),
+            ThemeStylePatch::default()
+                .with_fill(fill)
+                .with_stroke(stroke),
+        );
+        let rendered = render_swimlane_cluster(
+            SWIMLANE_SOURCE,
+            &theme,
+            MermaidConfig::from_value(json!({"layout": "swimlane"})),
+        );
+        let document = roxmltree::Document::parse(rendered.svg())
+            .expect("valid explicitly default-themed Swimlane SVG");
+        for class_name in ["swimlane-body", "swimlane-title"] {
+            let (style, fill, stroke) = lane_rect_style(&document, class_name);
+            assert!(
+                style.contains(&format!("fill:{expected_fill} !important")),
+                "{class_name}: {style}"
+            );
+            assert!(
+                style.contains(&format!("stroke:{expected_stroke} !important")),
+                "{class_name}: {style}"
+            );
+            assert_eq!(fill, expected_fill, "{class_name}");
+            assert_eq!(stroke, expected_stroke, "{class_name}");
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

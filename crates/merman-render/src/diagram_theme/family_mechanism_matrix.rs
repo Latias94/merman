@@ -1501,7 +1501,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::SWIMLANE
         && target == ThemeTarget::Cluster
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -4501,9 +4506,7 @@ mod tests {
             assert!(
                 compile_rule_routes(DiagramFamilyId::SWIMLANE, 0, &explicit_default)
                     .iter()
-                    .all(|route| {
-                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-                    })
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
             );
         }
 
@@ -5637,7 +5640,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 92);
+        assert_eq!(qualified.len(), 96);
         assert_eq!(
             qualified
                 .iter()
