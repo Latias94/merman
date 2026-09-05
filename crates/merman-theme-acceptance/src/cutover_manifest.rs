@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 42;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 43;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xb3, 0x4a, 0x73, 0xc8, 0x54, 0xf1, 0x6a, 0x51, 0xa8, 0x6e, 0x96, 0x7f, 0xf6, 0xc0, 0xad, 0x4d,
-    0xf8, 0x53, 0x74, 0xeb, 0x85, 0x4f, 0xa3, 0x02, 0x7d, 0x08, 0x73, 0x0a, 0x61, 0x7b, 0x77, 0x06,
+    0x49, 0xd3, 0xb6, 0x6d, 0x1b, 0x76, 0x05, 0xf4, 0x04, 0xd6, 0xf8, 0xa0, 0x38, 0x8b, 0x28, 0x43,
+    0xb2, 0x9f, 0xbc, 0x5d, 0x72, 0x01, 0x74, 0x3a, 0xd5, 0x7e, 0x58, 0xad, 0xce, 0x58, 0x11, 0xd1,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 244] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 246] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1772,6 +1772,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 244] = [
     route(
         DiagramFamilyId::GIT_GRAPH,
         ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
@@ -2883,7 +2899,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 42);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 43);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

@@ -83,11 +83,23 @@ fn gitgraph_edge_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> Diag
 }
 
 fn gitgraph_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
-    gitgraph_edge_rules_theme([ThemeRule::new(
+    gitgraph_edge_stroke_theme_variant(stroke, None)
+}
+
+fn gitgraph_edge_stroke_theme_variant(
+    stroke: CanvasPaint,
+    variant: Option<ThemeVariant>,
+) -> DiagramTheme {
+    let rule = ThemeRule::new(
         ThemeTarget::Edge,
         ThemeStylePatch::default().with_stroke(stroke),
     )
-    .for_family(DiagramFamilyId::GIT_GRAPH)])
+    .for_family(DiagramFamilyId::GIT_GRAPH);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    gitgraph_edge_rules_theme([rule])
 }
 
 fn gitgraph_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
@@ -797,49 +809,54 @@ fn render_source_and_site_config_cases(
 
 #[test]
 fn gitgraph_edge_stroke_reaches_every_visible_branch_line_without_touching_arrows() {
-    for (case, stroke, expected_stroke) in [
-        (
-            "solid",
-            CanvasPaint::solid("#123456").expect("valid GitGraph Edge stroke"),
-            "#123456",
-        ),
-        ("transparent", CanvasPaint::Transparent, "transparent"),
+    for (selector, variant) in [
+        ("unqualified", None),
+        ("default", Some(ThemeVariant::Default)),
     ] {
-        let theme = gitgraph_edge_stroke_theme(stroke);
-        let rendered = render_gitgraph_with_theme_and_engine(
-            TWO_BRANCHES,
-            &theme,
-            Engine::new(),
-            &format!("git-edge-{case}"),
-        );
-        let document =
-            roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph Edge stroke SVG");
-        let branches = branch_lines(&document);
-
-        assert_eq!(branches.len(), 2, "{case}");
-        for branch in branches {
-            assert_eq!(
-                branch.attribute("style"),
-                Some(format!("stroke:{expected_stroke};").as_str()),
-                "{case}: every actual .branch line must carry the direct terminal stroke",
+        for (case, stroke, expected_stroke) in [
+            (
+                "solid",
+                CanvasPaint::solid("#123456").expect("valid GitGraph Edge stroke"),
+                "#123456",
+            ),
+            ("transparent", CanvasPaint::Transparent, "transparent"),
+        ] {
+            let theme = gitgraph_edge_stroke_theme_variant(stroke, variant);
+            let rendered = render_gitgraph_with_theme_and_engine(
+                TWO_BRANCHES,
+                &theme,
+                Engine::new(),
+                &format!("git-edge-{selector}-{case}"),
             );
-        }
-        assert!(
-            document
-                .descendants()
-                .filter(|node| node.has_tag_name("path") && has_class(node, "arrow"))
-                .all(|arrow| arrow
-                    .attribute("style")
-                    .is_none_or(|style| !style.contains(expected_stroke))),
-            "{case}: .arrowN belongs to the Node palette and must not count as Edge.stroke",
-        );
+            let document =
+                roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph Edge stroke SVG");
+            let branches = branch_lines(&document);
 
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1, "{case}");
-        assert_eq!(evidence.applied_count(), 1, "{case}");
-        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+            assert_eq!(branches.len(), 2, "{selector}/{case}");
+            for branch in branches {
+                assert_eq!(
+                    branch.attribute("style"),
+                    Some(format!("stroke:{expected_stroke};").as_str()),
+                    "{selector}/{case}: every actual .branch line must carry the direct terminal stroke",
+                );
+            }
+            assert!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path") && has_class(node, "arrow"))
+                    .all(|arrow| arrow
+                        .attribute("style")
+                        .is_none_or(|style| !style.contains(expected_stroke))),
+                "{selector}/{case}: .arrowN belongs to the Node palette and must not count as Edge.stroke",
+            );
+
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{selector}/{case}");
+            assert_eq!(evidence.applied_count(), 1, "{selector}/{case}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{selector}/{case}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{selector}/{case}");
+        }
     }
 }
 
@@ -1209,31 +1226,29 @@ fn gitgraph_edge_stroke_rejects_ordinal_variant_clear_gradient_and_pattern_route
         ),
     ];
 
-    let legacy_theme = gitgraph_edge_rules_theme([ThemeRule::new(ThemeTarget::Edge, solid())
-        .with_variant(ThemeVariant::Default)
-        .for_family(DiagramFamilyId::GIT_GRAPH)]);
-    let legacy_error = match try_render_gitgraph_with_theme_and_engine(
+    let default_theme = gitgraph_edge_stroke_theme_variant(
+        CanvasPaint::solid("#123456").expect("valid GitGraph default Edge stroke"),
+        Some(ThemeVariant::Default),
+    );
+    let default_rendered = try_render_gitgraph_with_theme_and_engine(
         TWO_BRANCHES,
-        &legacy_theme,
+        &default_theme,
         Engine::new(),
-        "git-edge-qualified-legacy",
-    ) {
-        Ok(_) => panic!("the qualified GitGraph edge route must remain a compatibility residual"),
-        Err(error) => error,
-    };
-    match legacy_error {
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id,
-            residual_count,
-        } => {
-            assert_eq!(family_id, DiagramFamilyId::GIT_GRAPH);
-            assert_eq!(
-                residual_count, 1,
-                "the qualified branch route must not resurrect the dead marker fallback"
-            );
-        }
-        other => panic!("expected GitGraph legacy compatibility residual, got {other}"),
-    }
+        "git-edge-qualified-default",
+    )
+    .expect("explicit Default GitGraph Edge stroke must use the typed terminal");
+    let default_document =
+        roxmltree::Document::parse(default_rendered.svg()).expect("valid GitGraph default SVG");
+    assert!(
+        branch_lines(&default_document)
+            .iter()
+            .all(|branch| { branch.attribute("style") == Some("stroke:#123456;") })
+    );
+    let default_evidence =
+        merman_render::__private::family_evidence(default_rendered.into_completion().report());
+    assert_eq!(default_evidence.applied_count(), 1);
+    assert_eq!(default_evidence.not_applicable_count(), 0);
+    assert_eq!(default_evidence.theme_residual_count(), 0);
 
     for rule in unsupported_cases {
         let theme = gitgraph_edge_rules_theme([rule.for_family(DiagramFamilyId::GIT_GRAPH)]);
@@ -1280,20 +1295,23 @@ fn gitgraph_qualified_edge_stroke_accounts_only_real_default_occurrence_winners(
     )
     .expect("render qualified GitGraph edge winners");
 
+    let document =
+        roxmltree::Document::parse(rendered.svg()).expect("valid qualified GitGraph Edge SVG");
     assert!(
-        gitgraph_stylesheet(rendered.svg())
-            .contains("#git-edge-qualified-winners .branch{stroke-width:1;stroke:#222222;"),
-        "the final Default winner must own the compatibility branch stroke",
+        branch_lines(&document)
+            .iter()
+            .all(|branch| branch.attribute("style") == Some("stroke:#222222;")),
+        "the final Default winner must own every typed branch stroke",
     );
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.required_count(), 3);
+    assert_eq!(evidence.accounted_count(), 3);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

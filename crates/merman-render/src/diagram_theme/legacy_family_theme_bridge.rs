@@ -1693,6 +1693,22 @@ mod tests {
     }
 
     #[test]
+    fn direct_gitgraph_default_edge_stroke_does_not_create_a_compatibility_overlay() {
+        let rule = ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_stroke(solid("#22c55e")),
+        )
+        .with_variant(ThemeVariant::Default)
+        .for_family(DiagramFamilyId::GIT_GRAPH);
+        let bridge =
+            bridge(&DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)));
+        let artifact = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+    }
+
+    #[test]
     fn typed_treemap_title_fill_suppresses_only_the_title_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()

@@ -1610,11 +1610,16 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if matches!(
-        family,
-        DiagramFamilyId::MINDMAP | DiagramFamilyId::GIT_GRAPH
-    ) && target == ThemeTarget::Edge
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+    if ((family == DiagramFamilyId::MINDMAP
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None }))
+        || (family == DiagramFamilyId::GIT_GRAPH
+            && matches!(
+                selector,
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default)
+                }
+            )))
+        && target == ThemeTarget::Edge
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
@@ -2854,7 +2859,7 @@ mod tests {
                 let expected_qualified = if family == DiagramFamilyId::MINDMAP {
                     FamilyThemeDisposition::Unsupported
                 } else {
-                    FamilyThemeDisposition::LegacyCompatibility
+                    FamilyThemeDisposition::TypedAdapter
                 };
                 assert_eq!(
                     classify_rule_facet(
