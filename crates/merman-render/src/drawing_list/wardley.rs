@@ -34,6 +34,13 @@ use std::collections::BTreeMap;
 
 type WardleyPair = FamilyPair<WardleyDiagramRenderModel, WardleyDiagramLayout>;
 
+#[derive(Debug, Clone, Copy)]
+enum WardleyMarker {
+    LinkStart,
+    LinkEnd,
+    TrendEnd,
+}
+
 pub(crate) fn build_wardley_document(
     pair: &WardleyPair,
     metadata: &ParseMetadata,
@@ -64,6 +71,9 @@ struct WardleyBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
 }
 
 impl<'a> WardleyBuilder<'a> {
@@ -125,6 +135,12 @@ impl<'a> WardleyBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            semantic_classes: BTreeMap::from([(
+                "wardley.document".to_string(),
+                "wardley-map".to_string(),
+            )]),
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
         })
     }
 
@@ -153,8 +169,18 @@ impl<'a> WardleyBuilder<'a> {
         self.emit_nodes()?;
         self.emit_annotations()?;
         self.emit_notes()?;
-        self.emit_arrows("wardley.accelerator", &self.layout.accelerators)?;
-        self.emit_arrows("wardley.deaccelerator", &self.layout.deaccelerators)?;
+        self.emit_arrows(
+            "wardley.accelerators",
+            "wardley-accelerators",
+            "wardley.accelerator",
+            &self.layout.accelerators,
+        )?;
+        self.emit_arrows(
+            "wardley.deaccelerators",
+            "wardley-deaccelerators",
+            "wardley.deaccelerator",
+            &self.layout.deaccelerators,
+        )?;
 
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
@@ -173,7 +199,7 @@ impl<'a> WardleyBuilder<'a> {
                 json!({
                     "diagram_type": self.metadata.diagram_type,
                     "text_mode": "plain_host_text",
-                    "markers": "expanded_triangle",
+                    "markers": "expanded_svg_marker_geometry",
                     "rotated_labels": "transform_commands",
                     "use_max_width": self.layout.use_max_width,
                 }),
@@ -187,12 +213,30 @@ impl<'a> WardleyBuilder<'a> {
                 family: RenderFamilyKind::Wardley,
                 body: SvgStructureBody::Wardley(WardleySvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self.layout.use_max_width,
+                    acc_title: self
+                        .model
+                        .acc_title
+                        .clone()
+                        .filter(|value| !value.is_empty()),
+                    acc_description: self
+                        .model
+                        .acc_descr
+                        .clone()
+                        .filter(|value| !value.is_empty()),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
                 }),
             },
         })
     }
 
     fn emit_background(&mut self) -> Result<()> {
+        self.path_classes.insert(
+            "wardley.background".to_string(),
+            "wardley-background".to_string(),
+        );
         self.add_path(
             "wardley.background",
             rect_path(0.0, 0.0, self.layout.width, self.layout.height, 0.0),
@@ -208,6 +252,8 @@ impl<'a> WardleyBuilder<'a> {
         let Some(title) = self.layout.title.as_ref() else {
             return Ok(());
         };
+        self.text_classes
+            .insert("wardley.title".to_string(), "wardley-title".to_string());
         self.emit_text_group(
             "wardley.title",
             title,
@@ -219,6 +265,7 @@ impl<'a> WardleyBuilder<'a> {
     }
 
     fn emit_axes(&mut self) -> Result<()> {
+        self.begin_container("wardley.axes", "wardley-axes");
         self.add_line(
             "wardley.axis.x",
             self.layout.axes.x_axis,
@@ -233,6 +280,10 @@ impl<'a> WardleyBuilder<'a> {
             1.0,
             &[],
         )?;
+        self.text_classes.insert(
+            "wardley.axis.x.label".to_string(),
+            "wardley-axis-label wardley-axis-label-x".to_string(),
+        );
         self.emit_text_group(
             "wardley.axis.x.label",
             &self.layout.axes.x_label,
@@ -241,6 +292,10 @@ impl<'a> WardleyBuilder<'a> {
             SemanticRole::Label,
             None,
         )?;
+        self.text_classes.insert(
+            "wardley.axis.y.label".to_string(),
+            "wardley-axis-label wardley-axis-label-y".to_string(),
+        );
         self.emit_text_group(
             "wardley.axis.y.label",
             &self.layout.axes.y_label,
@@ -248,10 +303,16 @@ impl<'a> WardleyBuilder<'a> {
             true,
             SemanticRole::Label,
             None,
-        )
+        )?;
+        self.end_container();
+        Ok(())
     }
 
     fn emit_stages(&mut self) -> Result<()> {
+        if self.layout.stages.is_empty() {
+            return Ok(());
+        }
+        self.begin_container("wardley.stages", "wardley-stages");
         for (index, stage) in self.layout.stages.iter().enumerate() {
             if let Some(divider) = stage.divider {
                 self.commands.push(DrawingCommand::Save);
@@ -266,6 +327,10 @@ impl<'a> WardleyBuilder<'a> {
                 )?;
                 self.commands.push(DrawingCommand::Restore);
             }
+            self.text_classes.insert(
+                format!("wardley.stage.{index}"),
+                "wardley-stage-label".to_string(),
+            );
             self.emit_text_group(
                 &format!("wardley.stage.{index}"),
                 &stage.label,
@@ -275,10 +340,15 @@ impl<'a> WardleyBuilder<'a> {
                 Some(stage.name.clone()),
             )?;
         }
+        self.end_container();
         Ok(())
     }
 
     fn emit_grid(&mut self) -> Result<()> {
+        if self.layout.grid.is_empty() {
+            return Ok(());
+        }
+        self.begin_container("wardley.grid", "wardley-grid");
         for (index, grid) in self.layout.grid.iter().enumerate() {
             self.add_line(
                 format!("wardley.grid.{index}.vertical"),
@@ -295,6 +365,7 @@ impl<'a> WardleyBuilder<'a> {
                 &[2.0, 6.0],
             )?;
         }
+        self.end_container();
         Ok(())
     }
 
@@ -302,7 +373,12 @@ impl<'a> WardleyBuilder<'a> {
         if self.model.pipelines.is_empty() {
             return Ok(());
         }
+        self.begin_container("wardley.pipelines", "wardley-pipelines");
         for (index, pipeline) in self.layout.pipeline_boxes.iter().enumerate() {
+            self.path_classes.insert(
+                format!("wardley.pipeline.{index}.box"),
+                "wardley-pipeline-box".to_string(),
+            );
             self.add_rect(
                 format!("wardley.pipeline.{index}.box"),
                 pipeline.rect,
@@ -310,7 +386,13 @@ impl<'a> WardleyBuilder<'a> {
                 Some(stroke(self.axis, 1.5)),
             )?;
         }
+        self.end_container();
+        self.begin_container("wardley.pipeline-links", "wardley-pipeline-links");
         for (index, link) in self.layout.pipeline_links.iter().enumerate() {
+            self.path_classes.insert(
+                format!("wardley.pipeline.{index}.link"),
+                "wardley-pipeline-evolution-link".to_string(),
+            );
             self.add_line(
                 format!("wardley.pipeline.{index}.link"),
                 link.line,
@@ -319,16 +401,27 @@ impl<'a> WardleyBuilder<'a> {
                 &[4.0, 4.0],
             )?;
         }
+        self.end_container();
         Ok(())
     }
 
     fn emit_links(&mut self) -> Result<()> {
+        self.begin_container("wardley.links", "wardley-links");
         let mut labels = Vec::new();
         for (index, link) in self.layout.links.iter().enumerate() {
             let semantic_id = format!("wardley.link.{index}");
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
+            self.path_classes.insert(
+                format!("{semantic_id}.line"),
+                if link.dashed {
+                    "wardley-link wardley-link--dashed"
+                } else {
+                    "wardley-link"
+                }
+                .to_string(),
+            );
             self.add_line(
                 format!("{semantic_id}.line"),
                 link.line,
@@ -337,18 +430,20 @@ impl<'a> WardleyBuilder<'a> {
                 link.dashed.then_some([6.0, 6.0].as_slice()).unwrap_or(&[]),
             )?;
             if link.markers.start {
-                self.add_arrowhead(
+                self.add_marker(
                     format!("{semantic_id}.start"),
                     Point::new(link.line.x1, link.line.y1),
-                    Point::new(link.line.x2, link.line.y2),
+                    Point::new(link.line.x2 - link.line.x1, link.line.y2 - link.line.y1),
+                    WardleyMarker::LinkStart,
                     self.link_stroke,
                 )?;
             }
             if link.markers.end {
-                self.add_arrowhead(
+                self.add_marker(
                     format!("{semantic_id}.end"),
                     Point::new(link.line.x2, link.line.y2),
-                    Point::new(link.line.x1, link.line.y1),
+                    Point::new(link.line.x2 - link.line.x1, link.line.y2 - link.line.y1),
+                    WardleyMarker::LinkEnd,
                     self.link_stroke,
                 )?;
             }
@@ -365,6 +460,10 @@ impl<'a> WardleyBuilder<'a> {
             }
         }
         for (index, label) in labels {
+            self.text_classes.insert(
+                format!("wardley.link.{index}.label"),
+                "wardley-link-label".to_string(),
+            );
             self.emit_text_group(
                 &format!("wardley.link.{index}.label"),
                 label,
@@ -374,15 +473,19 @@ impl<'a> WardleyBuilder<'a> {
                 None,
             )?;
         }
+        self.end_container();
         Ok(())
     }
 
     fn emit_trends(&mut self) -> Result<()> {
+        self.begin_container("wardley.trends", "wardley-trends");
         for (index, trend) in self.layout.trends.iter().enumerate() {
             let semantic_id = format!("wardley.trend.{index}");
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
+            self.path_classes
+                .insert(format!("{semantic_id}.line"), "wardley-trend".to_string());
             self.add_line(
                 format!("{semantic_id}.line"),
                 trend.line,
@@ -390,10 +493,11 @@ impl<'a> WardleyBuilder<'a> {
                 1.0,
                 &[4.0, 4.0],
             )?;
-            self.add_arrowhead(
+            self.add_marker(
                 format!("{semantic_id}.end"),
                 Point::new(trend.line.x2, trend.line.y2),
-                Point::new(trend.line.x1, trend.line.y1),
+                Point::new(trend.line.x2 - trend.line.x1, trend.line.y2 - trend.line.y1),
+                WardleyMarker::TrendEnd,
                 self.evolution_stroke,
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -405,12 +509,19 @@ impl<'a> WardleyBuilder<'a> {
                 link: None,
             });
         }
+        self.end_container();
         Ok(())
     }
 
     fn emit_nodes(&mut self) -> Result<()> {
+        self.begin_container("wardley.nodes", "wardley-nodes");
         for (index, node) in self.layout.nodes.iter().enumerate() {
             let semantic_id = format!("wardley.node.{index}");
+            let class = node.class_name.as_deref().map_or_else(
+                || "wardley-node".to_string(),
+                |class_name| format!("wardley-node wardley-node--{class_name}"),
+            );
+            self.semantic_classes.insert(semantic_id.clone(), class);
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
@@ -437,6 +548,10 @@ impl<'a> WardleyBuilder<'a> {
                 WardleyNodeShapeLayout::Anchor | WardleyNodeShapeLayout::None => {}
             }
             if let Some(inertia) = node.inertia {
+                self.path_classes.insert(
+                    format!("{semantic_id}.inertia"),
+                    "wardley-inertia".to_string(),
+                );
                 self.add_line(
                     format!("{semantic_id}.inertia"),
                     inertia,
@@ -450,6 +565,10 @@ impl<'a> WardleyBuilder<'a> {
                 Some("anchor") => Color::rgba(0, 0, 0, 255),
                 _ => self.component_label,
             };
+            self.text_classes.insert(
+                format!("{semantic_id}.label"),
+                "wardley-node-label".to_string(),
+            );
             self.emit_text_group(
                 &format!("{semantic_id}.label"),
                 &node.label_layout,
@@ -467,6 +586,7 @@ impl<'a> WardleyBuilder<'a> {
                 link: None,
             });
         }
+        self.end_container();
         Ok(())
     }
 
@@ -476,47 +596,65 @@ impl<'a> WardleyBuilder<'a> {
         overlay: &WardleySourceOverlayLayout,
     ) -> Result<()> {
         match overlay {
-            WardleySourceOverlayLayout::Build { circle } => self.add_circle(
-                format!("{semantic_id}.overlay.build"),
-                *circle,
-                Some(parse_color("#eee")?),
-                Some(stroke(Color::rgba(0, 0, 0, 255), 1.0)),
-            ),
-            WardleySourceOverlayLayout::Buy { circle } => self.add_circle(
-                format!("{semantic_id}.overlay.buy"),
-                *circle,
-                Some(parse_color("#ccc")?),
-                Some(stroke(self.component_stroke, 1.0)),
-            ),
-            WardleySourceOverlayLayout::Outsource { circle } => self.add_circle(
-                format!("{semantic_id}.overlay.outsource"),
-                *circle,
-                Some(parse_color("#666")?),
-                Some(stroke(self.component_stroke, 1.0)),
-            ),
+            WardleySourceOverlayLayout::Build { circle } => {
+                let id = format!("{semantic_id}.overlay.build");
+                self.path_classes
+                    .insert(id.clone(), "wardley-build-overlay".to_string());
+                self.add_circle(
+                    id,
+                    *circle,
+                    Some(parse_color("#eee")?),
+                    Some(stroke(Color::rgba(0, 0, 0, 255), 1.0)),
+                )
+            }
+            WardleySourceOverlayLayout::Buy { circle } => {
+                let id = format!("{semantic_id}.overlay.buy");
+                self.path_classes
+                    .insert(id.clone(), "wardley-buy-overlay".to_string());
+                self.add_circle(
+                    id,
+                    *circle,
+                    Some(parse_color("#ccc")?),
+                    Some(stroke(self.component_stroke, 1.0)),
+                )
+            }
+            WardleySourceOverlayLayout::Outsource { circle } => {
+                let id = format!("{semantic_id}.overlay.outsource");
+                self.path_classes
+                    .insert(id.clone(), "wardley-outsource-overlay".to_string());
+                self.add_circle(
+                    id,
+                    *circle,
+                    Some(parse_color("#666")?),
+                    Some(stroke(self.component_stroke, 1.0)),
+                )
+            }
             WardleySourceOverlayLayout::Market {
                 outer_circle,
                 connectors,
                 dots,
             } => {
+                let outer_id = format!("{semantic_id}.overlay.market");
+                self.path_classes
+                    .insert(outer_id.clone(), "wardley-market-overlay".to_string());
                 self.add_circle(
-                    format!("{semantic_id}.overlay.market"),
+                    outer_id,
                     *outer_circle,
                     Some(self.white),
                     Some(stroke(self.component_stroke, 1.0)),
                 )?;
                 for (index, connector) in connectors.iter().enumerate() {
-                    self.add_line(
-                        format!("{semantic_id}.overlay.market.connector.{index}"),
-                        *connector,
-                        self.component_stroke,
-                        1.0,
-                        &[],
-                    )?;
+                    let id = format!("{semantic_id}.overlay.market.connector.{index}");
+                    self.path_classes
+                        .insert(id.clone(), "wardley-market-line".to_string());
+                    self.add_line(id, *connector, self.component_stroke, 1.0, &[])?;
                 }
                 for (index, dot) in dots.iter().enumerate() {
+                    let id = format!("{semantic_id}.overlay.market.dot.{index}");
+                    self.path_classes
+                        .insert(id.clone(), "wardley-market-dot".to_string());
                     self.add_circle(
-                        format!("{semantic_id}.overlay.market.dot.{index}"),
+                        id,
                         *dot,
                         Some(self.white),
                         Some(stroke(self.component_stroke, 2.0)),
@@ -531,12 +669,17 @@ impl<'a> WardleyBuilder<'a> {
         if self.layout.annotations.is_empty() {
             return Ok(());
         }
+        self.begin_container("wardley.annotations", "wardley-annotations");
         for (index, annotation) in self.layout.annotations.iter().enumerate() {
             let semantic_id = format!("wardley.annotation.{index}");
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
             for (segment_index, segment) in annotation.segments.iter().enumerate() {
+                self.path_classes.insert(
+                    format!("{semantic_id}.segment.{segment_index}"),
+                    "wardley-annotation-line".to_string(),
+                );
                 self.add_line(
                     format!("{semantic_id}.segment.{segment_index}"),
                     *segment,
@@ -546,6 +689,12 @@ impl<'a> WardleyBuilder<'a> {
                 )?;
             }
             for (point_index, point) in annotation.points.iter().enumerate() {
+                let point_semantic_id = format!("{semantic_id}.point.{point_index}.group");
+                self.semantic_classes
+                    .insert(point_semantic_id.clone(), "wardley-annotation".to_string());
+                self.commands.push(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: point_semantic_id.clone(),
+                });
                 self.add_circle(
                     format!("{semantic_id}.point.{point_index}"),
                     WardleyCircleLayout {
@@ -555,14 +704,15 @@ impl<'a> WardleyBuilder<'a> {
                     Some(self.white),
                     Some(stroke(self.axis, 1.5)),
                 )?;
-                self.emit_text_group(
-                    &format!("{semantic_id}.point.{point_index}.label"),
-                    &point.label,
-                    self.axis_text,
-                    true,
-                    SemanticRole::Label,
-                    None,
-                )?;
+                self.emit_text(&point.label, self.axis_text, true)?;
+                self.commands.push(DrawingCommand::EndSemanticGroup);
+                self.semantics.push(SemanticAnnotation {
+                    id: point_semantic_id,
+                    role: SemanticRole::Label,
+                    title: Some(point.label.text.clone()),
+                    description: None,
+                    link: None,
+                });
             }
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -576,6 +726,7 @@ impl<'a> WardleyBuilder<'a> {
         if let Some(annotations_box) = self.layout.annotations_box.as_ref() {
             self.emit_annotations_box(annotations_box)?;
         }
+        self.end_container();
         Ok(())
     }
 
@@ -584,6 +735,10 @@ impl<'a> WardleyBuilder<'a> {
         annotations_box: &WardleyAnnotationsBoxLayout,
     ) -> Result<()> {
         let semantic_id = "wardley.annotations-box";
+        self.semantic_classes.insert(
+            semantic_id.to_string(),
+            "wardley-annotations-box".to_string(),
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
@@ -617,6 +772,10 @@ impl<'a> WardleyBuilder<'a> {
     }
 
     fn emit_notes(&mut self) -> Result<()> {
+        if self.layout.notes.is_empty() {
+            return Ok(());
+        }
+        self.begin_container("wardley.notes", "wardley-notes");
         for (index, note) in self.layout.notes.iter().enumerate() {
             self.emit_text_group(
                 &format!("wardley.note.{index}"),
@@ -627,10 +786,21 @@ impl<'a> WardleyBuilder<'a> {
                 Some(note.text.text.clone()),
             )?;
         }
+        self.end_container();
         Ok(())
     }
 
-    fn emit_arrows(&mut self, prefix: &str, arrows: &[WardleyArrowLayout]) -> Result<()> {
+    fn emit_arrows(
+        &mut self,
+        section_id: &str,
+        section_class: &str,
+        prefix: &str,
+        arrows: &[WardleyArrowLayout],
+    ) -> Result<()> {
+        if arrows.is_empty() {
+            return Ok(());
+        }
+        self.begin_container(section_id, section_class);
         for (index, arrow) in arrows.iter().enumerate() {
             let semantic_id = format!("{prefix}.{index}");
             self.commands.push(DrawingCommand::BeginSemanticGroup {
@@ -668,7 +838,27 @@ impl<'a> WardleyBuilder<'a> {
                 link: None,
             });
         }
+        self.end_container();
         Ok(())
+    }
+
+    fn begin_container(&mut self, semantic_id: &str, class: &str) {
+        self.semantic_classes
+            .insert(semantic_id.to_string(), class.to_string());
+        self.semantics.push(SemanticAnnotation {
+            id: semantic_id.to_string(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        });
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: semantic_id.to_string(),
+        });
+    }
+
+    fn end_container(&mut self) {
+        self.commands.push(DrawingCommand::EndSemanticGroup);
     }
 
     fn emit_text_group(
@@ -838,31 +1028,37 @@ impl<'a> WardleyBuilder<'a> {
         )
     }
 
-    fn add_arrowhead(
+    fn add_marker(
         &mut self,
         id: impl Into<String>,
-        tip: Point,
-        away_from_tip: Point,
+        origin: Point,
+        tangent: Point,
+        marker: WardleyMarker,
         color: Color,
     ) -> Result<()> {
-        let dx = tip.x - away_from_tip.x;
-        let dy = tip.y - away_from_tip.y;
-        let length = dx.hypot(dy);
+        let length = tangent.x.hypot(tangent.y);
         if !length.is_finite() || length <= f64::EPSILON {
             return Err(invalid("Wardley marker has no tangent"));
         }
-        let ux = dx / length;
-        let uy = dy / length;
-        let nx = -uy;
-        let ny = ux;
-        let base = Point::new(tip.x - ux * 6.0, tip.y - uy * 6.0);
+        let ux = tangent.x / length;
+        let uy = tangent.y / length;
+        let (points, reference_x, marker_size) = match marker {
+            WardleyMarker::LinkStart => ([(10.0, 0.0), (0.0, 5.0), (10.0, 10.0)], 1.0, 5.0),
+            WardleyMarker::LinkEnd => ([(0.0, 0.0), (10.0, 5.0), (0.0, 10.0)], 9.0, 5.0),
+            WardleyMarker::TrendEnd => ([(0.0, 0.0), (10.0, 5.0), (0.0, 10.0)], 9.0, 6.0),
+        };
+        let scale = marker_size / 10.0;
+        let transformed = points.map(|(x, y)| {
+            let local_x = (x - reference_x) * scale;
+            let local_y = (y - 5.0) * scale;
+            Point::new(
+                origin.x + ux * local_x - uy * local_y,
+                origin.y + uy * local_x + ux * local_y,
+            )
+        });
         self.add_path(
             id,
-            polygon_path(&[
-                tip,
-                Point::new(base.x + nx * 3.0, base.y + ny * 3.0),
-                Point::new(base.x - nx * 3.0, base.y - ny * 3.0),
-            ]),
+            polygon_path(&transformed),
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: Some(Paint::solid(color)),

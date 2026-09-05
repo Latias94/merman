@@ -1153,3 +1153,64 @@ fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() 
     }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[test]
+fn wardley_canonical_svg_keeps_sections_expanded_markers_and_accessibility() {
+    let svg = render_svg(
+        r#"wardley-beta
+accTitle: Platform map
+accDescr: Strategic platform evolution
+component API [0.70, 0.65] (buy)
+component Database [0.50, 0.45] (inertia)
+API +<> Database
+evolve API 0.85
+annotations [0.10, 0.20]
+annotation 1,[0.68, 0.62] "Platform boundary"
+"#,
+        "wardley-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Wardley SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("wardley"));
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-wardley-parity")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-wardley-parity")
+    );
+    for class in [
+        "wardley-map",
+        "wardley-axes",
+        "wardley-links",
+        "wardley-trends",
+        "wardley-nodes",
+        "wardley-annotations",
+    ] {
+        assert!(document.descendants().any(|node| {
+            node.attribute("class")
+                .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+        }));
+    }
+    for suffix in [".start", ".end"] {
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("path")
+                && node
+                    .attribute("data-merman-resource")
+                    .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(suffix))
+        }));
+    }
+    assert!(
+        document
+            .descendants()
+            .any(|node| { node.attribute("data-merman-semantic-id") == Some("wardley.node.0") })
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("marker"))
+    );
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

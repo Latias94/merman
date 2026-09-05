@@ -136,8 +136,18 @@ deaccelerator "Legacy Data" [0.45, 0.35]
     assert!(svg.contains(">1. User touchpoints</text>"));
     assert!(svg.contains(">Cloud Native</text>"));
     assert!(svg.contains(">Legacy Data</text>"));
-    assert!(svg.contains("link-arrow-end-wardley-feature-rich"));
-    assert!(svg.contains("link-arrow-start-wardley-feature-rich"));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node
+                .attribute("data-merman-resource")
+                .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(".end"))
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node
+                .attribute("data-merman-resource")
+                .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(".start"))
+    }));
 }
 
 #[test]
@@ -224,7 +234,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
             .children()
             .find(|node| node.has_tag_name("circle"))
             .and_then(|node| node.attribute("fill")),
-        Some("white")
+        Some("#ffffff")
     );
     assert_eq!(
         annotation_group
@@ -246,7 +256,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
             .children()
             .find(|node| node.has_tag_name("rect"))
             .and_then(|node| node.attribute("fill")),
-        Some("white")
+        Some("#ffffff")
     );
     assert_eq!(
         box_group
@@ -257,7 +267,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
     );
     assert_eq!(
         box_group
-            .children()
+            .descendants()
             .find(|node| node.has_tag_name("text"))
             .and_then(|node| node.attribute("fill")),
         Some("#111213")
@@ -279,4 +289,7 @@ component API [0.6, 0.7]
 
     assert!(svg.contains(">Frontmatter map</text>"));
     assert!(svg.contains(r#"class="wardley-title""#));
+    let document = roxmltree::Document::parse(&svg).expect("valid Wardley XML");
+    assert_eq!(document.root_element().attribute("aria-labelledby"), None);
+    assert_eq!(document.root_element().attribute("aria-describedby"), None);
 }

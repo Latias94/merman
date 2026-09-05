@@ -201,12 +201,17 @@ impl<'a> DocumentSvgEncoder<'a> {
             ));
         }
 
-        let title = self
-            .document_semantic()
-            .and_then(|semantic| semantic.title.clone());
-        let description = self
-            .document_semantic()
-            .and_then(|semantic| semantic.description.clone());
+        let (title, description) = match self.svg_body {
+            SvgStructureBody::Wardley(body) => {
+                (body.acc_title.clone(), body.acc_description.clone())
+            }
+            _ => (
+                self.document_semantic()
+                    .and_then(|semantic| semantic.title.clone()),
+                self.document_semantic()
+                    .and_then(|semantic| semantic.description.clone()),
+            ),
+        };
         let title_id = title.as_ref().map(|_| self.accessibility_id("title"));
         let description_id = description
             .as_ref()
@@ -457,6 +462,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
+            SvgStructureBody::Wardley(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
+            )),
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -688,7 +697,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             | SvgStructureBody::Requirement(_)
             | SvgStructureBody::State(_)
             | SvgStructureBody::Er(_)
-            | SvgStructureBody::XyChart(_) => {
+            | SvgStructureBody::XyChart(_)
+            | SvgStructureBody::Wardley(_) => {
                 let suffix = match suffix {
                     "description" => "desc",
                     other => other,
@@ -1059,6 +1069,8 @@ impl<'a> DocumentSvgEncoder<'a> {
         let role_class = semantic_role_class(semantic.role);
         let visible = if matches!(self.svg_body, SvgStructureBody::Er(_))
             && is_er_container_semantic(semantic_id)
+            || matches!(self.svg_body, SvgStructureBody::Wardley(_))
+                && semantic.role == SemanticRole::Group
         {
             true
         } else {
@@ -1246,6 +1258,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             SvgStructureBody::Block(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
+            SvgStructureBody::Wardley(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
             _ => None,
@@ -1580,6 +1595,46 @@ impl<'a> DocumentSvgEncoder<'a> {
                 if let Some(bounds) = rectangle_from_path(path) {
                     return self.emit_rect(path_id, bounds, style);
                 }
+            }
+        }
+        if matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if (raw_id.ends_with(".line")
+                || raw_id.contains(".axis.")
+                || raw_id.contains(".grid.")
+                || raw_id.ends_with(".divider")
+                || raw_id.ends_with(".link")
+                || raw_id.ends_with(".inertia")
+                || raw_id.contains(".connector.")
+                || raw_id.contains(".segment."))
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if (raw_id.contains(".overlay.")
+                || raw_id.contains(".point.")
+                || raw_id.ends_with(".shape"))
+                && let Some((center, radius)) = circle_from_path(path)
+            {
+                return self.emit_circle(path_id, center, radius, style);
+            }
+            if (raw_id == "wardley.background"
+                || raw_id.ends_with(".box")
+                || raw_id.ends_with(".shape"))
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                if radius > 0.0 {
+                    return self.emit_rounded_rect(path_id, bounds, radius, style);
+                }
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if (raw_id == "wardley.background"
+                || raw_id.ends_with(".box")
+                || raw_id.ends_with(".shape"))
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
             }
         }
         let path_data = {
@@ -2213,6 +2268,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        if let SvgStructureBody::Wardley(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_))
             && path_id.as_str().ends_with(".shape")
         {
@@ -2390,6 +2450,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 Some(Cow::Owned(class.clone()))
             }
             SvgStructureBody::Block(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            SvgStructureBody::Wardley(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),

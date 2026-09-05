@@ -1149,6 +1149,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Requirement
             | RenderFamilyKind::Er
             | RenderFamilyKind::Block
+            | RenderFamilyKind::Wardley
             | RenderFamilyKind::XyChart
     )
 }
