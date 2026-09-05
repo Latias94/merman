@@ -1651,6 +1651,18 @@ pub(super) fn gantt_css<I>(
 where
     I: SvgDiagramIdValue,
 {
+    gantt_css_with_overrides(diagram_id, effective_config, resolved_font_family, None)
+}
+
+pub(super) fn gantt_css_with_overrides<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+    resolved_title_color: Option<&str>,
+) -> String
+where
+    I: SvgDiagramIdValue,
+{
     let id = CssSelectorDiagramId(diagram_id);
     let parts = resolved_font_family.map_or_else(
         || info_css_parts_with_config(diagram_id, effective_config),
@@ -1659,12 +1671,12 @@ where
     let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;
     let font = resolved_font_family.unwrap_or(&theme.font_family);
-    let text_color = &theme.text_color;
+    let text_color = theme.text_color.as_str();
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;
     let section_bkg_color2 = &theme.section_bkg_color2;
     let alt_section_bkg_color = &theme.alt_section_bkg_color;
-    let title_color = &theme.title_color;
+    let title_color = resolved_title_color.unwrap_or(theme.title_color.as_str());
     let grid_color = &theme.grid_color;
     let today_line_color = &theme.today_line_color;
     let task_text_dark_color = &theme.task_text_dark_color;
@@ -1680,7 +1692,7 @@ where
     let crit_border_color = &theme.crit_border_color;
     let crit_bkg_color = &theme.crit_bkg_color;
     let vert_line_color = &theme.vert_line_color;
-    let title_text_color = &theme.title_text_color;
+    let title_text_color = resolved_title_color.unwrap_or(theme.title_text_color.as_str());
 
     fn push_outside_done_text_rules<I>(out: &mut String, id: I, class_prefix: &str, color: &str)
     where

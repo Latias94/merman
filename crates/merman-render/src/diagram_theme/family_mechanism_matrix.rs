@@ -438,6 +438,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GANTT, ThemeTarget::Task, facet) => {
             gantt_task_projections(facet, selector)
         }
+        (DiagramFamilyId::GANTT, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
+        }
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
         }
@@ -1660,6 +1663,23 @@ pub(super) fn classify_rule_facet(
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::GANTT
+        && target == ThemeTarget::Title
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -4787,6 +4807,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::GANTT,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::GANTT,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::GANTT,
                 ThemeTarget::Task,
                 Fill,
                 Transparent,
@@ -5432,7 +5466,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 74);
+        assert_eq!(qualified.len(), 76);
         assert_eq!(
             qualified
                 .iter()
@@ -5445,7 +5479,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GANTT)
                 .count(),
-            16
+            18
         );
         assert_eq!(
             qualified
@@ -5501,36 +5535,49 @@ mod tests {
             let projections = route.projections().iter().collect::<Vec<_>>();
             assert_eq!(projections.len(), 1, "route={route:?}");
             if route.family_id() == DiagramFamilyId::GANTT {
-                let expected = match (route.selector(), route.facet()) {
+                let expected = match (route.target(), route.selector(), route.facet()) {
                     (
+                        ThemeTarget::Title,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::TitleFill,
+                    (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
                         ThemeRouteCutoverFacet::Fill,
                     ) => ThemeRouteCutoverProjection::GanttTaskDefaultFill,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
                         ThemeRouteCutoverFacet::Fill,
                     ) => ThemeRouteCutoverProjection::GanttTaskActiveFill,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
                         ThemeRouteCutoverFacet::Fill,
                     ) => ThemeRouteCutoverProjection::GanttTaskSuccessFill,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
                         ThemeRouteCutoverFacet::Fill,
                     ) => ThemeRouteCutoverProjection::GanttTaskErrorFill,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
                         ThemeRouteCutoverFacet::Stroke,
                     ) => ThemeRouteCutoverProjection::GanttTaskDefaultStroke,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Active),
                         ThemeRouteCutoverFacet::Stroke,
                     ) => ThemeRouteCutoverProjection::GanttTaskActiveStroke,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Success),
                         ThemeRouteCutoverFacet::Stroke,
                     ) => ThemeRouteCutoverProjection::GanttTaskSuccessStroke,
                     (
+                        ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
                         ThemeRouteCutoverFacet::Stroke,
                     ) => ThemeRouteCutoverProjection::GanttTaskErrorStroke,

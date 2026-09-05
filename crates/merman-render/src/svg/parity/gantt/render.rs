@@ -189,13 +189,22 @@ pub(crate) fn render_gantt_diagram_svg_model(
     }
     out.checkpoint()?;
 
+    let mut task_theme_receipt = task_theme.begin_terminal_receipt();
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = gantt_css(
+    let css = gantt_css_with_overrides(
         diagram_id,
         effective_config,
         Some(task_theme.font_family_css()),
+        task_theme.title_fill_css(),
     );
+    if let Some(receipt) = task_theme_receipt.as_mut() {
+        receipt.record_global_css(
+            diagram_id.semantic_str(),
+            &css,
+            task_theme.font_family_css(),
+        );
+    }
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;
@@ -304,7 +313,6 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut tasks_in_draw_order: Vec<(usize, &crate::model::GanttTaskLayout)> =
         layout.tasks.iter().enumerate().collect();
     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
-    let mut task_theme_receipt = task_theme.begin_terminal_receipt();
     if let Some(receipt) = task_theme_receipt.as_mut() {
         receipt.record_typography_css(task_theme.font_family_css());
     }

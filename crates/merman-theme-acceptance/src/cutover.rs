@@ -240,6 +240,13 @@ Critical: crit, crit-task, 2024-01-04, 1d
 Active critical: crit, active, active-crit-task, 2024-01-05, 1d
 Done critical: crit, done, done-crit-task, 2024-01-06, 1d
 "#;
+const GANTT_TITLE_SOURCE: &str = r#"gantt
+title Cutover Gantt title
+dateFormat YYYY-MM-DD
+todayMarker off
+section Delivery
+Task: task, 2024-01-01, 1d
+"#;
 const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
     Ship release: 5: Maintainer
@@ -449,6 +456,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(GITGRAPH_EDGE_SOURCE)
+        }
+        (DiagramFamilyId::GANTT, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(GANTT_TITLE_SOURCE)
         }
         (
             DiagramFamilyId::GANTT,
@@ -1327,11 +1337,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_190_routes_and_206_artifact_witnesses() {
+    fn route_inventory_retains_194_routes_and_210_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 190);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 206);
+        assert_eq!(inventory.len(), 194);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 210);
     }
 
     #[test]

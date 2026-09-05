@@ -7,7 +7,7 @@ use merman_core::diagrams::gantt::GanttRenderTask;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
     FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedStyleProperty, ResolvedThemeStyle,
-    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
+    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -69,6 +69,13 @@ struct GanttTaskStrokeExpectation {
     owner: GanttTaskStrokeOwner,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GanttGlobalFillExpectation {
+    css: Box<str>,
+    rule_index: usize,
+    capability: ThemeCapability,
+}
+
 impl GanttTaskStrokeExpectation {
     const fn typed_rule_index(&self) -> Option<usize> {
         match self.owner {
@@ -113,6 +120,7 @@ impl GanttTaskTerminalExpectation {
 pub(crate) struct GanttTaskTheme {
     tasks: Box<[GanttTaskTerminalExpectation]>,
     font_family_css: Box<str>,
+    title_fill: Option<GanttGlobalFillExpectation>,
     typed_font_stack_requested: bool,
     typed_font_stack_active: bool,
     unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
@@ -193,8 +201,40 @@ impl GanttTaskTheme {
             }
         }
 
+        let title_config_owned = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.titleColor",
+        );
+        let title_style = theme.style_with_work_meter(
+            ThemeTarget::Title,
+            ThemeVariant::Default,
+            Some(1),
+            work_meter,
+        )?;
+        for (property, origin) in title_style.winner_rule_properties() {
+            winner_properties.insert((origin.rule_index(), property));
+        }
+        let title_fill = (!title_config_owned)
+            .then(|| {
+                resolve_direct_static_fill(
+                    theme,
+                    &title_style,
+                    &[ThemeTarget::Title],
+                    DirectStaticSelectorDomain::Default,
+                )
+            })
+            .flatten()
+            .map(|fill| {
+                let (css, rule_index, capability) = fill.into_parts();
+                GanttGlobalFillExpectation {
+                    css,
+                    rule_index,
+                    capability,
+                }
+            });
+
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let mut observations = BTreeMap::<usize, GanttTaskRuleObservation>::new();
+        let mut observations = BTreeMap::<(usize, ThemeTarget), GanttTaskRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -203,7 +243,9 @@ impl GanttTaskTheme {
                     facet,
                     ..
                 } => {
-                    let observation = observations.entry(rule_index).or_default();
+                    let observation = observations
+                        .entry((rule_index, ThemeTarget::Task))
+                        .or_default();
                     let property = resolved_style_property_for_facet(facet);
                     if !winner_properties.contains(&(rule_index, property)) {
                         continue;
@@ -262,6 +304,46 @@ impl GanttTaskTheme {
                         }
                     }
                 }
+                FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Title,
+                    facet,
+                    ..
+                } => {
+                    if !matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
+                        continue;
+                    }
+                    let observation = observations
+                        .entry((rule_index, ThemeTarget::Title))
+                        .or_default();
+                    if !winner_properties.contains(&(rule_index, ResolvedStyleProperty::Fill)) {
+                        continue;
+                    }
+                    observation.applicable = true;
+                    match route.disposition() {
+                        FamilyThemeDisposition::TypedAdapter => {
+                            if let Some(expectation) = title_fill.as_ref() {
+                                observation.pending.title_fill = true;
+                                observation
+                                    .pending
+                                    .capabilities
+                                    .insert(expectation.capability);
+                            } else if title_config_owned {
+                                observation.suppressed = true;
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        }
+                        FamilyThemeDisposition::Unsupported => {
+                            observation
+                                .residual
+                                .get_or_insert(unsupported_residual_for_facet(facet));
+                        }
+                        FamilyThemeDisposition::LegacyCompatibility => {
+                            observation.incomplete = true;
+                        }
+                    }
+                }
                 FamilyThemeMechanism::OrdinalPalette {
                     target: ThemeTarget::Task,
                 } => {
@@ -311,10 +393,10 @@ impl GanttTaskTheme {
         )?;
 
         let mut pending = BTreeMap::new();
-        for (rule_index, observation) in observations {
+        for ((rule_index, target), observation) in observations {
             let key = FamilyThemeMechanismKey::Rule {
                 index: rule_index,
-                target: ThemeTarget::Task,
+                target,
             };
             if !observation.applicable {
                 evidence.mark_not_applicable(key);
@@ -334,6 +416,7 @@ impl GanttTaskTheme {
         Ok(Self {
             tasks: task_expectations.into_boxed_slice(),
             font_family_css: typography.font_family_css,
+            title_fill,
             typed_font_stack_requested: typography.typed_font_stack_requested,
             typed_font_stack_active: typography.typed_font_stack_active,
             unsupported_typography_properties: typography.unsupported_typography_properties,
@@ -352,6 +435,7 @@ impl GanttTaskTheme {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             font_family_css: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.into(),
+            title_fill: None,
             typed_font_stack_requested: false,
             typed_font_stack_active: false,
             unsupported_typography_properties: BTreeSet::new(),
@@ -368,6 +452,10 @@ impl GanttTaskTheme {
 
     pub(crate) fn font_family_css(&self) -> &str {
         &self.font_family_css
+    }
+
+    pub(crate) fn title_fill_css(&self) -> Option<&str> {
+        self.title_fill.as_ref().map(|fill| fill.css.as_ref())
     }
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
@@ -423,7 +511,8 @@ impl GanttTaskTheme {
                 .iter()
                 .any(|task| task.fill.is_some() || task.stroke.is_some())
             || self.typed_font_stack_active
-            || !self.unsupported_typography_properties.is_empty();
+            || !self.unsupported_typography_properties.is_empty()
+            || self.title_fill.is_some();
         requires_receipt.then(|| {
             let Some(layout_occurrences) = self.layout_occurrences.get() else {
                 return GanttTaskThemeReceipt::invalid(self.task_count());
@@ -439,6 +528,8 @@ impl GanttTaskTheme {
                     expectations,
                     self.font_family_css.as_ref(),
                     self.typed_font_stack_active,
+                    self.title_fill.as_ref().map(|fill| fill.css.as_ref()),
+                    self.title_fill.as_ref().map(|fill| fill.rule_index),
                 )
             }
         })
@@ -704,12 +795,13 @@ struct GanttTaskPendingEvidence {
     radius: bool,
     fill: bool,
     stroke: bool,
+    title_fill: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
 impl GanttTaskPendingEvidence {
     const fn requires_terminal_proof(&self) -> bool {
-        self.radius || self.fill || self.stroke
+        self.radius || self.fill || self.stroke || self.title_fill
     }
 }
 
@@ -728,18 +820,24 @@ pub(crate) struct GanttTaskThemeReceipt {
     radius_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
     stroke_rules: BTreeSet<usize>,
+    expected_title_fill_css: Option<Box<str>>,
+    title_css_recorded: bool,
+    title_css_matches: bool,
+    expected_title_fill_rule: Option<usize>,
 }
 
 impl GanttTaskThemeReceipt {
     #[cfg(test)]
     fn new(expectations: Vec<GanttTaskTerminalExpectation>) -> Self {
-        Self::new_with_typography(expectations, "", false)
+        Self::new_with_typography(expectations, "", false, None, None)
     }
 
     fn new_with_typography(
         expectations: Vec<GanttTaskTerminalExpectation>,
         expected_font_family_css: &str,
         typography_required: bool,
+        expected_title_fill_css: Option<&str>,
+        expected_title_fill_rule: Option<usize>,
     ) -> Self {
         Self {
             checkpointed_tasks: vec![false; expectations.len()],
@@ -754,6 +852,10 @@ impl GanttTaskThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            expected_title_fill_css: expected_title_fill_css.map(Into::into),
+            expected_title_fill_rule,
+            title_css_recorded: false,
+            title_css_matches: true,
         }
     }
 
@@ -771,6 +873,10 @@ impl GanttTaskThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
+            expected_title_fill_css: None,
+            expected_title_fill_rule: None,
+            title_css_recorded: false,
+            title_css_matches: false,
         }
     }
 
@@ -865,6 +971,24 @@ impl GanttTaskThemeReceipt {
         }
     }
 
+    pub(crate) fn record_global_css(&mut self, diagram_id: &str, css: &str, font_family: &str) {
+        let Some(fill) = self.expected_title_fill_css.as_deref() else {
+            return;
+        };
+        if self.title_css_recorded {
+            self.title_css_matches = false;
+            return;
+        }
+        self.title_css_recorded = true;
+        let expected_section = format!(
+            "#{diagram_id} .sectionTitle0{{fill:{fill};}}#{diagram_id} .sectionTitle1{{fill:{fill};}}#{diagram_id} .sectionTitle2{{fill:{fill};}}#{diagram_id} .sectionTitle3{{fill:{fill};}}"
+        );
+        let expected_title = format!(
+            "#{diagram_id} .titleText{{text-anchor:middle;font-size:18px;fill:{fill};font-family:{font_family};}}"
+        );
+        self.title_css_matches = css.contains(&expected_section) && css.contains(&expected_title);
+    }
+
     fn has_visible_typography(&self) -> bool {
         self.typography_text_count != 0
     }
@@ -877,6 +1001,8 @@ impl GanttTaskThemeReceipt {
                 .checkpointed_tasks
                 .iter()
                 .all(|checkpointed| *checkpointed)
+            && (self.expected_title_fill_css.is_none()
+                || (self.title_css_recorded && self.title_css_matches))
     }
 
     fn proves_rule(&self, rule_index: usize, pending: &GanttTaskPendingEvidence) -> bool {
@@ -884,6 +1010,10 @@ impl GanttTaskThemeReceipt {
             && (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
             && (!pending.stroke || self.stroke_rules.contains(&rule_index))
+            && (!pending.title_fill
+                || (self.expected_title_fill_rule == Some(rule_index)
+                    && self.title_css_recorded
+                    && self.title_css_matches))
     }
 
     fn proves_typography(&self) -> bool {

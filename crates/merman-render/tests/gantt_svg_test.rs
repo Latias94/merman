@@ -86,6 +86,17 @@ fn gantt_task_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     ))
 }
 
+fn gantt_title_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(fill),
+    );
+    gantt_task_rule_theme(match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    })
+}
+
 fn gantt_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_typography(
@@ -569,6 +580,46 @@ fn gantt_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
         }),
         "typed Gantt task label must survive the strict terminal receipt"
     );
+}
+
+#[test]
+fn gantt_title_fill_reaches_section_and_diagram_title_css() {
+    let source = "gantt\ntitle Theme title\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d";
+    for variant in [None, Some(ThemeVariant::Default)] {
+        let svg = render_gantt_svg_from_text_with_theme(
+            source,
+            &gantt_title_fill_theme(
+                CanvasPaint::solid("#123456").expect("valid title fill"),
+                variant,
+            ),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid themed Gantt SVG XML");
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("themed Gantt SVG must include its stylesheet");
+        assert!(
+            stylesheet.contains(
+                "#gantt-config .sectionTitle0{fill:#123456;}#gantt-config .sectionTitle1{fill:#123456;}#gantt-config .sectionTitle2{fill:#123456;}#gantt-config .sectionTitle3{fill:#123456;}"
+            ),
+            "section title CSS must consume typed Title.fill: {stylesheet}"
+        );
+        assert!(
+            stylesheet.contains(
+                "#gantt-config .titleText{text-anchor:middle;font-size:18px;fill:#123456;font-family:"
+            ),
+            "diagram title CSS must consume typed Title.fill: {stylesheet}"
+        );
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class") == Some("titleText")
+                    && node.text() == Some("Theme title")
+            }),
+            "typed Gantt title route must retain the visible title terminal"
+        );
+    }
 }
 
 #[test]
