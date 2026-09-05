@@ -242,56 +242,30 @@ impl<'a> FlowchartSemanticContext<'a> {
                         Ok(value) => value,
                         Err(error) => return Ok(Err(error)),
                     };
+                    // Mermaid checks subgraph metadata before edge metadata. This matters when
+                    // an id is shared by a subgraph and a user-defined edge.
+                    let routed_to_subgraph =
+                        active_subgraphs.get(target).is_some_and(|&subgraph_index| {
+                            self.apply_shape_data_to_subgraph(subgraph_index, target, value)
+                        });
+                    if routed_to_subgraph
+                        && (value.get("view").is_some() || seen_edge_indices.contains_key(target))
+                    {
+                        continue;
+                    }
+
                     if let Some(indices) = seen_edge_indices.get(target) {
                         Self::apply_shape_data_to_edges(self.edges, self.control, indices, value)?;
                         continue;
                     }
 
-                    // Mermaid routes `id@{ view: collapsed }` to an existing subgraph
-                    // declaration instead of creating a same-named vertex. Keep that metadata
-                    // in the parser-owned render context so compatibility JSON stays unchanged.
-                    if active_subgraphs.contains_key(target)
-                        && value
-                            .get("view")
-                            .and_then(serde_json::Value::as_str)
-                            .is_some()
-                    {
-                        match value
-                            .get("view")
-                            .and_then(serde_json::Value::as_str)
-                            .map(str::trim)
-                        {
-                            Some("collapsed") => {
-                                self.collapsed_subgraphs.insert(target.clone());
-                            }
-                            Some("expanded") => {
-                                self.collapsed_subgraphs.remove(target);
-                            }
-                            _ => {}
-                        }
-                        continue;
-                    }
-
+                    // The Jison grammar calls addVertex once for the node and once for its
+                    // shapeData. Preserve both calls because Mermaid derives DOM ids from this
+                    // sequence even though they update the same typed node.
                     self.vertex_calls.push(target.clone());
                     self.vertex_calls.push(target.clone());
                     seen_vertex_ids.insert(target.clone());
                     vertex_css.entry(target.clone()).or_default();
-                    if active_subgraphs.contains_key(target) {
-                        // An explicit shapeData statement upgrades an earlier routing anchor to
-                        // an authored declaration. Keep the authored fields in the typed model;
-                        // the renderer decides whether the visible projection remains
-                        // group-first.
-                        let idx = self.ensure_authored_node(target);
-                        if let Err(error) =
-                            apply_shape_data_value_to_node(&mut self.nodes[idx], value)
-                        {
-                            return Ok(Err(Error::diagram_parse_fallback(
-                                self.diagram_type.to_string(),
-                                error,
-                            )));
-                        }
-                        continue;
-                    }
                     let idx = self.ensure_authored_node(target);
                     if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value)
                     {
@@ -389,6 +363,24 @@ impl<'a> FlowchartSemanticContext<'a> {
             if index % 128 == 0 {
                 self.control.checkpoint()?;
             }
+            if let Some(yaml) = node.shape_data.as_deref()
+                && let Some(&subgraph_index) = active_subgraphs.get(&node.id)
+            {
+                let value = match Self::shape_data_value(
+                    self.shape_data_documents,
+                    self.diagram_type,
+                    yaml,
+                ) {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error)),
+                };
+                if self.apply_shape_data_to_subgraph(subgraph_index, &node.id, value)
+                    && (value.get("view").is_some() || seen_edge_indices.contains_key(&node.id))
+                {
+                    continue;
+                }
+            }
+
             if let Some(indices) = seen_edge_indices.get(&node.id) {
                 if let Some(yaml) = node.shape_data.as_deref() {
                     let value = match Self::shape_data_value(
@@ -419,26 +411,12 @@ impl<'a> FlowchartSemanticContext<'a> {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
                 };
-                if !active_subgraphs.contains_key(&node.id) {
-                    let idx = self.ensure_authored_node(&node.id);
-                    if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value)
-                    {
-                        return Ok(Err(Error::diagram_parse_fallback(
-                            self.diagram_type.to_string(),
-                            error,
-                        )));
-                    }
-                } else {
-                    // Preserve the authored shapeData in the model while leaving visibility to
-                    // the group-first projection layer.
-                    let idx = self.ensure_authored_node(&node.id);
-                    if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value)
-                    {
-                        return Ok(Err(Error::diagram_parse_fallback(
-                            self.diagram_type.to_string(),
-                            error,
-                        )));
-                    }
+                let idx = self.ensure_authored_node(&node.id);
+                if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], value) {
+                    return Ok(Err(Error::diagram_parse_fallback(
+                        self.diagram_type.to_string(),
+                        error,
+                    )));
                 }
             }
         }
@@ -536,6 +514,43 @@ impl<'a> FlowchartSemanticContext<'a> {
                 format!("Invalid shapeData: {error}"),
             )),
         }
+    }
+
+    fn apply_shape_data_to_subgraph(
+        &mut self,
+        subgraph_index: usize,
+        target: &str,
+        value: &serde_json::Value,
+    ) -> bool {
+        let Some(map) = value.as_object() else {
+            return false;
+        };
+        let Some(subgraph) = self.subgraphs.get_mut(subgraph_index) else {
+            return false;
+        };
+        if subgraph.id != target {
+            return false;
+        }
+
+        let metadata = subgraph
+            .metadata
+            .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        let Some(metadata_map) = metadata.as_object_mut() else {
+            *metadata = serde_json::Value::Object(serde_json::Map::new());
+            unreachable!("subgraph metadata was replaced with an object");
+        };
+        for (key, item) in map {
+            metadata_map.insert(key.clone(), item.clone());
+        }
+
+        if map.contains_key("view") {
+            if metadata_map.get("view").and_then(serde_json::Value::as_str) == Some("collapsed") {
+                self.collapsed_subgraphs.insert(target.to_string());
+            } else {
+                self.collapsed_subgraphs.remove(target);
+            }
+        }
+        true
     }
 
     fn apply_shape_data_to_edges(

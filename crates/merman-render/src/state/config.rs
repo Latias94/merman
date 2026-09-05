@@ -137,12 +137,8 @@ impl<'a> StateConfigView<'a> {
         StateLayoutSettings {
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
-                nodesep: self
-                    .state_compat_f64("nodeSpacing")
-                    .unwrap_or(DEFAULT_STATE_NODE_SPACING),
-                ranksep: self
-                    .state_compat_f64("rankSpacing")
-                    .unwrap_or(DEFAULT_STATE_RANK_SPACING),
+                nodesep: self.layout_spacing("nodeSpacing", DEFAULT_STATE_NODE_SPACING),
+                ranksep: self.layout_spacing("rankSpacing", DEFAULT_STATE_RANK_SPACING),
                 marginx: 8.0,
                 marginy: 8.0,
                 ..Default::default()
@@ -222,8 +218,32 @@ impl<'a> StateConfigView<'a> {
         config_string(self.effective_config, &[key])
     }
 
+    fn root_compat_f64(&self, key: &str) -> Option<f64> {
+        config_f64(self.effective_config, &[key])
+    }
+
+    fn flowchart_compat_f64(&self, key: &str) -> Option<f64> {
+        config_f64(self.flowchart_config, &[key])
+    }
+
     fn state_compat_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.state_config, &[key])
+    }
+
+    fn layout_spacing(&self, key: &str, default: f64) -> f64 {
+        let renderer_spacing = self
+            .state_compat_f64(key)
+            .filter(|value| *value != 0.0)
+            .unwrap_or(default);
+        [
+            self.root_compat_f64(key),
+            Some(renderer_spacing),
+            self.flowchart_compat_f64(key),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|value| *value != 0.0)
+        .unwrap_or(default)
     }
 }
 
@@ -313,6 +333,26 @@ mod tests {
         let settings = StateConfigView::new(&deprecated_false).layout_settings("TB");
         assert!(!settings.html_labels);
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
+    }
+
+    #[test]
+    fn state_layout_settings_use_root_spacing_before_renderer_spacing() {
+        let cfg = json!({
+            "nodeSpacing": 90,
+            "rankSpacing": "91",
+            "state": {
+                "nodeSpacing": 70,
+                "rankSpacing": 80
+            },
+            "flowchart": {
+                "nodeSpacing": 11,
+                "rankSpacing": 12
+            }
+        });
+        let settings = StateConfigView::new(&cfg).layout_settings("TB");
+
+        assert_eq!(settings.graph.nodesep, 90.0);
+        assert_eq!(settings.graph.ranksep, 91.0);
     }
 
     #[test]

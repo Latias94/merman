@@ -68,7 +68,7 @@ Statements: Vec<Stmt> = {
 };
 
 StatementRest: Vec<Stmt> = {
-  <_sep:Seps> <s:Statement> <rest:StatementRest> => {
+  <_sep:Sep> <_seps:Seps> <s:Statement> <rest:StatementRest> => {
     let mut st = vec![s];
     st.extend(rest);
     st
