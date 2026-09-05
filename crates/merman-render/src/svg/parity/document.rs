@@ -11,6 +11,7 @@ use super::{SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
 use crate::drawing_list::{RenderDocument, SvgStructureBody};
 use crate::environment::RenderSession;
 use crate::family::RenderFamilyKind;
+use crate::wardley::WardleyTheme;
 use crate::{Error, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use merman_core::OperationPhase;
@@ -324,6 +325,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         for command in &self.document.commands {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_command(command)?;
+        }
+
+        // Mermaid places Wardley's marker definitions after the map layers.  They are referenced
+        // by the canonical line elements above, and SVG permits forward references, so retain
+        // that source-backed root order without changing the renderer-neutral command stream.
+        if matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
+            self.write_wardley_marker_defs();
         }
 
         if !self.saves.is_empty() || !self.groups.is_empty() {
@@ -897,6 +905,23 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.output.push_str("</defs>");
         Ok(())
+    }
+
+    fn write_wardley_marker_defs(&mut self) {
+        let theme = WardleyTheme::from_config(self.effective_config);
+        self.output.push_str("<defs>");
+        write!(
+            self.output,
+            "<marker id=\"arrow-{}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"none\"/></marker><marker id=\"link-arrow-end-{}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"none\"/></marker><marker id=\"link-arrow-start-{}\" viewBox=\"0 0 10 10\" refX=\"1\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto\"><path d=\"M 10 0 L 0 5 L 10 10 z\" fill=\"{}\" stroke=\"none\"/></marker>",
+            escaped_attr(self.diagram_id.as_str()),
+            escaped_attr(theme.evolution_stroke.as_str()),
+            escaped_attr(self.diagram_id.as_str()),
+            escaped_attr(theme.link_stroke.as_str()),
+            escaped_attr(self.diagram_id.as_str()),
+            escaped_attr(theme.link_stroke.as_str()),
+        )
+        .expect("writing to String cannot fail");
+        self.output.push_str("</defs>");
     }
 
     fn write_linear_gradient(
@@ -1614,6 +1639,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(self.svg_body, SvgStructureBody::Zenuml(_)) {
             return self.emit_zenuml_path(path_id, style);
+        }
+        if self.is_wardley_marker_path(path_id.as_str()) {
+            // DrawingList expands markers into ordinary paths for renderer-neutral hosts.  The
+            // canonical Wardley SVG projection uses Mermaid's marker DOM instead, so omit only
+            // these adapter-owned helper paths and attach equivalent marker references to their
+            // source lines below.  No public DrawingList geometry is discarded.
+            return Ok(());
         }
         #[cfg(feature = "layout-cytoscape")]
         if matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
@@ -2489,6 +2521,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
+        self.write_wardley_marker_attributes(path_id.as_str());
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
@@ -2497,6 +2530,55 @@ impl<'a> DocumentSvgEncoder<'a> {
         escape_attr_into(&mut self.output, path_id.as_str());
         self.output.push_str("\"/>");
         Ok(())
+    }
+
+    fn is_wardley_marker_path(&self, raw_id: &str) -> bool {
+        if !matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
+            return false;
+        }
+        (raw_id.starts_with("wardley.link.")
+            && (raw_id.ends_with(".start") || raw_id.ends_with(".end")))
+            || (raw_id.starts_with("wardley.trend.") && raw_id.ends_with(".end"))
+    }
+
+    fn write_wardley_marker_attributes(&mut self, raw_id: &str) {
+        if !matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
+            return;
+        }
+        let (prefix, is_link) = if let Some(prefix) = raw_id.strip_suffix(".line") {
+            if prefix.starts_with("wardley.link.") {
+                (prefix, true)
+            } else if prefix.starts_with("wardley.trend.") {
+                (prefix, false)
+            } else {
+                return;
+            }
+        } else {
+            return;
+        };
+
+        let has_marker = |suffix: &str| self.resources.contains_key(&format!("{prefix}{suffix}"));
+        if is_link && has_marker(".start") {
+            write!(
+                self.output,
+                " marker-start=\"url(#{})\"",
+                escaped_attr(format!("link-arrow-start-{}", self.diagram_id).as_str())
+            )
+            .expect("writing to String cannot fail");
+        }
+        if has_marker(".end") {
+            let marker_id = if is_link {
+                format!("link-arrow-end-{}", self.diagram_id)
+            } else {
+                format!("arrow-{}", self.diagram_id)
+            };
+            write!(
+                self.output,
+                " marker-end=\"url(#{})\"",
+                escaped_attr(marker_id.as_str())
+            )
+            .expect("writing to String cannot fail");
+        }
     }
 
     fn emit_text(&mut self, run: &TextRun) -> Result<()> {

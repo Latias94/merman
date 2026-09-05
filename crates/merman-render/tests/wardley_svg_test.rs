@@ -137,16 +137,18 @@ deaccelerator "Legacy Data" [0.45, 0.35]
     assert!(svg.contains(">Cloud Native</text>"));
     assert!(svg.contains(">Legacy Data</text>"));
     assert!(document.descendants().any(|node| {
-        node.has_tag_name("path")
-            && node
-                .attribute("data-merman-resource")
-                .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(".end"))
+        node.has_tag_name("marker")
+            && node.attribute("id") == Some("link-arrow-end-wardley-feature-rich")
     }));
     assert!(document.descendants().any(|node| {
+        node.has_tag_name("marker")
+            && node.attribute("id") == Some("link-arrow-start-wardley-feature-rich")
+    }));
+    assert!(!document.descendants().any(|node| {
         node.has_tag_name("path")
-            && node
-                .attribute("data-merman-resource")
-                .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(".start"))
+            && node.attribute("data-merman-resource").is_some_and(|id| {
+                id.starts_with("wardley.link.") && (id.ends_with(".start") || id.ends_with(".end"))
+            })
     }));
 }
 

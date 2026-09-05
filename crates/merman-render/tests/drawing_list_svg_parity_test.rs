@@ -1211,10 +1211,11 @@ annotation 1,[0.68, 0.62] "Platform boundary"
     }
     for suffix in [".start", ".end"] {
         assert!(document.descendants().any(|node| {
-            node.has_tag_name("path")
-                && node
-                    .attribute("data-merman-resource")
-                    .is_some_and(|id| id.starts_with("wardley.link.") && id.ends_with(suffix))
+            node.has_tag_name("marker")
+                && node.attribute("id").is_some_and(|id| {
+                    id == "link-arrow-start-wardley-parity" && suffix == ".start"
+                        || id == "link-arrow-end-wardley-parity" && suffix == ".end"
+                })
         }));
     }
     assert!(
@@ -1222,11 +1223,23 @@ annotation 1,[0.68, 0.62] "Platform boundary"
             .descendants()
             .any(|node| { node.attribute("data-merman-semantic-id") == Some("wardley.node.0") })
     );
-    assert!(
-        !document
-            .descendants()
-            .any(|node| node.has_tag_name("marker"))
-    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("line")
+            && node.attribute("data-merman-resource") == Some("wardley.link.0.line")
+            && node.attribute("marker-start") == Some("url(#link-arrow-start-wardley-parity)")
+            && node.attribute("marker-end") == Some("url(#link-arrow-end-wardley-parity)")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("line")
+            && node.attribute("data-merman-resource") == Some("wardley.trend.0.line")
+            && node.attribute("marker-end") == Some("url(#arrow-wardley-parity)")
+    }));
+    assert!(!document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-merman-resource").is_some_and(|id| {
+                id.starts_with("wardley.link.") && (id.ends_with(".start") || id.ends_with(".end"))
+            })
+    }));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
 
