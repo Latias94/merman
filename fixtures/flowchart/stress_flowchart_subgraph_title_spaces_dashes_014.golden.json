@@ -200,7 +200,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "string"
       },
       {
@@ -212,7 +211,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "string"
       },
       {
@@ -225,7 +223,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "string"
       },
       {
@@ -237,7 +234,6 @@
         "classes": [],
         "styles": [],
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "string"
       }
     ]

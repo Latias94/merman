@@ -39,8 +39,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -59,8 +58,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Top",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -117,8 +115,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "id-38dvt516gkfs-1",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -194,8 +191,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Top",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -214,8 +210,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "id-38dvt516gkfs-1",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",

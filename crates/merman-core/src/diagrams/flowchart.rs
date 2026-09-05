@@ -1908,12 +1908,6 @@ mod tests {
                 "subgraph G\n  A\nend\n",
                 "G --> A\n",
             ),
-            concat!(
-                "flowchart TD\n",
-                "subgraph G\n  A\nend\n",
-                "G --> A\n",
-                "G@{ shape: rect, label: \"Authored G\" }\n",
-            ),
         ] {
             let (model, context) = parse_flowchart_model_with_render_context(source, &meta)
                 .expect("authored node and subgraph model");
@@ -1928,9 +1922,9 @@ mod tests {
     }
 
     #[test]
-    fn same_id_shape_data_is_retained_on_the_authored_typed_node() {
+    fn same_id_shape_data_routes_to_subgraph_metadata_without_mutating_node() {
         let meta = flowchart_test_meta("flowchart-v2");
-        let (model, _) = parse_flowchart_model_with_render_context(
+        let source = parse_flowchart_semantic_source(
             concat!(
                 "flowchart TD\n",
                 "subgraph G\n",
@@ -1942,14 +1936,42 @@ mod tests {
             &meta,
         )
         .expect("same-id shapeData should parse");
-        let node = model
+
+        let subgraph = source
+            .subgraphs
+            .iter()
+            .find(|subgraph| subgraph.id == "G")
+            .expect("subgraph metadata target");
+        assert_eq!(
+            subgraph.metadata.as_ref().unwrap()["shape"],
+            json!("stadium")
+        );
+        assert_eq!(
+            subgraph.metadata.as_ref().unwrap()["label"],
+            json!("Authored G")
+        );
+
+        let node = source
             .nodes
             .iter()
             .find(|node| node.id == "G")
             .expect("authored G node");
         assert_eq!(node.provenance, FlowNodeProvenance::Authored);
-        assert_eq!(node.shape.as_deref(), Some("stadium"));
-        assert_eq!(node.label.as_deref(), Some("Authored G"));
+        assert_eq!(node.shape, None);
+        assert_eq!(node.label, None);
+    }
+
+    #[test]
+    fn subgraph_shape_data_preserves_only_the_bare_vertex_call() {
+        let meta = flowchart_test_meta("flowchart-v2");
+        let (model, context) = parse_flowchart_model_with_render_context(
+            "flowchart TD\nsubgraph G\n  A\nend\nG@{ view: collapsed }\nB\n",
+            &meta,
+        )
+        .expect("subgraph shapeData should parse");
+
+        assert_eq!(model.vertex_calls, ["A", "G", "B"]);
+        assert!(context.is_subgraph_collapsed("G"));
     }
 
     #[test]

@@ -248,9 +248,16 @@ impl<'a> FlowchartSemanticContext<'a> {
                         active_subgraphs.get(target).is_some_and(|&subgraph_index| {
                             self.apply_shape_data_to_subgraph(subgraph_index, target, value)
                         });
-                    if routed_to_subgraph
-                        && (value.get("view").is_some() || seen_edge_indices.contains_key(target))
-                    {
+                    if routed_to_subgraph {
+                        // The parser first calls addVertex for the bare reference and then
+                        // calls it again with shapeData. A subgraph metadata call returns from
+                        // the second call, so retain only the preceding vertex call unless the
+                        // id already names an edge (where addVertex returns immediately).
+                        if !seen_edge_indices.contains_key(target) {
+                            self.vertex_calls.push(target.clone());
+                            seen_vertex_ids.insert(target.clone());
+                            vertex_css.entry(target.clone()).or_default();
+                        }
                         continue;
                     }
 
@@ -374,9 +381,17 @@ impl<'a> FlowchartSemanticContext<'a> {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
                 };
-                if self.apply_shape_data_to_subgraph(subgraph_index, &node.id, value)
-                    && (value.get("view").is_some() || seen_edge_indices.contains_key(&node.id))
-                {
+                if self.apply_shape_data_to_subgraph(subgraph_index, &node.id, value) {
+                    // The node production has already emitted one bare addVertex call before
+                    // its shapeData action. Preserve that call for DOM-id sequencing, while
+                    // avoiding it when an existing edge makes addVertex return early.
+                    if !seen_edge_indices.contains_key(&node.id) {
+                        self.vertex_calls.push(node.id.clone());
+                        seen_vertex_ids.insert(node.id.clone());
+                        let style = vertex_css.entry(node.id.clone()).or_default();
+                        style.classes.extend(node.classes.iter().cloned());
+                        style.styles.extend(node.styles.iter().cloned());
+                    }
                     continue;
                 }
             }

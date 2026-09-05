@@ -162,7 +162,6 @@
         "classes": [],
         "styles": [],
         "dir": "LR",
-        "hasExplicitDir": true,
         "labelType": "text"
       },
       {
@@ -175,7 +174,6 @@
         "classes": [],
         "styles": [],
         "dir": "TB",
-        "hasExplicitDir": true,
         "labelType": "text"
       }
     ]
