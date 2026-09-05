@@ -121,7 +121,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             resources.insert(raw_id.clone(), resource);
             resource_svg_ids.insert(
                 raw_id.clone(),
-                scoped_id("resource", index, raw_id.as_str()),
+                scoped_id(diagram_id.as_str(), "resource", index, raw_id.as_str()),
             );
         }
 
@@ -130,7 +130,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         for (index, semantic) in document.public.semantics.iter().enumerate() {
             let raw_id = semantic.id.clone();
             semantics.insert(raw_id.clone(), semantic);
-            semantic_svg_ids.insert(raw_id.clone(), scoped_id("semantic", index, &raw_id));
+            semantic_svg_ids.insert(
+                raw_id.clone(),
+                scoped_id(diagram_id.as_str(), "semantic", index, &raw_id),
+            );
         }
 
         let fallbacks = document
@@ -4011,10 +4014,11 @@ fn cubic_circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
     Some((center, radius))
 }
 
-fn scoped_id(prefix: &str, index: usize, raw: &str) -> String {
+fn scoped_id(diagram_id: &str, prefix: &str, index: usize, raw: &str) -> String {
+    let scope = sanitize_svg_id(diagram_id);
     let sanitized = sanitize_svg_id(raw);
     let suffix = sanitized.chars().take(48).collect::<String>();
-    format!("merman-{prefix}-{index}-{suffix}")
+    format!("merman-{prefix}-{scope}-{index}-{suffix}")
 }
 
 fn invalid(message: impl Into<String>) -> Error {

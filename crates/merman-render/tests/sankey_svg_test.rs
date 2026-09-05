@@ -4,6 +4,7 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use roxmltree::Document;
+use std::collections::BTreeSet;
 
 fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
     let parsed = Engine::new()
@@ -136,4 +137,37 @@ fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
         }),
         "canonical SVG ids must use the renderer-owned scope: {svg}"
     );
+}
+
+#[test]
+fn canonical_resource_ids_are_scoped_for_multiple_inline_svg_documents() {
+    let first_svg = render_sankey(
+        "sankey-beta\nA,B,10\n",
+        &SvgRenderOptions {
+            diagram_id: Some("inline-a".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let second_svg = render_sankey(
+        "sankey-beta\nA,B,10\n",
+        &SvgRenderOptions {
+            diagram_id: Some("inline-b".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let first = Document::parse(&first_svg).expect("first canonical Sankey SVG");
+    let second = Document::parse(&second_svg).expect("second canonical Sankey SVG");
+
+    let ids = |document: &Document<'_>| {
+        document
+            .descendants()
+            .filter_map(|node| node.attribute("id"))
+            .filter(|id| id.starts_with("merman-"))
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>()
+    };
+    let first_ids = ids(&first);
+    let second_ids = ids(&second);
+    assert!(!first_ids.is_empty());
+    assert!(first_ids.is_disjoint(&second_ids));
 }
