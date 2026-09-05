@@ -158,8 +158,16 @@ Second: second,after first,2ms
     let second = render_svg(&second_renderer, source, svg_request("gantt-time"));
 
     fn today_line(svg: &str) -> &str {
-        let start = svg.find(r#"<g class="today"><line"#).expect("today marker");
-        let end = svg[start..].find("/>").expect("today marker end") + start + 2;
+        let marker = r#"data-merman-resource="gantt.today.line""#;
+        let marker_offset = svg.find(marker).expect("today marker");
+        let start = svg[..marker_offset]
+            .rfind("<line")
+            .or_else(|| svg[..marker_offset].rfind("<path"))
+            .expect("today marker element");
+        let end = svg[marker_offset..]
+            .find("/>")
+            .map(|offset| marker_offset + offset + 2)
+            .expect("today marker end");
         &svg[start..end]
     }
 
