@@ -361,13 +361,8 @@ impl<'a> KanbanBuilder<'a> {
             self.text_classes
                 .insert(semantic_id.clone(), "nodeLabel".to_string());
             if let Some(ticket_link) = prepared.ticket_link.as_ref() {
-                self.ticket_links.insert(
-                    semantic_id.clone(),
-                    ticket_link
-                        .href
-                        .as_ref()
-                        .map(|href| href.as_serialized_str().to_string()),
-                );
+                self.ticket_links
+                    .insert(semantic_id.clone(), ticket_link.uri.clone());
             }
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
@@ -459,8 +454,7 @@ impl<'a> KanbanBuilder<'a> {
                 link: prepared
                     .ticket_link
                     .as_ref()
-                    .and_then(|link| link.href.as_ref())
-                    .map(|href| href.as_serialized_str().to_string()),
+                    .and_then(|link| link.uri.clone()),
             });
             if item
                 .ticket
@@ -475,8 +469,7 @@ impl<'a> KanbanBuilder<'a> {
                     link: prepared
                         .ticket_link
                         .as_ref()
-                        .and_then(|link| link.href.as_ref())
-                        .map(|href| href.as_serialized_str().to_string()),
+                        .and_then(|link| link.uri.clone()),
                 });
             }
             if item
