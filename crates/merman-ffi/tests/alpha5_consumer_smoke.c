@@ -1,9 +1,10 @@
 /*
- * This is a deliberately small alpha.5 consumer fixture.
+ * This is a deliberately small alpha.5 consumer migration fixture.
  *
  * Keep these declarations frozen to the alpha.5 MermanNativeApi prefix.  Do
  * not include the current generated header here: the point of this test is to
- * compile a consumer that has never heard of the alpha.6 appended slots.
+ * prove that an old consumer is rejected by the alpha.6 minimum-prefix
+ * compatibility check instead of accidentally being treated as compatible.
  */
 
 #include <stddef.h>
@@ -14,7 +15,7 @@ typedef int32_t MermanNativeOperationCode;
 typedef uint64_t MermanNativeEngineToken;
 
 enum {
-    MERMAN_NATIVE_STATUS_OK = 0,
+    MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH = 12,
     MERMAN_NATIVE_OPERATION_SEMANTIC_JSON = 6,
 };
 
@@ -107,7 +108,6 @@ int merman_alpha5_consumer_smoke(MermanNativeGetApiFn discover) {
     static const char digest[] = MERMAN_NATIVE_API_MINIMUM_PREFIX_LAYOUT_DIGEST;
     MermanNativeApiRequest request = {0};
     MermanNativeApi api = {0};
-    MermanNativeResult result = {0};
 
     request.struct_size = (uint32_t)sizeof(request);
     request.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
@@ -117,29 +117,9 @@ int merman_alpha5_consumer_smoke(MermanNativeGetApiFn discover) {
     request.expected_minimum_prefix_layout_digest.len = sizeof(digest) - 1;
     api.struct_size = (uint32_t)sizeof(api);
 
-    if (discover == NULL || discover(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
+    if (discover == NULL ||
+        discover(&request, &api) != MERMAN_NATIVE_STATUS_ABI_LAYOUT_MISMATCH) {
         return 1;
     }
-    if (api.struct_size != (uint32_t)sizeof(api) || api.abi_version != MERMAN_NATIVE_ABI_VERSION) {
-        return 2;
-    }
-    if (api.runtime_catalog == NULL || api.engine_new == NULL ||
-        api.engine_try_close == NULL || api.execute_collect == NULL ||
-        api.result_free == NULL || api.metadata_collect == NULL ||
-        api.engine_new_with_services == NULL) {
-        return 3;
-    }
-
-    result.struct_size = (uint32_t)sizeof(result);
-    if (api.runtime_catalog(&result) != MERMAN_NATIVE_STATUS_OK) {
-        return 4;
-    }
-    if (result.struct_size != (uint32_t)sizeof(result) || result.allocation_token == 0) {
-        return 5;
-    }
-    api.result_free(&result);
-    return result.allocation_token == 0 && result.data.data == NULL &&
-                   result.metadata_or_error_json.data == NULL
-               ? 0
-               : 6;
+    return 0;
 }
