@@ -1249,7 +1249,7 @@ mod tests {
         });
         assert_eq!(super::requirement_theme_color_limit(&config), 3);
 
-        let mut merged = super::requirement_css("requirement-colors", &config);
+        let mut merged = crate::svg::parity::css::requirement_css("requirement-colors", &config);
         let generated = super::requirement_color_css(
             "requirement-colors",
             "classic",
