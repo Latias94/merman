@@ -1337,7 +1337,12 @@ pub(super) fn classify_rule_facet(
             target,
             ThemeTarget::Actor | ThemeTarget::Loop | ThemeTarget::Note | ThemeTarget::Activation
         )
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -1363,7 +1368,12 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::SEQUENCE
         && target == ThemeTarget::Message
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
@@ -1375,15 +1385,27 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::SEQUENCE
         && target == ThemeTarget::Lifeline
-        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
-            ) | FamilyThemeRuleFacet::StrokeWidth
+            )
         )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && target == ThemeTarget::Lifeline
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && facet == FamilyThemeRuleFacet::StrokeWidth
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -1396,7 +1418,7 @@ pub(super) fn classify_rule_facet(
                 | ThemeTarget::LoopLabel
         )
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-        && (matches!(
+        && matches!(
             facet,
             FamilyThemeRuleFacet::Typography(
                 ThemeTypographyProperty::FontStack
@@ -1404,12 +1426,30 @@ pub(super) fn classify_rule_facet(
                     | ThemeTypographyProperty::FontWeight
                     | ThemeTypographyProperty::FontStyle
             )
-        ) || matches!(
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::SEQUENCE
+        && matches!(
+            target,
+            ThemeTarget::ActorLabel
+                | ThemeTarget::MessageLabel
+                | ThemeTarget::NoteLabel
+                | ThemeTarget::LoopLabel
+        )
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
-        ))
+        )
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -3975,7 +4015,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_direct_surface_routes_only_accept_static_scalar_paints() {
+    fn sequence_direct_surface_routes_accept_static_scalar_paints_and_default_variants() {
         let gradient = super::super::canvas::LinearGradient::new(
             90.0,
             [
@@ -4026,7 +4066,7 @@ mod tests {
             assert!(
                 compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
                     .iter()
-                    .all(|route| route.disposition() == FamilyThemeDisposition::LegacyCompatibility)
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
             );
             assert_eq!(
                 compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &gradient_rule)[0].disposition(),
@@ -4048,7 +4088,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_role_label_paints_only_own_static_unqualified_scalar_fill() {
+    fn sequence_role_label_paints_own_static_scalar_fill_and_default_variant() {
         let static_unqualified = FamilyThemeSelectorShape::Static { variant: None };
         let explicit_default = FamilyThemeSelectorShape::Static {
             variant: Some(ThemeVariant::Default),
@@ -4080,7 +4120,7 @@ mod tests {
                 );
                 assert_eq!(
                     classify_rule_facet(DiagramFamilyId::SEQUENCE, target, explicit_default, fill,),
-                    FamilyThemeDisposition::LegacyCompatibility
+                    FamilyThemeDisposition::TypedAdapter
                 );
                 assert_eq!(
                     classify_rule_facet(DiagramFamilyId::SEQUENCE, target, ordinal, fill),
@@ -4116,7 +4156,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_message_only_owns_unqualified_scalar_strokes() {
+    fn sequence_message_owns_static_scalar_strokes_and_default_variant() {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#123456").expect("valid Message stroke"),
@@ -4138,7 +4178,7 @@ mod tests {
             assert_eq!(
                 compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)[0]
                     .disposition(),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
         }
 
@@ -4203,7 +4243,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_lifeline_owns_unqualified_scalar_fill_stroke_and_width() {
+    fn sequence_lifeline_owns_static_scalar_fill_stroke_and_unqualified_width() {
         for paint in [
             CanvasPaint::Transparent,
             CanvasPaint::solid("#123456").expect("valid Lifeline paint"),
@@ -4230,9 +4270,7 @@ mod tests {
             assert!(
                 compile_rule_routes(DiagramFamilyId::SEQUENCE, 0, &explicit_default)
                     .iter()
-                    .all(|route| {
-                        route.disposition() == FamilyThemeDisposition::LegacyCompatibility
-                    })
+                    .all(|route| route.disposition() == FamilyThemeDisposition::TypedAdapter)
             );
         }
 
@@ -5394,7 +5432,14 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 44);
+        assert_eq!(qualified.len(), 74);
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::SEQUENCE)
+                .count(),
+            30
+        );
         assert_eq!(
             qualified
                 .iter()

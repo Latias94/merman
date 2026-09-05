@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 29;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 30;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xc4, 0x0a, 0x01, 0xf8, 0x8b, 0x5b, 0xf9, 0x7d, 0xc8, 0xff, 0x01, 0xe8, 0x07, 0x44, 0xc3, 0xae,
-    0x40, 0xdb, 0xb5, 0x8a, 0x50, 0xb2, 0x21, 0xaa, 0x8a, 0xb5, 0xc1, 0x88, 0x52, 0x9b, 0x41, 0x81,
+    0x63, 0x7f, 0xe3, 0xce, 0xf7, 0x7c, 0x10, 0xcc, 0xbe, 0x56, 0x98, 0x7e, 0x7e, 0x93, 0x30, 0x15,
+    0x8c, 0x8b, 0xe6, 0x2d, 0x7e, 0xeb, 0xb1, 0x2f, 0x9e, 0x9f, 0xb9, 0x2e, 0xa2, 0x18, 0xcd, 0x14,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -329,7 +329,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 190] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -484,6 +484,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
         ThemeRouteCutoverValue::Solid,
         ACTOR_FILL_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Actor,
@@ -494,6 +510,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Actor,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Actor,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         ACTOR_STROKE_PROJECTIONS,
@@ -512,6 +544,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
         ThemeRouteCutoverValue::Solid,
         ACTOR_LABEL_FILL_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::ActorLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTOR_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::ActorLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTOR_LABEL_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Lifeline,
@@ -526,6 +574,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
         ThemeRouteCutoverValue::Solid,
         LIFELINE_STROKE_PROJECTIONS,
     ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Lifeline,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        LIFELINE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Lifeline,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        LIFELINE_STROKE_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Lifeline,
@@ -536,6 +600,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Lifeline,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        LIFELINE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Lifeline,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        LIFELINE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Lifeline,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         LIFELINE_STROKE_PROJECTIONS,
@@ -550,6 +630,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         NOTE_FILL_PROJECTIONS,
@@ -564,6 +660,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Note,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Note,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         NOTE_STROKE_PROJECTIONS,
@@ -578,6 +690,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::NoteLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NOTE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::NoteLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NOTE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::NoteLabel,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         NOTE_LABEL_FILL_PROJECTIONS,
@@ -592,6 +720,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ACTIVATION_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ACTIVATION_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         ACTIVATION_FILL_PROJECTIONS,
@@ -606,6 +750,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Activation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        ACTIVATION_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        ACTIVATION_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Activation,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         ACTIVATION_STROKE_PROJECTIONS,
@@ -620,6 +780,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Message,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        MESSAGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Message,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        MESSAGE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Message,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         MESSAGE_STROKE_PROJECTIONS,
@@ -634,6 +810,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::MessageLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        MESSAGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::MessageLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        MESSAGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::MessageLabel,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         MESSAGE_LABEL_FILL_PROJECTIONS,
@@ -648,6 +840,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         LOOP_FILL_PROJECTIONS,
@@ -662,6 +870,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::Loop,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::Loop,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         LOOP_STROKE_PROJECTIONS,
@@ -676,6 +900,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 160] = [
     route(
         DiagramFamilyId::SEQUENCE,
         ThemeTarget::LoopLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        LOOP_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::LoopLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        LOOP_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::SEQUENCE,
+        ThemeTarget::LoopLabel,
+        ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         LOOP_LABEL_FILL_PROJECTIONS,
@@ -1782,6 +2022,8 @@ fn id_label(id: ThemeRouteCutoverId) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use merman::DiagramFamilyId;
     use merman::svg::ThemeTarget;
     use merman_render::__private::{
@@ -1821,6 +2063,119 @@ mod tests {
 
     #[test]
     fn manifest_keeps_variant_authority_bounded_and_projection_local() {
+        let sequence_default = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::SEQUENCE
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sequence_default.len(), 30);
+        for (target, facet, projection) in [
+            (
+                ThemeTarget::Actor,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::ActorFill,
+            ),
+            (
+                ThemeTarget::Actor,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::ActorStroke,
+            ),
+            (
+                ThemeTarget::ActorLabel,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::ActorLabelFill,
+            ),
+            (
+                ThemeTarget::Lifeline,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::LifelineStroke,
+            ),
+            (
+                ThemeTarget::Lifeline,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::LifelineStroke,
+            ),
+            (
+                ThemeTarget::Note,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::NoteFill,
+            ),
+            (
+                ThemeTarget::Note,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::NoteStroke,
+            ),
+            (
+                ThemeTarget::NoteLabel,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::NoteLabelFill,
+            ),
+            (
+                ThemeTarget::Activation,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::ActivationFill,
+            ),
+            (
+                ThemeTarget::Activation,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::ActivationStroke,
+            ),
+            (
+                ThemeTarget::Message,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::MessageStroke,
+            ),
+            (
+                ThemeTarget::MessageLabel,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::MessageLabelFill,
+            ),
+            (
+                ThemeTarget::Loop,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::LoopFill,
+            ),
+            (
+                ThemeTarget::Loop,
+                ThemeRouteCutoverFacet::Stroke,
+                ThemeRouteCutoverProjection::LoopStroke,
+            ),
+            (
+                ThemeTarget::LoopLabel,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::LoopLabelFill,
+            ),
+        ] {
+            let routes = sequence_default
+                .iter()
+                .filter(|route| route.id.target() == target && route.id.facet() == facet)
+                .collect::<Vec<_>>();
+            assert_eq!(routes.len(), 2, "target={target:?}, facet={facet:?}");
+            assert!(
+                routes
+                    .iter()
+                    .all(|route| route.projections == &[projection])
+            );
+            assert_eq!(
+                routes
+                    .iter()
+                    .map(|route| route.id.value())
+                    .collect::<BTreeSet<_>>(),
+                BTreeSet::from([
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ])
+            );
+        }
+        assert!(
+            !sequence_default
+                .iter()
+                .any(|route| { route.id.target() == ThemeTarget::SequenceNumberLabel })
+        );
+
         let gantt_routes = ACTIVE_ROUTES
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::GANTT)
@@ -1995,7 +2350,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 29);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 30);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

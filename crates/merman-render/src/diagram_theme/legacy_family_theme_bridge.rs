@@ -2470,9 +2470,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xd5, 0x74, 0x65, 0x17, 0xd1, 0x1e, 0x55, 0xb7, 0xdc, 0x73, 0x0c, 0x06, 0x4c, 0x21,
-            0x18, 0xdf, 0x3f, 0x68, 0x66, 0x76, 0xe9, 0x46, 0x8f, 0xf8, 0x0c, 0x13, 0xd6, 0x9e,
-            0xec, 0x36, 0x82, 0x67,
+            0x25, 0x71, 0x91, 0x2f, 0xc2, 0xe2, 0x0e, 0xd0, 0x40, 0x98, 0xc2, 0x11, 0x6f, 0xf4,
+            0x95, 0xda, 0x6b, 0x36, 0x7d, 0x46, 0x42, 0x94, 0xab, 0x65, 0x95, 0xf2, 0x72, 0xb5,
+            0x43, 0xc1, 0xb9, 0xbb,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0xde, 0x1d, 0xed, 0x0e, 0x2f, 0x87, 0x54, 0xf3, 0xb9, 0xcc, 0x65, 0x1b, 0xbf, 0xe4,
@@ -2487,7 +2487,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 400);
+        assert_eq!(status.matrix_route_count(), 370);
         assert_eq!(status.matrix_family_count(), 24);
         assert_eq!(status.dispatched_family_count(), 24);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
@@ -4470,7 +4470,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_sequence_role_paints_suppress_only_their_unqualified_legacy_projections() {
+    fn typed_sequence_role_paints_suppress_unqualified_and_default_legacy_projections() {
         for (target, style, contribution_id) in [
             (
                 ThemeTarget::ActorLabel,
@@ -4513,18 +4513,18 @@ mod tests {
             assert!(!direct.contribution_ids.contains(contribution_id));
             assert!(!direct_bridge.owns_contribution_id(contribution_id));
 
-            let legacy_spec = DiagramThemeSpec::new().with_styles(
+            let default_spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default().with_rule(
                     ThemeRule::new(target, style)
                         .with_variant(ThemeVariant::Default)
                         .for_family(DiagramFamilyId::SEQUENCE),
                 ),
             );
-            let legacy_bridge = bridge(&legacy_spec);
-            let legacy = legacy_bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
+            let default_bridge = bridge(&default_spec);
+            let default_overlay = default_bridge.compile_for_family(DiagramFamilyId::SEQUENCE);
 
-            assert!(legacy.contribution_ids.contains(contribution_id));
-            assert!(legacy_bridge.owns_contribution_id(contribution_id));
+            assert!(!default_overlay.contribution_ids.contains(contribution_id));
+            assert!(!default_bridge.owns_contribution_id(contribution_id));
         }
     }
 

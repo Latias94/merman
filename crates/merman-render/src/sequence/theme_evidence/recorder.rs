@@ -14,7 +14,7 @@ use super::receipts::{
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
     FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -127,10 +127,14 @@ impl SequenceThemeEvidenceRecorder {
         if !state.lifeline.paint_emitted || state.lifeline.paint_overridden {
             return None;
         }
+        let selected_property = state.lifeline.selected_property?;
         crate::theme_raster_paint::ThemeRasterPaintBindingFact::new(
             crate::DiagramFamilyId::SEQUENCE,
             ThemeTarget::Lifeline,
-            crate::theme_route_cutover::ThemeRouteCutoverSelector::StaticUnqualified,
+            state
+                .lifeline
+                .receipt
+                .raster_paint_selector(selected_property)?,
             state.lifeline.receipt.raster_paint_terminals()?,
         )
     }
@@ -184,7 +188,10 @@ impl SequenceThemeEvidenceRecorder {
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::Lifeline,
-                selector: FamilyThemeSelectorShape::Static { variant: None },
+                selector:
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                 facet:
                     FamilyThemeRuleFacet::Fill(_)
                     | FamilyThemeRuleFacet::Stroke(_)
@@ -196,7 +203,10 @@ impl SequenceThemeEvidenceRecorder {
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::Message,
-                selector: FamilyThemeSelectorShape::Static { variant: None },
+                selector:
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                 facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
             } = route.mechanism()
             {
@@ -213,7 +223,10 @@ impl SequenceThemeEvidenceRecorder {
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::Loop,
-                selector: FamilyThemeSelectorShape::Static { variant: None },
+                selector:
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                 facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
             } = route.mechanism()
             {
@@ -222,7 +235,10 @@ impl SequenceThemeEvidenceRecorder {
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::Note,
-                selector: FamilyThemeSelectorShape::Static { variant: None },
+                selector:
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                 ..
             } = route.mechanism()
             {
@@ -231,7 +247,10 @@ impl SequenceThemeEvidenceRecorder {
             if let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::Activation,
-                selector: FamilyThemeSelectorShape::Static { variant: None },
+                selector:
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default),
+                    },
                 ..
             } = route.mechanism()
             {
@@ -291,7 +310,13 @@ impl SequenceThemeEvidenceRecorder {
                     target: ThemeTarget::Lifeline,
                     selector,
                     facet,
-                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                } if matches!(
+                    selector,
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    }
+                ) =>
+                {
                     let Some(observation) = lifeline_rules.get_mut(&rule_index) else {
                         continue;
                     };
@@ -309,7 +334,13 @@ impl SequenceThemeEvidenceRecorder {
                     target: ThemeTarget::Message,
                     selector,
                     facet,
-                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                } if matches!(
+                    selector,
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    }
+                ) =>
+                {
                     let Some(observation) = message_rules.get_mut(&rule_index) else {
                         continue;
                     };
@@ -343,7 +374,13 @@ impl SequenceThemeEvidenceRecorder {
                     target: ThemeTarget::Loop,
                     selector,
                     facet,
-                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                } if matches!(
+                    selector,
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    }
+                ) =>
+                {
                     let Some(observation) = loop_rules.get_mut(&rule_index) else {
                         continue;
                     };
@@ -461,7 +498,13 @@ impl SequenceThemeEvidenceRecorder {
                     target: target @ (ThemeTarget::Note | ThemeTarget::Activation),
                     selector,
                     facet,
-                } if matches!(selector, FamilyThemeSelectorShape::Static { variant: None }) => {
+                } if matches!(
+                    selector,
+                    FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    }
+                ) =>
+                {
                     let (surface, observation) = match target {
                         ThemeTarget::Note => {
                             (&state.note, note_rules.entry(rule_index).or_default())

@@ -84,6 +84,9 @@ impl SequenceActorThemeReceipt {
 #[derive(Debug, Clone, Default)]
 struct SequenceLineThemeReceipt {
     static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
+    #[cfg(feature = "internal-theme-acceptance")]
+    static_selectors:
+        BTreeMap<ResolvedStyleProperty, crate::theme_route_cutover::ThemeRouteCutoverSelector>,
     line_candidates: usize,
     emitted_lines: usize,
 }
@@ -91,6 +94,36 @@ struct SequenceLineThemeReceipt {
 impl SequenceLineThemeReceipt {
     fn record_static_style(&mut self, style: &ResolvedThemeStyle) {
         record_style_winners(&mut self.static_winners, style);
+        #[cfg(feature = "internal-theme-acceptance")]
+        {
+            for (property, origin) in [
+                (
+                    ResolvedStyleProperty::Fill,
+                    style.fill_resolution().winner(),
+                ),
+                (
+                    ResolvedStyleProperty::Stroke,
+                    style.stroke_resolution().winner(),
+                ),
+                (
+                    ResolvedStyleProperty::StrokeWidth,
+                    style.stroke_width_resolution().winner(),
+                ),
+            ] {
+                if let Some(origin) = origin {
+                    self.static_selectors.insert(
+                        property,
+                        match origin.variant() {
+                            None => crate::theme_route_cutover::ThemeRouteCutoverSelector::
+                                StaticUnqualified,
+                            Some(variant) =>
+                                crate::theme_route_cutover::ThemeRouteCutoverSelector::
+                                    StaticVariant(variant),
+                        },
+                    );
+                }
+            }
+        }
     }
 
     fn record_line_candidate(&mut self) {
@@ -103,6 +136,8 @@ impl SequenceLineThemeReceipt {
 
     fn merge(&mut self, other: Self) {
         self.static_winners.extend(other.static_winners);
+        #[cfg(feature = "internal-theme-acceptance")]
+        self.static_selectors.extend(other.static_selectors);
         self.line_candidates = self.line_candidates.max(other.line_candidates);
         self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
     }
@@ -118,6 +153,14 @@ impl SequenceLineThemeReceipt {
 
     fn has_complete_emission(&self) -> bool {
         self.line_candidates != 0 && self.emitted_lines == self.line_candidates
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    fn selector_for(
+        &self,
+        property: ResolvedStyleProperty,
+    ) -> Option<crate::theme_route_cutover::ThemeRouteCutoverSelector> {
+        self.static_selectors.get(&property).copied()
     }
 }
 
@@ -246,6 +289,14 @@ impl SequenceLifelineThemeReceipt {
             && !self.raster_terminals_invalid
             && self.raster_terminals.len() == self.line.emitted_lines)
             .then(|| self.raster_terminals.values().cloned().collect())
+    }
+
+    #[cfg(feature = "internal-theme-acceptance")]
+    pub(super) fn raster_paint_selector(
+        &self,
+        property: ResolvedStyleProperty,
+    ) -> Option<crate::theme_route_cutover::ThemeRouteCutoverSelector> {
+        self.line.selector_for(property)
     }
 }
 
@@ -633,10 +684,14 @@ impl SequenceLoopThemeReceipt {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-            && self
-                .static_winners
-                .contains(&(rule_index, style_property_for_facet(facet)))
+        matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        ) && self
+            .static_winners
+            .contains(&(rule_index, style_property_for_facet(facet)))
     }
 
     pub(super) fn complete_surfaces(&self) -> bool {
@@ -733,7 +788,7 @@ impl SequenceLoopThemeEmission {
 /// Winner and terminal-emission facts produced by a Sequence static rectangle writer.
 ///
 /// This receipt is deliberately narrower than the Actor receipt: the current direct tranche owns
-/// only unqualified static fill and stroke for Note and Activation surfaces. Each writer records
+/// only static fill and stroke for Note and Activation surfaces. Each writer records
 /// the surfaces it actually emits so evidence cannot be manufactured from the compiled route
 /// matrix alone.
 #[derive(Debug, Clone, Default)]
@@ -762,10 +817,14 @@ impl SequenceStaticRectThemeReceipt {
         selector: FamilyThemeSelectorShape,
         facet: FamilyThemeRuleFacet,
     ) -> bool {
-        matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
-            && self
-                .static_winners
-                .contains(&(rule_index, style_property_for_facet(facet)))
+        matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        ) && self
+            .static_winners
+            .contains(&(rule_index, style_property_for_facet(facet)))
     }
 }
 

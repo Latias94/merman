@@ -719,7 +719,10 @@ fn resolve_sequence_message_theme(
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Message,
-            selector: FamilyThemeSelectorShape::Static { variant: None },
+            selector:
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default),
+                },
             facet,
             ..
         } = route.mechanism()
@@ -817,7 +820,10 @@ fn resolve_sequence_loop_theme(
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Loop,
-            selector: FamilyThemeSelectorShape::Static { variant: None },
+            selector:
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default),
+                },
             ..
         } = route.mechanism()
         else {
@@ -903,7 +909,10 @@ fn resolve_sequence_lifeline_theme(
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: ThemeTarget::Lifeline,
-            selector: FamilyThemeSelectorShape::Static { variant: None },
+            selector:
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default),
+                },
             facet,
             ..
         } = route.mechanism()
@@ -1006,7 +1015,10 @@ fn resolve_sequence_static_rect_theme(
     for route in theme.family_mechanism_routes().iter().copied() {
         let FamilyThemeMechanism::RuleFacet {
             target: route_target,
-            selector: FamilyThemeSelectorShape::Static { variant: None },
+            selector:
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default),
+                },
             facet,
             ..
         } = route.mechanism()
