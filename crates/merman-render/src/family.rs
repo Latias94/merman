@@ -1064,50 +1064,55 @@ fn render_family_artifact_svg(
 ) -> Result<String> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
 
+    let use_legacy_bridge = debug.include_timing_diagnostics
+        || debug.flowchart_edge_trace().is_some()
+        || !canonical_svg_family_enabled(artifact.family.kind());
+    if use_legacy_bridge {
+        return render_legacy_family_artifact_svg(artifact, &options, debug);
+    }
+
     // The canonical document serializer is admitted family-by-family.  This keeps the existing
     // source-backed SVG parity contract green while a family cohort is being migrated; the
     // private renderer remains a bridge only for families/effects that do not yet have a
     // source-backed canonical SVG serializer.  A failed document build is never converted into
     // an empty SVG.
-    let document = match crate::drawing_list::build_for_family(
+    match crate::drawing_list::build_for_family(
         &artifact.family,
         &artifact.metadata,
         DrawingListPolicy::AllowRasterSubtree,
         &artifact.session,
     ) {
-        Ok(document) => Some(document),
+        Ok(document) => crate::svg::render_document_svg(
+            &document,
+            &options,
+            debug,
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        ),
         Err(Error::DrawingListUnavailable { .. }) => {
             // A family may still contain a browser-only effect that the SVG adapter can emit
             // faithfully while the renderer-neutral contract is not yet able to represent it.
             // Keep this as an explicit, measurable migration bridge rather than hiding a partial
             // DrawingList behind the SVG target.
-            None
+            render_legacy_family_artifact_svg(artifact, &options, debug)
         }
-        Err(error) => return Err(error),
-    };
-
-    let use_legacy_bridge = debug.include_timing_diagnostics
-        || debug.flowchart_edge_trace().is_some()
-        || !canonical_svg_family_enabled(artifact.family.kind());
-    if !use_legacy_bridge {
-        if let Some(document) = document.as_ref() {
-            return crate::svg::render_document_svg(
-                document,
-                &options,
-                debug,
-                artifact.metadata.effective_config.as_value(),
-                &artifact.session,
-            );
-        }
+        Err(error) => Err(error),
     }
+}
 
+#[inline(never)]
+fn render_legacy_family_artifact_svg(
+    artifact: &FamilyRenderArtifact,
+    options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+) -> Result<String> {
     #[cfg(feature = "layout-cytoscape")]
     if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             pair,
             &artifact.metadata.effective_config,
             &artifact.session,
-            &options,
+            options,
             debug,
         );
     }
@@ -1115,7 +1120,7 @@ fn render_family_artifact_svg(
         &artifact.family,
         &artifact.metadata,
         &artifact.session,
-        &options,
+        options,
         debug,
     )
 }
