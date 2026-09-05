@@ -1133,11 +1133,25 @@ impl<'a> DocumentSvgEncoder<'a> {
         let clip_id = self.clip_svg_id(path.as_str())?;
         write!(
             self.output,
-            "<g clip-path=\"url(#{})\" data-fill-rule=\"{}\">",
+            "<g clip-path=\"url(#{})\" data-fill-rule=\"{}\"",
             escaped_attr(clip_id.as_str()),
             fill_rule_name(fill_rule),
         )
         .map_err(|_| invalid("failed to write SVG clip group"))?;
+        // Clip resources use user-space coordinates. Preserve the transform that was active at
+        // the ClipPath command on the wrapper group, then render clipped children relative to the
+        // new group coordinate system. This keeps local family clips (for example Treemap label
+        // cells) aligned with their translated content.
+        if self.state.transform != Transform::IDENTITY {
+            write!(
+                self.output,
+                " transform=\"matrix({})\"",
+                matrix_attr(self.state.transform),
+            )
+            .map_err(|_| invalid("failed to write SVG clip transform"))?;
+            self.state.transform = Transform::IDENTITY;
+        }
+        self.output.push('>');
         self.groups.push(GroupKind::Clip);
         Ok(())
     }

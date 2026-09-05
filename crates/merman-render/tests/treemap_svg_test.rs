@@ -237,6 +237,23 @@ fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
 }
 
 #[test]
+fn treemap_translated_labels_keep_clip_geometry_in_the_same_user_space() {
+    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
+    let document = roxmltree::Document::parse(&svg).expect("canonical Treemap SVG is XML");
+
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("g")
+                && node.attribute("clip-path").is_some()
+                && node
+                    .attribute("transform")
+                    .is_some_and(|transform| transform != "matrix(1 0 0 1 0 0)")
+        }),
+        "translated Treemap labels must carry the active transform on the clip wrapper: {svg}"
+    );
+}
+
+#[test]
 fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
     let tag = text_tag_by_text(&svg, "Accessories");
