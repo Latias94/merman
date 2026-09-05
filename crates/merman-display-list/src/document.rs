@@ -199,7 +199,7 @@ impl DrawingListFootprint {
         )?;
         validate_count("font_bytes", self.font_bytes, limits.max_font_bytes)?;
         validate_count(
-            "max_nesting_depth",
+            "nesting_depth",
             self.max_nesting_depth,
             limits.max_nesting_depth,
         )?;
