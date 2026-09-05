@@ -1240,8 +1240,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("<a class=\"kanban-ticket-link\"");
             if let Some(href) = kanban_ticket_href.flatten() {
                 self.output.push_str(" xlink:href=\"");
-                // KanbanPreparedTicketLink already owns the serialized SVG attribute value.
-                self.output.push_str(href.as_str());
+                // DrawingList stores the logical URI; serialize it exactly once at the SVG
+                // attribute boundary.
+                escape_attr_into(&mut self.output, href.as_str());
                 self.output.push('"');
             }
             if security == MermaidNavigationSecurity::Loose {

@@ -1018,6 +1018,21 @@ kanban
 }
 
 #[test]
+fn kanban_canonical_svg_escapes_logical_ticket_uris_at_the_attribute_boundary() {
+    let svg = render_svg(
+        r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
+kanban
+  todo[Todo]
+    task[Task]@{ ticket: "A&B" }
+"##,
+        "kanban-uri-escaping",
+    );
+
+    assert!(svg.contains(r#"xlink:href="https://example.test/tickets/A&amp;B""#));
+    assert!(!svg.contains(r#"xlink:href="https://example.test/tickets/A&B""#));
+}
+
+#[test]
 fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
     let svg = render_svg(
         r##"gitGraph
