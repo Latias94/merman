@@ -396,7 +396,7 @@ fn tree_view_iconify_internal_ids_are_scoped_per_node_and_deterministic() {
 
 #[cfg(feature = "layout-cytoscape")]
 #[test]
-fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
+fn architecture_builtin_icons_expand_to_explicit_resources_without_internal_ids() {
     let svg = render_svg_from_text(
         r#"architecture-beta
   service a(database)[A]
@@ -409,11 +409,44 @@ fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     assert!(!svg.contains(r#"id="c""#), "{svg}");
     assert!(!svg.contains(r#"id="d""#), "{svg}");
     assert!(!svg.contains(r#"id="e""#), "{svg}");
-
-    let ids = internal_iconify_ids(&svg);
-    assert_eq!(ids.len(), 8, "{svg}");
-    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(unique.len(), ids.len(), "{svg}");
+    assert!(internal_iconify_ids(&svg).is_empty(), "{svg}");
+    let document = roxmltree::Document::parse(&svg).expect("Architecture SVG is XML");
+    for node in 0..2 {
+        for suffix in [
+            "background",
+            "ring.0",
+            "ring.1",
+            "ring.2",
+            "top",
+            "side.0",
+            "side.1",
+        ] {
+            let resource = format!("architecture.node.{node}.icon.{suffix}");
+            assert!(
+                document
+                    .descendants()
+                    .any(|element| element.attribute("data-merman-resource") == Some(&resource)),
+                "missing expanded Architecture icon resource {resource}:\n{svg}"
+            );
+        }
+    }
+    let ids = document
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        ids.len(),
+        "canonical Architecture SVG must not duplicate DOM IDs:\n{svg}"
+    );
+    assert!(
+        document
+            .descendants()
+            .flat_map(|node| node.attributes())
+            .all(|attribute| !attribute.value().starts_with("url(#")
+                && !(attribute.name() == "href" && attribute.value().starts_with('#'))),
+        "expanded built-in Architecture icons must not retain local SVG references:\n{svg}"
+    );
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -428,8 +461,17 @@ fn architecture_builtin_icons_without_internal_ids_skip_iconify_id_scoping() {
     );
 
     assert_eq!(internal_iconify_ids(&svg).len(), 0, "{svg}");
+    let document = roxmltree::Document::parse(&svg).expect("Architecture SVG is XML");
     assert_eq!(
-        svg.matches(r#"<rect x="17.5" y="17.5""#).count(),
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .attribute("data-merman-resource")
+                        .is_some_and(|id| id.ends_with(".icon.case"))
+            })
+            .count(),
         2,
         "{svg}"
     );

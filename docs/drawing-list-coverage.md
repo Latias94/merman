@@ -21,7 +21,7 @@ inventory row fails at test time.  The current inventory is:
 | ZenUML | yes | legacy bridge |
 | Flowchart | yes | legacy bridge |
 | Swimlane | yes | legacy bridge |
-| Architecture | yes | legacy bridge |
+| Architecture | yes | canonical |
 | Class | yes | legacy bridge |
 | C4 | yes | canonical |
 | Cynefin | yes | canonical |

@@ -8,7 +8,7 @@
     { "id": "zenuml", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "flowchart", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "swimlane", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "architecture", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "architecture", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "class", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "c4", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "cynefin", "document_adapter": "direct", "svg_serializer": "canonical" },

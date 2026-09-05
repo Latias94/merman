@@ -9,7 +9,8 @@ use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families, theme_color,
 };
 use crate::architecture_metrics::{
-    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_svg_group_bbox_padding_px,
+    ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
+    architecture_create_text_middle_bbox_y_range_px, architecture_svg_group_bbox_padding_px,
 };
 use crate::config::{
     config_diagram_look, config_f64, config_string, config_theme_font_size_css_or_root_number_px,
@@ -44,6 +45,13 @@ type ArchitecturePair = FamilyPair<ArchitectureDiagramRenderModel, ArchitectureD
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) acc_title: Option<String>,
+    pub(crate) acc_description: Option<String>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 pub(crate) fn build_architecture_document(
@@ -79,6 +87,11 @@ struct ArchitectureBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    semantic_classes: BTreeMap<String, String>,
+    path_classes: BTreeMap<String, String>,
+    text_classes: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
+    content_bounds: Option<Bounds>,
 }
 
 impl<'a> ArchitectureBuilder<'a> {
@@ -194,6 +207,37 @@ impl<'a> ArchitectureBuilder<'a> {
             ));
         }
         let group_bounds = compute_group_bounds(model, layout, &nodes_by_id, icon_size, padding)?;
+        let semantics = vec![
+            SemanticAnnotation {
+                id: "architecture.document".to_string(),
+                role: SemanticRole::Document,
+                title: model
+                    .acc_title
+                    .clone()
+                    .or_else(|| model.title.clone())
+                    .or_else(|| metadata.title.clone())
+                    .or_else(|| Some(metadata.diagram_type.clone())),
+                description: model.acc_descr.clone(),
+                link: None,
+            },
+            architecture_container_semantic("architecture.edges", "Architecture edges"),
+            architecture_container_semantic("architecture.services", "Architecture services"),
+            architecture_container_semantic("architecture.groups", "Architecture groups"),
+        ];
+        let semantic_classes = BTreeMap::from([
+            (
+                "architecture.edges".to_string(),
+                "architecture-edges".to_string(),
+            ),
+            (
+                "architecture.services".to_string(),
+                "architecture-services".to_string(),
+            ),
+            (
+                "architecture.groups".to_string(),
+                "architecture-groups".to_string(),
+            ),
+        ]);
 
         Ok(Self {
             metadata,
@@ -217,36 +261,38 @@ impl<'a> ArchitectureBuilder<'a> {
             model_nodes_by_id,
             group_bounds,
             resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "architecture.document".to_string(),
-                },
-            ],
-            semantics: vec![SemanticAnnotation {
-                id: "architecture.document".to_string(),
-                role: SemanticRole::Document,
-                title: model
-                    .acc_title
-                    .clone()
-                    .or_else(|| model.title.clone())
-                    .or_else(|| metadata.title.clone())
-                    .or_else(|| Some(metadata.diagram_type.clone())),
-                description: model.acc_descr.clone(),
-                link: None,
-            }],
+            commands: vec![DrawingCommand::Save],
+            semantics,
+            semantic_classes,
+            path_classes: BTreeMap::new(),
+            text_classes: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
+            content_bounds: None,
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "architecture.edges".to_string(),
+        });
         for (index, edge) in self.model.edges.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_edge(index, edge, &self.layout.edges[index])?;
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "architecture.services".to_string(),
+        });
         for (index, node) in self.model.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(index, node)?;
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "architecture.groups".to_string(),
+        });
         for (index, group) in self.model.groups.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_group(index, group)?;
@@ -254,22 +300,13 @@ impl<'a> ArchitectureBuilder<'a> {
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
 
-        let mut bounds = self
-            .layout
-            .bounds
-            .as_ref()
-            .ok_or_else(|| invalid("Architecture layout lost its validated root bounds"))?
-            .clone();
-        for group_bounds in self.group_bounds.values() {
-            bounds.min_x = bounds.min_x.min(group_bounds.min_x);
-            bounds.min_y = bounds.min_y.min(group_bounds.min_y);
-            bounds.max_x = bounds.max_x.max(group_bounds.max_x);
-            bounds.max_y = bounds.max_y.max(group_bounds.max_y);
-        }
-        let viewport = expand_bounds(
-            &bounds,
-            self.padding + self.icon_size / 2.0 + self.font_size,
-        );
+        let bounds = self.content_bounds.unwrap_or(Bounds {
+            min_x: -self.icon_size / 2.0,
+            min_y: -self.icon_size / 2.0,
+            max_x: self.icon_size / 2.0,
+            max_y: self.icon_size / 2.0,
+        });
+        let viewport = expand_bounds(&bounds, self.padding);
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
@@ -301,6 +338,32 @@ impl<'a> ArchitectureBuilder<'a> {
                 family: RenderFamilyKind::Architecture,
                 body: SvgStructureBody::Architecture(ArchitectureSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: self
+                        .metadata
+                        .effective_config
+                        .as_value()
+                        .get("architecture")
+                        .and_then(|value| value.get("useMaxWidth"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
+                    acc_title: self
+                        .model
+                        .acc_title
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToOwned::to_owned),
+                    acc_description: self
+                        .model
+                        .acc_descr
+                        .as_deref()
+                        .map(|value| value.trim_end_matches('\n'))
+                        .filter(|value| !value.trim().is_empty())
+                        .map(ToOwned::to_owned),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -314,11 +377,38 @@ impl<'a> ArchitectureBuilder<'a> {
             .ok_or_else(|| invalid(format!("Architecture node `{}` has no layout", node.id)))?;
         validate_box(layout.x, layout.y, layout.width, layout.height, &node.id)?;
         let semantic_id = format!("architecture.node.{index}");
+        self.semantic_classes.insert(
+            semantic_id.clone(),
+            match node.node_type {
+                ArchitectureRenderNodeType::Service => "architecture-service",
+                ArchitectureRenderNodeType::Junction => "architecture-junction",
+            }
+            .to_string(),
+        );
+        if node.node_type == ArchitectureRenderNodeType::Service {
+            self.dom_ids
+                .insert(semantic_id.clone(), format!("service-{}", node.id));
+        }
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
         match node.node_type {
-            ArchitectureRenderNodeType::Junction => {}
+            ArchitectureRenderNodeType::Junction => {
+                let path_id = format!("{semantic_id}.junction");
+                self.add_svg_path(
+                    path_id,
+                    rect_path(layout.x, layout.y, self.icon_size, self.icon_size),
+                    fill_style(Color::rgba(0, 0, 0, 0)),
+                    None,
+                    Some(format!("node-{}", node.id)),
+                )?;
+                self.extend_content_rect(Rect::new(
+                    layout.x,
+                    layout.y,
+                    self.icon_size,
+                    self.icon_size,
+                ));
+            }
             ArchitectureRenderNodeType::Service => {
                 if node
                     .icon_text
@@ -329,6 +419,28 @@ impl<'a> ArchitectureBuilder<'a> {
                         "Architecture service `{}` uses iconText/foreignObject, which DrawingList v1 cannot represent as vector text",
                         node.id
                     )));
+                }
+                self.text_classes.insert(
+                    semantic_id.clone(),
+                    "architecture-service-label".to_string(),
+                );
+                if let Some(title) = node
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                {
+                    let title = plain_architecture_label(title, "service title")?;
+                    self.emit_multiline_text(
+                        &format!("{semantic_id}.title"),
+                        &title,
+                        Point::new(layout.x + self.icon_size / 2.0, layout.y + self.icon_size),
+                        self.text_color,
+                        TextAnchor::Middle,
+                        TextBaseline::Middle,
+                        self.icon_size * 1.5,
+                        node.in_group.is_none(),
+                    )?;
                 }
                 if let Some(icon) = node
                     .icon
@@ -343,7 +455,7 @@ impl<'a> ArchitectureBuilder<'a> {
                         self.icon_size,
                     )?;
                 } else {
-                    self.add_path(
+                    self.add_svg_path(
                         format!("{semantic_id}.shape"),
                         architecture_service_path(layout.x, layout.y, self.icon_size),
                         PathStyle {
@@ -351,28 +463,16 @@ impl<'a> ArchitectureBuilder<'a> {
                             fill: None,
                             stroke: Some(dashed_stroke(self.group_color, self.group_width)),
                         },
+                        Some("node-bkg"),
+                        Some(format!("node-{}", node.id)),
                     )?;
                 }
-                if let Some(title) = node
-                    .title
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                {
-                    let title = plain_architecture_label(title, "service title")?;
-                    self.emit_multiline_text(
-                        &format!("{semantic_id}.title"),
-                        &title,
-                        Point::new(
-                            layout.x + self.icon_size / 2.0,
-                            layout.y + self.icon_size + self.font_size,
-                        ),
-                        self.text_color,
-                        TextAnchor::Middle,
-                        TextBaseline::Alphabetic,
-                        self.icon_size * 1.5,
-                    )?;
-                }
+                self.extend_content_rect(Rect::new(
+                    layout.x,
+                    layout.y,
+                    self.icon_size,
+                    self.icon_size,
+                ));
             }
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -399,7 +499,7 @@ impl<'a> ArchitectureBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
-        self.add_path(
+        self.add_svg_path(
             format!("{semantic_id}.outline"),
             rect_path(
                 bounds.min_x,
@@ -412,7 +512,10 @@ impl<'a> ArchitectureBuilder<'a> {
                 fill: None,
                 stroke: Some(dashed_stroke(self.group_color, self.group_width)),
             },
+            Some("node-bkg"),
+            Some(format!("group-{}", group.id)),
         )?;
+        self.extend_content_bounds(bounds.clone());
         if let Some(icon) = group
             .icon
             .as_deref()
@@ -433,6 +536,10 @@ impl<'a> ArchitectureBuilder<'a> {
             .filter(|v| !v.is_empty())
         {
             let title = plain_architecture_label(title, "group title")?;
+            self.text_classes.insert(
+                semantic_id.clone(),
+                "architecture-service-label".to_string(),
+            );
             let group_icon_size = (self.padding * 0.75).max(1.0);
             let has_icon = group
                 .icon
@@ -455,6 +562,7 @@ impl<'a> ArchitectureBuilder<'a> {
                 TextAnchor::Start,
                 TextBaseline::Hanging,
                 (bounds.max_x - bounds.min_x).max(self.font_size),
+                true,
             )?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -513,7 +621,7 @@ impl<'a> ArchitectureBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
-        self.add_path(
+        self.add_svg_path(
             format!("{semantic_id}.route"),
             polyline_path(&points),
             PathStyle {
@@ -521,28 +629,40 @@ impl<'a> ArchitectureBuilder<'a> {
                 fill: None,
                 stroke: Some(stroke(self.edge_color, self.edge_width)),
             },
+            Some("edge"),
+            Some(format!("L_{}_{}_0", edge.lhs_id, edge.rhs_id)),
         )?;
+        self.extend_content_points(&points);
         let arrow_size = (self.icon_size / 6.0).max(1.0);
         if edge.lhs_into == Some(true) {
-            self.add_path(
+            let arrow = architecture_arrow_path(points[0], points[1], edge.lhs_dir, arrow_size);
+            self.extend_content_segments(&arrow);
+            self.add_svg_path(
                 format!("{semantic_id}.arrow.start"),
-                architecture_arrow_path(points[0], points[1], edge.lhs_dir, arrow_size),
+                arrow,
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(self.arrow_color)),
                     stroke: None,
                 },
+                Some("arrow"),
+                None,
             )?;
         }
         if edge.rhs_into == Some(true) {
-            self.add_path(
+            let arrow =
+                architecture_arrow_path(points[last], points[last - 1], edge.rhs_dir, arrow_size);
+            self.extend_content_segments(&arrow);
+            self.add_svg_path(
                 format!("{semantic_id}.arrow.end"),
-                architecture_arrow_path(points[last], points[last - 1], edge.rhs_dir, arrow_size),
+                arrow,
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(self.arrow_color)),
                     stroke: None,
                 },
+                Some("arrow"),
+                None,
             )?;
         }
         if let Some(title) = edge
@@ -552,6 +672,10 @@ impl<'a> ArchitectureBuilder<'a> {
             .filter(|v| !v.is_empty())
         {
             let title = plain_architecture_label(title, "edge label")?;
+            self.text_classes.insert(
+                semantic_id.clone(),
+                "architecture-service-label".to_string(),
+            );
             self.emit_edge_label(&semantic_id, &title, &points, edge.lhs_dir, edge.rhs_dir)?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -574,39 +698,55 @@ impl<'a> ArchitectureBuilder<'a> {
         rhs_dir: char,
     ) -> Result<()> {
         let middle = points[points.len() / 2];
-        let style = MeasurementTextStyle {
-            font_family: Some(self.font.families.join(", ")),
-            font_size: self.font_size,
-            font_weight: Some("400".to_string()),
-            font_style: None,
-        };
+        let style = self.architecture_text_style();
         let measurer = self
             .session
             .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer
-            .measure_svg_raw_text_bbox_width_px(text, &style)
+        let axis = architecture_edge_axis(lhs_dir, rhs_dir);
+        let wrap_width = match axis {
+            ArchitectureEdgeAxis::Horizontal => (points[0].x - points[points.len() - 1].x).abs(),
+            ArchitectureEdgeAxis::Vertical => {
+                (points[0].y - points[points.len() - 1].y).abs() / 1.5
+            }
+            ArchitectureEdgeAxis::Mixed => (points[0].x - points[points.len() - 1].x).abs() / 2.0,
+        };
+        let lines = wrap_architecture_plain_lines(text, wrap_width, &measurer, &style);
+        let first_line = lines
+            .iter()
+            .find(|line| !line.is_empty())
+            .map(String::as_str)
+            .unwrap_or(text);
+        let width = lines
+            .iter()
+            .map(|line| architecture_line_bbox_width(line, &measurer, &style))
+            .fold(0.0_f64, f64::max)
             .max(1.0);
-        let height = measurer
-            .measure_svg_raw_text_bbox_height_px(text, &style)
-            .max(self.font_size);
+        let (bbox_y_min, bbox_y_max) = architecture_create_text_middle_bbox_y_range_px(
+            first_line,
+            &style,
+            lines.len(),
+            &measurer,
+        );
+        let height = (bbox_y_max - bbox_y_min).max(self.font_size);
         let rotation = architecture_edge_label_rotation(lhs_dir, rhs_dir);
-        let bounds = rotated_text_bounds(middle, width, height, rotation);
+        let local_bounds = Rect::new(-width / 2.0, bbox_y_min, width, height);
+        let transform = architecture_edge_label_transform(
+            axis, lhs_dir, rhs_dir, middle, width, height, rotation,
+        );
+        self.extend_content_rect(transformed_rect_bounds(local_bounds, transform));
         self.commands.push(DrawingCommand::Save);
-        if rotation != 0.0 {
-            self.commands.push(DrawingCommand::ConcatTransform {
-                transform: rotation_transform(rotation, middle.x, middle.y),
-            });
-        }
+        self.commands
+            .push(DrawingCommand::ConcatTransform { transform });
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
-                text: text.to_string(),
-                origin: middle,
-                bounds,
+                text: lines.join("\n"),
+                origin: Point::new(0.0, 0.0),
+                bounds: local_bounds,
                 style: TextStyle {
                     font: self.font.clone(),
                     font_size: self.font_size,
                     letter_spacing: 0.0,
-                    line_height: self.font_size,
+                    line_height: self.font_size * 1.1,
                     fill: Paint::solid(self.text_color),
                 },
                 anchor: TextAnchor::Middle,
@@ -636,67 +776,66 @@ impl<'a> ArchitectureBuilder<'a> {
         anchor: TextAnchor,
         baseline: TextBaseline,
         max_width: f64,
+        include_in_root_bounds: bool,
     ) -> Result<()> {
-        let style = MeasurementTextStyle {
-            font_family: Some(self.font.families.join(", ")),
-            font_size: self.font_size,
-            font_weight: Some("400".to_string()),
-            font_style: None,
-        };
+        let style = self.architecture_text_style();
         let measurer = self
             .session
             .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let lines = crate::text::wrap_text_lines_measurer(
-            text,
-            &measurer,
-            &style,
-            Some(max_width.max(1.0)),
-        );
-        let line_height = self.font_size * 1.2;
-        let mut emitted = 0usize;
-        for (index, line) in lines.iter().map(|line| line.trim()).enumerate() {
-            if line.is_empty() {
-                // Preserve explicit `<br>`/newline spacing without emitting an empty host text
-                // run. The line index still advances, so a blank source line cannot disappear
-                // from the resulting layout.
-                continue;
-            }
-            let y = origin.y + index as f64 * line_height;
-            let bounds_x = match anchor {
-                TextAnchor::Start => origin.x,
-                TextAnchor::Middle => origin.x - max_width / 2.0,
-                TextAnchor::End => origin.x - max_width,
-            };
-            let bounds = Rect::new(
-                bounds_x,
-                y - self.font_size,
-                max_width.max(1.0),
-                line_height,
-            );
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text: line.to_string(),
-                    origin: Point::new(origin.x, y),
-                    bounds,
-                    style: TextStyle {
-                        font: self.font.clone(),
-                        font_size: self.font_size,
-                        letter_spacing: 0.0,
-                        line_height,
-                        fill: Paint::solid(fill),
-                    },
-                    anchor,
-                    baseline,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
-                },
-            });
-            emitted += 1;
-        }
-        if emitted == 0 {
+        let lines = wrap_architecture_plain_lines(text, max_width, &measurer, &style);
+        if lines.iter().all(|line| line.is_empty()) {
             return Err(invalid(format!("Architecture text `{id}` is empty")));
         }
+        let first_line = lines
+            .iter()
+            .find(|line| !line.is_empty())
+            .map(String::as_str)
+            .unwrap_or(text);
+        let width = lines
+            .iter()
+            .map(|line| architecture_line_bbox_width(line, &measurer, &style))
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+        let (bbox_y_min, bbox_y_max) = architecture_create_text_middle_bbox_y_range_px(
+            first_line,
+            &style,
+            lines.len(),
+            &measurer,
+        );
+        let height = (bbox_y_max - bbox_y_min).max(self.font_size);
+        let x = match anchor {
+            TextAnchor::Start => origin.x,
+            TextAnchor::Middle => origin.x - width / 2.0,
+            TextAnchor::End => origin.x - width,
+        };
+        let y = match baseline {
+            TextBaseline::Middle => origin.y - height / 2.0,
+            TextBaseline::Hanging => origin.y,
+            _ => origin.y - height,
+        };
+        let bounds = Rect::new(x, y, width, height);
+        if include_in_root_bounds {
+            self.extend_content_rect(bounds);
+        }
+        self.commands.push(DrawingCommand::DrawText {
+            run: TextRun {
+                text: lines.join("\n"),
+                origin,
+                bounds,
+                style: TextStyle {
+                    font: self.font.clone(),
+                    font_size: self.font_size,
+                    letter_spacing: 0.0,
+                    line_height: self.font_size * 1.1,
+                    fill: Paint::solid(fill),
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            },
+        });
         self.semantics.push(SemanticAnnotation {
             id: id.to_string(),
             role: SemanticRole::Label,
@@ -705,6 +844,15 @@ impl<'a> ArchitectureBuilder<'a> {
             link: None,
         });
         Ok(())
+    }
+
+    fn architecture_text_style(&self) -> MeasurementTextStyle {
+        MeasurementTextStyle {
+            font_family: Some(self.font.families.join(", ")),
+            font_size: self.font_size,
+            font_weight: None,
+            font_style: None,
+        }
     }
 
     fn emit_architecture_icon(
@@ -1025,6 +1173,68 @@ impl<'a> ArchitectureBuilder<'a> {
         )
     }
 
+    fn add_svg_path(
+        &mut self,
+        id: String,
+        segments: Vec<PathSegment>,
+        style: PathStyle,
+        class: Option<&str>,
+        dom_id: Option<String>,
+    ) -> Result<()> {
+        if let Some(class) = class {
+            self.path_classes.insert(id.clone(), class.to_string());
+        }
+        if let Some(dom_id) = dom_id {
+            self.dom_ids.insert(id.clone(), dom_id);
+        }
+        self.add_path(id, segments, style)
+    }
+
+    fn extend_content_bounds(&mut self, bounds: Bounds) {
+        extend_bounds(&mut self.content_bounds, bounds);
+    }
+
+    fn extend_content_rect(&mut self, rect: Rect) {
+        self.extend_content_bounds(Bounds {
+            min_x: rect.x,
+            min_y: rect.y,
+            max_x: rect.x + rect.width,
+            max_y: rect.y + rect.height,
+        });
+    }
+
+    fn extend_content_points(&mut self, points: &[Point]) {
+        if let Some(bounds) = points_bounds(points) {
+            self.extend_content_bounds(bounds);
+        }
+    }
+
+    fn extend_content_segments(&mut self, segments: &[PathSegment]) {
+        let mut points = Vec::with_capacity(segments.len() * 3);
+        for segment in segments {
+            match segment {
+                PathSegment::MoveTo { to }
+                | PathSegment::LineTo { to }
+                | PathSegment::ArcTo { to, .. } => points.push(*to),
+                PathSegment::QuadTo { control, to } => {
+                    points.push(*control);
+                    points.push(*to);
+                }
+                PathSegment::CubicTo {
+                    control1,
+                    control2,
+                    to,
+                } => {
+                    points.push(*control1);
+                    points.push(*control2);
+                    points.push(*to);
+                }
+                PathSegment::Close => {}
+            }
+        }
+        self.extend_content_points(&points);
+    }
+
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
         self.resources.push(DrawingResource::Path(PathResource {
             id: ResourceId::new(id.clone()),
@@ -1036,6 +1246,134 @@ impl<'a> ArchitectureBuilder<'a> {
         });
         Ok(())
     }
+}
+
+fn architecture_container_semantic(id: &str, description: &str) -> SemanticAnnotation {
+    SemanticAnnotation {
+        id: id.to_string(),
+        role: SemanticRole::Group,
+        title: None,
+        description: Some(description.to_string()),
+        link: None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchitectureEdgeAxis {
+    Horizontal,
+    Vertical,
+    Mixed,
+}
+
+fn architecture_edge_axis(lhs_dir: char, rhs_dir: char) -> ArchitectureEdgeAxis {
+    match (lhs_dir, rhs_dir) {
+        ('L' | 'R', 'L' | 'R') => ArchitectureEdgeAxis::Horizontal,
+        ('T' | 'B', 'T' | 'B') => ArchitectureEdgeAxis::Vertical,
+        _ => ArchitectureEdgeAxis::Mixed,
+    }
+}
+
+fn wrap_architecture_plain_lines(
+    text: &str,
+    max_width_px: f64,
+    measurer: &dyn TextMeasurer,
+    style: &MeasurementTextStyle,
+) -> Vec<String> {
+    let max_width_px = if max_width_px.is_finite() && max_width_px > 0.0 {
+        max_width_px
+    } else {
+        ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX
+    };
+    let mut measured_style = style.clone();
+    measured_style.font_weight = Some("normal".to_string());
+    measured_style.font_style = Some("normal".to_string());
+
+    let word_width = |word: &str, first: bool| {
+        let measured = if first {
+            word.to_string()
+        } else {
+            format!(" {word}")
+        };
+        measurer.measure_svg_text_computed_length_px(&measured, &measured_style)
+    };
+
+    let mut output = Vec::new();
+    for source_line in text.split('\n') {
+        let mut current = String::new();
+        let mut current_width = 0.0;
+        for word in source_line.split(' ').filter(|word| !word.is_empty()) {
+            let width = word_width(word, current.is_empty());
+            if !current.is_empty() && current_width + width > max_width_px {
+                output.push(std::mem::take(&mut current));
+                current_width = 0.0;
+            }
+
+            if current.is_empty() && word_width(word, true) > max_width_px {
+                let mut chunk = String::new();
+                for ch in word.chars() {
+                    let mut candidate = chunk.clone();
+                    candidate.push(ch);
+                    if !chunk.is_empty()
+                        && measurer.measure_svg_text_computed_length_px(&candidate, &measured_style)
+                            > max_width_px
+                    {
+                        output.push(std::mem::take(&mut chunk));
+                    }
+                    chunk.push(ch);
+                }
+                current = chunk;
+                current_width =
+                    measurer.measure_svg_text_computed_length_px(&current, &measured_style);
+                continue;
+            }
+
+            if !current.is_empty() {
+                current.push(' ');
+            }
+            current.push_str(word);
+            current_width += width;
+        }
+        if !current.is_empty() {
+            output.push(current);
+        } else if source_line.is_empty() {
+            output.push(String::new());
+        }
+    }
+
+    if output.is_empty() {
+        vec![String::new()]
+    } else {
+        output
+    }
+}
+
+fn architecture_line_bbox_width(
+    line: &str,
+    measurer: &dyn TextMeasurer,
+    style: &MeasurementTextStyle,
+) -> f64 {
+    let mut measured_style = style.clone();
+    measured_style.font_weight = Some("normal".to_string());
+    measured_style.font_style = Some("normal".to_string());
+    let (left, right) = measurer.measure_svg_text_bbox_x(line, &measured_style);
+    (left + right).max(0.0)
+}
+
+fn points_bounds(points: &[Point]) -> Option<Bounds> {
+    let first = points.first()?;
+    let mut bounds = Bounds {
+        min_x: first.x,
+        min_y: first.y,
+        max_x: first.x,
+        max_y: first.y,
+    };
+    for point in &points[1..] {
+        bounds.min_x = bounds.min_x.min(point.x);
+        bounds.min_y = bounds.min_y.min(point.y);
+        bounds.max_x = bounds.max_x.max(point.x);
+        bounds.max_y = bounds.max_y.max(point.y);
+    }
+    Some(bounds)
 }
 
 fn config_css_length(config: &Value, path: &[&str]) -> Option<String> {
@@ -1294,26 +1632,11 @@ fn compute_group_bounds<'a>(
         Exit(&'a str),
     }
 
+    // Mermaid draws SVG group rectangles from Cytoscape's final `node.boundingBox()` phase,
+    // which includes the service label contribution cached above. The raw FCoSE compound
+    // rectangles intentionally represent an earlier layout-engine phase and are therefore not a
+    // valid SVG geometry source here.
     let mut output: HashMap<&'a str, Bounds> = HashMap::new();
-    let cached_group_bounds = layout
-        .fcose_compound_bounds
-        .iter()
-        .map(|entry| (entry.id.as_str(), &entry.bounds))
-        .collect::<HashMap<_, _>>();
-    if cached_group_bounds.len() != layout.fcose_compound_bounds.len() {
-        return Err(invalid(
-            "Architecture layout contains duplicate FCoSE compound group IDs",
-        ));
-    }
-    for (id, bounds) in &cached_group_bounds {
-        if !model.groups.iter().any(|group| group.id == *id) {
-            return Err(invalid(format!(
-                "Architecture layout contains an unknown FCoSE compound group `{id}`"
-            )));
-        }
-        validate_bounds(bounds)?;
-        output.insert(*id, (*bounds).clone());
-    }
     let mut visiting = HashSet::new();
     for group in &model.groups {
         let mut stack = vec![Step::Enter(group.id.as_str())];
@@ -1650,16 +1973,87 @@ fn architecture_edge_label_rotation(lhs_dir: char, rhs_dir: char) -> f64 {
     }
 }
 
-fn rotated_text_bounds(center: Point, width: f64, height: f64, degrees: f64) -> Rect {
-    let radians = degrees.to_radians();
-    let (sin, cos) = radians.sin_cos();
-    let rotated_width = cos.abs() * width + sin.abs() * height;
-    let rotated_height = sin.abs() * width + cos.abs() * height;
+fn architecture_edge_label_transform(
+    axis: ArchitectureEdgeAxis,
+    lhs_dir: char,
+    rhs_dir: char,
+    middle: Point,
+    width: f64,
+    height: f64,
+    rotation: f64,
+) -> Transform {
+    match axis {
+        ArchitectureEdgeAxis::Horizontal => translation_transform(middle.x, middle.y),
+        ArchitectureEdgeAxis::Vertical => compose_transform(
+            translation_transform(middle.x, middle.y),
+            rotation_transform(rotation, 0.0, 0.0),
+        ),
+        ArchitectureEdgeAxis::Mixed => {
+            let (x_factor, y_factor) = architecture_edge_xy_factors(lhs_dir, rhs_dir);
+            let diagonal = (width + height) * std::f64::consts::FRAC_1_SQRT_2;
+            compose_transform(
+                compose_transform(
+                    translation_transform(middle.x, middle.y - height / 2.0),
+                    translation_transform(x_factor * diagonal / 2.0, y_factor * diagonal / 2.0),
+                ),
+                rotation_transform(rotation, 0.0, height / 2.0),
+            )
+        }
+    }
+}
+
+fn architecture_edge_xy_factors(lhs_dir: char, rhs_dir: char) -> (f64, f64) {
+    match (lhs_dir, rhs_dir) {
+        ('L', 'T') | ('T', 'L') => (1.0, 1.0),
+        ('B', 'L') | ('L', 'B') => (1.0, -1.0),
+        ('B', 'R') | ('R', 'B') => (-1.0, -1.0),
+        _ => (-1.0, 1.0),
+    }
+}
+
+fn translation_transform(x: f64, y: f64) -> Transform {
+    Transform {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: x,
+        f: y,
+    }
+}
+
+fn compose_transform(first: Transform, second: Transform) -> Transform {
+    Transform {
+        a: first.a * second.a + first.c * second.b,
+        b: first.b * second.a + first.d * second.b,
+        c: first.a * second.c + first.c * second.d,
+        d: first.b * second.c + first.d * second.d,
+        e: first.a * second.e + first.c * second.f + first.e,
+        f: first.b * second.e + first.d * second.f + first.f,
+    }
+}
+
+fn transformed_rect_bounds(rect: Rect, transform: Transform) -> Rect {
+    let points = [
+        Point::new(rect.x, rect.y),
+        Point::new(rect.x + rect.width, rect.y),
+        Point::new(rect.x + rect.width, rect.y + rect.height),
+        Point::new(rect.x, rect.y + rect.height),
+    ]
+    .map(|point| apply_transform(transform, point));
+    let bounds = points_bounds(&points).expect("a rectangle always has four corners");
     Rect::new(
-        center.x - rotated_width / 2.0,
-        center.y - rotated_height / 2.0,
-        rotated_width,
-        rotated_height,
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x - bounds.min_x,
+        bounds.max_y - bounds.min_y,
+    )
+}
+
+fn apply_transform(transform: Transform, point: Point) -> Point {
+    Point::new(
+        transform.a * point.x + transform.c * point.y + transform.e,
+        transform.b * point.x + transform.d * point.y + transform.f,
     )
 }
 

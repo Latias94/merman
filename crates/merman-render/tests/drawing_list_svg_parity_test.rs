@@ -1292,3 +1292,86 @@ Rel(api, worker, "Publishes", "Events")
     );
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[cfg(feature = "layout-cytoscape")]
+#[test]
+fn architecture_canonical_svg_keeps_services_groups_routes_and_accessibility() {
+    let svg = render_svg(
+        r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%
+architecture-beta
+accTitle: Platform architecture
+accDescr: Services and mixed-direction routes
+group core(cloud)[Core]
+service api(server)[API] in core
+service db(database)[Database] in core
+service worker(disk)[Worker]
+api:R -[sync]-> L:db
+db:B -[events]-> R:worker
+"#,
+        "architecture-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Architecture SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("aria-roledescription"), Some("architecture"));
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-architecture-parity")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-architecture-parity")
+    );
+    for class in [
+        "architecture-edges",
+        "architecture-services",
+        "architecture-groups",
+    ] {
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+        }));
+    }
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("id") == Some("architecture-parity-service-api")
+            && node.attribute("data-merman-semantic-id") == Some("architecture.node.0")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node.attribute("id") == Some("architecture-parity-group-core")
+            && node.attribute("data-merman-resource") == Some("architecture.group.0.outline")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("class") == Some("edge")
+            && node.attribute("data-merman-resource") == Some("architecture.edge.0.route")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("polygon")
+            && node.attribute("class") == Some("arrow")
+            && node
+                .attribute("data-merman-resource")
+                .is_some_and(|id| id.starts_with("architecture.edge."))
+    }));
+    let mixed_label = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("architecture-service-label")
+                && node.text() == Some("events")
+        })
+        .expect("mixed-direction Architecture label");
+    assert!(
+        mixed_label
+            .attribute("transform")
+            .is_some_and(|transform| transform.contains("rotate(-45)")),
+        "B-to-R Architecture labels must use Mermaid's -45 degree mixed-axis rotation"
+    );
+    assert!(svg.contains("#architecture-parity .edge{"));
+    assert!(svg.contains("#architecture-parity .arrow{"));
+    assert!(svg.contains("#architecture-parity .node-bkg{"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

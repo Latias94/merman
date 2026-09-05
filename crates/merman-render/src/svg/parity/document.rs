@@ -206,6 +206,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Wardley(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
             }
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(body) => {
+                (body.acc_title.clone(), body.acc_description.clone())
+            }
             _ => (
                 self.document_semantic()
                     .and_then(|semantic| semantic.title.clone()),
@@ -472,6 +476,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.use_max_width,
             )
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width))),
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(body) => {
+                Ok(root_svg::RootViewportSpec::mermaid_or_intrinsic(
+                    viewport_bounds,
+                    body.use_max_width,
+                ))
+            }
             _ => Ok(
                 root_svg::RootViewportSpec::responsive(padded_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(padded_bounds.width),
@@ -624,6 +635,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::c4::c4_css(self.diagram_id.as_str(), self.effective_config),
             )),
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(_) => Some((
+                false,
+                super::css::architecture_css_with_config(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
+            )),
             _ => None,
         };
         let Some((xhtml_namespace, css)) = css else {
@@ -645,32 +664,38 @@ impl<'a> DocumentSvgEncoder<'a> {
             .map_err(Error::from)?;
         self.output.push_str(&css);
         self.output.push_str("</style>");
-        if matches!(
-            self.svg_body,
-            SvgStructureBody::Packet(_)
-                | SvgStructureBody::QuadrantChart(_)
-                | SvgStructureBody::Pie(_)
-                | SvgStructureBody::Timeline(_)
-                | SvgStructureBody::Journey(_)
-                | SvgStructureBody::Treemap(_)
-                | SvgStructureBody::Kanban(_)
-                | SvgStructureBody::Sankey(_)
-                | SvgStructureBody::Requirement(_)
-                | SvgStructureBody::State(_)
-                | SvgStructureBody::Er(_)
-                | SvgStructureBody::Venn(_)
-                | SvgStructureBody::Railroad(_)
-                | SvgStructureBody::EventModeling(_)
-                | SvgStructureBody::Ishikawa(_)
-                | SvgStructureBody::Cynefin(_)
-                | SvgStructureBody::TreeView(_)
-                | SvgStructureBody::Gantt(_)
-                | SvgStructureBody::GitGraph(_)
-                | SvgStructureBody::Radar(_)
-                | SvgStructureBody::XyChart(_)
-                | SvgStructureBody::Block(_)
-                | SvgStructureBody::C4(_)
-        ) {
+        #[cfg(feature = "layout-cytoscape")]
+        let architecture = matches!(self.svg_body, SvgStructureBody::Architecture(_));
+        #[cfg(not(feature = "layout-cytoscape"))]
+        let architecture = false;
+        if architecture
+            || matches!(
+                self.svg_body,
+                SvgStructureBody::Packet(_)
+                    | SvgStructureBody::QuadrantChart(_)
+                    | SvgStructureBody::Pie(_)
+                    | SvgStructureBody::Timeline(_)
+                    | SvgStructureBody::Journey(_)
+                    | SvgStructureBody::Treemap(_)
+                    | SvgStructureBody::Kanban(_)
+                    | SvgStructureBody::Sankey(_)
+                    | SvgStructureBody::Requirement(_)
+                    | SvgStructureBody::State(_)
+                    | SvgStructureBody::Er(_)
+                    | SvgStructureBody::Venn(_)
+                    | SvgStructureBody::Railroad(_)
+                    | SvgStructureBody::EventModeling(_)
+                    | SvgStructureBody::Ishikawa(_)
+                    | SvgStructureBody::Cynefin(_)
+                    | SvgStructureBody::TreeView(_)
+                    | SvgStructureBody::Gantt(_)
+                    | SvgStructureBody::GitGraph(_)
+                    | SvgStructureBody::Radar(_)
+                    | SvgStructureBody::XyChart(_)
+                    | SvgStructureBody::Block(_)
+                    | SvgStructureBody::C4(_)
+            )
+        {
             self.output.push_str("<g/>");
         }
         Ok(())
@@ -690,6 +715,14 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn accessibility_id(&self, suffix: &str) -> String {
         match self.svg_body {
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(_) => {
+                let suffix = match suffix {
+                    "description" => "desc",
+                    other => other,
+                };
+                format!("chart-{suffix}-{}", self.diagram_id)
+            }
             SvgStructureBody::Packet(_)
             | SvgStructureBody::QuadrantChart(_)
             | SvgStructureBody::Pie(_)
@@ -1134,6 +1167,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         let semantic_extra_class = self.semantic_extra_class(semantic_id).map(str::to_owned);
+        #[cfg(feature = "layout-cytoscape")]
+        let exact_family_class = matches!(self.svg_body, SvgStructureBody::Architecture(_));
+        #[cfg(not(feature = "layout-cytoscape"))]
+        let exact_family_class = false;
         if matches!(self.svg_body, SvgStructureBody::Er(_))
             && is_er_container_semantic(semantic_id)
             && let Some(class) = semantic_extra_class.as_deref()
@@ -1158,10 +1195,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 class,
             )
             .map_err(|_| invalid("failed to write Timeline semantic group"))?;
-        } else if matches!(
-            self.svg_body,
-            SvgStructureBody::Block(_) | SvgStructureBody::C4(_)
-        ) && let Some(class) = semantic_extra_class.as_deref()
+        } else if (exact_family_class
+            || matches!(
+                self.svg_body,
+                SvgStructureBody::Block(_) | SvgStructureBody::C4(_)
+            ))
+            && let Some(class) = semantic_extra_class.as_deref()
         {
             write!(
                 self.output,
@@ -1277,6 +1316,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::C4(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(body) => {
+                body.semantic_classes.get(semantic_id).map(String::as_str)
+            }
             SvgStructureBody::Wardley(body) => {
                 body.semantic_classes.get(semantic_id).map(String::as_str)
             }
@@ -1342,6 +1385,45 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        #[cfg(feature = "layout-cytoscape")]
+        if matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
+            let raw_id = path_id.as_str();
+            let path = self.path_resource(path_id)?;
+            if raw_id.contains(".arrow.")
+                && let Some(points) = polygon_from_path(path)
+            {
+                return self.emit_polygon(path_id, &points, style);
+            }
+            if (raw_id.starts_with("architecture.group.") && raw_id.ends_with(".outline")
+                || raw_id.starts_with("architecture.node.") && raw_id.ends_with(".junction")
+                || raw_id.ends_with(".icon.background"))
+                && let Some(bounds) = rectangle_from_path(path)
+            {
+                return self.emit_rect(path_id, bounds, style);
+            }
+            if raw_id.ends_with(".icon.case")
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
+            if (raw_id.contains(".icon.side.")
+                || raw_id.contains(".icon.divider.")
+                || raw_id.contains(".icon.axis."))
+                && let Some((start, end)) = line_from_path(path)
+            {
+                return self.emit_line(path_id, start, end, style);
+            }
+            if (raw_id.ends_with(".icon.top")
+                || raw_id.contains(".icon.light.")
+                || raw_id.contains(".icon.screw.")
+                || raw_id.ends_with(".icon.platter")
+                || raw_id.ends_with(".icon.hub")
+                || raw_id.ends_with(".icon.globe"))
+                && let Some((center, radius_x, radius_y)) = ellipse_from_path(path)
+            {
+                return self.emit_ellipse(path_id, center, radius_x, radius_y, style);
+            }
+        }
         if matches!(self.svg_body, SvgStructureBody::QuadrantChart(_)) {
             let raw_id = path_id.as_str();
             if raw_id.starts_with("quadrantchart.quadrant.") && raw_id.ends_with(".shape") {
@@ -1887,6 +1969,38 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "layout-cytoscape")]
+    fn emit_ellipse(
+        &mut self,
+        path_id: &ResourceId,
+        center: Point,
+        radius_x: f64,
+        radius_y: f64,
+        style: &PathStyle,
+    ) -> Result<()> {
+        write!(
+            self.output,
+            "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\"",
+            fmt(center.x),
+            fmt(center.y),
+            fmt(radius_x),
+            fmt(radius_y),
+        )
+        .map_err(|_| invalid("failed to write SVG ellipse"))?;
+        self.write_sidecar_dom_id(path_id.as_str());
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"");
+            self.output.push_str(class.as_ref());
+            self.output.push('"');
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs();
+        self.output.push_str(" data-merman-resource=\"");
+        escape_attr_into(&mut self.output, path_id.as_str());
+        self.output.push_str("\"/>");
+        Ok(())
+    }
+
     fn emit_polygon(
         &mut self,
         path_id: &ResourceId,
@@ -1995,6 +2109,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str("<text");
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id);
+            #[cfg(feature = "layout-cytoscape")]
+            if !matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
+                self.write_sidecar_dom_id(semantic_id);
+            }
+            #[cfg(not(feature = "layout-cytoscape"))]
             self.write_sidecar_dom_id(semantic_id);
         }
         if let Some(class) = self.text_class(run, text_index) {
@@ -2417,6 +2536,12 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Some(Cow::Owned(class.clone()));
         }
+        #[cfg(feature = "layout-cytoscape")]
+        if let SvgStructureBody::Architecture(body) = self.svg_body
+            && let Some(class) = body.path_classes.get(path_id.as_str())
+        {
+            return Some(Cow::Owned(class.clone()));
+        }
         if let SvgStructureBody::Wardley(body) = self.svg_body
             && let Some(class) = body.path_classes.get(path_id.as_str())
         {
@@ -2486,6 +2611,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
             SvgStructureBody::Er(body) => body.dom_ids.get(key),
             SvgStructureBody::Block(body) => body.dom_ids.get(key),
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(body) => body.dom_ids.get(key),
             _ => None,
         };
         let Some(raw_id) = raw_id else {
@@ -2603,6 +2730,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
             SvgStructureBody::C4(body) => self
+                .current_semantic_id()
+                .and_then(|id| body.text_classes.get(id))
+                .map(|class| Cow::Owned(class.clone())),
+            #[cfg(feature = "layout-cytoscape")]
+            SvgStructureBody::Architecture(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))
                 .map(|class| Cow::Owned(class.clone())),
@@ -2778,6 +2910,8 @@ impl<'a> DocumentSvgEncoder<'a> {
                 SvgStructureBody::XyChart(_) => id.starts_with("xychart.text."),
                 SvgStructureBody::GitGraph(_) => id.starts_with("gitgraph."),
                 SvgStructureBody::Treemap(_) => id.starts_with("treemap."),
+                #[cfg(feature = "layout-cytoscape")]
+                SvgStructureBody::Architecture(_) => id.starts_with("architecture."),
                 _ => false,
             });
         if family_text
@@ -2880,6 +3014,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
         }
         if let SvgStructureBody::C4(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
+        #[cfg(feature = "layout-cytoscape")]
+        if let SvgStructureBody::Architecture(body) = self.svg_body
             && let Some(raw_id) = body.dom_ids.get(id)
         {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
@@ -3151,6 +3291,60 @@ fn circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
         return None;
     }
     Some((center, *radius_x))
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn ellipse_from_path(path: &PathResource) -> Option<(Point, f64, f64)> {
+    let [
+        PathSegment::MoveTo { to: start },
+        PathSegment::ArcTo {
+            radius_x,
+            radius_y,
+            x_axis_rotation_degrees,
+            large_arc,
+            sweep_clockwise,
+            to: opposite,
+        },
+        PathSegment::ArcTo {
+            radius_x: second_radius_x,
+            radius_y: second_radius_y,
+            x_axis_rotation_degrees: second_rotation,
+            large_arc: second_large_arc,
+            sweep_clockwise: second_sweep_clockwise,
+            to: end,
+        },
+        PathSegment::Close,
+    ] = path.segments.as_slice()
+    else {
+        return None;
+    };
+
+    let epsilon = 1e-9;
+    let approx_eq = |left: f64, right: f64| (left - right).abs() <= epsilon;
+    if !radius_x.is_finite()
+        || !radius_y.is_finite()
+        || *radius_x <= 0.0
+        || *radius_y <= 0.0
+        || !approx_eq(*radius_x, *second_radius_x)
+        || !approx_eq(*radius_y, *second_radius_y)
+        || !approx_eq(*x_axis_rotation_degrees, 0.0)
+        || !approx_eq(*second_rotation, 0.0)
+        || *large_arc
+        || *second_large_arc
+        || !*sweep_clockwise
+        || !*second_sweep_clockwise
+        || !approx_eq(start.x, end.x)
+        || !approx_eq(start.y, end.y)
+        || !approx_eq(start.y, opposite.y)
+        || !approx_eq((start.x - opposite.x).abs(), 2.0 * radius_x)
+    {
+        return None;
+    }
+    let center = Point::new((start.x + opposite.x) / 2.0, start.y);
+    if !center.x.is_finite() || !center.y.is_finite() {
+        return None;
+    }
+    Some((center, *radius_x, *radius_y))
 }
 
 fn cubic_circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
