@@ -903,7 +903,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     ) -> Result<()> {
         write!(
             self.output,
-            "<linearGradient id=\"{}\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
+            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
             escaped_attr(id),
             fmt(gradient.start.x),
             fmt(gradient.start.y),
@@ -925,7 +925,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     ) -> Result<()> {
         write!(
             self.output,
-            "<radialGradient id=\"{}\" cx=\"{}\" cy=\"{}\" fx=\"{}\" fy=\"{}\" r=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
+            "<radialGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" cx=\"{}\" cy=\"{}\" fx=\"{}\" fy=\"{}\" r=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
             escaped_attr(id),
             fmt(gradient.center.x),
             fmt(gradient.center.y),

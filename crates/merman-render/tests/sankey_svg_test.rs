@@ -87,6 +87,11 @@ fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
         .expect("canonical Sankey gradient");
     let gradient_id = gradient.attribute("id").expect("gradient id");
     assert!(gradient_id.starts_with("merman-resource-"));
+    assert_eq!(
+        gradient.attribute("gradientUnits"),
+        Some("userSpaceOnUse"),
+        "canonical Sankey gradients use document-space coordinates"
+    );
     assert!(document.descendants().any(|node| {
         node.has_tag_name("path")
             && node
@@ -113,6 +118,11 @@ fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
         .expect("canonical Sankey gradient");
     let gradient_id = gradient.attribute("id").expect("gradient id");
     assert!(gradient_id.starts_with("merman-resource-"));
+    assert_eq!(
+        gradient.attribute("gradientUnits"),
+        Some("userSpaceOnUse"),
+        "canonical Sankey gradients use document-space coordinates"
+    );
     assert!(document.descendants().any(|node| {
         node.has_tag_name("path")
             && node
