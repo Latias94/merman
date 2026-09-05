@@ -27,14 +27,40 @@ struct RailroadUnsupportedRoute {
     target: ThemeTarget,
     selector: Option<FamilyThemeSelectorShape>,
     reason: FamilyThemeResidualReason,
+    text_fill: bool,
 }
 
 impl RailroadUnsupportedRoute {
-    fn is_applicable(&self, receipt: &RailroadSurfaceReceipt) -> bool {
+    fn is_applicable(
+        &self,
+        receipt: &RailroadSurfaceReceipt,
+        text_fill_roles: RailroadTextFillRoles,
+    ) -> bool {
+        if self.text_fill {
+            return text_fill_roles.has_visible_occurrence(receipt);
+        }
         let occurrence_count = receipt.occurrence_count(self.target);
         self.selector.is_none_or(|selector| {
             selector.ordinal_domain_intersects_occurrence_count(occurrence_count)
         }) && occurrence_count != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RailroadTextFillRoles {
+    terminal: bool,
+    nonterminal: bool,
+    comment: bool,
+    rule_name: bool,
+}
+
+impl RailroadTextFillRoles {
+    fn has_visible_occurrence(self, receipt: &RailroadSurfaceReceipt) -> bool {
+        (self.terminal && receipt.terminal_text_count != 0)
+            || (self.nonterminal
+                && (receipt.nonterminal_text_count != 0 || receipt.special_text_count != 0))
+            || (self.comment && receipt.comment_text_count != 0)
+            || (self.rule_name && receipt.rule_name_count != 0)
     }
 }
 
@@ -50,8 +76,14 @@ pub(crate) struct RailroadSurfaceReceipt {
     special_text_count: usize,
     rule_name_count: usize,
     expected_title_fill: Option<Box<str>>,
+    expected_terminal_text_fill: Option<Box<str>>,
+    expected_nonterminal_text_fill: Option<Box<str>>,
+    expected_comment_text_fill: Option<Box<str>>,
+    expected_special_text_fill: Option<Box<str>>,
+    expected_rule_name_text_fill: Option<Box<str>>,
     title_fill_stylesheet_verified: bool,
     title_fill_terminal_matches: bool,
+    text_fill_stylesheet_verified: bool,
     typography_stylesheet_recorded: bool,
     typography_stylesheet_verified: bool,
 }
@@ -103,6 +135,7 @@ impl RailroadSurfaceReceipt {
     ) {
         if self.typography_stylesheet_recorded {
             self.title_fill_stylesheet_verified = false;
+            self.text_fill_stylesheet_verified = false;
             self.typography_stylesheet_verified = false;
             return;
         }
@@ -120,14 +153,14 @@ impl RailroadSurfaceReceipt {
                 expected_font_size,
                 None,
             );
-        let title_rule_matches = stylesheet_rule_matches(
+        let title_typography_rule_matches = stylesheet_rule_matches(
             stylesheet,
             &format!("#{diagram_id_css} .railroad-rule-name"),
             expected_font_family,
             expected_font_size,
-            self.expected_title_fill.as_deref(),
+            None,
         );
-        let other_descendant_rules_match = [
+        let descendant_typography_rules_match = [
             ".railroad-terminal text",
             ".railroad-nonterminal text",
             ".railroad-comment text",
@@ -143,12 +176,56 @@ impl RailroadSurfaceReceipt {
                 None,
             )
         });
-        self.title_fill_stylesheet_verified = self
-            .expected_title_fill
-            .as_ref()
-            .is_none_or(|_| title_rule_matches);
+        self.title_fill_stylesheet_verified =
+            self.expected_title_fill
+                .as_deref()
+                .is_none_or(|expected_fill| {
+                    stylesheet_fill_rule_matches(
+                        stylesheet,
+                        &format!("#{diagram_id_css} .railroad-rule-name"),
+                        expected_fill,
+                    )
+                });
+        self.text_fill_stylesheet_verified = self
+            .expected_rule_name_text_fill
+            .as_deref()
+            .is_none_or(|expected_fill| {
+                stylesheet_fill_rule_matches(
+                    stylesheet,
+                    &format!("#{diagram_id_css} .railroad-rule-name"),
+                    expected_fill,
+                )
+            })
+            && [
+                (
+                    ".railroad-terminal text",
+                    self.expected_terminal_text_fill.as_deref(),
+                ),
+                (
+                    ".railroad-nonterminal text",
+                    self.expected_nonterminal_text_fill.as_deref(),
+                ),
+                (
+                    ".railroad-comment text",
+                    self.expected_comment_text_fill.as_deref(),
+                ),
+                (
+                    ".railroad-special text",
+                    self.expected_special_text_fill.as_deref(),
+                ),
+            ]
+            .into_iter()
+            .all(|(role, expected_fill)| {
+                expected_fill.is_none_or(|expected_fill| {
+                    stylesheet_fill_rule_matches(
+                        stylesheet,
+                        &format!("#{diagram_id_css} {role}"),
+                        expected_fill,
+                    )
+                })
+            });
         self.typography_stylesheet_verified =
-            root_rule_matches && title_rule_matches && other_descendant_rules_match;
+            root_rule_matches && title_typography_rule_matches && descendant_typography_rules_match;
     }
 
     pub(crate) fn record_terminal_text(&mut self, text: &str) {
@@ -177,7 +254,11 @@ impl RailroadSurfaceReceipt {
 
     pub(crate) fn record_rule_name_occurrence(&mut self, emitted_fill: &str) {
         self.rule_name_count = self.rule_name_count.saturating_add(1);
-        if let Some(expected_fill) = self.expected_title_fill.as_deref() {
+        if let Some(expected_fill) = self
+            .expected_title_fill
+            .as_deref()
+            .or(self.expected_rule_name_text_fill.as_deref())
+        {
             self.title_fill_terminal_matches &= emitted_fill == expected_fill;
         }
     }
@@ -211,6 +292,12 @@ impl RailroadSurfaceReceipt {
             && self.rule_name_count != 0
             && self.title_fill_stylesheet_verified
             && self.title_fill_terminal_matches
+    }
+
+    fn text_fill_proved(&self, roles: RailroadTextFillRoles) -> bool {
+        self.text_fill_stylesheet_verified
+            && roles.has_visible_occurrence(self)
+            && (!roles.rule_name || self.title_fill_terminal_matches)
     }
 }
 
@@ -271,6 +358,38 @@ fn stylesheet_rule_matches(
         && expected_fill.is_none_or(|_| fill_count == 1)
 }
 
+fn stylesheet_fill_rule_matches(stylesheet: &str, selector: &str, expected_fill: &str) -> bool {
+    let Some(body) = stylesheet_rule_body(stylesheet, selector) else {
+        return false;
+    };
+    if !body.ends_with(';') {
+        return false;
+    }
+
+    let mut fill_count = 0usize;
+    let mut valid = true;
+    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+    let _ = crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        body,
+        &mut checkpoint,
+        |boundary| {
+            let Some(declaration) = crate::mermaid_style::parse_style_declaration(boundary.raw())
+            else {
+                valid = false;
+                return Ok(false);
+            };
+            if declaration.property() == "fill" {
+                fill_count = fill_count.saturating_add(1);
+                if declaration.important() || declaration.value() != expected_fill {
+                    valid = false;
+                }
+            }
+            Ok(valid)
+        },
+    );
+    valid && fill_count == 1
+}
+
 fn stylesheet_rule_body<'a>(stylesheet: &'a str, selector: &str) -> Option<&'a str> {
     let rule_start = format!("{selector}{{");
     let body = stylesheet.split_once(&rule_start)?.1;
@@ -295,6 +414,11 @@ pub(crate) struct RailroadTypographyThemePlan {
     title_fill: Option<DirectStaticPaint>,
     title_fill_config_owned: bool,
     title_fill_routes: Box<[FamilyThemeMechanismKey]>,
+    text_fill: Option<DirectStaticPaint>,
+    text_fill_roles: RailroadTextFillRoles,
+    text_fill_config_owned: bool,
+    text_fill_winner_rule: Option<usize>,
+    text_fill_routes: Box<[FamilyThemeMechanismKey]>,
     unsupported_routes: Box<[RailroadUnsupportedRoute]>,
     terminal_receipt: OnceLock<RailroadSurfaceReceipt>,
 }
@@ -318,6 +442,11 @@ impl RailroadTypographyThemePlan {
                 title_fill: None,
                 title_fill_config_owned: false,
                 title_fill_routes: Box::new([]),
+                text_fill: None,
+                text_fill_roles: RailroadTextFillRoles::default(),
+                text_fill_config_owned: false,
+                text_fill_winner_rule: None,
+                text_fill_routes: Box::new([]),
                 unsupported_routes: Box::new([]),
                 terminal_receipt: OnceLock::new(),
             };
@@ -326,11 +455,13 @@ impl RailroadTypographyThemePlan {
         let config_owns_font_stack = railroad_config_owns_font_stack(effective_config);
         let config_owns_font_size = railroad_config_owns_font_size(effective_config);
         let title_fill_config_owned = railroad_config_owns_title_fill(effective_config);
+        let text_fill_config_owned = railroad_config_owns_text_fill(effective_config);
         let mut typed_font_stack = false;
         let mut typed_font_size = false;
         let mut unsupported_properties = BTreeSet::new();
         let mut unsupported_routes = Vec::new();
         let mut title_fill_routes = BTreeSet::new();
+        let mut text_fill_routes = BTreeSet::new();
 
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -351,6 +482,32 @@ impl RailroadTypographyThemePlan {
                 }
                 FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Text,
+                    selector,
+                    facet:
+                        FamilyThemeRuleFacet::Fill(
+                            FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
+                        ),
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    match route.disposition() {
+                        FamilyThemeDisposition::TypedAdapter => {
+                            text_fill_routes.insert(key);
+                        }
+                        FamilyThemeDisposition::Unsupported => {
+                            unsupported_routes.push(RailroadUnsupportedRoute {
+                                key,
+                                target: ThemeTarget::Text,
+                                selector: Some(selector),
+                                reason: FamilyThemeResidualReason::UnsupportedPaint,
+                                text_fill: true,
+                            });
+                        }
+                        FamilyThemeDisposition::LegacyCompatibility => {}
+                    }
+                }
+                FamilyThemeMechanism::RuleFacet {
                     rule_index: _,
                     target: ThemeTarget::Title,
                     selector,
@@ -370,6 +527,7 @@ impl RailroadTypographyThemePlan {
                                 target: ThemeTarget::Title,
                                 selector: Some(selector),
                                 reason: FamilyThemeResidualReason::UnsupportedPaint,
+                                text_fill: false,
                             });
                         }
                         FamilyThemeDisposition::LegacyCompatibility => {}
@@ -386,6 +544,8 @@ impl RailroadTypographyThemePlan {
                         target,
                         selector: Some(selector),
                         reason: unsupported_residual_for_facet(facet),
+                        text_fill: target == ThemeTarget::Text
+                            && matches!(facet, FamilyThemeRuleFacet::Fill(_)),
                     });
                 }
                 FamilyThemeMechanism::RuleFacet { .. } => {}
@@ -396,6 +556,7 @@ impl RailroadTypographyThemePlan {
                         target,
                         selector: None,
                         reason: FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                        text_fill: false,
                     });
                 }
                 FamilyThemeMechanism::EffectBinding { target, .. } => {
@@ -405,15 +566,17 @@ impl RailroadTypographyThemePlan {
                         target,
                         selector: None,
                         reason: FamilyThemeResidualReason::UnsupportedEffect,
+                        text_fill: false,
                     });
                 }
             }
         }
 
+        let title_style = theme.style(ThemeTarget::Title, ThemeVariant::Default, Some(1));
+        let title_style_has_winner = title_style.fill_resolution().winner().is_some();
         let title_fill = if title_fill_config_owned || title_fill_routes.is_empty() {
             None
         } else {
-            let title_style = theme.style(ThemeTarget::Title, ThemeVariant::Default, Some(1));
             resolve_direct_static_fill(
                 theme,
                 &title_style,
@@ -421,8 +584,45 @@ impl RailroadTypographyThemePlan {
                 DirectStaticSelectorDomain::Default,
             )
         };
+
+        let text_style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+        let text_fill_winner_rule = text_style
+            .fill_resolution()
+            .winner()
+            .map(|origin| origin.rule_index());
+        let text_fill = if text_fill_routes.is_empty() {
+            None
+        } else {
+            resolve_direct_static_fill(
+                theme,
+                &text_style,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Default,
+            )
+        };
+        let text_fill_roles = RailroadTextFillRoles {
+            terminal: !railroad_config_owns_terminal_text_fill(effective_config),
+            nonterminal: !railroad_config_owns_nonterminal_text_fill(effective_config),
+            comment: !railroad_config_owns_comment_text_fill(effective_config),
+            rule_name: !title_style_has_winner
+                && !railroad_config_owns_rule_name_text_fill(effective_config),
+        };
         if let Some(title_fill) = title_fill.as_ref() {
             style.rule_name_color = title_fill.css().to_owned();
+        }
+        if let Some(text_fill) = text_fill.as_ref() {
+            if text_fill_roles.terminal {
+                style.terminal_text_color = text_fill.css().to_owned();
+            }
+            if text_fill_roles.nonterminal {
+                style.non_terminal_text_color = text_fill.css().to_owned();
+            }
+            if text_fill_roles.comment {
+                style.comment_text_color = text_fill.css().to_owned();
+            }
+            if text_fill_roles.rule_name {
+                style.rule_name_color = text_fill.css().to_owned();
+            }
         }
 
         let typed_font_stack_applied = typed_font_stack && !config_owns_font_stack;
@@ -456,6 +656,11 @@ impl RailroadTypographyThemePlan {
             title_fill,
             title_fill_config_owned,
             title_fill_routes: title_fill_routes.into_iter().collect(),
+            text_fill,
+            text_fill_roles,
+            text_fill_config_owned,
+            text_fill_winner_rule,
+            text_fill_routes: text_fill_routes.into_iter().collect(),
             unsupported_routes: unsupported_routes.into_boxed_slice(),
             terminal_receipt: OnceLock::new(),
         }
@@ -466,11 +671,23 @@ impl RailroadTypographyThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> RailroadSurfaceReceipt {
+        let text_fill_is_active = self.text_fill.is_some();
         RailroadSurfaceReceipt {
             expected_title_fill: self
                 .title_fill
                 .as_ref()
                 .map(|paint| paint.css().to_owned().into_boxed_str()),
+            expected_terminal_text_fill: (text_fill_is_active && self.text_fill_roles.terminal)
+                .then(|| self.style.terminal_text_color.clone().into_boxed_str()),
+            expected_nonterminal_text_fill: (text_fill_is_active
+                && self.text_fill_roles.nonterminal)
+                .then(|| self.style.non_terminal_text_color.clone().into_boxed_str()),
+            expected_comment_text_fill: (text_fill_is_active && self.text_fill_roles.comment)
+                .then(|| self.style.comment_text_color.clone().into_boxed_str()),
+            expected_special_text_fill: (text_fill_is_active && self.text_fill_roles.nonterminal)
+                .then(|| self.style.non_terminal_text_color.clone().into_boxed_str()),
+            expected_rule_name_text_fill: (text_fill_is_active && self.text_fill_roles.rule_name)
+                .then(|| self.style.rule_name_color.clone().into_boxed_str()),
             title_fill_terminal_matches: true,
             ..RailroadSurfaceReceipt::default()
         }
@@ -507,6 +724,9 @@ impl RailroadTypographyThemePlan {
                 evidence.mark_not_applicable(route.key.clone());
             }
             for key in &self.title_fill_routes {
+                evidence.mark_not_applicable(key.clone());
+            }
+            for key in &self.text_fill_routes {
                 evidence.mark_not_applicable(key.clone());
             }
             return evidence;
@@ -555,8 +775,11 @@ impl RailroadTypographyThemePlan {
             );
         }
         for route in &self.unsupported_routes {
-            let shadowed_by_config =
-                route.target == ThemeTarget::Title && self.title_fill_config_owned;
+            let shadowed_by_config = (route.target == ThemeTarget::Title
+                && self.title_fill_config_owned)
+                || (route.text_fill
+                    && (self.text_fill_config_owned
+                        || !self.text_fill_roles.has_visible_occurrence(receipt)));
             let shadowed_by_typed_winner = route.target == ThemeTarget::Title
                 && match (self.title_fill.as_ref(), &route.key) {
                     (Some(winner), FamilyThemeMechanismKey::Rule { index, .. }) => {
@@ -570,9 +793,14 @@ impl RailroadTypographyThemePlan {
                     ) => true,
                     _ => false,
                 };
-            if shadowed_by_config || shadowed_by_typed_winner {
+            let shadowed_by_text_typed_winner = route.text_fill
+                && match (&route.key, self.text_fill_winner_rule) {
+                    (FamilyThemeMechanismKey::Rule { index, .. }, Some(winner)) => winner != *index,
+                    _ => false,
+                };
+            if shadowed_by_config || shadowed_by_typed_winner || shadowed_by_text_typed_winner {
                 evidence.mark_not_applicable(route.key.clone());
-            } else if route.is_applicable(receipt) {
+            } else if route.is_applicable(receipt, self.text_fill_roles) {
                 evidence.mark_residual(route.key.clone(), route.reason);
             } else {
                 evidence.mark_not_applicable(route.key.clone());
@@ -605,6 +833,23 @@ impl RailroadTypographyThemePlan {
                 evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
         }
+        for key in &self.text_fill_routes {
+            if self.text_fill_config_owned
+                || !self.text_fill_roles.has_visible_occurrence(receipt)
+                || self.is_text_fill_shadowed(key)
+            {
+                evidence.mark_not_applicable(key.clone());
+            } else if receipt.text_fill_proved(self.text_fill_roles) {
+                if let Some(capability) = self.text_fill_capability_for(key) {
+                    evidence.mark_applied_with_capabilities(key.clone(), [capability]);
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            } else {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            }
+        }
         evidence
     }
 
@@ -632,6 +877,32 @@ impl RailroadTypographyThemePlan {
                     .is_some_and(|winner| winner.rule_index() != *index)
         )
     }
+
+    fn text_fill_capability_for(&self, key: &FamilyThemeMechanismKey) -> Option<ThemeCapability> {
+        let FamilyThemeMechanismKey::Rule {
+            index,
+            target: ThemeTarget::Text,
+        } = key
+        else {
+            return None;
+        };
+        self.text_fill
+            .as_ref()
+            .filter(|winner| winner.rule_index() == *index)
+            .map(DirectStaticPaint::capability)
+    }
+
+    fn is_text_fill_shadowed(&self, key: &FamilyThemeMechanismKey) -> bool {
+        matches!(
+            key,
+            FamilyThemeMechanismKey::Rule {
+                index,
+                target: ThemeTarget::Text,
+            } if self
+                .text_fill_winner_rule
+                .is_some_and(|winner| winner != *index)
+        )
+    }
 }
 
 fn railroad_config_owns_font_stack(config: &MermaidConfig) -> bool {
@@ -650,6 +921,54 @@ fn railroad_config_owns_font_size(config: &MermaidConfig) -> bool {
 }
 
 fn railroad_config_owns_title_fill(config: &MermaidConfig) -> bool {
+    railroad_config_owns_any(
+        config,
+        [
+            "railroad.ruleNameColor",
+            "themeVariables.titleColor",
+            "themeVariables.textColor",
+        ],
+    )
+}
+
+fn railroad_config_owns_text_fill(config: &MermaidConfig) -> bool {
+    railroad_config_owns_any(config, ["themeVariables.textColor"])
+}
+
+fn railroad_config_owns_terminal_text_fill(config: &MermaidConfig) -> bool {
+    railroad_config_owns_any(
+        config,
+        [
+            "railroad.terminalTextColor",
+            "themeVariables.secondaryTextColor",
+            "themeVariables.textColor",
+        ],
+    )
+}
+
+fn railroad_config_owns_nonterminal_text_fill(config: &MermaidConfig) -> bool {
+    railroad_config_owns_any(
+        config,
+        [
+            "railroad.nonTerminalTextColor",
+            "themeVariables.primaryTextColor",
+            "themeVariables.textColor",
+        ],
+    )
+}
+
+fn railroad_config_owns_comment_text_fill(config: &MermaidConfig) -> bool {
+    railroad_config_owns_any(
+        config,
+        [
+            "railroad.commentTextColor",
+            "themeVariables.tertiaryTextColor",
+            "themeVariables.textColor",
+        ],
+    )
+}
+
+fn railroad_config_owns_rule_name_text_fill(config: &MermaidConfig) -> bool {
     railroad_config_owns_any(
         config,
         [

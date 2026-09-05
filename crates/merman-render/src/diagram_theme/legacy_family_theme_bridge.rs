@@ -563,7 +563,6 @@ fn legacy_family_dispatch(
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
         DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
-        | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::VENN => LegacyFamilyDispatch::Text,
@@ -576,6 +575,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::PIE
         | DiagramFamilyId::WARDLEY
         | DiagramFamilyId::ARCHITECTURE
+        | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
@@ -2463,6 +2463,7 @@ mod tests {
                 DiagramFamilyId::ARCHITECTURE,
                 DiagramFamilyId::WARDLEY,
                 DiagramFamilyId::PIE,
+                DiagramFamilyId::RAILROAD,
                 DiagramFamilyId::ZENUML,
             ])
         );
@@ -2471,26 +2472,26 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x52, 0xfa, 0x7a, 0x63, 0x07, 0x27, 0x1e, 0x90, 0x6e, 0x2e, 0xd1, 0xab, 0x21, 0x32,
-            0xf4, 0x71, 0xb1, 0x5a, 0xea, 0x74, 0x07, 0xdb, 0xbd, 0x95, 0xb3, 0x53, 0xe0, 0x2e,
-            0xe3, 0xdc, 0x24, 0xde,
+            0x2e, 0xb6, 0xb2, 0xfe, 0xf4, 0xc0, 0x21, 0xd6, 0xed, 0x6e, 0xa0, 0x71, 0x73, 0xbd,
+            0x16, 0x47, 0x24, 0xa4, 0xa5, 0x4b, 0x50, 0xf1, 0x64, 0x6b, 0x22, 0x86, 0xed, 0x4c,
+            0x73, 0x6b, 0x9d, 0x99,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0x13, 0x25, 0x2d, 0xa6, 0x7d, 0xae, 0x5e, 0x64, 0x45, 0x32, 0xa7, 0x79, 0x40, 0xa7,
-            0x29, 0xa1, 0x07, 0xe5, 0x8b, 0x42, 0xa3, 0x4f, 0x81, 0x62, 0xd0, 0xb3, 0xfd, 0xe1,
-            0x68, 0xe0, 0x94, 0x9c,
+            0xbc, 0x40, 0x3a, 0x8f, 0xed, 0xa3, 0x07, 0x97, 0x11, 0x43, 0x8b, 0x5b, 0x3d, 0xb1,
+            0x7a, 0xca, 0x27, 0x60, 0xc6, 0x7c, 0x35, 0x2a, 0x04, 0x08, 0xf1, 0x6b, 0x93, 0x7d,
+            0x49, 0xe3, 0x36, 0xa2,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x51, 0xef, 0xa1, 0x21, 0xcc, 0x99, 0x5b, 0x7a, 0x3f, 0x5c, 0xc0, 0x3a, 0x75, 0x6a,
-            0x92, 0xb9, 0x3f, 0xaa, 0x24, 0x84, 0x6a, 0xb1, 0x95, 0xad, 0xf7, 0x22, 0xf6, 0x10,
-            0x25, 0xf6, 0xd1, 0xa6,
+            0xde, 0x3b, 0x64, 0xa7, 0xb4, 0x54, 0xbd, 0xf4, 0xb1, 0xe0, 0x18, 0x02, 0x85, 0xfa,
+            0x04, 0x33, 0xf0, 0x24, 0xe4, 0xb9, 0x26, 0xdb, 0x36, 0xe0, 0x88, 0x54, 0xd2, 0x3e,
+            0xa5, 0x8a, 0xa8, 0xf3,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 364);
-        assert_eq!(status.matrix_family_count(), 23);
-        assert_eq!(status.dispatched_family_count(), 23);
+        assert_eq!(status.matrix_route_count(), 360);
+        assert_eq!(status.matrix_family_count(), 22);
+        assert_eq!(status.dispatched_family_count(), 22);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
         assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
         assert_eq!(
@@ -3600,7 +3601,7 @@ mod tests {
     }
 
     #[test]
-    fn railroad_font_stack_and_size_retire_only_the_legacy_typography_projection() {
+    fn railroad_typed_typography_and_text_fill_leave_no_legacy_projection() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::new(["Inter", "sans-serif"])
@@ -3625,8 +3626,9 @@ mod tests {
         let artifact = bridge.compile_for_family(DiagramFamilyId::RAILROAD);
 
         assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.railroad.typography"));
+        assert!(artifact.overlay.is_empty());
         assert!(
-            artifact
+            !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.railroad.text.fill")
         );
@@ -3648,7 +3650,9 @@ mod tests {
         }
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.textColor"),
-            Some("#334155")
+            baseline
+                .effective_config
+                .get_str("themeVariables.textColor")
         );
     }
 

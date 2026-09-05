@@ -147,6 +147,20 @@ fn railroad_title_fill_theme(variant: Option<ThemeVariant>) -> DiagramTheme {
         .expect("compile Railroad title theme")
 }
 
+fn railroad_text_fill_theme(variant: Option<ThemeVariant>, fill: CanvasPaint) -> DiagramTheme {
+    let mut rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::RAILROAD);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Railroad text theme")
+}
+
 fn try_render_railroad_source_with_theme(
     source: &str,
     theme: &DiagramTheme,
@@ -739,6 +753,64 @@ fn railroad_title_fill_reaches_rule_name_through_typed_adapter() {
         assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
         assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
+    }
+}
+
+#[test]
+fn railroad_text_fill_reaches_every_unowned_visible_text_role_through_typed_adapter() {
+    for (case, variant, fill, expected_fill) in [
+        (
+            "unqualified-solid",
+            None,
+            CanvasPaint::solid("#2563eb").expect("valid Railroad text fill"),
+            "#2563eb",
+        ),
+        (
+            "default-transparent",
+            Some(ThemeVariant::Default),
+            CanvasPaint::Transparent,
+            "transparent",
+        ),
+    ] {
+        let theme = railroad_text_fill_theme(variant, fill);
+        let diagram_id = format!("railroad-text-fill-{case}");
+        let (_, rendered) = try_render_railroad_source_with_theme(
+            RAILROAD_SOURCE,
+            &theme,
+            Engine::new(),
+            &portable_railroad_environment(),
+            &diagram_id,
+        )
+        .expect("typed Railroad text fill remains portable");
+
+        let style = railroad_style(rendered.svg());
+        for selector in [
+            ".railroad-terminal text",
+            ".railroad-nonterminal text",
+            ".railroad-comment text",
+            ".railroad-special text",
+            ".railroad-rule-name",
+        ] {
+            let body = railroad_rule_body(style, &diagram_id, selector);
+            assert!(
+                body.contains(&format!("fill:{expected_fill};")),
+                "Railroad {selector} did not receive {case} text.fill: {body}"
+            );
+        }
+
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "case={case}");
+        assert_eq!(evidence.accounted_count(), 1, "case={case}");
+        assert_eq!(evidence.applied_count(), 1, "case={case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "case={case}"
+        );
     }
 }
 

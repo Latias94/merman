@@ -395,6 +395,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::RAILROAD, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(RAILROAD_TITLE_SOURCE)
         }
+        (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(RAILROAD_TITLE_SOURCE)
+        }
         (
             DiagramFamilyId::REQUIREMENT,
             ThemeTarget::Requirement,
@@ -1337,11 +1340,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_196_routes_and_212_artifact_witnesses() {
+    fn route_inventory_retains_200_routes_and_216_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 196);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 212);
+        assert_eq!(inventory.len(), 200);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 216);
     }
 
     #[test]

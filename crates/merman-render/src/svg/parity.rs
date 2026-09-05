@@ -72,10 +72,8 @@ mod venn;
 mod wardley;
 mod xychart;
 mod zenuml;
-#[cfg(test)]
-use css::requirement_css;
 use css::{
-    MermaidBaseCss, gantt_css, gantt_css_with_overrides, info_css_parts_with_config,
+    MermaidBaseCss, gantt_css_with_overrides, info_css_parts_with_config,
     info_css_parts_with_font_family, info_css_parts_with_resolved_typography, push_xychart_css,
     requirement_css_with_typography, write_info_css_with_font_family,
     write_mermaid_base_css_prefix_with_font_emission,

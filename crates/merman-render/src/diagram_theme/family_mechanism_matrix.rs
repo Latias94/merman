@@ -539,6 +539,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::PIE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         _ => None,
     }
 }
@@ -1959,6 +1962,23 @@ pub(super) fn classify_rule_facet(
     ) {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::RAILROAD
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::PIE
         && target == ThemeTarget::Text
         && matches!(
@@ -2231,6 +2251,10 @@ fn legacy_paint_variants(
     }
 
     match family {
+        Family::RAILROAD => match (target, channel) {
+            (Target::Text | Target::Title, Fill) => DEFAULT,
+            _ => &[],
+        },
         Family::SEQUENCE => match channel {
             Fill if matches!(
                 target,
@@ -2317,7 +2341,6 @@ fn legacy_paint_variants(
         | Family::ARCHITECTURE
         | Family::C4
         | Family::CYNEFIN
-        | Family::RAILROAD
         | Family::SANKEY
         | Family::TREEMAP
         | Family::ISHIKAWA
@@ -5053,6 +5076,20 @@ mod tests {
                 vec!["title.fill"],
             ),
             (
+                DiagramFamilyId::RAILROAD,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::RAILROAD,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::REQUIREMENT,
                 ThemeTarget::Requirement,
                 Fill,
@@ -5483,7 +5520,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 78);
+        assert_eq!(qualified.len(), 80);
         assert_eq!(
             qualified
                 .iter()
@@ -5545,7 +5582,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::RAILROAD)
                 .count(),
-            2
+            4
         );
         assert_eq!(
             qualified
@@ -5649,6 +5686,13 @@ mod tests {
                     vec![ThemeRouteCutoverProjection::TextFill],
                     "route={route:?}"
                 );
+            } else if route.family_id() == DiagramFamilyId::RAILROAD {
+                let expected = match route.target() {
+                    ThemeTarget::Title => ThemeRouteCutoverProjection::TitleFill,
+                    ThemeTarget::Text => ThemeRouteCutoverProjection::TextFill,
+                    _ => panic!("unexpected Railroad qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
             }
         }
     }
@@ -6204,6 +6248,43 @@ mod tests {
     }
 
     #[test]
+    fn railroad_text_paint_is_owned_by_the_typed_text_surface() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::RAILROAD,
+                        ThemeTarget::Text,
+                        FamilyThemeSelectorShape::Static { variant },
+                        FamilyThemeRuleFacet::Fill(paint_kind),
+                    ),
+                    FamilyThemeDisposition::TypedAdapter,
+                    "Railroad text fill route drifted for {paint_kind:?}, variant={variant:?}"
+                );
+            }
+        }
+        for variant in [
+            Some(ThemeVariant::Active),
+            Some(ThemeVariant::Success),
+            Some(ThemeVariant::Error),
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::RAILROAD,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant },
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+                ),
+                FamilyThemeDisposition::Unsupported,
+                "Railroad text fill must remain closed for {variant:?}"
+            );
+        }
+    }
+
+    #[test]
     fn info_and_error_text_paint_routes_match_their_actual_terminals() {
         let disposition = |family, target| {
             let rule = ThemeRule::new(
@@ -6280,7 +6361,7 @@ mod tests {
     }
 
     #[test]
-    fn railroad_directly_owns_only_base_font_stack_and_size() {
+    fn railroad_directly_owns_base_typography_and_scalar_text_paint() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::single("monospace").expect("valid Railroad font stack"),
