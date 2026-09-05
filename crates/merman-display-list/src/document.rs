@@ -175,6 +175,39 @@ enum GroupScope {
 }
 
 impl DrawingListFootprint {
+    /// Checks every cumulative budget represented by this footprint.
+    ///
+    /// The serialized-byte ceiling is intentionally omitted: only the bounded JSON writer can
+    /// know the exact encoded size.  Callers that need to charge work before serialization can
+    /// use this method first, then rely on [`DrawingListDocument::canonical_json_bytes_with_limits`]
+    /// for the final byte-accurate check.
+    pub fn check_limits(&self, limits: &DrawingListLimits) -> Result<(), DrawingListError> {
+        validate_count("commands", self.commands, limits.max_commands)?;
+        validate_count("resources", self.resources, limits.max_resources)?;
+        validate_count("fallbacks", self.fallbacks, limits.max_fallbacks)?;
+        validate_count(
+            "path_segments",
+            self.path_segments,
+            limits.max_path_segments,
+        )?;
+        validate_count("image_bytes", self.image_bytes, limits.max_image_bytes)?;
+        validate_count("image_pixels", self.image_pixels, limits.max_image_pixels)?;
+        validate_count(
+            "fallback_pixels",
+            self.fallback_pixels,
+            limits.max_fallback_pixels,
+        )?;
+        validate_count("font_bytes", self.font_bytes, limits.max_font_bytes)?;
+        validate_count(
+            "max_nesting_depth",
+            self.max_nesting_depth,
+            limits.max_nesting_depth,
+        )?;
+        validate_count("text_bytes", self.text_bytes, limits.max_text_bytes)?;
+        validate_count("glyphs", self.glyphs, limits.max_glyphs)?;
+        Ok(())
+    }
+
     /// Converts the footprint to conservative operation work units.
     ///
     /// Structural items, path segments, and glyphs cost one unit each.  Inline bytes and pixels

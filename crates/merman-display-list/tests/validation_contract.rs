@@ -177,6 +177,42 @@ fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
 }
 
 #[test]
+fn footprint_checks_cumulative_limits_before_serialization() {
+    let document = common::extended_document();
+    let footprint = document.footprint().expect("fixture scopes are balanced");
+    let exact = DrawingListLimits {
+        max_path_segments: footprint.path_segments,
+        max_image_bytes: footprint.image_bytes,
+        max_image_pixels: footprint.image_pixels,
+        max_fallback_pixels: footprint.fallback_pixels,
+        max_font_bytes: footprint.font_bytes,
+        max_nesting_depth: footprint.max_nesting_depth,
+        max_text_bytes: footprint.text_bytes,
+        max_glyphs: footprint.glyphs,
+        ..DrawingListLimits::default()
+    };
+    footprint
+        .check_limits(&exact)
+        .expect("exact cumulative limits are accepted");
+
+    let too_small = DrawingListLimits {
+        max_path_segments: footprint.path_segments - 1,
+        ..exact
+    };
+    let error = footprint
+        .check_limits(&too_small)
+        .expect_err("a smaller cumulative path budget must reject");
+    assert!(matches!(
+        error,
+        merman_display_list::DrawingListError::ResourceLimit {
+            resource: "path_segments",
+            actual,
+            maximum,
+        } if actual == footprint.path_segments && maximum + 1 == actual
+    ));
+}
+
+#[test]
 fn document_footprint_rejects_unbalanced_scopes_before_accounting() {
     let mut document = sample_document();
     document.commands.pop();

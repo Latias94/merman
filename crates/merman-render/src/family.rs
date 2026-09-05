@@ -953,6 +953,11 @@ impl FamilyRenderArtifact {
             .public
             .footprint()
             .map_err(Error::DrawingListContract)?;
+        // Reject cumulative protocol budgets before charging the operation for a document that
+        // cannot be returned.  Exact serialized bytes remain checked by the bounded writer below.
+        footprint
+            .check_limits(&limits)
+            .map_err(Error::DrawingListContract)?;
         let work_units = footprint.work_units().map_err(Error::DrawingListContract)?;
         self.session
             .work_meter()
