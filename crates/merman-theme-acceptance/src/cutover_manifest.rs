@@ -2472,7 +2472,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 33);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 34);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()
