@@ -554,15 +554,10 @@ fn layout_c4_shape_array(
             render_plan: label_m.map(|m| m.render_plan),
         };
 
-        // `$type` is a source-level override for the rendered type/technology line.  It must win
-        // over the built-in `typeC4Shape` stereotype, just as Mermaid's renderer checks
-        // `c4Shape.type` before falling back to `c4Shape.techn`.
-        let stereotype_text = shape
-            .ty
-            .as_ref()
-            .filter(|ty| !ty.as_str().is_empty())
-            .map(|ty| format!("[{}]", ty.as_str()))
-            .unwrap_or_else(|| c4_stereotype_text(shape));
+        // Mermaid's unified C4 shape adapter derives the node stereotype exclusively from
+        // `typeC4Shape` and the optional technology. A named `$type` argument may remain in the
+        // legacy source model, but unlike boundary `type` it is not a node label override.
+        let stereotype_text = c4_stereotype_text(shape);
         let mut stereotype_conf = text_conf.clone();
         stereotype_conf.font_size *= 0.75;
         let stereotype_m = measure_c4_unified_text(

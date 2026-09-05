@@ -795,7 +795,7 @@ System(service, "Service")
 }
 
 #[test]
-fn c4_shape_explicit_type_reaches_the_rendered_type_section() {
+fn c4_shape_named_type_does_not_override_the_rendered_stereotype() {
     let svg = render_c4_svg_with_environment(
         r#"C4Context
 Container(app, "Application", $type="Domain Service")
@@ -809,7 +809,33 @@ Container(app, "Application", $type="Domain Service")
         .map(svg_text_content)
         .collect::<Vec<_>>();
 
-    assert_eq!(type_texts, ["[Domain Service]"]);
+    assert_eq!(type_texts, ["[Container]"]);
+}
+
+#[test]
+fn c4_shape_technology_reaches_layout_and_svg_while_named_type_is_ignored() {
+    let source = r#"C4Context
+Container(app, "Application", "Rust", $type="Domain Service")
+"#;
+    let layout = layout_c4_with_options(source, &LayoutOptions::default());
+    let shape = layout
+        .shapes
+        .iter()
+        .find(|shape| shape.alias == "app")
+        .expect("C4 application shape");
+
+    assert_eq!(shape.type_block.text, "[Container: Rust]");
+
+    let svg = render_c4_svg_with_environment(source, &RenderEnvironment::deterministic());
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let type_texts = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("c4-type"))
+        .map(svg_text_content)
+        .collect::<Vec<_>>();
+
+    assert_eq!(type_texts, ["[Container: Rust]"]);
+    assert!(!svg.contains("Domain Service"));
 }
 
 #[test]
