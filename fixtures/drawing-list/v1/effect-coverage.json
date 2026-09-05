@@ -42,6 +42,38 @@
       "evidence": "SemanticAnnotation.link carries a sanitized navigation URI"
     },
     {
+      "id": "opacity",
+      "disposition": "vector",
+      "family": "cynefin",
+      "source": "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+      "assertion": "opacity",
+      "evidence": "SetOpacity retains translucent domain backgrounds"
+    },
+    {
+      "id": "blend-mode",
+      "disposition": "vector",
+      "family": "sankey",
+      "source": "sankey-beta\nA,B,10\n",
+      "assertion": "blend_mode",
+      "evidence": "SetBlendMode retains the link compositing mode"
+    },
+    {
+      "id": "transform",
+      "disposition": "vector",
+      "family": "quadrantChart",
+      "source": "quadrantChart\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
+      "assertion": "transform",
+      "evidence": "ConcatTransform retains the chart's translated drawing space"
+    },
+    {
+      "id": "wardley-expanded-marker",
+      "disposition": "vector",
+      "family": "wardley",
+      "source": "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
+      "assertion": "expanded_marker",
+      "evidence": "Wardley link and evolution markers are ordinary path resources"
+    },
+    {
       "id": "foreign-object",
       "disposition": "error",
       "family": "venn",

@@ -58,10 +58,13 @@ bridge.
 
 `fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by
 `drawing_list_effect_accounting`.  It covers the visual constructs currently exercised by admitted
-fixtures: portable path paint, host text, gradients, clips, and semantic links, plus explicit
-fail-closed outcomes for browser-wrapped text, filters, hand-drawn RoughJS output, and external
-icon registry content.  Each row is executed against the typed renderer and must produce its
-declared vector or structured-error disposition; no row may be an unclassified best effort.
+fixtures: portable path paint, host text, gradients, clips, semantic links, opacity, blend modes,
+transforms, and expanded marker geometry, plus explicit fail-closed outcomes for browser-wrapped
+text, filters, hand-drawn RoughJS output, and external icon registry content.  Each row is executed
+against the typed renderer and must produce its declared vector or structured-error disposition;
+no row may be an unclassified best effort.  The test also collects the effect kinds actually
+observed across successful fixtures and fails when one has no corresponding assertion, so an
+adapter cannot start emitting an already-modeled visual command without extending the evidence.
 
 The matrix intentionally does not claim that every protocol resource kind is emitted by a current
 family.  Patterns, inline images, glyph/outline text, and raster subtrees remain protocol-level

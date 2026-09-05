@@ -34,7 +34,28 @@ enum EffectAssertion {
     LinearGradient,
     ClipPath,
     SemanticLink,
+    Opacity,
+    BlendMode,
+    Transform,
+    ExpandedMarker,
     ErrorMessage,
+}
+
+impl EffectAssertion {
+    fn protocol_kind(&self) -> &'static str {
+        match self {
+            Self::PathFillStroke => "path",
+            Self::HostText => "host_text",
+            Self::LinearGradient => "linear_gradient",
+            Self::ClipPath => "clip_path",
+            Self::SemanticLink => "semantic_link",
+            Self::Opacity => "opacity",
+            Self::BlendMode => "blend_mode",
+            Self::Transform => "transform",
+            Self::ExpandedMarker => "expanded_marker",
+            Self::ErrorMessage => "structured_error",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +80,12 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
         .map(merman_render::family::RenderFamilyKind::as_str)
         .collect::<BTreeSet<_>>();
     let mut effect_ids = BTreeSet::new();
+    let declared_effects = matrix
+        .effects
+        .iter()
+        .map(|row| row.assertion.protocol_kind())
+        .collect::<BTreeSet<_>>();
+    let mut observed_effects = BTreeSet::new();
 
     for row in matrix.effects {
         assert!(!row.id.trim().is_empty(), "effect ids must not be empty");
@@ -96,6 +123,7 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                         row.id, row.family
                     )
                 });
+                observed_effects.extend(observed_protocol_effects(&document));
                 assert_effect_construct(&row.id, row.assertion, &document);
             }
             EffectDisposition::Raster => {
@@ -110,6 +138,7 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                         row.id, row.family
                     )
                 });
+                observed_effects.extend(observed_protocol_effects(&document));
                 assert_effect_construct(&row.id, row.assertion, &document);
                 assert!(
                     document
@@ -147,6 +176,13 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                 );
             }
         }
+    }
+
+    for effect in observed_effects {
+        assert!(
+            declared_effects.contains(effect),
+            "observed DrawingList effect {effect:?} has no explicit coverage assertion"
+        );
     }
 }
 
@@ -219,8 +255,123 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
                 .any(|semantic| semantic.link.is_some()),
             "{id} must retain semantic navigation metadata"
         ),
+        EffectAssertion::Opacity => assert!(
+            document.commands.iter().any(|command| {
+                matches!(command, DrawingCommand::SetOpacity { opacity } if *opacity < 1.0)
+            }),
+            "{id} must retain a non-default opacity command"
+        ),
+        EffectAssertion::BlendMode => assert!(
+            document.commands.iter().any(|command| {
+                matches!(
+                    command,
+                    DrawingCommand::SetBlendMode { blend_mode }
+                        if *blend_mode != merman_display_list::BlendMode::Normal
+                )
+            }),
+            "{id} must retain a non-default blend-mode command"
+        ),
+        EffectAssertion::Transform => assert!(
+            document.commands.iter().any(|command| {
+                matches!(
+                    command,
+                    DrawingCommand::ConcatTransform { transform }
+                        if *transform != merman_display_list::Transform::IDENTITY
+                )
+            }),
+            "{id} must retain a non-identity transform command"
+        ),
+        EffectAssertion::ExpandedMarker => assert!(
+            has_expanded_marker(document),
+            "{id} must retain expanded marker geometry"
+        ),
         EffectAssertion::ErrorMessage => {
             panic!("{id} is an error assertion but was rendered as a document")
         }
     }
+}
+
+fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'static str> {
+    let mut effects = BTreeSet::new();
+    if document
+        .resources
+        .iter()
+        .any(|resource| matches!(resource, DrawingResource::Path(_)))
+    {
+        effects.insert("path");
+    }
+    if document
+        .resources
+        .iter()
+        .any(|resource| matches!(resource, DrawingResource::LinearGradient(_)))
+    {
+        effects.insert("linear_gradient");
+    }
+    if document
+        .commands
+        .iter()
+        .any(|command| matches!(command, DrawingCommand::ClipPath { .. }))
+    {
+        effects.insert("clip_path");
+    }
+    if document
+        .commands
+        .iter()
+        .any(|command| matches!(command, DrawingCommand::SetOpacity { opacity } if *opacity < 1.0))
+    {
+        effects.insert("opacity");
+    }
+    if document.commands.iter().any(|command| {
+        matches!(
+            command,
+            DrawingCommand::SetBlendMode { blend_mode }
+                if *blend_mode != merman_display_list::BlendMode::Normal
+        )
+    }) {
+        effects.insert("blend_mode");
+    }
+    if document.commands.iter().any(|command| {
+        matches!(
+            command,
+            DrawingCommand::ConcatTransform { transform }
+                if *transform != merman_display_list::Transform::IDENTITY
+        )
+    }) {
+        effects.insert("transform");
+    }
+    if document.commands.iter().any(|command| {
+        matches!(
+            command,
+            DrawingCommand::DrawText { run }
+                if matches!(run.obligation, merman_display_list::TextObligation::HostText { .. })
+        )
+    }) {
+        effects.insert("host_text");
+    }
+    if document
+        .semantics
+        .iter()
+        .any(|semantic| semantic.link.is_some())
+    {
+        effects.insert("semantic_link");
+    }
+    if has_expanded_marker(document) {
+        effects.insert("expanded_marker");
+    }
+    effects
+}
+
+fn has_expanded_marker(document: &DrawingListDocument) -> bool {
+    document.resources.iter().any(|resource| {
+        matches!(
+            resource,
+            DrawingResource::Path(path)
+                if path.id.as_str().contains("marker")
+                    || (path.id.as_str().starts_with("wardley.link.")
+                        && (path.id.as_str().ends_with(".start")
+                            || path.id.as_str().ends_with(".end")))
+                    || (path.id.as_str().starts_with("wardley.trend.")
+                        && path.id.as_str().ends_with(".end"))
+        )
+    })
 }
