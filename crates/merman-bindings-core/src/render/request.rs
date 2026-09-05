@@ -6,6 +6,8 @@ use crate::common::{
     binding_site_config, css_declaration_value, finite_positive, internal_json_error,
     no_diagram_error, normalize_option, parse_error, runtime_policy_error,
 };
+#[cfg(feature = "drawing-list")]
+use crate::common::{BindingDrawingListOptions, compile_drawing_list_options};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
 use merman::svg::{
@@ -25,6 +27,8 @@ pub(super) struct RenderRequestPlan {
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
+    #[cfg(feature = "drawing-list")]
+    drawing_list: BindingDrawingListOptions,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -41,6 +45,8 @@ pub(super) struct RenderOperationConfig {
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
     output: merman::svg::SvgOutputPolicy,
+    #[cfg(feature = "drawing-list")]
+    drawing_list: BindingDrawingListOptions,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -96,6 +102,11 @@ impl RenderRequestPlan {
         request.environment = self.svg.environment.clone();
         request.layout = self.svg.layout.clone();
         request.presentation = self.svg.presentation;
+        #[cfg(feature = "drawing-list")]
+        {
+            request.policy = self.drawing_list.policy;
+            request.limits = self.drawing_list.limits;
+        }
         let output = self
             .renderer
             .render(self.request(source, merman::RenderTarget::DrawingList(request), control))
@@ -252,6 +263,11 @@ impl RenderOperationConfig {
         capability_policy: RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
         let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
+        #[cfg(feature = "drawing-list")]
+        let drawing_list = compile_drawing_list_options(
+            options.drawing_list.as_ref(),
+            render_resources.value(merman::svg::ResourceLimitId::MaxSvgBytes),
+        )?;
         let input_resources = *render_resources.input_policy();
         let mut environment =
             SvgEnvironment::deterministic().with_capability_policy(capability_policy);
@@ -389,6 +405,8 @@ impl RenderOperationConfig {
             layout,
             svg: svg_options,
             output,
+            #[cfg(feature = "drawing-list")]
+            drawing_list,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options,
             #[cfg(feature = "pdf")]
@@ -449,6 +467,8 @@ impl RenderOperationConfig {
             parse_options,
             input_resources,
             resource_profile,
+            #[cfg(feature = "drawing-list")]
+            drawing_list: self.drawing_list,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options: self.raster_options,
             #[cfg(feature = "pdf")]

@@ -2375,6 +2375,7 @@ dependencies = [
  "merman-analysis",
  "merman-ascii-test-contracts",
  "merman-core",
+ "merman-display-list",
  "merman-render",
  "roxmltree 0.21.1",
  "serde",

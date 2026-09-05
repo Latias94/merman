@@ -220,6 +220,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": False,
     },
     {
+        "id": "drawing_list",
+        "always_available": False,
+        "any_capability_ids": ("drawing-list",),
+        "requires_svg_pipeline": False,
+    },
+    {
         "id": "environment",
         "always_available": False,
         "any_capability_ids": (),

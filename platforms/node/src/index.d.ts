@@ -15,6 +15,10 @@ export interface MermanBindingOptions {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
   };
+  drawing_list?: {
+    policy?: "allow_raster_subtree" | "vector_only";
+    limits?: Record<string, number>;
+  };
   [key: string]: unknown;
 }
 

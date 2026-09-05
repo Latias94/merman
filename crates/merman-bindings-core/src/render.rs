@@ -267,6 +267,25 @@ mod tests {
         assert!(svg.contains("data-merman-foreignobject"));
     }
 
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn render_drawing_list_uses_protocol_limits_from_options_json() {
+        let engine = crate::BindingEngine::new(
+            br#"{
+                "drawing_list": {
+                    "policy": "vector_only",
+                    "limits": { "max_serialized_bytes": 1 }
+                }
+            }"#,
+        )
+        .expect("DrawingList options should compile on the drawing-list artifact");
+        let error = engine
+            .render_drawing_list(b"flowchart TD\nA[Hello]")
+            .expect_err("a one-byte DrawingList budget must reject the complete document");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("serialized_bytes"), "{error:?}");
+    }
+
     #[cfg(feature = "svg")]
     fn assert_missing_math(error: BindingError) {
         assert_eq!(error.status(), BindingStatus::UnsupportedOperation);

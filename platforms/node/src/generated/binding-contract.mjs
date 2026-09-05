@@ -677,6 +677,14 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
+    "id": "drawing_list",
+    "always_available": false,
+    "any_capability_ids": [
+      "drawing-list"
+    ],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "environment",
     "always_available": false,
     "any_capability_ids": [],

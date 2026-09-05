@@ -29,7 +29,7 @@ native-runtime = [
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
 svg = ["merman/svg"]
-drawing-list = ["svg"]
+drawing-list = ["svg", "dep:merman-display-list"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -40,6 +40,7 @@ math = ["svg", "merman/math"]
 [dependencies]
 merman-analysis = { workspace = true, optional = true }
 merman.workspace = true
+merman-display-list = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 

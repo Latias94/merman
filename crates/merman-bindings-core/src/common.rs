@@ -6,6 +6,9 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
+#[cfg(feature = "drawing-list")]
+use merman_display_list::{DrawingListLimits, DrawingListPolicy};
+
 use crate::artifact_contract::{DEFAULT_ARTIFACT_SNAPSHOT, ValidatedArtifactContract};
 use crate::option_contract::BindingOptionGroupKey;
 use crate::resource_contract::{
@@ -770,6 +773,8 @@ pub(crate) struct BindingOptions {
     pub(crate) text_measurement_selector_explicit: bool,
     #[cfg(feature = "svg")]
     pub(crate) svg: Option<SvgOptionsJson>,
+    #[cfg(feature = "drawing-list")]
+    pub(crate) drawing_list: Option<DrawingListOptionsJson>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     pub(crate) raster: Option<RasterOptionsJson>,
     #[cfg(feature = "jpeg")]
@@ -809,6 +814,8 @@ pub(crate) struct ResourceOptionsJson {
 pub(crate) struct BaseBindingOptions {
     normalized_wire: Arc<Value>,
     resource_ceiling: ResourceOptionsJson,
+    #[cfg(feature = "drawing-list")]
+    drawing_list_ceiling: BindingDrawingListOptions,
 }
 
 #[derive(Debug)]
@@ -909,6 +916,175 @@ pub(crate) struct SvgOptionsJson {
     pub(crate) css_override_policy: Option<String>,
     pub(crate) root_background_color: Option<String>,
     pub(crate) drop_native_duplicate_fallbacks: Option<bool>,
+}
+
+#[cfg(feature = "drawing-list")]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DrawingListOptionsJson {
+    pub(crate) policy: Option<String>,
+    pub(crate) limits: Option<DrawingListLimitsJson>,
+}
+
+#[cfg(feature = "drawing-list")]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DrawingListLimitsJson {
+    pub(crate) max_serialized_bytes: Option<usize>,
+    pub(crate) max_commands: Option<usize>,
+    pub(crate) max_resources: Option<usize>,
+    pub(crate) max_path_segments: Option<usize>,
+    pub(crate) max_image_bytes: Option<usize>,
+    pub(crate) max_image_pixels: Option<usize>,
+    pub(crate) max_fallback_pixels: Option<usize>,
+    pub(crate) max_font_bytes: Option<usize>,
+    pub(crate) max_nesting_depth: Option<usize>,
+    pub(crate) max_fallbacks: Option<usize>,
+    pub(crate) max_text_bytes: Option<usize>,
+    pub(crate) max_glyphs: Option<usize>,
+}
+
+#[cfg(feature = "drawing-list")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BindingDrawingListOptions {
+    pub(crate) policy: DrawingListPolicy,
+    pub(crate) limits: DrawingListLimits,
+}
+
+#[cfg(feature = "drawing-list")]
+impl Default for BindingDrawingListOptions {
+    fn default() -> Self {
+        Self {
+            policy: DrawingListPolicy::AllowRasterSubtree,
+            limits: DrawingListLimits::default(),
+        }
+    }
+}
+
+#[cfg(feature = "drawing-list")]
+pub(crate) fn compile_drawing_list_options(
+    options: Option<&DrawingListOptionsJson>,
+    max_svg_bytes: Option<usize>,
+) -> Result<BindingDrawingListOptions, BindingError> {
+    let mut compiled = BindingDrawingListOptions::default();
+    compiled.limits.max_serialized_bytes = compiled
+        .limits
+        .max_serialized_bytes
+        .min(max_svg_bytes.unwrap_or(usize::MAX));
+
+    let Some(options) = options else {
+        return Ok(compiled);
+    };
+
+    if let Some(policy) = options.policy.as_deref() {
+        compiled.policy = match normalize_option(policy).as_str() {
+            "allow_raster_subtree" | "allow-raster-subtree" => {
+                DrawingListPolicy::AllowRasterSubtree
+            }
+            "vector_only" | "vector-only" => DrawingListPolicy::VectorOnly,
+            other => {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported drawing_list.policy: {other}"),
+                ));
+            }
+        };
+    }
+
+    let Some(limits) = options.limits.as_ref() else {
+        return Ok(compiled);
+    };
+    let defaults = DrawingListLimits::default();
+
+    macro_rules! apply_limit {
+        ($field:ident) => {
+            if let Some(value) = limits.$field {
+                if value > defaults.$field {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!(
+                            "drawing_list.limits.{} exceeds the protocol hard maximum {}",
+                            stringify!($field),
+                            defaults.$field
+                        ),
+                    ));
+                }
+                compiled.limits.$field = value;
+            }
+        };
+    }
+
+    apply_limit!(max_commands);
+    apply_limit!(max_resources);
+    apply_limit!(max_path_segments);
+    apply_limit!(max_image_bytes);
+    apply_limit!(max_image_pixels);
+    apply_limit!(max_fallback_pixels);
+    apply_limit!(max_font_bytes);
+    apply_limit!(max_nesting_depth);
+    apply_limit!(max_fallbacks);
+    apply_limit!(max_text_bytes);
+    apply_limit!(max_glyphs);
+
+    if let Some(value) = limits.max_serialized_bytes {
+        let maximum = defaults
+            .max_serialized_bytes
+            .min(max_svg_bytes.unwrap_or(usize::MAX));
+        if value > maximum {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                format!(
+                    "drawing_list.limits.max_serialized_bytes exceeds the effective maximum {maximum}"
+                ),
+            ));
+        }
+        compiled.limits.max_serialized_bytes = value;
+    }
+
+    Ok(compiled)
+}
+
+#[cfg(feature = "drawing-list")]
+pub(crate) fn validate_drawing_list_tightening(
+    ceiling: BindingDrawingListOptions,
+    candidate: BindingDrawingListOptions,
+) -> Result<(), BindingError> {
+    if matches!(ceiling.policy, DrawingListPolicy::VectorOnly)
+        && matches!(candidate.policy, DrawingListPolicy::AllowRasterSubtree)
+    {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "request drawing_list.policy would loosen the constructor ceiling",
+        ));
+    }
+
+    macro_rules! check_limit {
+        ($field:ident) => {
+            if candidate.limits.$field > ceiling.limits.$field {
+                return Err(BindingError::new(
+                    BindingStatus::OptionsJsonError,
+                    format!(
+                        "request drawing_list.limits.{} would loosen the constructor ceiling",
+                        stringify!($field)
+                    ),
+                ));
+            }
+        };
+    }
+
+    check_limit!(max_serialized_bytes);
+    check_limit!(max_commands);
+    check_limit!(max_resources);
+    check_limit!(max_path_segments);
+    check_limit!(max_image_bytes);
+    check_limit!(max_image_pixels);
+    check_limit!(max_fallback_pixels);
+    check_limit!(max_font_bytes);
+    check_limit!(max_nesting_depth);
+    check_limit!(max_fallbacks);
+    check_limit!(max_text_bytes);
+    check_limit!(max_glyphs);
+    Ok(())
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1183,11 +1359,19 @@ fn parse_base_options_for_contract(
     let wire = options_json_value(bytes)?;
     let typed = parse_options_value_for_contract(&wire, artifact_contract)?;
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
+    #[cfg(feature = "drawing-list")]
+    let drawing_list_ceiling = {
+        let render_resources = binding_resource_policy(typed.analysis.resources.as_ref())?;
+        let max_svg_bytes = render_resources.value(merman::svg::ResourceLimitId::MaxSvgBytes);
+        compile_drawing_list_options(typed.drawing_list.as_ref(), max_svg_bytes)?
+    };
     Ok((
         typed,
         BaseBindingOptions {
             normalized_wire: Arc::new(normalize_analysis_wrapper(wire)),
             resource_ceiling,
+            #[cfg(feature = "drawing-list")]
+            drawing_list_ceiling,
         },
     ))
 }
@@ -1204,6 +1388,8 @@ fn parse_options_value_for_contract(
     reject_ambiguous_analysis_wrappers(value)?;
     reject_removed_host_theme(value)?;
     reject_null_presentation_values(value)?;
+    #[cfg(feature = "drawing-list")]
+    reject_null_drawing_list_values(value)?;
     reject_unavailable_option_groups(value, artifact_contract)?;
     #[cfg(feature = "svg")]
     reject_removed_layout_fields(value)?;
@@ -1291,6 +1477,42 @@ fn reject_null_presentation_values(value: &Value) -> Result<(), BindingError> {
     Ok(())
 }
 
+#[cfg(feature = "drawing-list")]
+fn reject_null_drawing_list_values(value: &Value) -> Result<(), BindingError> {
+    let Some(drawing_list) = value.get("drawing_list") else {
+        return Ok(());
+    };
+    let Some(drawing_list) = drawing_list.as_object() else {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "options group `drawing_list` must be an object, not null",
+        ));
+    };
+    for key in ["policy", "limits"] {
+        if drawing_list.get(key).is_some_and(Value::is_null) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("options field `drawing_list.{key}` must not be null"),
+            ));
+        }
+    }
+    if let Some(limits) = drawing_list.get("limits") {
+        let Some(limits) = limits.as_object() else {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                "options field `drawing_list.limits` must be an object",
+            ));
+        };
+        if limits.values().any(Value::is_null) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                "options fields under `drawing_list.limits` must not be null",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_options_schema_version(value: &Value) -> Result<(), BindingError> {
     let Some(raw_version) = value.get("version") else {
         return Ok(());
@@ -1353,6 +1575,7 @@ fn reject_unknown_options_json_fields(value: &Value) -> Result<(), BindingError>
             || matches!(
                 key.as_str(),
                 "presentation"
+                    | "drawing_list"
                     | "ascii"
                     | "layout"
                     | "environment"
@@ -1453,7 +1676,17 @@ impl BaseBindingOptions {
                     serde_json::to_value(resources).map_err(internal_json_error)?,
                 );
         }
-        parse_options_value_for_contract(&merged, artifact_contract)
+        let options = parse_options_value_for_contract(&merged, artifact_contract)?;
+        #[cfg(feature = "drawing-list")]
+        {
+            let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
+            let candidate = compile_drawing_list_options(
+                options.drawing_list.as_ref(),
+                render_resources.value(merman::svg::ResourceLimitId::MaxSvgBytes),
+            )?;
+            validate_drawing_list_tightening(self.drawing_list_ceiling, candidate)?;
+        }
+        Ok(options)
     }
 }
 
@@ -1507,8 +1740,9 @@ fn validate_output_options_for_scope(
     let Some(options) = value.as_object() else {
         return Ok(());
     };
-    for group in ["raster", "jpeg", "pdf"] {
+    for group in ["drawing_list", "raster", "jpeg", "pdf"] {
         let accepted = match group {
+            "drawing_list" => matches!(scope, BindingResourceScope::DrawingList),
             "raster" => matches!(
                 scope,
                 BindingResourceScope::Png | BindingResourceScope::Jpeg
@@ -2837,6 +3071,54 @@ mod tests {
         assert_eq!(resources.profile.as_deref(), Some("interactive"));
         assert_eq!(resources.limits.get("max_source_bytes"), Some(&2048));
         assert_eq!(resources.limits.get("max_model_items"), Some(&128));
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_options_are_scoped_and_request_limits_only_tighten() {
+        let options = resolve_request_options(
+            br#"{
+                "drawing_list": {
+                    "policy": "allow-raster-subtree",
+                    "limits": { "max_commands": 128 }
+                }
+            }"#,
+            br#"{
+                "drawing_list": {
+                    "policy": "vector_only",
+                    "limits": { "max_commands": 64 }
+                }
+            }"#,
+            BindingResourceScope::DrawingList,
+        )
+        .expect("DrawingList request options should tighten the constructor policy");
+        let compiled = compile_drawing_list_options(
+            options.drawing_list.as_ref(),
+            Some(DrawingListLimits::default().max_serialized_bytes),
+        )
+        .unwrap();
+        assert_eq!(compiled.policy, DrawingListPolicy::VectorOnly);
+        assert_eq!(compiled.limits.max_commands, 64);
+
+        let error = resolve_request_options(
+            br#"{
+                "drawing_list": {
+                    "policy": "vector_only",
+                    "limits": { "max_commands": 128 }
+                }
+            }"#,
+            br#"{"drawing_list":{"policy":"allow_raster_subtree","limits":{"max_commands":256}}}"#,
+            BindingResourceScope::DrawingList,
+        )
+        .expect_err("a request must not loosen the DrawingList constructor ceiling");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("drawing_list"));
+
+        let error =
+            resolve_request_options(b"", br#"{"drawing_list":{}}"#, BindingResourceScope::Svg)
+                .expect_err("DrawingList options must not apply to SVG operations");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("drawing_list"));
     }
 
     #[test]

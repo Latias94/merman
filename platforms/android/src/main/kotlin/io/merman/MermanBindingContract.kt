@@ -138,6 +138,7 @@ internal val MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS: Map<String, Int> = mapOf(
 
 internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionGroupSpec> = listOf(
     MermanBindingOptionGroupSpec("ascii", false, setOf("ascii"), false),
+    MermanBindingOptionGroupSpec("drawing_list", false, setOf("drawing-list"), false),
     MermanBindingOptionGroupSpec("environment", false, setOf(), true),
     MermanBindingOptionGroupSpec("fixed_local_offset_minutes", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_today", true, setOf(), false),

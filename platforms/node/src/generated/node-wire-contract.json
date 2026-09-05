@@ -44,6 +44,7 @@
       "supported-themes"
     ],
     "option_group_ids": [
+      "drawing_list",
       "environment",
       "fixed_local_offset_minutes",
       "fixed_today",

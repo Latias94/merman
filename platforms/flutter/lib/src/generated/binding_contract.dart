@@ -447,6 +447,14 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     },
     requiresSvgPipeline: false,
   ),
+  "drawing_list": MermanBindingOptionGroupSpec(
+    id: "drawing_list",
+    alwaysAvailable: false,
+    anyCapabilityIds: <String>{
+      "drawing-list",
+    },
+    requiresSvgPipeline: false,
+  ),
   "environment": MermanBindingOptionGroupSpec(
     id: "environment",
     alwaysAvailable: false,
