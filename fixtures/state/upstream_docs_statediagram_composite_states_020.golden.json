@@ -39,8 +39,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -78,8 +77,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "First",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",
@@ -136,8 +134,7 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Second",
-        "centerLabel": true,
-        "explicitDir": false
+        "centerLabel": true
       },
       {
         "labelStyle": "",

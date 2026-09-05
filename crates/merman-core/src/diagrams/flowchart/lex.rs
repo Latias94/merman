@@ -6,7 +6,6 @@ use crate::SourceSpan;
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let quoted = raw.starts_with('"') && raw.ends_with('"');
-    let quote_char = raw.as_bytes().first().copied();
 
     let (text, kind) = super::parse_label_text(raw);
 
@@ -27,32 +26,17 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                     "Invalid text label: contains structural characters; quote it to use them",
                 ));
             }
+            if contains_bound_at(raw) {
+                return Err(LexError::new(
+                    "Invalid text label: unquoted `@` must be preceded by whitespace",
+                ));
+            }
         }
         TitleKind::String => {
-            // Mermaid allows escaped quotes inside string labels (e.g. `["He said: \\\"hi\\\""]`).
-            // Reject only unescaped nested quotes.
-            if quoted && let Some(q) = quote_char {
-                let inner = &raw[1..raw.len().saturating_sub(1)];
-                let q = q as char;
-                let bytes = inner.as_bytes();
-                let q = q as u8;
-                let mut has_unescaped = false;
-                for (i, &b) in bytes.iter().enumerate() {
-                    if b != q {
-                        continue;
-                    }
-                    let mut backslashes = 0usize;
-                    let mut j = i;
-                    while j > 0 && bytes[j - 1] == b'\\' {
-                        backslashes += 1;
-                        j -= 1;
-                    }
-                    if backslashes.is_multiple_of(2) {
-                        has_unescaped = true;
-                        break;
-                    }
-                }
-                if has_unescaped {
+            // Mermaid's Jison string state closes on every double quote; backslashes are literal.
+            if quoted {
+                let inner = raw.get(1..raw.len().saturating_sub(1)).unwrap_or_default();
+                if inner.contains('"') {
                     return Err(LexError::new(
                         "Invalid string label: contains nested quotes".to_string(),
                     ));
@@ -67,6 +51,16 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
         kind,
         span: None,
         selection: None,
+    })
+}
+
+fn contains_bound_at(raw: &str) -> bool {
+    raw.char_indices().any(|(index, ch)| {
+        ch == '@'
+            && raw[..index]
+                .chars()
+                .next_back()
+                .is_none_or(|previous| !super::is_ecmascript_trim_char(previous))
     })
 }
 
@@ -149,10 +143,9 @@ pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Opt
         // so newlines and semicolons inside node labels are label text rather than statement ends.
         match bytes[pos] {
             b'"' => {
-                let quote = bytes[pos];
                 pos += 1;
                 while pos < len {
-                    if bytes[pos] == quote && (pos == 0 || bytes[pos - 1] != b'\\') {
+                    if bytes[pos] == b'"' {
                         pos += 1;
                         break;
                     }

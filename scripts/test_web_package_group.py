@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts import web_package_group
 
@@ -657,6 +658,19 @@ class WebPackageArtifactTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "released")
         self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
+
+    def test_default_observation_window_tolerates_one_minute_registry_delay(self) -> None:
+        path = self.create_manifest()
+        manifest = web_package_group.verify_artifact(path, self.artifacts)
+        client = FakeNpm(hidden_integrity_reads_after_publish=12)
+        client.manifest = manifest
+
+        with mock.patch("scripts.npm_package_group.time.sleep") as sleep:
+            report = web_package_group.reconcile_group(manifest, self.artifacts, client)
+
+        self.assertEqual(report["status"], "released")
+        self.assertEqual(client.hidden_integrity_reads_after_publish, 0)
+        self.assertEqual(sleep.call_count, 12)
 
     def test_reconciliation_rejects_existing_version_with_different_integrity(self) -> None:
         path = self.create_manifest()

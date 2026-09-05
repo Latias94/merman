@@ -24,6 +24,7 @@ from artifact_profile_recipe import (
 from python_wheel_licenses import (
     install_target_report,
     verify_wheel_license_report,
+    wheel_platform_for_target,
 )
 
 
@@ -98,6 +99,12 @@ def select_python_wheel_target(recipe: CargoArtifactRecipe) -> str:
     return target
 
 
+def wheel_build_environment(target: str) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["_PYTHON_HOST_PLATFORM"] = wheel_platform_for_target(target)
+    return environment
+
+
 def python_generator_args(
     recipe: CargoArtifactRecipe,
     metadata_library: Path,
@@ -158,10 +165,11 @@ def run(
     args: list[str],
     *,
     cwd: Path = REPO_ROOT,
+    env: dict[str, str] | None = None,
 ) -> None:
     display_args = ("<inline-script>" if "\n" in arg else arg for arg in args)
     print("+", " ".join(display_args))
-    subprocess.run(args, cwd=cwd, check=True)
+    subprocess.run(args, cwd=cwd, check=True, env=env)
 
 
 def source_date_epoch() -> str:
@@ -333,7 +341,8 @@ def main() -> int:
                 "--no-deps",
                 "--wheel-dir",
                 str(wheel_dir),
-            ]
+            ],
+            env=wheel_build_environment(target),
         )
         wheel = newest_wheel(wheel_dir)
         require_native_platform_wheel(wheel)

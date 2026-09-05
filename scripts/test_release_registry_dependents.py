@@ -31,8 +31,11 @@ class RegistryDependentTests(unittest.TestCase):
         self.assertIn('"merman-render" = { version = "=0.8.0-alpha.5" }', manifest)
         self.assertNotIn('"roughr-merman" = { version = "=0.12.3" }', manifest)
         self.assertIn('[patch.crates-io]', manifest)
-        self.assertIn('"roughr-merman" = { path = "/tmp/candidate" }', manifest)
-        self.assertIn('path = "/tmp/candidate"', manifest)
+        candidate_path = release.toml_string(str(Path("/tmp/candidate")))
+        self.assertIn(
+            f'"roughr-merman" = {{ path = {candidate_path} }}',
+            manifest,
+        )
 
     def test_verify_runs_both_lanes_without_reusing_a_lockfile(self) -> None:
         calls: list[tuple[list[str], Path, str, str]] = []

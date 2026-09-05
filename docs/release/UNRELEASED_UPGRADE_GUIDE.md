@@ -1,12 +1,12 @@
-# Alpha.6 Detailed Migration Reference (Source Candidate)
+# Alpha.6 Detailed Migration Reference
 
-> This guide applies to the prepared `0.8.0-alpha.6` source candidate after `v0.8.0-alpha.5`. It does not describe the published alpha.5 artifacts. No registry package, tag, or platform artifact is implied until the exact release source passes preflight.
+> This guide applies to the published `0.8.0-alpha.6` workspace release after `v0.8.0-alpha.5`. It covers the workspace crates and CLI/LSP archives from the immutable alpha.6 tag; Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent channels with separate publication evidence.
 
 Start with the concise [alpha.5 to alpha.6 upgrade guide](ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md). This document retains the exhaustive symbol mapping and worked Rust examples for integrations that need a deeper migration reference.
 
 ## Rust analysis and editor migration
 
-The alpha.6 candidate deliberately removes prerelease compatibility shims. Migrate source and generated bindings together.
+The alpha.6 release deliberately removes prerelease compatibility shims. Migrate source and generated bindings together.
 
 | Alpha.5 or development-snapshot API | Alpha.6 replacement |
 | --- | --- |

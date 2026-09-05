@@ -25,9 +25,35 @@ Treat the request as `prepare` unless the maintainer explicitly authorizes `ship
 
 - `prepare` may update source files, run local checks, dispatch non-publishing preflight when requested, and inspect external state read-only.
 - `ship` may create or push a tag, dispatch a publishing or deployment workflow, modify a GitHub Release, or mutate a registry only within the named scope.
-- Pushing a release tag starts one inseparable tag-triggered publication bundle: `release.yml`, `release-crates.yml`, and `release-flutter.yml`. The maintainer must authorize all three tag-triggered surfaces; authorization for only part of that bundle does not authorize a tag push.
+- Pushing a `v<version>` release tag starts the tag-triggered CLI/LSP and crates.io workflows (`release.yml` and `release-crates.yml`). Flutter is a separate `flutter-v<version>` tag because pub.dev only publishes from that tag trigger. Authorization for the workspace tag never authorizes Python, Android, Apple, Web, Node, VS Code, or Flutter owner publication.
 - Python, Android, Apple, Web, VS Code, Homebrew, and GitHub Pages are separately authorized surfaces. Pages authorization must name a reviewed ref and approved 40-character commit; Web/npm or CI authorization does not cover dispatching `pages-deploy.yml` or a matching-path push to `main` or `master`.
 - Preparation, a green preflight, an existing plan, a partial prior release, or authorization from an earlier release never implies current shipping authorization.
+
+## Prerelease Lockstep Contract
+
+Alpha, beta, and release-candidate versions may intentionally break public APIs. They may not ship
+an internally inconsistent package graph. For every coupled workspace dependency, the root
+`Cargo.toml` requirement must be exact (`=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`); stable
+releases use the ordinary compatible requirement. `scripts/release-version.py check` is the source
+gate for this rule.
+
+Before a prerelease is authorized, run
+`python3 scripts/verify_prerelease_compatibility.py --version <candidate> --previous-version <previous>`.
+The command creates fresh consumers without copying a lockfile, compiles the candidate graph, and
+compiles the previous facade while candidate sibling packages are available when both versions are
+on the same Cargo compatibility line. `cargo check --locked` inside the workspace does not replace
+this check. If that same-line previous-facade lane fails, either restore the required compile boundary
+or start a new release line; do not hide the failure behind a checked-in lockfile or a downstream
+exact dependency.
+
+This gate is admission control for a new prerelease. For a backfill of a prerelease that was
+already published before the gate existed, keep the original immutable tag and record the known
+historical compatibility exception; use only the owner workflows for the missing artifacts. Do not
+rerun a failed historical admission check as a reason to move the tag, and do not carry this
+exception into any new prerelease.
+
+For the first prerelease in a repository, use `--allow-missing-previous` only after confirming that
+no earlier workspace tag exists. Stable releases skip this prerelease-only probe.
 
 If scope is incomplete, report what is ready and stop before the first external mutation.
 
@@ -109,6 +135,20 @@ An independent patch is ready only when the API comparison is non-breaking, the 
 
 Run the owner-owned contract checks listed in `docs/release/RELEASING.md`, including exact artifact recipes, package build/load smoke tests, ABI checks, release legal material, and the requested preflight workflows.
 
+Start every release review with the static surface contract:
+
+```bash
+VERSION="<version>"
+python3 scripts/release_surface_contract.py --version "$VERSION"
+```
+
+Read its result as a delivery matrix, not as publication evidence. The Rust row covers the
+crates.io source graph, including `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and
+`merman-wasm`. The Android, Apple, Python, and Flutter rows cover native artifacts owned by
+separate workflows. `merman-android-jni` is private by design and must never be expected in the
+crates.io package list. A release is incomplete until every explicitly authorized owner workflow
+has a successful run and its owning registry or GitHub Release confirms the artifact.
+
 Keep release smoke tests strict about user-observable behavior and loose about valid representation choices. Binary-format checks may require signatures, bounded structure, and a real payload, but must accept legal token or whitespace forms. Async protocol checks must require the expected responses, bounds, and exit behavior while allowing valid notification ordering. When a final-archive smoke fails, reproduce against that exact archive before changing product code; do not refactor the product merely to satisfy an incidental serializer or scheduler ordering.
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
@@ -133,7 +173,25 @@ configuring Dart OIDC credentials; never replace this boundary with direct `tar 
 
 For Web or Node publication, treat the verified package-group manifest order as publication order. Publish dependency or platform packages first and the default Web package or Node loader last.
 
+Keep the release and preflight Web/Node jobs on the pinned Node `24.13.1` toolchain, including the
+GNU and musl container images. A floating major tag can change the embedded build-tool provenance
+and npm tarball bytes between retries even when the source commit and generated runtime files are
+unchanged.
+
 npm Trusted Publisher authorizes `npm publish`, not a later `npm dist-tag` repair. The owner script must preflight every existing exact version, integrity, and requested tag before mutating the registry, publish only missing versions directly under the final tag, verify each postcondition, and skip matching members on retry. Stop before publication when an existing integrity or tag conflicts; recover that tag with an explicitly authorized maintainer credential. Do not reintroduce a synthetic staging tag or OIDC-incompatible promotion step.
+
+When a Web package-group publication is partial, reuse the exact artifact from the original
+`release-web.yml` run. Do not rebuild the group from the same source and assume npm tarball
+bytes will match: a rebuilt tarball can differ while the source commit is identical. Use the
+workflow's `recovery_run_id` input with `source_ref` set to the artifact manifest's full 40-character
+source SHA; the recovery path verifies the prior run identity, downloads its single unexpired
+package-group artifact, and publishes only registry members whose exact version is still missing.
+If the existing integrity differs, stop and require an explicitly authorized maintainer decision.
+
+Apply the same recovery rule to Node package groups with `release-node.yml`: a new recovery run must
+use the prior run id and the artifact manifest's exact source SHA, verify the workflow/repository
+identity and unexpired package-group artifact, and publish only after the trusted verifier accepts
+all seven package tarballs. Never substitute a newly rebuilt Node group for the original artifact.
 
 When npm package-group code or its workflow changes, run the focused owner checks before dispatching:
 
@@ -150,7 +208,10 @@ Do not continue here without explicit `ship` authorization for the current relea
 
 Use only the `Tag And Push` commands in `docs/release/RELEASING.md`. They must verify that `HEAD` is the preflighted `SOURCE_SHA`, create the tag at that explicit commit, and push that tag without moving it.
 
-Watch the tag-triggered cargo-dist, crates.io, and pub.dev workflows first. After the GitHub Release exists, use only the exact platform dispatch commands in `docs/release/RELEASING.md`; do not reconstruct them from memory or from this skill.
+Watch the tag-triggered cargo-dist and crates.io workflows first. Publish Flutter only through the
+authorized `flutter-v<version>` tag path, and use the exact Python, Android, Apple, Web, Node, and
+VS Code dispatch commands in `docs/release/RELEASING.md`; do not reconstruct them from memory or
+from this skill.
 
 Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
@@ -202,7 +263,7 @@ Use direct GitHub, registry, and artifact evidence documented in `docs/release/R
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
 - every crates.io batch result receipt is `complete`, with no `pending_recovery` or `mismatch`
   state and no dependent batch started before its predecessors matched;
-- separately authorized Android, Apple, Web, VS Code, and Homebrew outputs match their declared channel semantics;
+- separately authorized Android, Apple, Python, Flutter, Web, VS Code, and Homebrew outputs match their declared channel semantics;
 - `main` remains green after any release-workflow repair.
 
 Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
@@ -298,7 +359,8 @@ Classify the failure before changing anything:
 - A crates.io `mismatch` result is an incident requiring an explicit maintainer decision. Never
   auto-yank, silently resume, or publish dependent batches.
 - Partial publication on other registries: rerun only idempotent or unfinished surfaces; never
-  republish a version a registry accepted.
+  republish a version a registry accepted. For Web npm groups, use `recovery_run_id` to consume
+  the original verified artifact instead of rebuilding it in a new run.
 - Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
 Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.

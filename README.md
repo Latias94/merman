@@ -19,7 +19,7 @@ sanitization, and SVG structure are checked against pinned Mermaid source and fi
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
-> introduced after the published `0.8.0-alpha.5` tag. If you depend on that release, use its
+> introduced in the published `0.8.0-alpha.6` release. If you depend on `0.8.0-alpha.5`, use its
 > [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).

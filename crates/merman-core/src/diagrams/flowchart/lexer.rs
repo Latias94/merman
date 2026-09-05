@@ -576,33 +576,38 @@ impl<'input> Lexer<'input> {
 
     pub(super) fn lex_edge_id(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
-        let bytes = self.input.as_bytes();
-        if start >= bytes.len() {
+        if start >= self.input.len() {
             return None;
         }
-        let first = bytes[start];
-        if !first.is_ascii_alphanumeric() && first != b'_' {
-            return None;
-        }
-        let mut i = start;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
-                i += 1;
-                continue;
+
+        // Mermaid's `[^\s"]+@(?=[^\{"])` LINK_ID rule runs before ordinary identifiers and
+        // greedily captures the last eligible `@` in a non-whitespace run.
+        let mut cursor = start;
+        let mut at = None;
+        while cursor < self.input.len() {
+            let ch = self.input[cursor..]
+                .chars()
+                .next()
+                .expect("edge id scan position must contain a character");
+            if is_ecmascript_trim_char(ch) || ch == '"' {
+                break;
             }
-            break;
+            if ch == '@' {
+                let next = self.input[cursor + 1..].chars().next();
+                if cursor > start && matches!(next, Some(next) if next != '{' && next != '"') {
+                    at = Some(cursor);
+                }
+            }
+            cursor += ch.len_utf8();
         }
-        if i >= bytes.len() || bytes[i] != b'@' {
-            return None;
-        }
-        let next = bytes.get(i + 1).copied();
-        if matches!(next, Some(b'{') | Some(b'"')) {
-            return None;
-        }
-        self.pos = i + 1;
-        let id = self.input[start..i].to_string();
-        Some((start, Tok::EdgeId(id), self.pos))
+
+        let at = at?;
+        self.pos = at + 1;
+        Some((
+            start,
+            Tok::EdgeId(self.input[start..at].to_string()),
+            self.pos,
+        ))
     }
 
     pub(super) fn lex_style_stmt(

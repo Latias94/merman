@@ -14,7 +14,9 @@ Install the published prerelease channel from PyPI only after checking that its 
 python -m pip install --pre merman
 ```
 
-For alpha.6 candidate work, build the wheel and native library from the exact commit accepted by release preflight and keep those artifacts paired; do not assume that the registry command above installs the source candidate.
+For a reproducible alpha.6 install, pin `python -m pip install 'merman==0.8.0a6'`.
+
+For source work, build the wheel and native library from the exact reviewed commit and keep those artifacts paired with the same binding contract.
 
 Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
 

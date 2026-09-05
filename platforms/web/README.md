@@ -17,7 +17,8 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All public browser packages use one lockstep version. The published npm `alpha` channel currently trails the prepared alpha.6 source candidate; pin the published alpha.5 version for registry installs, or use the exact commit accepted by release preflight when testing alpha.6.
+All public browser packages use one lockstep version. The npm `alpha` channel includes
+`0.8.0-alpha.6`; pin that exact version when reproducible installs matter.
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.

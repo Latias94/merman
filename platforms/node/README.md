@@ -8,8 +8,9 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 
 ## Quick start
 
-The npm `alpha` dist-tag is the published channel and currently trails the prepared alpha.6 source
-candidate. Use it for the published package, or build the exact reviewed commit when validating
+The npm `alpha` dist-tag remains on the published alpha.5 group while the verified alpha.6 group
+awaits the first-publication bootstrap for `@mermanjs/node-wasm`. Use alpha.5 for registry installs
+until all seven alpha.6 packages are published, or build the exact reviewed commit when validating
 alpha.6 behavior.
 
 ```sh

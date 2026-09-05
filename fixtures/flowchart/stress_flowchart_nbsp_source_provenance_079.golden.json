@@ -505,7 +505,6 @@
         "id": "SG",
         "title": " Group ",
         "dir": null,
-        "hasExplicitDir": false,
         "labelType": "string",
         "classes": [],
         "styles": [],

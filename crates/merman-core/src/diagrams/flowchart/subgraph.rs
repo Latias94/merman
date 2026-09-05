@@ -224,6 +224,7 @@ impl SubgraphBuilder {
             dir,
             has_explicit_dir,
             label_type,
+            metadata: None,
         });
 
         Ok(id)

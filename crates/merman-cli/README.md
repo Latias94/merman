@@ -15,13 +15,13 @@ The command line has four explicit workflows:
 
 ## Install
 
-This README describes the prepared alpha.6 source candidate. It is not a claim that alpha.6 is already published. For the published channel, prefer the complete prebuilt binary from the selected release, with a source-build fallback when no official archive is available for the current target:
+This README describes the published `merman-cli` `0.8.0-alpha.6` package and binary channel. Prefer the complete prebuilt binary from the selected release, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
-cargo binstall merman-cli@0.8.0-alpha.5
+cargo binstall merman-cli@0.8.0-alpha.6
 ```
 
-The published binary channel currently ends at alpha.5. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at the exact alpha.6 preflight commit when you need the candidate contract documented here.
+The alpha.6 binary channel is published. Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the selected version, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Check `merman-cli --version` first; use a checkout at tag `v0.8.0-alpha.6` when you need the source contract documented here.
 
 Homebrew users can install the stable formula:
 
@@ -33,7 +33,7 @@ The formula follows stable releases and may trail this pre-release documentation
 
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
-From a checkout at the exact commit accepted by alpha.6 preflight:
+From a checkout at tag `v0.8.0-alpha.6`:
 
 ```sh
 cargo install --path crates/merman-cli --locked

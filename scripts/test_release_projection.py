@@ -156,6 +156,20 @@ class RepositoryViewTests(unittest.TestCase):
 class ReleaseProjectionTests(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[1]
 
+    def test_workspace_dependency_requirement_is_exact_only_for_prereleases(self) -> None:
+        self.assertEqual(
+            release_projection.workspace_dependency_requirement(
+                release_projection.parse_release_version("0.8.0-alpha.6")
+            ),
+            "=0.8.0-alpha.6",
+        )
+        self.assertEqual(
+            release_projection.workspace_dependency_requirement(
+                release_projection.parse_release_version("0.8.0")
+            ),
+            "0.8.0",
+        )
+
     def test_no_argument_verifier_covers_the_complete_current_projection(self) -> None:
         result = release_projection.verify_repository(self.ROOT)
 
@@ -245,7 +259,7 @@ class ReleaseProjectionTests(unittest.TestCase):
                 Path("Cargo.toml"),
                 lambda text: replace_once(
                     text,
-                    f'merman-core = {{ path = "crates/merman-core", version = "{canonical}"',
+                    f'merman-core = {{ path = "crates/merman-core", version = "={canonical}"',
                     'merman-core = { path = "crates/merman-core", version = "9.9.9"',
                 ),
             ),
