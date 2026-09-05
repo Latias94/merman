@@ -1038,7 +1038,9 @@ impl<'a> WardleyBuilder<'a> {
     ) -> Result<()> {
         let length = tangent.x.hypot(tangent.y);
         if !length.is_finite() || length <= f64::EPSILON {
-            return Err(invalid("Wardley marker has no tangent"));
+            return Err(unavailable(
+                "Wardley marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation",
+            ));
         }
         let ux = tangent.x / length;
         let uy = tangent.y / length;

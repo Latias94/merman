@@ -49,6 +49,20 @@ fn element_with_class<'a, 'input>(
 }
 
 #[test]
+fn wardley_zero_length_marker_uses_the_explicit_legacy_svg_bridge() {
+    let svg = render_wardley(
+        "wardley-beta\ncomponent A [0.8, 0.2]\nevolve A 0.2\n",
+        Value::Null,
+        "wardley-degenerate",
+    );
+
+    assert!(
+        svg.contains(r#"marker-end="url(#arrow-wardley-degenerate)""#),
+        "the SVG target should preserve Mermaid's marker for a zero-length trend: {svg}"
+    );
+}
+
+#[test]
 fn wardley_svg_serializes_the_complete_1116_feature_surface() {
     let source = r#"wardley-beta
 title Platform Strategy

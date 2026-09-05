@@ -23,6 +23,16 @@ fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String
     .expect("svg render ok")
 }
 
+#[test]
+fn block_zero_length_marker_uses_the_explicit_legacy_svg_bridge() {
+    let svg = render_block_svg_from_text("block-beta\n  A --> A\n");
+
+    assert!(
+        svg.contains(r#"marker-end="url(#merman_block-pointEnd)""#),
+        "the SVG target should preserve Mermaid's marker for a degenerate edge: {svg}"
+    );
+}
+
 fn try_render_block_svg_from_text_with_engine(
     engine: &Engine,
     text: &str,

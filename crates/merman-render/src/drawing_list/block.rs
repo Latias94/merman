@@ -676,7 +676,11 @@ impl<'a> BlockBuilder<'a> {
                 (candidate.x - endpoint.x).hypot(candidate.y - endpoint.y) > f64::EPSILON
             })
         }
-        .ok_or_else(|| invalid("Block edge marker has no non-zero tangent"))?;
+        .ok_or_else(|| {
+            unavailable(
+                "Block edge marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation",
+            )
+        })?;
         let direction = if start {
             normalize(adjacent.x - endpoint.x, adjacent.y - endpoint.y)
         } else {

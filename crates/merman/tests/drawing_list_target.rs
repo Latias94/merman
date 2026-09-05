@@ -1,8 +1,8 @@
 #![cfg(feature = "svg")]
 
 use merman::{
-    DrawingListRequest, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
-    Renderer,
+    DrawingListRequest, Engine, MermaidConfig, OperationControl, RenderError, RenderOutput,
+    RenderRequest, Renderer,
 };
 use merman_display_list::DrawingListPolicy;
 
@@ -81,6 +81,48 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
             .iter()
             .any(|semantic| semantic.role == merman_display_list::SemanticRole::Edge)
     );
+}
+
+#[test]
+fn block_degenerate_marker_is_a_structured_unavailable_result() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "block-beta\n  A --> A\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("a zero-length Block marker must not produce a partial document");
+
+    let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+        family,
+        reason,
+    }) = error
+    else {
+        panic!("expected a structured DrawingList-unavailable error, got {error}");
+    };
+    assert_eq!(family, "block");
+    assert!(reason.contains("non-zero tangent"));
+}
+
+#[test]
+fn wardley_degenerate_marker_is_a_structured_unavailable_result() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "wardley-beta\ncomponent A [0.8, 0.2]\nevolve A 0.2\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("a zero-length Wardley marker must not produce a partial document");
+
+    let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+        family,
+        reason,
+    }) = error
+    else {
+        panic!("expected a structured DrawingList-unavailable error, got {error}");
+    };
+    assert_eq!(family, "wardley");
+    assert!(reason.contains("non-zero tangent"));
 }
 
 #[test]
