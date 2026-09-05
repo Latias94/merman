@@ -181,8 +181,13 @@ fn state_prepared_artifact_renders_the_typed_family() {
         .render_svg(&options, &SvgDebugOptions::default())
         .expect("render State artifact");
 
+    assert_eq!(
+        svg.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
     assert!(
-        svg.svg().contains(r#"id="typed-state-state-Active-0""#),
+        svg.svg()
+            .contains(r#"data-merman-semantic-id="state.node.1""#),
         "{}",
         svg.svg()
     );
