@@ -448,7 +448,9 @@ impl DrawingListDocument {
         let mut image_resources = BTreeMap::new();
         let mut paint_ids = BTreeSet::new();
         let mut font_ids = BTreeSet::new();
+        let mut image_bytes = 0usize;
         let mut image_pixels = 0usize;
+        let mut font_bytes = 0usize;
         let mut path_segments = 0usize;
         for resource in &self.resources {
             if !resource_ids.insert(resource.id().clone()) {
@@ -483,10 +485,20 @@ impl DrawingListDocument {
                 }
                 DrawingResource::Font(font) => {
                     font_ids.insert(font.id.clone());
+                    font_bytes = font_bytes
+                        .checked_add(font.font.data.len())
+                        .ok_or_else(|| {
+                            DrawingListError::invalid("font byte count overflows usize")
+                        })?;
+                    validate_count("font_bytes", font_bytes, limits.max_font_bytes)?;
                 }
                 DrawingResource::Path(_) | DrawingResource::Image(_) => {}
             }
             if let DrawingResource::Image(image) = resource {
+                image_bytes = image_bytes
+                    .checked_add(image.image.data.len())
+                    .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
+                validate_count("image_bytes", image_bytes, limits.max_image_bytes)?;
                 image_pixels = image_pixels
                     .checked_add(pixel_count(image.pixel_width, image.pixel_height)?)
                     .ok_or_else(|| {

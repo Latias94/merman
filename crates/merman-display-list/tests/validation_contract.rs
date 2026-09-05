@@ -2,9 +2,9 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::{
-    AlphaMode, DrawingCommand, DrawingListLimits, DrawingResource, EncodedImage, FallbackReason,
-    FillRule, ImageResource, Paint, PathSegment, Point, RasterFallback, RasterFormat, Rect,
-    ResourceId, VisualSource,
+    AlphaMode, DrawingCommand, DrawingListLimits, DrawingResource, EncodedAsset, EncodedImage,
+    FallbackReason, FillRule, FontResource, ImageResource, Paint, PathSegment, Point,
+    RasterFallback, RasterFormat, Rect, ResourceId, VisualSource,
 };
 
 #[test]
@@ -274,4 +274,50 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
         .image
         .media_type = "text/plain".into();
     assert!(document.validate().is_err());
+}
+
+#[test]
+fn validator_enforces_cumulative_encoded_asset_byte_budgets() {
+    let mut document = extended_document();
+    document
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.pattern-tile-2"),
+            image: EncodedImage::new("image/png", vec![0x89, b'P', b'N', b'G']),
+            pixel_width: 8,
+            pixel_height: 8,
+            has_alpha: true,
+        }));
+    document.resources.push(DrawingResource::Font(FontResource {
+        id: ResourceId::new("font.fixture-2"),
+        font: EncodedAsset::new("font/woff2", vec![0x77, 0x4f, 0x46, 0x32]),
+    }));
+
+    let limits = DrawingListLimits {
+        max_image_bytes: 5,
+        max_font_bytes: 5,
+        ..DrawingListLimits::default()
+    };
+    let error = document
+        .validate_with_limits(&limits)
+        .expect_err("two individually valid assets must not bypass the document budget");
+    assert!(error.to_string().contains("image_bytes"));
+
+    let mut font_only = sample_document();
+    font_only
+        .resources
+        .push(DrawingResource::Font(FontResource {
+            id: ResourceId::new("font.fixture-1"),
+            font: EncodedAsset::new("font/woff2", vec![0x77, 0x4f, 0x46, 0x32]),
+        }));
+    font_only
+        .resources
+        .push(DrawingResource::Font(FontResource {
+            id: ResourceId::new("font.fixture-2"),
+            font: EncodedAsset::new("font/woff2", vec![0x77, 0x4f, 0x46, 0x32]),
+        }));
+    let error = font_only
+        .validate_with_limits(&limits)
+        .expect_err("font resources must share one document-wide byte budget");
+    assert!(error.to_string().contains("font_bytes"));
 }
