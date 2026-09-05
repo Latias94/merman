@@ -32,7 +32,17 @@ enum EffectAssertion {
     PathFillStroke,
     HostText,
     LinearGradient,
+    RadialGradient,
+    ImageResource,
+    Pattern,
+    FontResource,
     ClipPath,
+    Layer,
+    Image,
+    RasterSubtree,
+    GlyphRun,
+    TextOutline,
+    TextRasterFallback,
     SemanticLink,
     Opacity,
     BlendMode,
@@ -47,7 +57,17 @@ impl EffectAssertion {
             Self::PathFillStroke => "path",
             Self::HostText => "host_text",
             Self::LinearGradient => "linear_gradient",
+            Self::RadialGradient => "radial_gradient",
+            Self::ImageResource => "image_resource",
+            Self::Pattern => "pattern",
+            Self::FontResource => "font_resource",
             Self::ClipPath => "clip_path",
+            Self::Layer => "layer",
+            Self::Image => "image",
+            Self::RasterSubtree => "raster_subtree",
+            Self::GlyphRun => "glyph_run",
+            Self::TextOutline => "text_outline",
+            Self::TextRasterFallback => "text_raster_fallback",
             Self::SemanticLink => "semantic_link",
             Self::Opacity => "opacity",
             Self::BlendMode => "blend_mode",
@@ -241,12 +261,85 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
                 .any(|resource| matches!(resource, DrawingResource::LinearGradient(_))),
             "{id} must retain a linear-gradient resource"
         ),
+        EffectAssertion::RadialGradient => assert!(
+            document
+                .resources
+                .iter()
+                .any(|resource| matches!(resource, DrawingResource::RadialGradient(_))),
+            "{id} must retain a radial-gradient resource"
+        ),
+        EffectAssertion::ImageResource => assert!(
+            document
+                .resources
+                .iter()
+                .any(|resource| matches!(resource, DrawingResource::Image(_))),
+            "{id} must retain an image resource"
+        ),
+        EffectAssertion::Pattern => assert!(
+            document
+                .resources
+                .iter()
+                .any(|resource| matches!(resource, DrawingResource::Pattern(_))),
+            "{id} must retain a pattern resource"
+        ),
+        EffectAssertion::FontResource => assert!(
+            document
+                .resources
+                .iter()
+                .any(|resource| matches!(resource, DrawingResource::Font(_))),
+            "{id} must retain a font resource"
+        ),
         EffectAssertion::ClipPath => assert!(
             document
                 .commands
                 .iter()
                 .any(|command| matches!(command, DrawingCommand::ClipPath { .. })),
             "{id} must retain a clip-path command"
+        ),
+        EffectAssertion::Layer => assert!(
+            document
+                .commands
+                .iter()
+                .any(|command| matches!(command, DrawingCommand::BeginLayer { .. })),
+            "{id} must retain a layer command"
+        ),
+        EffectAssertion::Image => assert!(
+            document
+                .commands
+                .iter()
+                .any(|command| matches!(command, DrawingCommand::DrawImage { .. })),
+            "{id} must retain an image command"
+        ),
+        EffectAssertion::RasterSubtree => assert!(
+            document
+                .commands
+                .iter()
+                .any(|command| matches!(command, DrawingCommand::DrawRasterSubtree { .. })),
+            "{id} must retain a raster-subtree command"
+        ),
+        EffectAssertion::GlyphRun => assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                DrawingCommand::DrawText { run }
+                    if matches!(run.obligation, merman_display_list::TextObligation::GlyphRun { .. })
+            )),
+            "{id} must retain a glyph-run obligation"
+        ),
+        EffectAssertion::TextOutline => assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                DrawingCommand::DrawText { run }
+                    if matches!(run.obligation, merman_display_list::TextObligation::Outline { .. })
+            )),
+            "{id} must retain a text-outline obligation"
+        ),
+        EffectAssertion::TextRasterFallback => assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                DrawingCommand::DrawText { run }
+                    if matches!(run.obligation, merman_display_list::TextObligation::RasterFallback { .. })
+            )),
+            "{id} must retain a text-raster-fallback obligation"
         ),
         EffectAssertion::SemanticLink => assert!(
             document
@@ -293,61 +386,85 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
 
 fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'static str> {
     let mut effects = BTreeSet::new();
-    if document
-        .resources
-        .iter()
-        .any(|resource| matches!(resource, DrawingResource::Path(_)))
-    {
-        effects.insert("path");
+
+    // Keep these matches exhaustive.  Adding a new protocol resource, command, or text
+    // obligation must force this gate to classify it before a renderer can silently introduce it.
+    for resource in &document.resources {
+        match resource {
+            DrawingResource::Path(_) => {
+                effects.insert("path");
+            }
+            DrawingResource::LinearGradient(_) => {
+                effects.insert("linear_gradient");
+            }
+            DrawingResource::RadialGradient(_) => {
+                effects.insert("radial_gradient");
+            }
+            DrawingResource::Image(_) => {
+                effects.insert("image_resource");
+            }
+            DrawingResource::Pattern(_) => {
+                effects.insert("pattern");
+            }
+            DrawingResource::Font(_) => {
+                effects.insert("font_resource");
+            }
+        }
     }
-    if document
-        .resources
-        .iter()
-        .any(|resource| matches!(resource, DrawingResource::LinearGradient(_)))
-    {
-        effects.insert("linear_gradient");
-    }
-    if document
-        .commands
-        .iter()
-        .any(|command| matches!(command, DrawingCommand::ClipPath { .. }))
-    {
-        effects.insert("clip_path");
-    }
-    if document
-        .commands
-        .iter()
-        .any(|command| matches!(command, DrawingCommand::SetOpacity { opacity } if *opacity < 1.0))
-    {
-        effects.insert("opacity");
-    }
-    if document.commands.iter().any(|command| {
-        matches!(
-            command,
+
+    for command in &document.commands {
+        match command {
+            DrawingCommand::SetOpacity { opacity } if *opacity < 1.0 => {
+                effects.insert("opacity");
+            }
+            DrawingCommand::SetOpacity { .. } => {}
             DrawingCommand::SetBlendMode { blend_mode }
-                if *blend_mode != merman_display_list::BlendMode::Normal
-        )
-    }) {
-        effects.insert("blend_mode");
-    }
-    if document.commands.iter().any(|command| {
-        matches!(
-            command,
+                if *blend_mode != merman_display_list::BlendMode::Normal =>
+            {
+                effects.insert("blend_mode");
+            }
+            DrawingCommand::SetBlendMode { .. } => {}
             DrawingCommand::ConcatTransform { transform }
-                if *transform != merman_display_list::Transform::IDENTITY
-        )
-    }) {
-        effects.insert("transform");
+                if *transform != merman_display_list::Transform::IDENTITY =>
+            {
+                effects.insert("transform");
+            }
+            DrawingCommand::ConcatTransform { .. } => {}
+            DrawingCommand::BeginLayer { .. } => {
+                effects.insert("layer");
+            }
+            DrawingCommand::EndLayer => {}
+            DrawingCommand::DrawPath { .. } => {}
+            DrawingCommand::ClipPath { .. } => {
+                effects.insert("clip_path");
+            }
+            DrawingCommand::DrawImage { .. } => {
+                effects.insert("image");
+            }
+            DrawingCommand::BeginSemanticGroup { .. }
+            | DrawingCommand::EndSemanticGroup
+            | DrawingCommand::Save
+            | DrawingCommand::Restore => {}
+            DrawingCommand::DrawRasterSubtree { .. } => {
+                effects.insert("raster_subtree");
+            }
+            DrawingCommand::DrawText { run } => match &run.obligation {
+                merman_display_list::TextObligation::HostText { .. } => {
+                    effects.insert("host_text");
+                }
+                merman_display_list::TextObligation::GlyphRun { .. } => {
+                    effects.insert("glyph_run");
+                }
+                merman_display_list::TextObligation::Outline { .. } => {
+                    effects.insert("text_outline");
+                }
+                merman_display_list::TextObligation::RasterFallback { .. } => {
+                    effects.insert("text_raster_fallback");
+                }
+            },
+        }
     }
-    if document.commands.iter().any(|command| {
-        matches!(
-            command,
-            DrawingCommand::DrawText { run }
-                if matches!(run.obligation, merman_display_list::TextObligation::HostText { .. })
-        )
-    }) {
-        effects.insert("host_text");
-    }
+
     if document
         .semantics
         .iter()
