@@ -76,9 +76,6 @@ use css::{
     requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
-    mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
-}
 
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,

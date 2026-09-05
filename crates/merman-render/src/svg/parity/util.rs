@@ -439,6 +439,24 @@ pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> Str
     out
 }
 
+pub(super) fn json_stringify_display_points(points: &[merman_display_list::Point]) -> String {
+    let mut out = String::new();
+    let mut buf = ryu_js::Buffer::new();
+    out.push('[');
+    for (index, point) in points.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str(r#"{"x":"#);
+        out.push_str(js_number_to_string(point.x, &mut buf));
+        out.push_str(r#","y":"#);
+        out.push_str(js_number_to_string(point.y, &mut buf));
+        out.push('}');
+    }
+    out.push(']');
+    out
+}
+
 pub(super) fn json_stringify_points_into(
     out: &mut String,
     points: &[crate::model::LayoutPoint],

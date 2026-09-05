@@ -1375,3 +1375,86 @@ db:B -[events]-> R:worker
     assert!(svg.contains("#architecture-parity .node-bkg{"));
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
+
+#[cfg(feature = "layout-cytoscape")]
+#[test]
+fn mindmap_canonical_svg_keeps_dom_routes_shapes_and_html_labels() {
+    let svg = render_svg(
+        r#"mindmap
+  root((Root))
+    child[Child]
+"#,
+        "mindmap-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Mindmap SVG is XML");
+    let root = document.root_element();
+
+    assert_eq!(root.attribute("class"), Some("mindmapDiagram"));
+    assert_eq!(root.attribute("aria-roledescription"), Some("mindmap"));
+    for class in ["subgraphs", "edgePaths", "edgeLabels", "nodes"] {
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+        }));
+    }
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("id") == Some("mindmap-parity-edge_0_1")
+        })
+        .expect("canonical Mindmap edge");
+    assert_eq!(edge.attribute("data-id"), Some("edge_0_1"));
+    assert_eq!(edge.attribute("data-look"), Some("classic"));
+    assert_eq!(
+        edge.parent().and_then(|parent| parent.attribute("class")),
+        Some("edgePaths"),
+        "Mindmap edge paths must remain direct children of Mermaid's edgePaths container"
+    );
+    assert_eq!(
+        edge.attribute("data-merman-semantic-id"),
+        Some("mindmap.edge.0")
+    );
+    assert_eq!(
+        edge.attribute("data-merman-resource"),
+        Some("mindmap.edge.0.route")
+    );
+    assert!(
+        edge.attribute("data-points")
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g")
+            && node.attribute("id") == Some("mindmap-parity-node_0")
+            && node.attribute("data-look") == Some("classic")
+            && node.attribute("data-merman-semantic-id") == Some("mindmap.node.0")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("circle")
+            && node.attribute("class") == Some("basic label-container")
+            && node.attribute("data-merman-resource") == Some("mindmap.node.0.shape.outer")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node.attribute("class") == Some("basic label-container")
+            && node.attribute("data-merman-resource") == Some("mindmap.node.1.shape.outer")
+    }));
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+            .count(),
+        3,
+        "two node labels and the empty edge-label shell must retain Mermaid's XHTML structure"
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("span")
+            && node.attribute("class") == Some("nodeLabel markdown-node-label")
+            && node.descendants().any(|child| child.text() == Some("Root"))
+    }));
+    assert!(svg.contains("mindmap-parity_mindmap-pointEnd-margin"));
+    assert!(svg.contains("mindmap-parity-drop-shadow-small"));
+    assert!(svg.contains("#mindmap-parity .edge{"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}

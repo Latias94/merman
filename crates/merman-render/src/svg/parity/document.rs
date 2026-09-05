@@ -47,6 +47,7 @@ struct DocumentSvgEncoder<'a> {
     options: &'a SvgRenderOptions,
     debug: &'a SvgDebugOptions,
     effective_config: &'a Value,
+    mermaid_config: Option<merman_core::MermaidConfig>,
     session: &'a RenderSession,
     diagram_id: String,
     resources: BTreeMap<String, &'a DrawingResource>,
@@ -86,7 +87,11 @@ struct SavePoint {
 
 #[derive(Debug, Clone)]
 enum GroupKind {
-    Semantic { linked: bool, semantic_id: String },
+    Semantic {
+        linked: bool,
+        emitted: bool,
+        semantic_id: String,
+    },
     Layer,
     Clip,
 }
@@ -143,6 +148,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             options,
             debug,
             effective_config,
+            mermaid_config: matches!(document.svg.body, SvgStructureBody::Mindmap(_))
+                .then(|| merman_core::MermaidConfig::from_value(effective_config.clone())),
             session,
             diagram_id,
             resources,
@@ -202,6 +209,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         let (title, description) = match self.svg_body {
+            SvgStructureBody::Mindmap(_) => (None, None),
             SvgStructureBody::C4(body) => (body.acc_title.clone(), body.acc_description.clone()),
             SvgStructureBody::Wardley(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
@@ -345,6 +353,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
             SvgStructureBody::Packet(_) => Ok(root_svg::RootViewportSpec::responsive(
                 viewport_bounds,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                viewport_bounds.width,
+            ))),
+            SvgStructureBody::Mindmap(body) => Ok(root_svg::RootViewportSpec::mermaid(
+                viewport_bounds,
+                body.use_max_width,
             )
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
@@ -504,6 +519,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Packet(_) => Some((
                 false,
                 super::packet::packet_css(self.diagram_id.as_str(), self.effective_config),
+            )),
+            SvgStructureBody::Mindmap(_) => Some((
+                false,
+                super::mindmap::canonical_mindmap_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ),
             )),
             SvgStructureBody::QuadrantChart(_) => Some((
                 false,
@@ -709,6 +731,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Requirement(_) => Some("requirementDiagram"),
             SvgStructureBody::State(_) => Some("statediagram"),
             SvgStructureBody::Er(_) => Some("erDiagram"),
+            SvgStructureBody::Mindmap(_) => Some("mindmapDiagram"),
             _ => None,
         }
     }
@@ -785,6 +808,13 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_defs(&mut self) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
+            self.output.push_str(&super::mindmap::mindmap_gradient_defs(
+                self.diagram_id.as_str(),
+                self.effective_config,
+            ));
+            return Ok(());
+        }
         let clip_paths = self
             .document
             .commands
@@ -1110,6 +1140,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 "SVG semantic group references unknown id {semantic_id}"
             ))
         })?;
+        if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
+            return self.begin_mindmap_semantic_group(semantic_id);
+        }
         let svg_id = self.semantic_svg_id(semantic_id)?;
         let role_class = semantic_role_class(semantic.role);
         let visible = if matches!(self.svg_body, SvgStructureBody::Er(_))
@@ -1246,7 +1279,98 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.groups.push(GroupKind::Semantic {
             linked,
+            emitted: true,
             semantic_id: semantic_id.to_owned(),
+        });
+        Ok(())
+    }
+
+    fn begin_mindmap_semantic_group(&mut self, semantic_id: &str) -> Result<()> {
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .ok_or_else(|| invalid(format!("unknown Mindmap semantic id {semantic_id}")))?;
+        let visible = self.debug_visibility(semantic.role);
+        let body = match self.svg_body {
+            SvgStructureBody::Mindmap(body) => body,
+            _ => return Err(invalid("Mindmap semantic group requires a Mindmap sidecar")),
+        };
+        let mut fragment = String::new();
+        let emitted = match semantic_id {
+            "mindmap.document" => {
+                fragment.push_str("<g>");
+                super::mindmap::push_mindmap_marker_defs(&mut fragment, self.diagram_id.as_str());
+                true
+            }
+            "mindmap.subgraphs" => {
+                fragment.push_str(r#"<g class="subgraphs">"#);
+                true
+            }
+            "mindmap.edges" => {
+                fragment.push_str(r#"<g class="edgePaths">"#);
+                true
+            }
+            "mindmap.edge_labels" => {
+                fragment.push_str(r#"<g class="edgeLabels">"#);
+                for semantic in &self.document.semantics {
+                    if !semantic.id.starts_with("mindmap.edge.") {
+                        continue;
+                    }
+                    let edge = body.edges.get(semantic.id.as_str()).ok_or_else(|| {
+                        invalid(format!(
+                            "Mindmap SVG sidecar is missing edge {}",
+                            semantic.id
+                        ))
+                    })?;
+                    write!(
+                        fragment,
+                        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                        escaped_attr(edge.data_id.as_str()),
+                    )
+                    .map_err(|_| invalid("failed to write Mindmap edge label shell"))?;
+                }
+                true
+            }
+            "mindmap.nodes" => {
+                fragment.push_str(r#"<g class="nodes">"#);
+                true
+            }
+            _ if semantic_id.starts_with("mindmap.node.") => {
+                let node = body.nodes.get(semantic_id).ok_or_else(|| {
+                    invalid(format!("Mindmap SVG sidecar is missing node {semantic_id}"))
+                })?;
+                write!(
+                    fragment,
+                    "<g class=\"{}\" id=\"{}-{}\" data-look=\"{}\" transform=\"translate({}, {})\" role=\"group\" data-merman-semantic-id=\"{}\"",
+                    escaped_attr(node.class.as_str()),
+                    escaped_attr(self.diagram_id.as_str()),
+                    escaped_attr(node.dom_id.as_str()),
+                    escaped_attr(node.look.as_str()),
+                    fmt(node.origin.x),
+                    fmt(node.origin.y),
+                    escaped_attr(semantic_id),
+                )
+                .map_err(|_| invalid("failed to write Mindmap node group"))?;
+                if !visible {
+                    fragment.push_str(" display=\"none\"");
+                }
+                fragment.push('>');
+                true
+            }
+            // Mermaid keeps edge paths as direct children of `.edgePaths`; retain the semantic
+            // scope for DrawingList command interpretation without inserting an SVG wrapper.
+            _ if semantic_id.starts_with("mindmap.edge.") => false,
+            _ => {
+                return Err(invalid(format!(
+                    "Mindmap SVG sidecar has no structure for semantic id {semantic_id}"
+                )));
+            }
+        };
+        self.output.push_str(&fragment);
+        self.groups.push(GroupKind::Semantic {
+            linked: false,
+            emitted,
+            semantic_id: semantic_id.to_string(),
         });
         Ok(())
     }
@@ -1367,10 +1491,25 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn end_semantic_group(&mut self) -> Result<()> {
         match self.groups.pop() {
-            Some(GroupKind::Semantic { linked, .. }) => {
-                self.output.push_str("</g>");
-                if linked {
-                    self.output.push_str("</a>");
+            Some(GroupKind::Semantic {
+                linked,
+                emitted,
+                semantic_id,
+            }) => {
+                if emitted {
+                    self.output.push_str("</g>");
+                    if linked {
+                        self.output.push_str("</a>");
+                    }
+                }
+                if matches!(self.svg_body, SvgStructureBody::Mindmap(_))
+                    && semantic_id == "mindmap.document"
+                {
+                    super::mindmap::push_mindmap_shadow_defs(
+                        &mut self.output,
+                        self.diagram_id.as_str(),
+                        self.effective_config,
+                    );
                 }
                 Ok(())
             }
@@ -1385,6 +1524,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
+            return self.emit_mindmap_path(path_id, style);
+        }
         #[cfg(feature = "layout-cytoscape")]
         if matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
             let raw_id = path_id.as_str();
@@ -1784,6 +1926,166 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn emit_mindmap_path(&mut self, path_id: &ResourceId, _style: &PathStyle) -> Result<()> {
+        let semantic_id = self
+            .current_semantic_id()
+            .ok_or_else(|| invalid("Mindmap path is outside a semantic group"))?
+            .to_string();
+        let path = self.path_resource(path_id)?.clone();
+        let body = match self.svg_body {
+            SvgStructureBody::Mindmap(body) => body,
+            _ => return Err(invalid("Mindmap path requires a Mindmap sidecar")),
+        };
+
+        if let Some(edge) = body.edges.get(semantic_id.as_str()) {
+            let visible = self
+                .semantics
+                .get(semantic_id.as_str())
+                .is_some_and(|semantic| self.debug_visibility(semantic.role));
+            let data_points = STANDARD.encode(super::util::json_stringify_display_points(
+                edge.points.as_slice(),
+            ));
+            write!(
+                self.output,
+                "<path d=\"{}\" id=\"{}-{}\" class=\"{}\" data-look=\"{}\" data-edge=\"true\" data-et=\"edge\" data-id=\"{}\" data-points=\"{}\" data-merman-semantic-id=\"{}\"{} data-merman-resource=\"{}\"/>",
+                escaped_attr(path_d(&path.segments).as_str()),
+                escaped_attr(self.diagram_id.as_str()),
+                escaped_attr(edge.dom_id.as_str()),
+                escaped_attr(edge.class.as_str()),
+                escaped_attr(edge.look.as_str()),
+                escaped_attr(edge.data_id.as_str()),
+                escaped_attr(data_points.as_str()),
+                escaped_attr(semantic_id.as_str()),
+                if visible { "" } else { " display=\"none\"" },
+                escaped_attr(path_id.as_str()),
+            )
+            .map_err(|_| invalid("failed to write Mindmap edge path"))?;
+            return Ok(());
+        }
+
+        let node = body.nodes.get(semantic_id.as_str()).ok_or_else(|| {
+            invalid(format!(
+                "Mindmap path {path_id:?} has no node or edge sidecar"
+            ))
+        })?;
+        let local_segments = offset_path_segments(&path.segments, -node.origin.x, -node.origin.y);
+        let local_path = PathResource {
+            id: path.id.clone(),
+            segments: local_segments,
+        };
+        let raw_id = path_id.as_str();
+        if raw_id.ends_with(".divider") {
+            let (start, end) = line_from_path(&local_path)
+                .ok_or_else(|| invalid(format!("Mindmap divider {raw_id} is not a line")))?;
+            write!(
+                self.output,
+                "<line class=\"node-line-\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" data-merman-resource=\"{}\"/>",
+                fmt(start.x),
+                fmt(start.y),
+                fmt(end.x),
+                fmt(end.y),
+                escaped_attr(raw_id),
+            )
+            .map_err(|_| invalid("failed to write Mindmap divider"))?;
+            return Ok(());
+        }
+        if !raw_id.ends_with(".shape.outer") {
+            return Err(invalid(format!(
+                "Mindmap SVG serializer does not recognize path {raw_id}"
+            )));
+        }
+
+        match node.shape.as_str() {
+            "defaultMindmapNode" => {
+                write!(
+                    self.output,
+                    "<path id=\"{}-{}\" class=\"node-bkg node-0\" style=\"\" d=\"{}\" data-merman-resource=\"{}\"/>",
+                    escaped_attr(self.diagram_id.as_str()),
+                    escaped_attr(node.dom_id.as_str()),
+                    escaped_attr(path_d(&local_path.segments).as_str()),
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to write default Mindmap node"))?;
+            }
+            "rect" => {
+                let bounds = rectangle_from_path(&local_path)
+                    .ok_or_else(|| invalid("Mindmap rect node is not rectangular"))?;
+                write!(
+                    self.output,
+                    "<rect class=\"basic label-container\" style=\"\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" data-merman-resource=\"{}\"/>",
+                    fmt(bounds.x),
+                    fmt(bounds.y),
+                    fmt(bounds.width),
+                    fmt(bounds.height),
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to write rectangular Mindmap node"))?;
+            }
+            "rounded" => {
+                let (bounds, radius) = rounded_rectangle_from_path(&local_path)
+                    .ok_or_else(|| invalid("Mindmap rounded node is not a rounded rectangle"))?;
+                write!(
+                    self.output,
+                    "<rect class=\"basic label-container\" style=\"\" rx=\"{}\" ry=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" data-merman-resource=\"{}\"/>",
+                    fmt(radius),
+                    fmt(radius),
+                    fmt(bounds.x),
+                    fmt(bounds.y),
+                    fmt(bounds.width),
+                    fmt(bounds.height),
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to write rounded Mindmap node"))?;
+            }
+            "mindmapCircle" => {
+                let (center, radius) = circle_from_path(&local_path)
+                    .ok_or_else(|| invalid("Mindmap circle node is not circular"))?;
+                write!(
+                    self.output,
+                    "<circle class=\"basic label-container\" style=\"\" r=\"{}\" cx=\"{}\" cy=\"{}\" data-merman-resource=\"{}\"/>",
+                    fmt(radius),
+                    fmt(center.x),
+                    fmt(center.y),
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to write circular Mindmap node"))?;
+            }
+            "hexagon" => {
+                let points = polygon_from_path(&local_path)
+                    .ok_or_else(|| invalid("Mindmap hexagon node is not polygonal"))?;
+                self.output.push_str("<polygon points=\"");
+                for (index, point) in points.iter().enumerate() {
+                    if index > 0 {
+                        self.output.push(' ');
+                    }
+                    write!(self.output, "{},{}", fmt(point.x), fmt(point.y))
+                        .map_err(|_| invalid("failed to write Mindmap hexagon points"))?;
+                }
+                write!(
+                    self.output,
+                    "\" class=\"label-container\" data-merman-resource=\"{}\"/>",
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to finish Mindmap hexagon"))?;
+            }
+            "cloud" | "bang" => {
+                write!(
+                    self.output,
+                    "<path class=\"basic label-container\" style=\"\" d=\"{}\" data-merman-resource=\"{}\"/>",
+                    escaped_attr(path_d(&local_path.segments).as_str()),
+                    escaped_attr(raw_id),
+                )
+                .map_err(|_| invalid("failed to write Mindmap path node"))?;
+            }
+            other => {
+                return Err(invalid(format!(
+                    "Mindmap SVG serializer does not recognize shape {other}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn emit_tree_view_icon(
         &mut self,
         path_id: &ResourceId,
@@ -2087,6 +2389,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
+            return self.emit_mindmap_html_text(run, semantic_id.as_deref());
+        }
         if matches!(self.svg_body, SvgStructureBody::Block(_)) {
             return self.emit_block_html_text(run, semantic_id.as_deref(), text_index);
         }
@@ -2236,6 +2541,74 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         self.output.push_str("</text>");
+        Ok(())
+    }
+
+    fn emit_mindmap_html_text(&mut self, run: &TextRun, semantic_id: Option<&str>) -> Result<()> {
+        let semantic_id =
+            semantic_id.ok_or_else(|| invalid("Mindmap text is outside a node semantic group"))?;
+        let (node, label_max_width) = match self.svg_body {
+            SvgStructureBody::Mindmap(body) => (
+                body.nodes.get(semantic_id).cloned().ok_or_else(|| {
+                    invalid(format!(
+                        "Mindmap SVG sidecar is missing text node {semantic_id}"
+                    ))
+                })?,
+                body.label_max_width,
+            ),
+            _ => return Err(invalid("Mindmap text requires a Mindmap sidecar")),
+        };
+        let max_width = if label_max_width.is_finite() && label_max_width > 0.0 {
+            label_max_width
+        } else {
+            200.0
+        };
+        let bounds = Rect::new(
+            run.bounds.x - node.origin.x,
+            run.bounds.y - node.origin.y,
+            run.bounds.width.max(1.0),
+            run.bounds.height.max(1.0),
+        );
+        let wrap_container = bounds.width >= max_width - 1e-3;
+        write!(
+            self.output,
+            "<g class=\"label\" style=\"\" transform=\"translate({}, {})\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"><rect/><foreignObject width=\"{}\" height=\"{}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" style=\"",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(run.bounds.x),
+            fmt(run.bounds.y),
+            fmt(run.bounds.width),
+            fmt(run.bounds.height),
+            fmt(bounds.width),
+            fmt(bounds.height),
+        )
+        .map_err(|_| invalid("failed to write Mindmap label shell"))?;
+        if wrap_container {
+            write!(
+                self.output,
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                fmt(max_width),
+                fmt(max_width),
+            )
+            .map_err(|_| invalid("failed to write wrapped Mindmap label style"))?;
+        } else {
+            write!(
+                self.output,
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt(max_width),
+            )
+            .map_err(|_| invalid("failed to write Mindmap label style"))?;
+        }
+        self.output
+            .push_str(r#""><span class="nodeLabel markdown-node-label">"#);
+        self.output.push_str(&super::mindmap::mindmap_label_xhtml(
+            node.label_source.as_str(),
+            self.mermaid_config
+                .as_ref()
+                .ok_or_else(|| invalid("Mindmap SVG serializer is missing effective config"))?,
+            None,
+        )?);
+        self.output.push_str("</span></div></foreignObject></g>");
         Ok(())
     }
 
@@ -3463,6 +3836,46 @@ fn opacity_attr(alpha: u8) -> String {
     } else {
         format!(" stop-opacity=\"{}\"", fmt(f64::from(alpha) / 255.0))
     }
+}
+
+fn offset_path_segments(segments: &[PathSegment], dx: f64, dy: f64) -> Vec<PathSegment> {
+    let offset = |point: &Point| Point::new(point.x + dx, point.y + dy);
+    segments
+        .iter()
+        .map(|segment| match segment {
+            PathSegment::MoveTo { to } => PathSegment::MoveTo { to: offset(to) },
+            PathSegment::LineTo { to } => PathSegment::LineTo { to: offset(to) },
+            PathSegment::QuadTo { control, to } => PathSegment::QuadTo {
+                control: offset(control),
+                to: offset(to),
+            },
+            PathSegment::CubicTo {
+                control1,
+                control2,
+                to,
+            } => PathSegment::CubicTo {
+                control1: offset(control1),
+                control2: offset(control2),
+                to: offset(to),
+            },
+            PathSegment::ArcTo {
+                radius_x,
+                radius_y,
+                x_axis_rotation_degrees,
+                large_arc,
+                sweep_clockwise,
+                to,
+            } => PathSegment::ArcTo {
+                radius_x: *radius_x,
+                radius_y: *radius_y,
+                x_axis_rotation_degrees: *x_axis_rotation_degrees,
+                large_arc: *large_arc,
+                sweep_clockwise: *sweep_clockwise,
+                to: offset(to),
+            },
+            PathSegment::Close => PathSegment::Close,
+        })
+        .collect()
 }
 
 fn path_d(segments: &[PathSegment]) -> String {

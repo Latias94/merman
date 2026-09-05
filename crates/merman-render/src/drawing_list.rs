@@ -156,7 +156,7 @@ impl RenderDocument {
                 !kanban.diagram_type.is_empty()
             }
             (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
-                !mindmap.diagram_type.is_empty()
+                !mindmap.nodes.is_empty()
             }
             (RenderFamilyKind::Packet, SvgStructureBody::Packet(packet)) => {
                 !packet.diagram_type.is_empty()
@@ -241,7 +241,31 @@ pub(crate) struct ErrorSvgBody {
 /// SVG-only metadata retained beside the renderer-neutral Mindmap document.
 #[derive(Debug, Clone)]
 pub(crate) struct MindmapSvgBody {
-    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) label_max_width: f64,
+    pub(crate) nodes: BTreeMap<String, MindmapSvgNode>,
+    pub(crate) edges: BTreeMap<String, MindmapSvgEdge>,
+}
+
+/// Browser-only structure for one Mindmap node.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgNode {
+    pub(crate) dom_id: String,
+    pub(crate) class: String,
+    pub(crate) look: String,
+    pub(crate) origin: Point,
+    pub(crate) shape: String,
+    pub(crate) label_source: String,
+}
+
+/// Browser-only structure for one Mindmap edge.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgEdge {
+    pub(crate) dom_id: String,
+    pub(crate) class: String,
+    pub(crate) look: String,
+    pub(crate) data_id: String,
+    pub(crate) points: Vec<Point>,
 }
 
 /// SVG-only metadata retained beside the public Info document.

@@ -6,8 +6,8 @@
 //! output back into a second visual model.
 
 use super::{
-    MindmapSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    parse_svg_path, theme_color,
+    MindmapSvgBody, MindmapSvgEdge, MindmapSvgNode, RenderDocument, SvgStructureBody,
+    SvgStructureSidecar, parse_font_families, parse_svg_path, theme_color,
 };
 use crate::config::{
     config_bool, config_diagram_look, config_f64, config_font_family_css, config_string,
@@ -32,7 +32,7 @@ use merman_display_list::{
     TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 const DEFAULT_MINDMAP_FILLS: [&str; 12] = [
     "hsl(240, 100%, 76.2745098039%)",
@@ -105,6 +105,8 @@ struct MindmapBuilder<'a> {
     resources: Vec<DrawingResource>,
     commands: Vec<DrawingCommand>,
     semantics: Vec<SemanticAnnotation>,
+    svg_nodes: BTreeMap<String, MindmapSvgNode>,
+    svg_edges: BTreeMap<String, MindmapSvgEdge>,
     extensions: std::collections::BTreeMap<String, Value>,
 }
 
@@ -118,6 +120,17 @@ impl<'a> MindmapBuilder<'a> {
         session.checkpoint(OperationPhase::Emit)?;
         let model = pair.semantic();
         let layout = pair.layout();
+        if metadata
+            .effective_config
+            .as_value()
+            .get("themeCSS")
+            .and_then(Value::as_str)
+            .is_some_and(|css| !css.trim().is_empty())
+        {
+            return Err(unavailable(
+                "themeCSS is an unresolved SVG cascade input for Mindmap DrawingList output",
+            ));
+        }
         let bounds = layout
             .bounds
             .as_ref()
@@ -288,6 +301,8 @@ impl<'a> MindmapBuilder<'a> {
                 },
             ],
             semantics: Vec::new(),
+            svg_nodes: BTreeMap::new(),
+            svg_edges: BTreeMap::new(),
             extensions: std::collections::BTreeMap::new(),
         };
         builder.preflight()?;
@@ -307,16 +322,38 @@ impl<'a> MindmapBuilder<'a> {
             description: None,
             link: None,
         });
+        self.semantics.extend([
+            mindmap_container_semantic("mindmap.subgraphs", "Mindmap subgraphs"),
+            mindmap_container_semantic("mindmap.edges", "Mindmap edges"),
+            mindmap_container_semantic("mindmap.edge_labels", "Mindmap edge labels"),
+            mindmap_container_semantic("mindmap.nodes", "Mindmap nodes"),
+        ]);
 
         // Match Mermaid's painter order: routes first, then node shapes and labels.
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "mindmap.subgraphs".to_string(),
+        });
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "mindmap.edges".to_string(),
+        });
         for (index, edge) in self.model.edges.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_edge(index, edge)?;
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "mindmap.edge_labels".to_string(),
+        });
+        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "mindmap.nodes".to_string(),
+        });
         for (index, node) in self.model.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(index, node)?;
         }
+        self.commands.push(DrawingCommand::EndSemanticGroup);
 
         self.extensions.insert(
             "x-merman-mindmap".to_string(),
@@ -330,12 +367,15 @@ impl<'a> MindmapBuilder<'a> {
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
 
-        let bounds = self
-            .layout
-            .bounds
-            .as_ref()
-            .expect("validated in constructor");
-        let padding = 10.0;
+        let bounds = crate::mindmap::mindmap_visual_bounds(self.layout, self.model)
+            .or_else(|| self.layout.bounds.clone())
+            .ok_or_else(|| invalid("Mindmap layout did not provide visual bounds"))?;
+        let padding = config_f64(
+            self.metadata.effective_config.as_value(),
+            &["mindmap", "padding"],
+        )
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(10.0);
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
@@ -358,7 +398,16 @@ impl<'a> MindmapBuilder<'a> {
             svg: SvgStructureSidecar {
                 family: RenderFamilyKind::Mindmap,
                 body: SvgStructureBody::Mindmap(MindmapSvgBody {
-                    diagram_type: self.metadata.diagram_type.clone(),
+                    use_max_width: config_bool(
+                        self.metadata.effective_config.as_value(),
+                        &["mindmap", "useMaxWidth"],
+                    )
+                    .unwrap_or(true),
+                    label_max_width: crate::mindmap::mindmap_max_node_width_px(
+                        self.metadata.effective_config.as_value(),
+                    ),
+                    nodes: std::mem::take(&mut self.svg_nodes),
+                    edges: std::mem::take(&mut self.svg_edges),
                 }),
             },
         })
@@ -547,6 +596,26 @@ impl<'a> MindmapBuilder<'a> {
         let segments = flowchart_curve_segments(&points, curve, 0.0, false, None);
         let (stroke, width) = self.edge_paint(edge)?;
         let semantic_id = format!("mindmap.edge.{index}");
+        let class = format!(
+            "edge-thickness-{} edge-pattern-solid {}",
+            edge.thickness.trim(),
+            normalize_mindmap_section_classes(&edge.classes)
+        )
+        .trim_end()
+        .to_string();
+        self.svg_edges.insert(
+            semantic_id.clone(),
+            MindmapSvgEdge {
+                dom_id: edge.id.clone(),
+                class,
+                look: effective_item_look(&edge.look, self.metadata),
+                data_id: edge.id.clone(),
+                points: points
+                    .iter()
+                    .map(|point| Point::new(point.x, point.y))
+                    .collect(),
+            },
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -586,6 +655,26 @@ impl<'a> MindmapBuilder<'a> {
             .ok_or_else(|| invalid(format!("Mindmap node `{}` is not laid out", node.id)))?;
         let semantic_id = format!("mindmap.node.{index}");
         let style = self.node_style(index, node, layout_node)?;
+        self.svg_nodes.insert(
+            semantic_id.clone(),
+            MindmapSvgNode {
+                dom_id: node.dom_id.clone(),
+                class: format!(
+                    "node {}",
+                    normalize_mindmap_section_classes(&node.css_classes)
+                )
+                .trim_end()
+                .to_string(),
+                look: effective_item_look(&node.look, self.metadata),
+                origin: Point::new(layout_node.x, layout_node.y),
+                shape: if node.shape.is_empty() {
+                    "defaultMindmapNode".to_string()
+                } else {
+                    node.shape.clone()
+                },
+                label_source: node.label.clone(),
+            },
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -843,6 +932,16 @@ struct NodeStyle {
     gradient: Option<(ResourceId, LinearGradientResource)>,
 }
 
+fn mindmap_container_semantic(id: &str, title: &str) -> SemanticAnnotation {
+    SemanticAnnotation {
+        id: id.to_string(),
+        role: SemanticRole::Group,
+        title: Some(title.to_string()),
+        description: None,
+        link: None,
+    }
+}
+
 fn effective_look(model: &MindmapDiagramRenderModel, metadata: &ParseMetadata) -> String {
     let config_look = config_diagram_look(metadata.effective_config.as_value())
         .as_str()
@@ -853,6 +952,36 @@ fn effective_look(model: &MindmapDiagramRenderModel, metadata: &ParseMetadata) -
         .map(|node| node.look.trim())
         .find(|look| !look.is_empty() && !look.eq_ignore_ascii_case("default"))
         .map_or(config_look, str::to_string)
+}
+
+fn effective_item_look(raw_look: &str, metadata: &ParseMetadata) -> String {
+    let raw_look = raw_look.trim();
+    if raw_look.is_empty() || raw_look.eq_ignore_ascii_case("default") {
+        config_diagram_look(metadata.effective_config.as_value())
+            .as_str()
+            .to_string()
+    } else {
+        raw_look.to_string()
+    }
+}
+
+fn normalize_mindmap_section_classes(classes: &str) -> String {
+    classes
+        .split_whitespace()
+        .map(|class| {
+            for prefix in ["section-edge-", "section-"] {
+                let Some(index) = class.strip_prefix(prefix) else {
+                    continue;
+                };
+                let Ok(index) = index.parse::<i64>() else {
+                    return class.to_string();
+                };
+                return format!("{prefix}{}", if index >= 11 { index % 11 } else { index });
+            }
+            class.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn validate_bounds(bounds: &Bounds) -> Result<()> {

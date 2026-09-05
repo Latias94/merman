@@ -2,7 +2,7 @@
   "schema_version": 1,
   "families": [
     { "id": "error", "document_adapter": "direct", "svg_serializer": "canonical" },
-    { "id": "mindmap", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "mindmap", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "state", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "sequence", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "zenuml", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
