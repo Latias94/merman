@@ -770,16 +770,22 @@ impl DrawingListDocument {
         limits: &DrawingListLimits,
     ) -> Result<Vec<u8>, DrawingListError> {
         self.validate_with_limits(limits)?;
-        let mut canonical = self.clone();
-        canonical
-            .resources
-            .sort_by(|left, right| left.id().cmp(right.id()));
-        canonical
-            .semantics
-            .sort_by(|left, right| left.id.cmp(&right.id));
-        canonical
-            .fallbacks
-            .sort_by(|left, right| left.id.cmp(&right.id));
+        // Canonical ordering must not require cloning the document: resources may contain large
+        // embedded images or fonts, and the serialized-byte limit is specifically intended to
+        // bound retained output.  Sort borrowed references so only the small index vectors are
+        // allocated before the bounded writer starts emitting bytes.
+        let mut resources = self.resources.iter().collect::<Vec<_>>();
+        resources.sort_unstable_by(|left, right| left.id().cmp(right.id()));
+        let mut semantics = self.semantics.iter().collect::<Vec<_>>();
+        semantics.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+        let mut fallbacks = self.fallbacks.iter().collect::<Vec<_>>();
+        fallbacks.sort_unstable_by(|left, right| left.id.cmp(&right.id));
+        let canonical = CanonicalDocument {
+            document: self,
+            resources,
+            semantics,
+            fallbacks,
+        };
         let mut writer = LimitedWriter::new(limits.max_serialized_bytes);
         match serde_json::to_writer(&mut writer, &canonical) {
             Ok(()) => Ok(writer.into_inner()),
@@ -805,6 +811,37 @@ impl DrawingListDocument {
             .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
         document.validate_with_limits(limits)?;
         Ok(document)
+    }
+}
+
+/// Borrowed canonical view used to serialize stable collection order without cloning embedded
+/// resource payloads.  Its field order intentionally mirrors [`DrawingListDocument`]'s wire
+/// representation.
+struct CanonicalDocument<'a> {
+    document: &'a DrawingListDocument,
+    resources: Vec<&'a DrawingResource>,
+    semantics: Vec<&'a SemanticAnnotation>,
+    fallbacks: Vec<&'a RasterFallback>,
+}
+
+impl Serialize for CanonicalDocument<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut state = serializer.serialize_struct("DrawingListDocument", 9)?;
+        state.serialize_field("version", &self.document.version)?;
+        state.serialize_field("coordinate_system", &self.document.coordinate_system)?;
+        state.serialize_field("viewport", &self.document.viewport)?;
+        state.serialize_field("policy", &self.document.policy)?;
+        state.serialize_field("resources", &self.resources)?;
+        state.serialize_field("commands", &self.document.commands)?;
+        state.serialize_field("semantics", &self.semantics)?;
+        state.serialize_field("fallbacks", &self.fallbacks)?;
+        state.serialize_field("extensions", &self.document.extensions)?;
+        state.end()
     }
 }
 
