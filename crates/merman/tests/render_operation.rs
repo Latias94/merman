@@ -460,6 +460,62 @@ fn layout_json_rejects_require_portable_without_target_admission() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn layout_json_cancellation_precedes_require_portable_rejection() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    control.cancel();
+
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let error = artifact
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("cancellation must win over target portability rejection");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == merman::CancelReason::Requested
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn layout_json_deadline_precedes_require_portable_rejection() {
+    let control = OperationControl::new();
+    let artifact = Renderer::new()
+        .prepare_semantic("flowchart TD\nA --> B", control.clone())
+        .expect("semantic preparation should succeed")
+        .expect("flowchart should be detected");
+    assert!(control.set_deadline(Duration::ZERO));
+
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let error = artifact
+        .render(merman::RenderTarget::LayoutJson(request))
+        .expect_err("deadline must win over target portability rejection");
+
+    assert!(matches!(
+        error,
+        RenderError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == merman::CancelReason::DeadlineExceeded
+    ));
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn completed_svg_evidence_freezes_family_and_theme_identity() {
     let theme = merman::svg::DiagramThemeCompiler::new()
         .compile_preset(merman::svg::ThemePreset::OneDark)

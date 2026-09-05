@@ -8,7 +8,7 @@ use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
 use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
-#[cfg(feature = "ascii")]
+#[cfg(any(feature = "ascii", feature = "svg"))]
 use merman_core::OperationPhase;
 use merman_core::{
     Engine, OperationCancelled, OperationControl, OperationResourceDomain,
@@ -833,6 +833,10 @@ fn render_layout_json_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    // A prepared artifact keeps the operation's sticky terminal state. Observe it before
+    // rejecting a target-specific portability requirement so cancellation/deadline errors cannot
+    // be masked by a later target-admission error.
+    crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
     if request.environment.theme_portability_requirement()
         == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
     {
