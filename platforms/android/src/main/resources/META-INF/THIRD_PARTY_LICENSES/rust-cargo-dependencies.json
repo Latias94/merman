@@ -14,6 +14,7 @@
           "features": [
             "analysis",
             "ascii",
+            "drawing-list",
             "layout-cytoscape",
             "layout-elk",
             "svg"
@@ -54,9 +55,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "ca5a176c6317dd18b1d36dd56f4e83956922c551d53348604484e5c81e28c320",
+    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "43d4943b94b5966eef594b0374c626b39163a2e72026f4b3f178255870d77c02"
+    "artifact_bundle_sha256": "ed730fc42cca32e5c4dad0b2c25063716515ef5bbcf326e5ac3dd8133211def4"
   },
   "target_dependency_closures": [
     {

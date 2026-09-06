@@ -14,7 +14,9 @@ pub use merman_render::environment::{
     TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
     TextMeasurementSummary, validate_host_text_measurement,
 };
-pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind, SvgSerializationRoute};
+pub use merman_render::family::{
+    RenderCapabilityPlan, RenderFamilyKind, SvgSerializationBridgeReason, SvgSerializationRoute,
+};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};

@@ -474,9 +474,18 @@ impl BindingEngine {
         source: &[u8],
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(feature = "svg")]
+        #[cfg(all(feature = "svg", feature = "drawing-list"))]
         {
             self.render.render_drawing_list(source, control)
+        }
+
+        #[cfg(all(feature = "svg", not(feature = "drawing-list")))]
+        {
+            let _ = (source, control);
+            Err(common::feature_required_error(
+                "DrawingList rendering",
+                "drawing-list",
+            ))
         }
 
         #[cfg(not(feature = "svg"))]

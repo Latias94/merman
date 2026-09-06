@@ -456,11 +456,6 @@ assertRuntimeOwnerEvidence(capabilities, {
   runtime_output_ids: presetManifest.outputs,
 });
 assert.ok(
-  capabilities.output_ids.every((outputId) =>
-    capabilities.operation_ids.includes(outputId)
-  )
-);
-assert.ok(
   capabilities.system_adapter_ids.every((adapterId) =>
     capabilities.capability_ids.includes(adapterId)
   )

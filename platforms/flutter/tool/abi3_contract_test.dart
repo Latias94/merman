@@ -27,6 +27,7 @@ void main() {
   projectsSvgPlanOperationFromGeneratedAbi();
   requiresSdkUpgradeForUnknownCatalogOperation();
   preservesTypedRuntimeOutputContracts();
+  acceptsDistinctOutputAndOperationIds();
   preservesCompleteRuntimeResourceContract();
   acceptsInvariantOnlyCatalog();
   acceptsAdditiveRuntimeCatalogFields();
@@ -1145,6 +1146,20 @@ void preservesTypedRuntimeOutputContracts() {
         png.embeddedImages!.limits.maxPixelsPerImage == 2048 &&
         png.embeddedImages!.limits.maxTotalPixels == 4096,
     'runtime output contracts must preserve typed native output behavior',
+  );
+}
+
+void acceptsDistinctOutputAndOperationIds() {
+  final catalog = _catalog(
+    capabilityIds: const ['drawing-list', 'svg'],
+    outputIds: const ['drawing-list', 'svg'],
+    operationIds: const ['drawing-list-json', 'semantic-json', 'svg'],
+  );
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    validated.supportsOutput('drawing-list') &&
+        validated.supportsOperation('drawing-list-json'),
+    'logical output IDs may be produced by a differently named operation',
   );
 }
 

@@ -2156,7 +2156,10 @@ mod tests {
     fn shared_operation_projection_consumes_the_complete_typed_matrix() {
         let projection = shared_operation_contract_projection();
         assert_eq!(projection.schema_version, 1);
-        assert_eq!(projection.operation_expectations.len(), 13);
+        assert_eq!(
+            projection.operation_expectations.len(),
+            binding_operation_expectations().len()
+        );
         assert_eq!(
             projection.operation_metadata_contract,
             operation_metadata_contract()

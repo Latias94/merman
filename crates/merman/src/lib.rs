@@ -19,6 +19,7 @@
 //! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
 //! | Build parser-backed editor snapshots | `editor` | [`editor::analyze_document_snapshot_with_shared_text`] |
 //! | Render Mermaid-like SVG | `svg` | [`Renderer`] and [`RenderRequest::svg`] |
+//! | Render renderer-neutral DrawingList JSON | `drawing-list` | [`Renderer`] and [`RenderRequest::drawing_list`] |
 //! | Render terminal-friendly text | `ascii` | [`Renderer`] and [`RenderRequest::ascii`] |
 //! | Render PNG from Rust | `png` | [`Renderer`] and [`RenderRequest::png`] |
 //! | Render JPEG from Rust | `jpeg` | [`Renderer`] and [`RenderRequest::jpeg`] |
@@ -36,17 +37,20 @@
 //! - `editor`: parser-backed editor snapshots and queries through `merman::editor`; this implies
 //!   `analysis`.
 //! - `svg`: layout plus SVG rendering through `merman::svg`.
+//! - `drawing-list`: renderer-neutral DrawingList v1 output; this implies `svg` because it
+//!   shares the SVG preparation and layout services while exposing a separate public capability.
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
 //! - `png`, `jpeg`, and `pdf`: bounded binary export through `merman::svg::export`; each
 //!   implies `svg` but does not imply either of the other binary formats.
 //! - `math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `svg`.
 //!
-//! The default feature set is [`complete-svg`](#features): it supports deterministic SVG
-//! rendering, the Cytoscape layout engine, and math labels without compiling the optional ELK
-//! implementation or ambient system adapters. Add `complete-svg-elk` when the artifact is
-//! intentionally allowed to include the EPL-2.0 ELK closure. Use `default-features = false` with
-//! the direct capability leaves when you need a measured artifact closure.
+//! The default feature set is [`complete-svg`](#features): it supports deterministic SVG and
+//! renderer-neutral DrawingList output, the Cytoscape layout engine, and math labels without
+//! compiling the optional ELK implementation or ambient system adapters. Add `complete-svg-elk`
+//! when the artifact is intentionally allowed to include the EPL-2.0 ELK closure. Use
+//! `default-features = false` with the direct capability leaves when you need a measured artifact
+//! closure.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's
 //! re-exports instead, they must set `default-features = false`; an ordinary `merman` dependency
@@ -104,7 +108,7 @@ pub use render::JpegRequest;
 pub use render::PngRequest;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub use render::RasterOutput;
-#[cfg(feature = "svg")]
+#[cfg(feature = "drawing-list")]
 pub use render::{DrawingListOutput, DrawingListRequest};
 #[cfg(feature = "svg")]
 pub use render::{

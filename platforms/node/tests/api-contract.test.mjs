@@ -242,6 +242,10 @@ test("runtime catalog lossless integer scanning covers every known numeric path"
 });
 
 function runtimeCatalog(overrides = {}) {
+  const artifact = NODE_WIRE_CONTRACT.artifact;
+  const capabilityIds = [...artifact.capability_ids];
+  const operationIds = [...artifact.operation_ids];
+  const outputIds = [...artifact.output_ids];
   return {
     schema_version: 1,
     transport_api_version: 1,
@@ -251,29 +255,37 @@ function runtimeCatalog(overrides = {}) {
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "svg"]),
+    metadata_ids: metadataIds(capabilityIds),
     option_group_ids: optionGroupIds(
-      ["layout-cytoscape", "layout-elk", "svg"],
+      capabilityIds,
       { usesSvgPipeline: true },
     ),
     constructor_service_ids: [],
     constructor_service_contracts: [],
     capabilities: {
-      capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
-      output_ids: ["svg"],
-      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+      capability_ids: capabilityIds,
+      output_ids: outputIds,
+      operation_ids: [...operationIds],
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: TEXT_MEASUREMENT_PROTOCOL_VERSION,
         provider_ids: ["deterministic"],
       },
     },
-    output_contracts: [{
-      id: "svg",
-      media_type: "image/svg+xml",
-      system_fonts: null,
-      embedded_images: null,
-    }],
+    output_contracts: [
+      {
+        id: "drawing-list",
+        media_type: "application/vnd.merman.drawing-list+json;version=1",
+        system_fonts: null,
+        embedded_images: null,
+      },
+      {
+        id: "svg",
+        media_type: "image/svg+xml",
+        system_fonts: null,
+        embedded_images: null,
+      },
+    ],
     registry: { diagram_family_count: 35 },
     resources: {
       general_binding_default_profile: "interactive",
@@ -285,7 +297,7 @@ function runtimeCatalog(overrides = {}) {
         overridable: true,
         hard_cap: false,
         minimum_value: 1,
-        operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+        operation_ids: [...operationIds],
       }],
       profiles: [
         {
@@ -324,6 +336,7 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
 
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
+    "drawing-list",
     "layout-cytoscape",
     "layout-elk",
     "svg",
@@ -363,7 +376,10 @@ test("runtime catalog preserves unknown future output contracts without weakenin
     ...catalog.capabilities.capability_ids,
     "future-image",
   ].sort();
-  catalog.capabilities.output_ids = ["future-image", "svg"];
+  catalog.capabilities.output_ids = [
+    ...catalog.capabilities.output_ids,
+    "future-image",
+  ].sort();
   catalog.capabilities.operation_ids = [
     ...catalog.capabilities.operation_ids,
     "future-render",
@@ -400,8 +416,8 @@ test("runtime catalog preserves unknown future output contracts without weakenin
         future_image_metadata: true,
       },
     },
-    catalog.output_contracts[0],
-  ];
+    ...catalog.output_contracts,
+  ].sort((left, right) => left.id.localeCompare(right.id));
   catalog.resources.limits[0].operation_ids = [
     ...catalog.resources.limits[0].operation_ids,
     "future-render",
@@ -417,12 +433,16 @@ test("runtime catalog preserves unknown future output contracts without weakenin
     engine.runtimeCatalog.output_contracts.map(({ id }) => id),
     catalog.capabilities.output_ids,
   );
+  const futureContract = engine.runtimeCatalog.output_contracts.find(
+    ({ id }) => id === "future-image",
+  );
+  assert.ok(futureContract);
   assert.equal(
-    engine.runtimeCatalog.output_contracts[0].system_fonts.future_font_metadata,
+    futureContract.system_fonts.future_font_metadata,
     true,
   );
   assert.equal(
-    engine.runtimeCatalog.output_contracts[0].embedded_images.limits.future_limit_metadata,
+    futureContract.embedded_images.limits.future_limit_metadata,
     true,
   );
   await engine.dispose();
@@ -1278,18 +1298,20 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
   const futureOutput = runtimeCatalog();
   futureOutput.capabilities.capability_ids.push("future-image");
   futureOutput.capabilities.capability_ids.sort();
-  futureOutput.capabilities.output_ids.unshift("future-image");
+  futureOutput.capabilities.output_ids.push("future-image");
+  futureOutput.capabilities.output_ids.sort();
   futureOutput.capabilities.operation_ids.push("future-render");
   futureOutput.capabilities.operation_ids.sort();
   futureOutput.option_group_ids.push("future-image-options");
   futureOutput.option_group_ids.sort();
-  futureOutput.output_contracts.unshift({
+  futureOutput.output_contracts.push({
     id: "future-image",
     media_type: "image/future",
     system_fonts: null,
     embedded_images: null,
     future_output_contract: true,
   });
+  futureOutput.output_contracts.sort((left, right) => left.id.localeCompare(right.id));
   futureOutput.resources.limits[0].operation_ids.push("future-render");
   futureOutput.resources.limits[0].operation_ids.sort();
   const futureOutputFactory = transportFactory({
@@ -1301,12 +1323,16 @@ test("schema-1 catalog extensions validate strictly and preserve open discovery"
     {},
     { loadTransport: futureOutputFactory.loadTransport },
   );
-  assert.deepEqual(futureOutputEngine.runtimeCatalog.capabilities.output_ids, [
-    "future-image",
-    "svg",
-  ]);
+  assert.deepEqual(
+    futureOutputEngine.runtimeCatalog.capabilities.output_ids,
+    ["drawing-list", "future-image", "svg"],
+  );
+  const futureOutputContract = futureOutputEngine.runtimeCatalog.output_contracts.find(
+    ({ id }) => id === "future-image",
+  );
+  assert.ok(futureOutputContract);
   assert.equal(
-    futureOutputEngine.runtimeCatalog.output_contracts[0].future_output_contract,
+    futureOutputContract.future_output_contract,
     true,
   );
   assert.throws(
@@ -1817,7 +1843,7 @@ test("cancellation responses must match this invocation control", async () => {
   }
 });
 
-test("generic execution covers the complete 13-operation matrix", async () => {
+test("generic execution covers the complete operation matrix", async () => {
   const expectations = new Map(
     BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
       expectation.operation_id,

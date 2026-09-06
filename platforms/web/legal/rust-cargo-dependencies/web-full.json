@@ -11,6 +11,7 @@
       "features": [
         "analysis",
         "ascii",
+        "drawing-list",
         "editor",
         "layout-cytoscape",
         "layout-elk",
@@ -42,9 +43,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "ca5a176c6317dd18b1d36dd56f4e83956922c551d53348604484e5c81e28c320",
+    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "3c7cfbd2829a4a0a797e87113656e16e58afb2f43f7a1d6d4d26ff0616a2936e"
+    "artifact_profile_sha256": "922f883b703544581c49558a7a867c730475d9b2874458f5a1c2af542937cd05"
   },
   "dependency_closure": {
     "package_count": 168,

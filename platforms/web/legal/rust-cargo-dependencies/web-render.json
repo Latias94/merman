@@ -9,6 +9,7 @@
       "profile": "wasm-size",
       "default_features": false,
       "features": [
+        "drawing-list",
         "layout-cytoscape",
         "layout-elk",
         "math",
@@ -39,9 +40,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "ca5a176c6317dd18b1d36dd56f4e83956922c551d53348604484e5c81e28c320",
+    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "40fdc2de531d02980abc495dd84d5d43f66cfc217a1b64e1790f22d62361b5d4"
+    "artifact_profile_sha256": "99459993da04420ff743bb9cd74ed639877a938b14ec8b9af3db0f7fd1f7d36f"
   },
   "dependency_closure": {
     "package_count": 165,

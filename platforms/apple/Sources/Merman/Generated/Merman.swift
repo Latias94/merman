@@ -684,6 +684,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func renderAsciiResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
 
+    func renderDrawingList(source: String, optionsJson: String?) throws  -> String
+
     func renderJpeg(source: String, optionsJson: String?) throws  -> Data
 
     func renderJpegResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
@@ -959,6 +961,17 @@ open func renderAsciiResult(source: String, optionsJson: String?)throws  -> Merm
 })
 }
 
+open func renderDrawingList(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_render_drawing_list(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
+}
+
 open func renderJpeg(source: String, optionsJson: String?)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
@@ -1181,6 +1194,8 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
 
     func renderAsciiResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
 
+    func renderDrawingList(source: String, optionsJson: String?) throws  -> String
+
     func renderJpeg(source: String, optionsJson: String?) throws  -> Data
 
     func renderJpegResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
@@ -1381,6 +1396,17 @@ open func renderAsciiResult(source: String, optionsJson: String?)throws  -> Merm
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_render_ascii_result(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
+}
+
+open func renderDrawingList(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengine_render_drawing_list(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
@@ -5511,6 +5537,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_render_ascii_result() != 39001) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_merman_uniffi_checksum_method_merman_render_drawing_list() != 50720) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_merman_uniffi_checksum_method_merman_render_jpeg() != 9686) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5575,6 +5604,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_render_ascii_result() != 64926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_render_drawing_list() != 21198) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_render_jpeg() != 55446) {

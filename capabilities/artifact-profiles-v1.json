@@ -376,7 +376,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "editor", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"
         ],
         "target": {
@@ -389,16 +389,16 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "drawing-list", "editor", "jpeg", "layout-cytoscape", "layout-elk",
           "math", "pdf", "png", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "editor", "jpeg", "layout-cytoscape", "layout-elk",
+          "analysis", "ascii", "drawing-list", "editor", "jpeg", "layout-cytoscape", "layout-elk",
           "math", "pdf", "png", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "outputs": ["ascii", "drawing-list", "jpeg", "pdf", "png", "svg"]
       }
     },
     {
@@ -660,7 +660,7 @@
         "profile": "release",
         "default_features": false,
         "features": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "target": {
@@ -673,14 +673,14 @@
       },
       "expected": {
         "capabilities": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
         "runtime_ids": [
-          "analysis", "ascii", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
+          "analysis", "ascii", "drawing-list", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf",
           "png", "svg", "system-clock", "system-random", "system-timezone"
         ],
-        "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
+        "outputs": ["ascii", "drawing-list", "jpeg", "pdf", "png", "svg"]
       }
     },
     {

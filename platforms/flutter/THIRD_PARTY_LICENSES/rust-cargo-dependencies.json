@@ -14,6 +14,7 @@
           "features": [
             "analysis",
             "ascii",
+            "drawing-list",
             "layout-cytoscape",
             "layout-elk",
             "svg"
@@ -53,6 +54,7 @@
           "features": [
             "analysis",
             "ascii",
+            "drawing-list",
             "layout-cytoscape",
             "layout-elk",
             "svg"
@@ -94,6 +96,7 @@
           "features": [
             "analysis",
             "ascii",
+            "drawing-list",
             "layout-cytoscape",
             "layout-elk",
             "svg"
@@ -175,9 +178,9 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "ca5a176c6317dd18b1d36dd56f4e83956922c551d53348604484e5c81e28c320",
+    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "a8e26358b372a159cb52f7c7ba600510abd45f3dc678f84f66e3ee293a596f47"
+    "artifact_bundle_sha256": "9101755811a3a460d3aba006c307ea9a400fa21f680f0568cda34aa120479103"
   },
   "target_dependency_closures": [
     {

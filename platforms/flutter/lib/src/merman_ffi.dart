@@ -1868,10 +1868,24 @@ class MermanRuntimeCatalog {
       capabilitySet,
       outputIds.toSet(),
     );
+    // Output IDs are logical artifact names and do not have to match the operation
+    // ID that produces them (for example, `drawing-list` is produced by
+    // `drawing-list-json`).  Enforce the relation for output IDs known to this
+    // SDK; leave future open-string outputs to the corresponding future operation
+    // metadata so an additive catalog remains forward-compatible.
+    final knownOutputIds = <String>{
+      for (final expectation in mermanBindingOperationExpectations)
+        if (expectation.outputId != null) expectation.outputId!,
+    };
     for (final outputId in outputIds) {
-      if (!operationIds.contains(outputId)) {
+      if (!knownOutputIds.contains(outputId)) continue;
+      final producedByOperation = operationIds.any(
+        (operationId) =>
+            _operationExpectationById[operationId]?.outputId == outputId,
+      );
+      if (!producedByOperation) {
         throw MermanException.contract(
-          'runtime output `$outputId` must also be a callable operation',
+          'runtime output `$outputId` has no callable producing operation',
         );
       }
     }
@@ -2269,6 +2283,13 @@ class Merman {
   String renderSvg(String source, {String? optionsJson}) =>
       execute(MermanOperation.svg, source, optionsJson: optionsJson).utf8Text;
 
+  /// Returns the renderer-neutral DrawingList v1 JSON document.
+  String renderDrawingList(String source, {String? optionsJson}) => execute(
+    MermanOperation.drawingListJson,
+    source,
+    optionsJson: optionsJson,
+  ).utf8Text;
+
   Uint8List renderPng(String source, {String? optionsJson}) =>
       renderPngResult(source, optionsJson: optionsJson).bytes;
 
@@ -2513,6 +2534,13 @@ class MermanEngine {
 
   String renderSvg(String source, {String? optionsJson}) =>
       execute(MermanOperation.svg, source, optionsJson: optionsJson).utf8Text;
+
+  /// Returns the renderer-neutral DrawingList v1 JSON document.
+  String renderDrawingList(String source, {String? optionsJson}) => execute(
+    MermanOperation.drawingListJson,
+    source,
+    optionsJson: optionsJson,
+  ).utf8Text;
 
   Uint8List renderPng(String source, {String? optionsJson}) =>
       renderPngResult(source, optionsJson: optionsJson).bytes;

@@ -1,24 +1,25 @@
+#[cfg(feature = "drawing-list")]
+use crate::common::BindingDrawingListErrorDetails;
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
+#[cfg(feature = "drawing-list")]
+use crate::common::{BindingDrawingListOptions, compile_drawing_list_options};
 use crate::common::{
-    BindingDrawingListErrorDetails, BindingError, BindingOptions, BindingResourceLimitCause,
-    BindingStatus, PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
+    BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
+    PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
     binding_site_config, css_declaration_value, finite_positive, internal_json_error,
     no_diagram_error, normalize_option, parse_error, runtime_policy_error,
 };
-#[cfg(feature = "drawing-list")]
-use crate::common::{BindingDrawingListOptions, compile_drawing_list_options};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
+#[cfg(feature = "drawing-list")]
+use merman::DrawingListRequest;
 use merman::svg::{
     HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions, MeasurementProfileId,
     Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity, ThemeRole,
 };
-use merman::{
-    DrawingListRequest, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
-    SvgRequest,
-};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 
 #[derive(Clone)]
 pub(super) struct RenderRequestPlan {
@@ -98,25 +99,37 @@ impl RenderRequestPlan {
         source: &str,
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        let mut request = DrawingListRequest::default();
-        request.environment = self.svg.environment.clone();
-        request.layout = self.svg.layout.clone();
-        request.presentation = self.svg.presentation;
         #[cfg(feature = "drawing-list")]
         {
-            request.policy = self.drawing_list.policy;
-            request.limits = self.drawing_list.limits;
+            let mut request = DrawingListRequest::default();
+            request.environment = self.svg.environment.clone();
+            request.layout = self.svg.layout.clone();
+            request.presentation = self.svg.presentation;
+            #[cfg(feature = "drawing-list")]
+            {
+                request.policy = self.drawing_list.policy;
+                request.limits = self.drawing_list.limits;
+            }
+            let output = self
+                .renderer
+                .render(self.request(source, merman::RenderTarget::DrawingList(request), control))
+                .map_err(|error| classify_render_error(error, self.resource_profile))?;
+            let RenderOutput::DrawingList(drawing_list) = output else {
+                return Err(unexpected_render_output("drawing-list-json"));
+            };
+            drawing_list
+                .map(|output| output.into_parts().1)
+                .ok_or_else(no_diagram_error)
         }
-        let output = self
-            .renderer
-            .render(self.request(source, merman::RenderTarget::DrawingList(request), control))
-            .map_err(|error| classify_render_error(error, self.resource_profile))?;
-        let RenderOutput::DrawingList(drawing_list) = output else {
-            return Err(unexpected_render_output("drawing-list-json"));
-        };
-        drawing_list
-            .map(|output| output.into_parts().1)
-            .ok_or_else(no_diagram_error)
+
+        #[cfg(not(feature = "drawing-list"))]
+        {
+            let _ = (source, control);
+            Err(crate::common::feature_required_error(
+                "DrawingList rendering",
+                "drawing-list",
+            ))
+        }
     }
 
     pub(super) fn svg_plan_json(
@@ -725,10 +738,13 @@ fn classify_render_error(
         merman::RenderError::Svg(err @ merman::svg::RenderError::IconProcessing { .. }) => {
             BindingError::internal(err.to_string())
         }
+        #[cfg(feature = "drawing-list")]
         merman::RenderError::DrawingList(err) => classify_drawing_list_error(err),
+        #[cfg(feature = "drawing-list")]
         merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListUnavailable { .. }) => {
             classify_drawing_list_error(err)
         }
+        #[cfg(feature = "drawing-list")]
         merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListContract(_)) => {
             classify_drawing_list_error(err)
         }
@@ -755,6 +771,7 @@ fn classify_render_error(
     }
 }
 
+#[cfg(feature = "drawing-list")]
 fn classify_drawing_list_error(err: merman::svg::RenderError) -> BindingError {
     match err {
         merman::svg::RenderError::DrawingListUnavailable { family, reason } => {

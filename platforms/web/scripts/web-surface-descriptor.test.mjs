@@ -31,17 +31,17 @@ test("checked-in Web descriptor owns one capability-complete default package gra
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
-    outputs: ["ascii", "svg"],
+    features: ["analysis", "ascii", "drawing-list", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["analysis", "ascii", "drawing-list", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    runtimeIds: ["analysis", "ascii", "drawing-list", "editor", "layout-cytoscape", "layout-elk", "math", "svg"],
+    outputs: ["ascii", "drawing-list", "svg"],
   });
   assertPackageContract("render", {
     runtimeProfile: "render",
-    features: ["layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["layout-cytoscape", "layout-elk", "math", "svg"],
-    outputs: ["svg"],
+    features: ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
+    runtimeIds: ["drawing-list", "layout-cytoscape", "layout-elk", "math", "svg"],
+    outputs: ["drawing-list", "svg"],
   });
 });
 

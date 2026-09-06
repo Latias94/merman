@@ -57,7 +57,7 @@ print(output.metadata.runtimePolicy);
 print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+Convenience methods are projections over `execute` and cover all 14 generated ABI operations, including `analysisFactsJson`, `svgPlanJson`, and `renderDrawingList`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
 The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of the generated ABI facade for a current-contract custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against the bundled library, unavailable outputs raise `MermanMissingCapabilityException` with capability `math`, `png`, `jpeg`, or `pdf` as appropriate.
 
