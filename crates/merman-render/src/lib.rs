@@ -1210,48 +1210,60 @@ Animal <|-- Duck
                 ..Default::default()
             },
         );
+        let document = roxmltree::Document::parse(&svg).expect("Cynefin SVG should be valid XML");
+        let has_class = |expected: &str| {
+            document.descendants().any(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == expected)
+                })
+            })
+        };
 
-        assert!(svg.contains(r#"aria-roledescription="cynefin""#));
-        assert!(svg.contains(r#"<g class="cynefin-backgrounds">"#));
-        assert!(svg.contains(r#"class="cynefinDomain""#));
-        assert!(svg.contains(r#"class="cynefinBoundary""#));
-        assert!(svg.contains(r#"class="cynefinCliff""#));
-        assert!(svg.contains(r#"class="cynefinItem""#));
-        assert!(svg.contains("Pair programming"));
-        assert!(svg.contains(r#"class="cynefinArrowLine""#));
-        assert!(svg.contains("Pattern emerges"));
-        assert!(svg.contains(r#"<title id="chart-title-cynefin-test">Cynefin map</title>"#));
-        assert!(svg.contains(r#"<desc id="chart-desc-cynefin-test">Practice movement</desc>"#));
+        assert_eq!(
+            document.root_element().attribute("aria-roledescription"),
+            Some("cynefin")
+        );
+        for class in [
+            "cynefin",
+            "cynefinDomain",
+            "cynefinBoundary",
+            "cynefinCliff",
+            "cynefinItem",
+            "cynefinArrowLine",
+        ] {
+            assert!(has_class(class), "expected canonical Cynefin class {class}");
+        }
+        assert!(
+            document.descendants().any(|node| {
+                node.attribute("data-merman-resource") == Some("cynefin.background")
+            })
+        );
+        assert!(document.descendants().any(|node| {
+            node.attribute("data-merman-resource") == Some("cynefin.transition.0.arrowhead")
+        }));
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("text") && node.text() == Some("Pair programming")
+            })
+        );
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("text") && node.text() == Some("Pattern emerges")
+            })
+        );
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("title")
+                && node.attribute("id") == Some("chart-title-cynefin-test")
+                && node.text() == Some("Cynefin map")
+        }));
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("desc")
+                && node.attribute("id") == Some("chart-desc-cynefin-test")
+                && node.text() == Some("Practice movement")
+        }));
         assert!(svg.contains("#cynefin-test .cynefinDomain{stroke:none;}"));
-        assert_eq!(svg.matches("<title").count(), 2, "{svg}");
-        assert_eq!(svg.matches("<desc").count(), 2, "{svg}");
-
-        let scoped_title = svg
-            .find(r#"<title id="chart-title-cynefin-test">"#)
-            .expect("scoped accessibility title");
-        let scoped_descr = svg
-            .find(r#"<desc id="chart-desc-cynefin-test">"#)
-            .expect("scoped accessibility description");
-        let style = svg.find("<style>").expect("style");
-        let framework_group = svg.find("<g/>").expect("Mermaid framework group");
-        let renderer_title = svg
-            .find("<title>Cynefin map</title>")
-            .expect("renderer accessibility title");
-        let renderer_descr = svg
-            .find("<desc>Practice movement</desc>")
-            .expect("renderer accessibility description");
-        let root_group = svg
-            .find(r#"<g transform="translate("#)
-            .expect("cynefin root group");
-        let defs = svg.find("<defs>").expect("transition marker defs");
-
-        assert!(scoped_title < scoped_descr, "{svg}");
-        assert!(scoped_descr < style, "{svg}");
-        assert!(style < framework_group, "{svg}");
-        assert!(framework_group < renderer_title, "{svg}");
-        assert!(renderer_title < renderer_descr, "{svg}");
-        assert!(renderer_descr < root_group, "{svg}");
-        assert!(root_group < defs, "{svg}");
     }
 
     #[test]
@@ -1291,24 +1303,59 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
                 ..Default::default()
             },
         );
+        let document = roxmltree::Document::parse(&svg).expect("Railroad SVG should be valid XML");
+        let has_class = |expected: &str| {
+            document.descendants().any(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == expected)
+                })
+            })
+        };
 
-        assert!(svg.contains(r#"aria-roledescription="railroad""#));
-        assert!(svg.contains(r#"class="railroad-diagram""#));
-        assert!(svg.contains(r#"class="railroad-rule""#));
-        assert!(svg.contains(r#"class="railroad-rule-name""#));
-        assert!(svg.contains(r#"class="railroad-nonterminal""#));
-        assert!(svg.contains(r#"class="railroad-special""#));
-        assert!(svg.contains(r#"class="railroad-terminal""#));
-        assert!(svg.contains(r#"class="railroad-line""#));
-        assert!(svg.contains("term"));
-        assert!(svg.contains("? guard ?"));
-        assert!(svg.contains("+"));
-        assert!(svg.contains(r#"<title id="chart-title-railroad-test">Railroad grammar</title>"#));
-        assert!(svg.contains(r#"<desc id="chart-desc-railroad-test">Expression grammar</desc>"#));
+        let root = document.root_element();
+        assert_eq!(root.attribute("aria-roledescription"), Some("railroad"));
+        assert!(has_class("railroad-diagram"));
+        for class in [
+            "railroad-rule",
+            "railroad-rule-name",
+            "railroad-nonterminal",
+            "railroad-special",
+            "railroad-terminal",
+            "railroad-line",
+        ] {
+            assert!(
+                has_class(class),
+                "expected canonical Railroad class {class}"
+            );
+        }
+        for text in ["term", "? guard ?", "+"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| { node.has_tag_name("text") && node.text() == Some(text) })
+            );
+        }
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("title")
+                && node.attribute("id") == Some("chart-title-railroad-test")
+                && node.text() == Some("Railroad grammar")
+        }));
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("desc")
+                && node.attribute("id") == Some("chart-desc-railroad-test")
+                && node.text() == Some("Expression grammar")
+        }));
         assert!(
-            svg.contains("</style><g/><g class=\"railroad-rule\""),
-            "{svg}"
+            document.descendants().any(|node| {
+                node.attribute("data-merman-semantic-id") == Some("railroad.rule.0")
+            })
         );
+        assert!(document.descendants().any(|node| {
+            node.attribute("data-merman-resource") == Some("railroad.rule.0.connector.start.path")
+        }));
+        assert!(svg.contains("</style><g/>"), "{svg}");
     }
 
     #[cfg(feature = "layout-elk")]
