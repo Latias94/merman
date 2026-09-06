@@ -43,6 +43,8 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 type SequencePair = FamilyPair<SequenceDiagramRenderModel, SequencePreparedArtifact>;
+type ControlSection = (String, String, Option<f64>);
+type ControlStackEntry = (usize, SequenceControlKind, String, Vec<ControlSection>);
 
 const SIGNAL_WIDTH: f64 = 1.5;
 const LIFELINE_WIDTH: f64 = 0.5;
@@ -100,6 +102,15 @@ struct SequencePalette {
     stroke_width: f64,
 }
 
+struct TextLinesSpec {
+    center: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    font: FontDescriptor,
+    anchor: TextAnchor,
+}
+
 #[derive(Debug, Clone)]
 struct ActivationRect {
     start_id: String,
@@ -116,7 +127,7 @@ struct ControlBlock {
     kind: SequenceControlKind,
     start_id: String,
     layout: SequenceBlockLayout,
-    sections: Vec<(String, String, Option<f64>)>,
+    sections: Vec<ControlSection>,
 }
 
 pub(crate) fn build_sequence_document(
@@ -385,15 +396,17 @@ impl<'a> SequenceBuilder<'a> {
                 self.emit_text_lines(
                     &format!("{semantic_id}.title"),
                     &lines,
-                    Point::new(
-                        x + width / 2.0,
-                        min_y - self.settings.box_margin - max_title_height / 2.0,
-                    ),
-                    self.settings.font_size,
-                    self.settings.font_weight,
-                    self.palette.node_border,
-                    &actor_font,
-                    TextAnchor::Middle,
+                    TextLinesSpec {
+                        center: Point::new(
+                            x + width / 2.0,
+                            min_y - self.settings.box_margin - max_title_height / 2.0,
+                        ),
+                        font_size: self.settings.font_size,
+                        weight: self.settings.font_weight,
+                        color: self.palette.node_border,
+                        font: actor_font,
+                        anchor: TextAnchor::Middle,
+                    },
                 )?;
             }
             self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -527,12 +540,14 @@ impl<'a> SequenceBuilder<'a> {
         self.emit_text_lines(
             id,
             &lines,
-            Point::new(node.x, node.y),
-            self.settings.font_size,
-            self.settings.font_weight,
-            self.palette.actor_text,
-            &self.actor_font.clone(),
-            TextAnchor::Middle,
+            TextLinesSpec {
+                center: Point::new(node.x, node.y),
+                font_size: self.settings.font_size,
+                weight: self.settings.font_weight,
+                color: self.palette.actor_text,
+                font: self.actor_font.clone(),
+                anchor: TextAnchor::Middle,
+            },
         )
     }
 
@@ -620,12 +635,14 @@ impl<'a> SequenceBuilder<'a> {
                     self.emit_text_lines(
                         &format!("{semantic_id}.label"),
                         &lines,
-                        Point::new(center_x, block.layout.start_y + LABEL_BOX_HEIGHT),
-                        self.settings.font_size,
-                        self.settings.font_weight,
-                        self.palette.loop_text,
-                        &self.message_font.clone(),
-                        TextAnchor::Middle,
+                        TextLinesSpec {
+                            center: Point::new(center_x, block.layout.start_y + LABEL_BOX_HEIGHT),
+                            font_size: self.settings.font_size,
+                            weight: self.settings.font_weight,
+                            color: self.palette.loop_text,
+                            font: self.message_font.clone(),
+                            anchor: TextAnchor::Middle,
+                        },
                     )?;
                 }
             }
@@ -663,12 +680,17 @@ impl<'a> SequenceBuilder<'a> {
                     self.emit_text_lines(
                         &format!("{semantic_id}.section.{section_index}"),
                         &lines,
-                        Point::new((frame_x1 + frame_x2) / 2.0, separator_y + LABEL_BOX_HEIGHT),
-                        self.settings.font_size,
-                        self.settings.font_weight,
-                        self.palette.loop_text,
-                        &self.message_font.clone(),
-                        TextAnchor::Middle,
+                        TextLinesSpec {
+                            center: Point::new(
+                                (frame_x1 + frame_x2) / 2.0,
+                                separator_y + LABEL_BOX_HEIGHT,
+                            ),
+                            font_size: self.settings.font_size,
+                            weight: self.settings.font_weight,
+                            color: self.palette.loop_text,
+                            font: self.message_font.clone(),
+                            anchor: TextAnchor::Middle,
+                        },
                     )?;
                 }
             }
@@ -715,12 +737,14 @@ impl<'a> SequenceBuilder<'a> {
         self.emit_text_lines(
             &format!("{semantic_id}.label_box_text"),
             &[label.to_string()],
-            Point::new(x + self.settings.label_box_width / 2.0, y + 13.0),
-            self.settings.font_size,
-            self.settings.font_weight,
-            self.palette.label_text,
-            &self.message_font.clone(),
-            TextAnchor::Middle,
+            TextLinesSpec {
+                center: Point::new(x + self.settings.label_box_width / 2.0, y + 13.0),
+                font_size: self.settings.font_size,
+                weight: self.settings.font_weight,
+                color: self.palette.label_text,
+                font: self.message_font.clone(),
+                anchor: TextAnchor::Middle,
+            },
         )
     }
 
@@ -792,12 +816,14 @@ impl<'a> SequenceBuilder<'a> {
             self.emit_text_lines(
                 &format!("{semantic_id}.label"),
                 &lines,
-                Point::new(node.x, node.y),
-                self.settings.font_size,
-                self.settings.font_weight,
-                self.palette.note_text,
-                &self.note_font.clone(),
-                TextAnchor::Middle,
+                TextLinesSpec {
+                    center: Point::new(node.x, node.y),
+                    font_size: self.settings.font_size,
+                    weight: self.settings.font_weight,
+                    color: self.palette.note_text,
+                    font: self.note_font.clone(),
+                    anchor: TextAnchor::Middle,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -885,12 +911,14 @@ impl<'a> SequenceBuilder<'a> {
                     self.emit_text_lines(
                         &format!("{semantic_id}.label"),
                         &lines,
-                        Point::new(x, label.y),
-                        self.settings.font_size,
-                        self.settings.font_weight,
-                        self.palette.signal_text,
-                        &message_font,
-                        anchor,
+                        TextLinesSpec {
+                            center: Point::new(x, label.y),
+                            font_size: self.settings.font_size,
+                            weight: self.settings.font_weight,
+                            color: self.palette.signal_text,
+                            font: message_font,
+                            anchor,
+                        },
                     )?;
                 }
             }
@@ -1171,24 +1199,26 @@ impl<'a> SequenceBuilder<'a> {
         self.emit_text_lines(
             &format!("{semantic_id}.number.text"),
             &[text],
-            Point::new(point.x, point.y + 1.0),
-            if value.abs() >= 1000.0 {
-                9.0
-            } else if value.abs() >= 100.0 {
-                10.0
-            } else {
-                12.0
-            },
-            400,
-            self.palette.sequence_number,
-            &FontDescriptor {
-                families: vec!["sans-serif".to_string()],
+            TextLinesSpec {
+                center: Point::new(point.x, point.y + 1.0),
+                font_size: if value.abs() >= 1000.0 {
+                    9.0
+                } else if value.abs() >= 100.0 {
+                    10.0
+                } else {
+                    12.0
+                },
                 weight: 400,
-                style: FontStyle::Normal,
-                postscript_name: None,
-                resource: None,
+                color: self.palette.sequence_number,
+                font: FontDescriptor {
+                    families: vec!["sans-serif".to_string()],
+                    weight: 400,
+                    style: FontStyle::Normal,
+                    postscript_name: None,
+                    resource: None,
+                },
+                anchor: TextAnchor::Middle,
             },
-            TextAnchor::Middle,
         )
     }
 
@@ -1208,12 +1238,14 @@ impl<'a> SequenceBuilder<'a> {
         self.emit_text_lines(
             "sequence.title",
             &lines,
-            Point::new(x, -25.0),
-            self.settings.font_size,
-            self.settings.font_weight,
-            self.palette.text,
-            &self.actor_font.clone(),
-            TextAnchor::Middle,
+            TextLinesSpec {
+                center: Point::new(x, -25.0),
+                font_size: self.settings.font_size,
+                weight: self.settings.font_weight,
+                color: self.palette.text,
+                font: self.actor_font.clone(),
+                anchor: TextAnchor::Middle,
+            },
         )?;
         self.semantics.push(SemanticAnnotation {
             id: "sequence.title".to_string(),
@@ -1264,17 +1296,15 @@ impl<'a> SequenceBuilder<'a> {
             .collect()
     }
 
-    fn emit_text_lines(
-        &mut self,
-        _id: &str,
-        lines: &[String],
-        center: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        font: &FontDescriptor,
-        anchor: TextAnchor,
-    ) -> Result<()> {
+    fn emit_text_lines(&mut self, _id: &str, lines: &[String], spec: TextLinesSpec) -> Result<()> {
+        let TextLinesSpec {
+            center,
+            font_size,
+            weight,
+            color,
+            font,
+            anchor,
+        } = spec;
         let line_step = sequence_text_line_step_px(font_size);
         let line_count = lines.len().max(1) as f64;
         let measurer = self
@@ -1719,12 +1749,7 @@ fn collect_controls(
     layout: &SequenceDiagramLayout,
     _settings: &SequenceSettings,
 ) -> Result<Vec<ControlBlock>> {
-    let mut stack: Vec<(
-        usize,
-        SequenceControlKind,
-        String,
-        Vec<(String, String, Option<f64>)>,
-    )> = Vec::new();
+    let mut stack: Vec<ControlStackEntry> = Vec::new();
     let mut blocks = Vec::new();
     for (index, message) in model.messages.iter().enumerate() {
         let Some(control) = message.control_semantics() else {
@@ -1884,7 +1909,7 @@ fn is_empty_lines(lines: &[String]) -> bool {
     lines.iter().all(|line| line.trim().is_empty())
 }
 
-fn unique_nodes<'a>(layout: &'a SequenceDiagramLayout) -> Result<HashMap<&'a str, &'a LayoutNode>> {
+fn unique_nodes(layout: &SequenceDiagramLayout) -> Result<HashMap<&str, &LayoutNode>> {
     let mut result = HashMap::with_capacity(layout.nodes.len());
     for node in &layout.nodes {
         if result.insert(node.id.as_str(), node).is_some() {
@@ -1897,7 +1922,7 @@ fn unique_nodes<'a>(layout: &'a SequenceDiagramLayout) -> Result<HashMap<&'a str
     Ok(result)
 }
 
-fn unique_edges<'a>(layout: &'a SequenceDiagramLayout) -> Result<HashMap<&'a str, &'a LayoutEdge>> {
+fn unique_edges(layout: &SequenceDiagramLayout) -> Result<HashMap<&str, &LayoutEdge>> {
     let mut result = HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
         if result.insert(edge.id.as_str(), edge).is_some() {

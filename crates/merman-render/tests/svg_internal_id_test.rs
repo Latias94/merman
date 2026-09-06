@@ -443,8 +443,10 @@ fn architecture_builtin_icons_expand_to_explicit_resources_without_internal_ids(
         document
             .descendants()
             .flat_map(|node| node.attributes())
-            .all(|attribute| !attribute.value().starts_with("url(#")
-                && !(attribute.name() == "href" && attribute.value().starts_with('#'))),
+            .all(|attribute| {
+                !(attribute.value().starts_with("url(#")
+                    || attribute.name() == "href" && attribute.value().starts_with('#'))
+            }),
         "expanded built-in Architecture icons must not retain local SVG references:\n{svg}"
     );
 }

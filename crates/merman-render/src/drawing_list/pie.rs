@@ -527,7 +527,7 @@ fn validate_layout(layout: &PieDiagramLayout, model: &PieDiagramRenderModel) -> 
         .bounds
         .as_ref()
         .ok_or_else(|| invalid("Pie layout did not provide root bounds"))?;
-    if !(model.sections.is_empty() && !bounds_is_finite(bounds)) {
+    if !model.sections.is_empty() || bounds_is_finite(bounds) {
         validate_bounds(bounds)?;
     }
     if ![

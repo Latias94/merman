@@ -78,6 +78,16 @@ struct JourneyBuilder<'a> {
     semantics: Vec<SemanticAnnotation>,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    font: FontDescriptor,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 impl<'a> JourneyBuilder<'a> {
     fn new(
         pair: &'a JourneyPair,
@@ -322,13 +332,15 @@ impl<'a> JourneyBuilder<'a> {
                 self.emit_text(
                     format!("{semantic_id}.label.{line_index}"),
                     &line.text,
-                    Point::new(line.tspan_x, line.y),
-                    self.legend_font_size,
-                    400,
-                    self.text_color,
-                    &legend_font,
-                    TextAnchor::Start,
-                    TextBaseline::Alphabetic,
+                    TextEmitSpec {
+                        origin: Point::new(line.tspan_x, line.y),
+                        font_size: self.legend_font_size,
+                        weight: 400,
+                        color: self.text_color,
+                        font: legend_font.clone(),
+                        anchor: TextAnchor::Start,
+                        baseline: TextBaseline::Alphabetic,
+                    },
                 )?;
             }
             self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -613,13 +625,15 @@ impl<'a> JourneyBuilder<'a> {
             self.emit_text(
                 format!("{prefix}.{index}"),
                 line,
-                Point::new(center.x, center.y + offset),
-                self.task_font_size,
-                400,
-                self.text_color,
-                &task_font,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(center.x, center.y + offset),
+                    font_size: self.task_font_size,
+                    weight: 400,
+                    color: self.text_color,
+                    font: task_font.clone(),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
         }
         Ok(())
@@ -635,13 +649,15 @@ impl<'a> JourneyBuilder<'a> {
         self.emit_text(
             "journey.title",
             &title,
-            title_origin,
-            self.title_font_size,
-            700,
-            self.title_color,
-            &title_font,
-            TextAnchor::Start,
-            TextBaseline::Alphabetic,
+            TextEmitSpec {
+                origin: title_origin,
+                font_size: self.title_font_size,
+                weight: 700,
+                color: self.title_color,
+                font: title_font,
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+            },
         )?;
         self.semantics.push(SemanticAnnotation {
             id: "journey.title".to_string(),
@@ -687,18 +703,16 @@ impl<'a> JourneyBuilder<'a> {
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        id: impl Into<String>,
-        value: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        font: &FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<()> {
+    fn emit_text(&mut self, _id: impl Into<String>, value: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            font,
+            anchor,
+            baseline,
+        } = spec;
         let value = svg_plain_text(value);
         if value.is_empty() {
             return Ok(());
@@ -737,10 +751,7 @@ impl<'a> JourneyBuilder<'a> {
                 origin,
                 bounds: Rect::new(left, top, width, height),
                 style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..font.clone()
-                    },
+                    font: FontDescriptor { weight, ..font },
                     font_size,
                     letter_spacing: 0.0,
                     line_height: font_size,
@@ -753,7 +764,6 @@ impl<'a> JourneyBuilder<'a> {
                 obligation: self.text_obligation.clone(),
             },
         });
-        let _ = id;
         Ok(())
     }
 

@@ -71,6 +71,16 @@ struct PlainMetrics {
     height: f64,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    font: FontDescriptor,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 struct KanbanBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
@@ -644,13 +654,15 @@ impl<'a> KanbanBuilder<'a> {
             self.emit_text(
                 format!("{prefix}.{index}"),
                 line,
-                Point::new(origin_x, top + line_height * (index as f64 + 0.5)),
-                self.font_size,
-                self.font.weight,
-                self.text_color,
-                &font,
-                anchor,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(origin_x, top + line_height * (index as f64 + 0.5)),
+                    font_size: self.font_size,
+                    weight: self.font.weight,
+                    color: self.text_color,
+                    font: font.clone(),
+                    anchor,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
         }
         Ok(())
@@ -682,30 +694,30 @@ impl<'a> KanbanBuilder<'a> {
         self.emit_text(
             id,
             value,
-            origin,
-            self.font_size,
-            self.font.weight,
-            self.text_color,
-            &self.font.clone(),
-            anchor,
-            TextBaseline::Middle,
+            TextEmitSpec {
+                origin,
+                font_size: self.font_size,
+                weight: self.font.weight,
+                color: self.text_color,
+                font: self.font.clone(),
+                anchor,
+                baseline: TextBaseline::Middle,
+            },
         )?;
         let _ = metrics;
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        _id: impl Into<String>,
-        value: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        font: &FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<()> {
+    fn emit_text(&mut self, _id: impl Into<String>, value: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            font,
+            anchor,
+            baseline,
+        } = spec;
         let value = svg_plain_text(value);
         if value.is_empty() {
             return Ok(());
@@ -748,10 +760,7 @@ impl<'a> KanbanBuilder<'a> {
                 origin,
                 bounds: Rect::new(left, top, width, height),
                 style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..font.clone()
-                    },
+                    font: FontDescriptor { weight, ..font },
                     font_size,
                     letter_spacing: 0.0,
                     line_height: self.line_height(),

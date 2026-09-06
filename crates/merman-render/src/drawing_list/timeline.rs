@@ -657,10 +657,8 @@ impl<'a> TimelineBuilder<'a> {
             label = brighten(label);
         }
         let stroke = stroke_style.map(|mut style| {
-            if is_event {
-                if let Paint::Solid { color } = style.paint {
-                    style.paint = Paint::solid(brighten(color));
-                }
+            if is_event && let Paint::Solid { color } = style.paint {
+                style.paint = Paint::solid(brighten(color));
             }
             style
         });

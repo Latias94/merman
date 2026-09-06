@@ -37,6 +37,15 @@ use std::collections::BTreeMap;
 
 type XyChartPair = FamilyPair<XyChartDiagramRenderModel, XyChartDiagramLayout>;
 
+struct TextRunSpec {
+    origin: Point,
+    bounds: Rect,
+    font_size: f64,
+    fill: merman_display_list::Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 pub(crate) fn build_xychart_document(
     pair: &XyChartPair,
     metadata: &ParseMetadata,
@@ -400,12 +409,14 @@ impl<'a> XyChartBuilder<'a> {
                 self.commands.push(DrawingCommand::DrawText {
                     run: self.text_run(
                         text_value,
-                        Point::new(0.0, 0.0),
-                        local_bounds,
-                        text.font_size,
-                        fill,
-                        anchor,
-                        baseline,
+                        TextRunSpec {
+                            origin: Point::new(0.0, 0.0),
+                            bounds: local_bounds,
+                            font_size: text.font_size,
+                            fill,
+                            anchor,
+                            baseline,
+                        },
                     ),
                 });
                 self.commands.push(DrawingCommand::Restore);
@@ -414,12 +425,14 @@ impl<'a> XyChartBuilder<'a> {
                 self.commands.push(DrawingCommand::DrawText {
                     run: self.text_run(
                         text_value,
-                        Point::new(text.x, text.y),
-                        translate_rect(local_bounds, text.x, text.y),
-                        text.font_size,
-                        fill,
-                        anchor,
-                        baseline,
+                        TextRunSpec {
+                            origin: Point::new(text.x, text.y),
+                            bounds: translate_rect(local_bounds, text.x, text.y),
+                            font_size: text.font_size,
+                            fill,
+                            anchor,
+                            baseline,
+                        },
                     ),
                 });
             }
@@ -428,16 +441,15 @@ impl<'a> XyChartBuilder<'a> {
         Ok(())
     }
 
-    fn text_run(
-        &self,
-        text: String,
-        origin: Point,
-        bounds: Rect,
-        font_size: f64,
-        fill: merman_display_list::Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> TextRun {
+    fn text_run(&self, text: String, spec: TextRunSpec) -> TextRun {
+        let TextRunSpec {
+            origin,
+            bounds,
+            font_size,
+            fill,
+            anchor,
+            baseline,
+        } = spec;
         TextRun {
             text,
             origin,

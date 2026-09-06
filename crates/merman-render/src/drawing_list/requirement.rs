@@ -61,6 +61,16 @@ struct NodeStyle {
     font_style: FontStyle,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    font: FontDescriptor,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 pub(crate) fn build_requirement_document(
     pair: &RequirementPair,
     metadata: &ParseMetadata,
@@ -395,13 +405,15 @@ impl<'a> RequirementBuilder<'a> {
             self.emit_text(
                 &semantic_id,
                 &text,
-                Point::new(label.x, label.y),
-                self.font_size,
-                400,
-                self.relation_label_color,
-                &self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(label.x, label.y),
+                    font_size: self.font_size,
+                    weight: 400,
+                    color: self.relation_label_color,
+                    font: self.font.clone(),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -547,27 +559,29 @@ impl<'a> RequirementBuilder<'a> {
                 "reqLabel".to_string(),
             );
             self.emit_text(
-                &format!("{semantic_id}.label.{index}"),
+                format!("{semantic_id}.label.{index}"),
                 &text,
-                Point::new(origin_x, origin_y),
-                self.font_size,
-                if line.bold {
-                    TITLE_FONT_WEIGHT
-                } else {
-                    style.weight
-                },
-                style.text,
-                &FontDescriptor {
+                TextEmitSpec {
+                    origin: Point::new(origin_x, origin_y),
+                    font_size: self.font_size,
                     weight: if line.bold {
                         TITLE_FONT_WEIGHT
                     } else {
                         style.weight
                     },
-                    style: style.font_style,
-                    ..self.font.clone()
+                    color: style.text,
+                    font: FontDescriptor {
+                        weight: if line.bold {
+                            TITLE_FONT_WEIGHT
+                        } else {
+                            style.weight
+                        },
+                        style: style.font_style,
+                        ..self.font.clone()
+                    },
+                    anchor,
+                    baseline: TextBaseline::Middle,
                 },
-                anchor,
-                TextBaseline::Middle,
             )?;
         }
         Ok(())
@@ -735,16 +749,18 @@ impl<'a> RequirementBuilder<'a> {
         self.emit_text(
             "requirement.title",
             title,
-            origin,
-            self.font_size,
-            TITLE_FONT_WEIGHT,
-            self.default_text,
-            &FontDescriptor {
+            TextEmitSpec {
+                origin,
+                font_size: self.font_size,
                 weight: TITLE_FONT_WEIGHT,
-                ..self.font.clone()
+                color: self.default_text,
+                font: FontDescriptor {
+                    weight: TITLE_FONT_WEIGHT,
+                    ..self.font.clone()
+                },
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Alphabetic,
             },
-            TextAnchor::Middle,
-            TextBaseline::Alphabetic,
         )?;
         self.text_classes.insert(
             "requirement.title".to_string(),
@@ -808,18 +824,16 @@ impl<'a> RequirementBuilder<'a> {
         ))
     }
 
-    fn emit_text(
-        &mut self,
-        _id: impl Into<String>,
-        value: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        font: &FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<()> {
+    fn emit_text(&mut self, _id: impl Into<String>, value: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            font,
+            anchor,
+            baseline,
+        } = spec;
         let value = svg_plain_text(value);
         if value.is_empty() {
             return Ok(());
@@ -858,10 +872,7 @@ impl<'a> RequirementBuilder<'a> {
                 origin,
                 bounds: Rect::new(left, top, width, height),
                 style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..font.clone()
-                    },
+                    font: FontDescriptor { weight, ..font },
                     font_size,
                     letter_spacing: 0.0,
                     line_height: font_size * 1.5,

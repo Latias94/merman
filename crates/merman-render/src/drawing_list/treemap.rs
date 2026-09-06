@@ -35,6 +35,15 @@ use std::collections::BTreeMap;
 
 type TreemapPair = FamilyPair<TreemapDiagramRenderModel, TreemapDiagramLayout>;
 
+struct TextEmitSpec<'a> {
+    origin: Point,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    style: &'a ResolvedTextStyle,
+    clip: Option<(String, Rect)>,
+    class: &'a str,
+}
+
 pub(crate) fn build_treemap_document(
     pair: &TreemapPair,
     metadata: &ParseMetadata,
@@ -270,12 +279,14 @@ impl<'a> TreemapBuilder<'a> {
             self.emit_text(
                 &semantic_id,
                 &title.text,
-                Point::new(title.x, title.y),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
-                &style,
-                None,
-                "treemapTitle",
+                TextEmitSpec {
+                    origin: Point::new(title.x, title.y),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                    style: &style,
+                    clip: None,
+                    class: "treemapTitle",
+                },
             )?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -375,12 +386,14 @@ impl<'a> TreemapBuilder<'a> {
         self.emit_text(
             semantic_id,
             &presentation.label_text,
-            Point::new(presentation.label_x, presentation.label_y),
-            TextAnchor::Start,
-            TextBaseline::Middle,
-            &style,
-            Some((format!("{semantic_id}.label.clip"), clip)),
-            "treemapSectionLabel",
+            TextEmitSpec {
+                origin: Point::new(presentation.label_x, presentation.label_y),
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Middle,
+                style: &style,
+                clip: Some((format!("{semantic_id}.label.clip"), clip)),
+                class: "treemapSectionLabel",
+            },
         )
     }
 
@@ -408,12 +421,14 @@ impl<'a> TreemapBuilder<'a> {
         self.emit_text(
             semantic_id,
             value,
-            Point::new(presentation.value_x, presentation.value_y),
-            TextAnchor::End,
-            TextBaseline::Middle,
-            &style,
-            None,
-            "treemapSectionValue",
+            TextEmitSpec {
+                origin: Point::new(presentation.value_x, presentation.value_y),
+                anchor: TextAnchor::End,
+                baseline: TextBaseline::Middle,
+                style: &style,
+                clip: None,
+                class: "treemapSectionValue",
+            },
         )
     }
 
@@ -500,12 +515,14 @@ impl<'a> TreemapBuilder<'a> {
             self.emit_text(
                 semantic_id,
                 &layout.name,
-                Point::new(presentation.label_x, presentation.label_y),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
-                &style,
-                Some((format!("{semantic_id}.label.clip"), clip)),
-                "treemapLabel",
+                TextEmitSpec {
+                    origin: Point::new(presentation.label_x, presentation.label_y),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                    style: &style,
+                    clip: Some((format!("{semantic_id}.label.clip"), clip)),
+                    class: "treemapLabel",
+                },
             )?;
         }
         if !presentation.value_hidden
@@ -526,12 +543,14 @@ impl<'a> TreemapBuilder<'a> {
             self.emit_text(
                 semantic_id,
                 value,
-                Point::new(presentation.value_x, presentation.value_y),
-                TextAnchor::Middle,
-                TextBaseline::Hanging,
-                &style,
-                Some((format!("{semantic_id}.value.clip"), clip)),
-                "treemapValue",
+                TextEmitSpec {
+                    origin: Point::new(presentation.value_x, presentation.value_y),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Hanging,
+                    style: &style,
+                    clip: Some((format!("{semantic_id}.value.clip"), clip)),
+                    class: "treemapValue",
+                },
             )?;
         }
         Ok(())
@@ -610,17 +629,15 @@ impl<'a> TreemapBuilder<'a> {
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        semantic_id: &str,
-        text: &str,
-        origin: Point,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-        style: &ResolvedTextStyle,
-        clip: Option<(String, Rect)>,
-        class: &str,
-    ) -> Result<()> {
+    fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec<'_>) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            anchor,
+            baseline,
+            style,
+            clip,
+            class,
+        } = spec;
         let Some(fill) = style.fill.filter(|fill| fill.alpha > 0) else {
             return Ok(());
         };

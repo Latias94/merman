@@ -58,12 +58,14 @@ pub(crate) fn build_flowchart_document(
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let mut builder = FlowchartBuilder::new(
-        artifact.pair().semantic(),
-        artifact.pair().layout(),
-        artifact.render_context(),
-        artifact.policy(),
-        RenderFamilyKind::Flowchart,
-        None,
+        FlowchartBuilderInputs {
+            semantic: artifact.pair().semantic(),
+            layout: artifact.pair().layout(),
+            render_context: artifact.render_context(),
+            presentation: artifact.policy(),
+            family_kind: RenderFamilyKind::Flowchart,
+            swimlane_layout: None,
+        },
         metadata,
         policy,
         session,
@@ -80,12 +82,14 @@ pub(crate) fn build_swimlane_document(
     let adapted_layout =
         adapt_swimlane_layout(artifact.pair().semantic(), artifact.pair().layout());
     let mut builder = FlowchartBuilder::new(
-        artifact.pair().semantic(),
-        &adapted_layout,
-        artifact.render_context(),
-        artifact.policy(),
-        RenderFamilyKind::Swimlane,
-        Some(artifact.pair().layout()),
+        FlowchartBuilderInputs {
+            semantic: artifact.pair().semantic(),
+            layout: &adapted_layout,
+            render_context: artifact.render_context(),
+            presentation: artifact.policy(),
+            family_kind: RenderFamilyKind::Swimlane,
+            swimlane_layout: Some(artifact.pair().layout()),
+        },
         metadata,
         policy,
         session,
@@ -131,18 +135,53 @@ struct FlowchartBuilder<'a> {
     interaction_nodes: Vec<Value>,
 }
 
+struct FlowchartBuilderInputs<'a> {
+    semantic: &'a FlowchartModel,
+    layout: &'a FlowchartLayout,
+    render_context: &'a FlowchartRenderContext,
+    presentation: Option<FlowchartPresentationPolicy>,
+    family_kind: RenderFamilyKind,
+    swimlane_layout: Option<&'a SwimlaneLayout>,
+}
+
+struct StyleInputs<'a> {
+    classes: &'a [String],
+    styles_a: &'a [String],
+    styles_b: &'a [String],
+    base_text_style: &'a RenderTextStyle,
+    default_fill: Color,
+    default_stroke: Color,
+    default_text: Color,
+    default_stroke_width: f64,
+}
+
+struct NodeLabelBoundsInputs<'a> {
+    node: &'a LayoutNode,
+    label: &'a str,
+    label_type: &'a str,
+    style: &'a RenderTextStyle,
+    html_labels: bool,
+    wrap_mode: WrapMode,
+    wrapping_width: f64,
+    config: &'a merman_core::MermaidConfig,
+    session: &'a RenderSession,
+}
+
 impl<'a> FlowchartBuilder<'a> {
     fn new(
-        semantic: &'a FlowchartModel,
-        layout: &'a FlowchartLayout,
-        render_context: &'a FlowchartRenderContext,
-        presentation: Option<FlowchartPresentationPolicy>,
-        family_kind: RenderFamilyKind,
-        swimlane_layout: Option<&'a SwimlaneLayout>,
+        inputs: FlowchartBuilderInputs<'a>,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
         session: &'a RenderSession,
     ) -> Result<Self> {
+        let FlowchartBuilderInputs {
+            semantic,
+            layout,
+            render_context,
+            presentation,
+            family_kind,
+            swimlane_layout,
+        } = inputs;
         session.checkpoint(OperationPhase::Emit)?;
         let model = FlowchartRenderModelRef::new(semantic, render_context);
         let config = FlowchartConfigView::new(metadata.effective_config.as_value());
@@ -434,16 +473,16 @@ impl<'a> FlowchartBuilder<'a> {
                     self.model.effective_subgraph_css(subgraph_index, subgraph)
                 })
                 .unwrap_or_default();
-            let style = self.resolve_style(
+            let style = self.resolve_style(StyleInputs {
                 classes,
-                &[],
-                styles,
-                self.base_text_style(self.config.effective_html_labels()),
-                self.cluster_fill,
-                self.cluster_border,
-                self.cluster_text,
-                self.edge_stroke_width,
-            )?;
+                styles_a: &[],
+                styles_b: styles,
+                base_text_style: self.base_text_style(self.config.effective_html_labels()),
+                default_fill: self.cluster_fill,
+                default_stroke: self.cluster_border,
+                default_text: self.cluster_text,
+                default_stroke_width: self.edge_stroke_width,
+            })?;
             let semantic_id = format!("{}.group.{index}", self.family_prefix());
             self.begin_group(&semantic_id, style.opacity, style.blend_mode);
 
@@ -750,16 +789,16 @@ impl<'a> FlowchartBuilder<'a> {
                 ))
             })?;
         let (classes, styles) = self.model.effective_subgraph_css(subgraph_index, subgraph);
-        let style = self.resolve_style(
+        let style = self.resolve_style(StyleInputs {
             classes,
-            &[],
-            styles,
-            self.base_text_style(self.config.effective_html_labels()),
-            self.cluster_fill,
-            self.cluster_border,
-            self.cluster_text,
-            1.0,
-        )?;
+            styles_a: &[],
+            styles_b: styles,
+            base_text_style: self.base_text_style(self.config.effective_html_labels()),
+            default_fill: self.cluster_fill,
+            default_stroke: self.cluster_border,
+            default_text: self.cluster_text,
+            default_stroke_width: 1.0,
+        })?;
         let semantic_id = format!("{}.group.{index}", self.family_prefix());
         self.begin_group(&semantic_id, style.opacity, style.blend_mode);
         if style.has_paint()
@@ -806,7 +845,7 @@ impl<'a> FlowchartBuilder<'a> {
             .edges_by_id
             .get(layout_edge.id.as_str())
             .copied()
-            .map(Clone::clone)
+            .cloned()
             .or_else(|| {
                 self.projected_edges_by_id
                     .get(layout_edge.id.as_str())
@@ -828,16 +867,16 @@ impl<'a> FlowchartBuilder<'a> {
                 edge.id
             )));
         }
-        let style = self.resolve_style(
-            &edge.classes,
-            &self.default_edge_styles,
-            &edge.style,
-            self.base_text_style(self.config.effective_html_labels()),
-            self.line_color,
-            self.line_color,
-            self.node_text,
-            self.edge_stroke_width,
-        )?;
+        let style = self.resolve_style(StyleInputs {
+            classes: &edge.classes,
+            styles_a: &self.default_edge_styles,
+            styles_b: &edge.style,
+            base_text_style: self.base_text_style(self.config.effective_html_labels()),
+            default_fill: self.line_color,
+            default_stroke: self.line_color,
+            default_text: self.node_text,
+            default_stroke_width: self.edge_stroke_width,
+        })?;
         let semantic_id = format!("{}.edge.{}", self.family_prefix(), edge.id);
         self.begin_group(&semantic_id, style.opacity, style.blend_mode);
         let curve = edge.interpolate.as_deref().unwrap_or(&self.default_curve);
@@ -882,16 +921,16 @@ impl<'a> FlowchartBuilder<'a> {
                     edge.id
                 ))
             })?;
-            let label_style = self.resolve_style(
-                &edge.classes,
-                &self.default_edge_styles,
-                &edge.style,
-                self.base_text_style(self.config.effective_html_labels()),
-                self.edge_label_background,
-                self.edge_label_background,
-                self.node_text,
-                self.edge_stroke_width,
-            )?;
+            let label_style = self.resolve_style(StyleInputs {
+                classes: &edge.classes,
+                styles_a: &self.default_edge_styles,
+                styles_b: &edge.style,
+                base_text_style: self.base_text_style(self.config.effective_html_labels()),
+                default_fill: self.edge_label_background,
+                default_stroke: self.edge_label_background,
+                default_text: self.node_text,
+                default_stroke_width: self.edge_stroke_width,
+            })?;
             self.add_path(
                 format!("{semantic_id}.label-background"),
                 rectangle_path(
@@ -951,16 +990,16 @@ impl<'a> FlowchartBuilder<'a> {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();
-        let style = self.resolve_style(
-            &classes,
-            &[],
-            &node.styles,
-            self.base_text_style(self.config.node_html_labels()),
-            self.node_fill,
-            self.node_border,
-            self.node_text,
-            1.3,
-        )?;
+        let style = self.resolve_style(StyleInputs {
+            classes: &classes,
+            styles_a: &[],
+            styles_b: &node.styles,
+            base_text_style: self.base_text_style(self.config.node_html_labels()),
+            default_fill: self.node_fill,
+            default_stroke: self.node_border,
+            default_text: self.node_text,
+            default_stroke_width: 1.3,
+        })?;
         self.begin_group(&semantic_id, style.opacity, style.blend_mode);
         let shape = FlowchartShape::resolve(node.layout_shape.as_deref().unwrap_or("squareRect"))
             .map_err(|error| unavailable(format!("node `{}`: {error}", node.id)))?;
@@ -982,17 +1021,18 @@ impl<'a> FlowchartBuilder<'a> {
             node.label_type.as_deref().unwrap_or("text"),
             self.config.node_html_labels(),
         );
-        let label_bounds = node_label_bounds(
-            layout_node,
-            &label_text,
-            node.label_type.as_deref().unwrap_or("text"),
-            &self.node_style_for(node),
-            self.config.node_html_labels(),
-            self.config.node_wrap_mode(),
-            self.config.render_wrapping_width(),
-            &self.metadata.effective_config,
-            self.session,
-        )?;
+        let node_style = self.node_style_for(node);
+        let label_bounds = node_label_bounds(NodeLabelBoundsInputs {
+            node: layout_node,
+            label: &label_text,
+            label_type: node.label_type.as_deref().unwrap_or("text"),
+            style: &node_style,
+            html_labels: self.config.node_html_labels(),
+            wrap_mode: self.config.node_wrap_mode(),
+            wrapping_width: self.config.render_wrapping_width(),
+            config: &self.metadata.effective_config,
+            session: self.session,
+        })?;
         let run = self.label_run(
             raw_label,
             node.label_type.as_deref().unwrap_or("text"),
@@ -1154,17 +1194,17 @@ impl<'a> FlowchartBuilder<'a> {
         )
     }
 
-    fn resolve_style(
-        &self,
-        classes: &[String],
-        styles_a: &[String],
-        styles_b: &[String],
-        base_text_style: &RenderTextStyle,
-        default_fill: Color,
-        default_stroke: Color,
-        default_text: Color,
-        default_stroke_width: f64,
-    ) -> Result<ResolvedStyle> {
+    fn resolve_style(&self, inputs: StyleInputs<'_>) -> Result<ResolvedStyle> {
+        let StyleInputs {
+            classes,
+            styles_a,
+            styles_b,
+            base_text_style,
+            default_fill,
+            default_stroke,
+            default_text,
+            default_stroke_width,
+        } = inputs;
         let text_style = base_text_style;
         let effective_text = if classes.iter().any(|class| class == "node") {
             flowchart_effective_text_style_for_node_classes(
@@ -1209,16 +1249,16 @@ impl<'a> FlowchartBuilder<'a> {
         owner: &str,
     ) -> Result<()> {
         let _ = self
-            .resolve_style(
+            .resolve_style(StyleInputs {
                 classes,
                 styles_a,
                 styles_b,
-                &self.node_style,
-                self.node_fill,
-                self.node_border,
-                self.node_text,
-                1.3,
-            )
+                base_text_style: &self.node_style,
+                default_fill: self.node_fill,
+                default_stroke: self.node_border,
+                default_text: self.node_text,
+                default_stroke_width: 1.3,
+            })
             .map_err(|error| match error {
                 Error::DrawingListUnavailable { reason, .. } => {
                     unavailable(format!("{owner}: {reason}"))
@@ -1411,11 +1451,7 @@ fn swimlane_band_bounds(
         return (title_bounds, body_bounds);
     }
 
-    let title_extent = if horizontal_title {
-        (lane.title_label_height + 8.0).max(font_size * 1.5)
-    } else {
-        (lane.title_label_height + 8.0).max(font_size * 1.5)
-    };
+    let title_extent = (lane.title_label_height + 8.0).max(font_size * 1.5);
     if horizontal_title {
         let title_width = title_extent.min((lane_right - lane_left).max(0.0));
         (
@@ -1680,9 +1716,9 @@ fn node_paths(
     let y = node.y;
     let w = node.width.max(1.0);
     let h = node.height.max(1.0);
-    let radius = if shape == FlowchartShape::Process && look.eq_ignore_ascii_case("neo") {
-        5.0
-    } else if shape == FlowchartShape::RoundedRectangle {
+    let radius = if shape == FlowchartShape::RoundedRectangle
+        || shape == FlowchartShape::Process && look.eq_ignore_ascii_case("neo")
+    {
         5.0
     } else {
         0.0
@@ -1933,17 +1969,18 @@ fn lean_path(x: f64, y: f64, total_width: f64, height: f64, left: bool) -> Vec<P
     polygon_path(&points)
 }
 
-fn node_label_bounds(
-    node: &LayoutNode,
-    label: &str,
-    label_type: &str,
-    style: &RenderTextStyle,
-    html_labels: bool,
-    wrap_mode: WrapMode,
-    wrapping_width: f64,
-    config: &merman_core::MermaidConfig,
-    session: &RenderSession,
-) -> Result<Rect> {
+fn node_label_bounds(inputs: NodeLabelBoundsInputs<'_>) -> Result<Rect> {
+    let NodeLabelBoundsInputs {
+        node,
+        label,
+        label_type,
+        style,
+        html_labels,
+        wrap_mode,
+        wrapping_width,
+        config,
+        session,
+    } = inputs;
     match (node.label_width, node.label_height) {
         (Some(width), Some(height)) => {
             if [width, height].into_iter().all(f64::is_finite) && width >= 0.0 && height >= 0.0 {
@@ -2419,7 +2456,7 @@ fn first_non_textual_html_tag(label: &str) -> Option<String> {
         let raw = remainder[..end].trim();
         remainder = &remainder[end + 1..];
         if raw.is_empty() {
-            return Some("<>").map(str::to_string);
+            return Some(str::to_string("<>"));
         }
         let normalized = raw.trim_end_matches('/').trim();
         let name = normalized

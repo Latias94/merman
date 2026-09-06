@@ -230,7 +230,10 @@ fn deep_icon_text_diagram(depth: usize) -> String {
     format!("architecture-beta\n  service worker \"{icon_text}\" [Worker]\n")
 }
 
-fn parse_svg_points(value: &str) -> Vec<(f64, f64)> {
+type SvgPoint = (f64, f64);
+type SvgPoints = Vec<SvgPoint>;
+
+fn parse_svg_points(value: &str) -> SvgPoints {
     let number =
         Regex::new(r#"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"#).expect("valid number regex");
     let values = number
@@ -244,7 +247,7 @@ fn parse_svg_points(value: &str) -> Vec<(f64, f64)> {
         .collect()
 }
 
-fn edge_and_arrow_points(svg: &str, edge_id: &str) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+fn edge_and_arrow_points(svg: &str, edge_id: &str) -> (SvgPoints, SvgPoints) {
     let document = roxmltree::Document::parse(svg).expect("Architecture SVG is XML");
     let edge = document
         .descendants()

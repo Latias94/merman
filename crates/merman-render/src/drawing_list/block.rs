@@ -338,7 +338,7 @@ impl<'a> BlockBuilder<'a> {
                 node.id
             ))
         })?;
-        let style = self.node_style(&source, &geometry)?;
+        let style = self.node_style(&source, geometry)?;
         let semantic_id = format!("block.node.{index}");
         let node_class = if source.classes.is_empty() {
             "node default flowchart-label".to_string()
@@ -370,11 +370,11 @@ impl<'a> BlockBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
-        self.emit_shape(&format!("{semantic_id}.shape"), node, &geometry, &style)?;
+        self.emit_shape(&format!("{semantic_id}.shape"), node, geometry, &style)?;
         let lines = plain_lines(&source.label, &format!("Block node `{}` label", node.id))?;
         self.emit_label_lines(
             node,
-            &geometry,
+            geometry,
             &lines,
             &style,
             node.label_width.unwrap_or_default().max(0.0),
@@ -515,8 +515,7 @@ impl<'a> BlockBuilder<'a> {
         let label_center = label_center(
             node,
             geometry,
-            &self
-                .sources
+            self.sources
                 .get(&node.id)
                 .map(|source| source.block_type.as_str())
                 .unwrap_or(""),
@@ -1195,7 +1194,7 @@ fn validate_model(
     Ok(())
 }
 
-fn unique_nodes<'a>(layout: &'a BlockDiagramLayout) -> Result<HashMap<String, &'a LayoutNode>> {
+fn unique_nodes(layout: &BlockDiagramLayout) -> Result<HashMap<String, &LayoutNode>> {
     let mut out = HashMap::with_capacity(layout.nodes.len());
     for node in &layout.nodes {
         if out.insert(node.id.clone(), node).is_some() {
@@ -1208,7 +1207,7 @@ fn unique_nodes<'a>(layout: &'a BlockDiagramLayout) -> Result<HashMap<String, &'
     Ok(out)
 }
 
-fn unique_edges<'a>(layout: &'a BlockDiagramLayout) -> Result<HashMap<String, &'a LayoutEdge>> {
+fn unique_edges(layout: &BlockDiagramLayout) -> Result<HashMap<String, &LayoutEdge>> {
     let mut out = HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
         if out.insert(edge.id.clone(), edge).is_some() {
@@ -1221,9 +1220,7 @@ fn unique_edges<'a>(layout: &'a BlockDiagramLayout) -> Result<HashMap<String, &'
     Ok(out)
 }
 
-fn unique_geometries<'a>(
-    layout: &'a BlockDiagramLayout,
-) -> Result<HashMap<String, &'a BlockShapeGeometry>> {
+fn unique_geometries(layout: &BlockDiagramLayout) -> Result<HashMap<String, &BlockShapeGeometry>> {
     let mut out = HashMap::with_capacity(layout.shape_geometries.len());
     for geometry in &layout.shape_geometries {
         if out.insert(geometry.id.clone(), geometry).is_some() {

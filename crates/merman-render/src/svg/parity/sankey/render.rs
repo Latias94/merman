@@ -103,11 +103,11 @@ pub(crate) fn render_sankey_diagram_svg(
                 .unwrap_or_default();
             let _ = write!(
                 out,
-                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">{text}</text>"#,
+                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}em" text-anchor="{anchor}">{text}</text>"#,
                 class_attr = class_attr,
                 x = fmt(label.x),
                 y = fmt(label.y),
-                dy = format!("{}em", fmt(label.dy_em)),
+                dy = fmt(label.dy_em),
                 anchor = label.anchor.as_svg(),
                 text = escape_xml(&label.text),
             );

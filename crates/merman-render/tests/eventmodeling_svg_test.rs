@@ -56,7 +56,7 @@ data ItemAddedData {
     assert!(svg.contains(r#"aria-roledescription="eventmodeling""#));
     assert!(svg.contains(r#"width="100%""#));
     assert!(svg.contains(r#"max-width:"#));
-    let document = roxmltree::Document::parse(&svg).expect("valid canonical EventModeling SVG");
+    let document = roxmltree::Document::parse(svg).expect("valid canonical EventModeling SVG");
     assert!(document.descendants().any(|node| {
         node.attribute("class")
             .is_some_and(|class| class.split_whitespace().any(|token| token == "em-swimlane"))

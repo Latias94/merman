@@ -69,6 +69,24 @@ struct C4Builder<'a> {
     dom_ids: BTreeMap<String, String>,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    bounds: Rect,
+    style: TextStyle,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
+struct C4MetadataInputs<'a> {
+    sprite: Option<&'a Value>,
+    tags: Option<&'a Value>,
+    link: Option<&'a Value>,
+    shadowing: Option<&'a Value>,
+    legend_text: Option<&'a Value>,
+    legend_sprite: Option<&'a Value>,
+    shape: Option<&'a Value>,
+}
+
 impl<'a> C4Builder<'a> {
     fn new(
         pair: &'a C4Pair,
@@ -202,11 +220,11 @@ impl<'a> C4Builder<'a> {
         let settings = config.layout_settings();
         let padding_x = settings.diagram_margin_x.max(0.0);
         let padding_y = settings.diagram_margin_y.max(0.0);
-        let title_extra = self
-            .diagram_title()
-            .is_some()
-            .then_some(60.0)
-            .unwrap_or(0.0);
+        let title_extra = if self.diagram_title().is_some() {
+            60.0
+        } else {
+            0.0
+        };
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
@@ -304,14 +322,19 @@ impl<'a> C4Builder<'a> {
         let text_height = measurement.height.max(1.0);
         self.draw_text(
             &title,
-            origin,
-            Rect::new(origin.x, origin.y - text_height, text_width, text_height),
-            self.boundary_text,
-            self.font.clone(),
-            self.font_size,
-            self.font_size * 1.25,
-            TextAnchor::Start,
-            TextBaseline::Alphabetic,
+            TextEmitSpec {
+                origin,
+                bounds: Rect::new(origin.x, origin.y - text_height, text_width, text_height),
+                style: TextStyle {
+                    font: self.font.clone(),
+                    font_size: self.font_size,
+                    letter_spacing: 0.0,
+                    line_height: self.font_size * 1.25,
+                    fill: Paint::solid(self.boundary_text),
+                },
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+            },
         );
         Ok(())
     }
@@ -323,20 +346,22 @@ impl<'a> C4Builder<'a> {
         for shape in &self.model.shapes {
             validate_c4_metadata(
                 shape.alias.as_str(),
-                shape.sprite.as_ref(),
-                shape.tags.as_ref(),
-                shape.link.as_ref(),
-                shape.shadowing.as_ref(),
-                shape.legend_text.as_ref(),
-                shape.legend_sprite.as_ref(),
-                shape.shape.as_ref(),
+                C4MetadataInputs {
+                    sprite: shape.sprite.as_ref(),
+                    tags: shape.tags.as_ref(),
+                    link: shape.link.as_ref(),
+                    shadowing: shape.shadowing.as_ref(),
+                    legend_text: shape.legend_text.as_ref(),
+                    legend_sprite: shape.legend_sprite.as_ref(),
+                    shape: shape.shape.as_ref(),
+                },
             )?;
             validate_text(
-                &shape.label.as_str(),
+                shape.label.as_str(),
                 &format!("C4 shape `{}` label", shape.alias),
             )?;
             validate_text(
-                &shape.type_c4_shape.as_str(),
+                shape.type_c4_shape.as_str(),
                 &format!("C4 shape `{}` type", shape.alias),
             )?;
             for (name, value) in [
@@ -346,7 +371,7 @@ impl<'a> C4Builder<'a> {
             ] {
                 if let Some(value) = value {
                     validate_text(
-                        &value.as_str(),
+                        value.as_str(),
                         &format!("C4 shape `{}` {name}", shape.alias),
                     )?;
                 }
@@ -358,27 +383,29 @@ impl<'a> C4Builder<'a> {
         for boundary in &self.model.boundaries {
             validate_c4_metadata(
                 boundary.alias.as_str(),
-                boundary.sprite.as_ref(),
-                boundary.tags.as_ref(),
-                boundary.link.as_ref(),
-                boundary.shadowing.as_ref(),
-                boundary.legend_text.as_ref(),
-                boundary.legend_sprite.as_ref(),
-                boundary.shape.as_ref(),
+                C4MetadataInputs {
+                    sprite: boundary.sprite.as_ref(),
+                    tags: boundary.tags.as_ref(),
+                    link: boundary.link.as_ref(),
+                    shadowing: boundary.shadowing.as_ref(),
+                    legend_text: boundary.legend_text.as_ref(),
+                    legend_sprite: boundary.legend_sprite.as_ref(),
+                    shape: boundary.shape.as_ref(),
+                },
             )?;
             validate_text(
-                &boundary.label.as_str(),
+                boundary.label.as_str(),
                 &format!("C4 boundary `{}` label", boundary.alias),
             )?;
             if let Some(value) = boundary.ty.as_ref() {
                 validate_text(
-                    &value.as_str(),
+                    value.as_str(),
                     &format!("C4 boundary `{}` type", boundary.alias),
                 )?;
             }
             if let Some(value) = boundary.descr.as_ref() {
                 validate_text(
-                    &value.as_str(),
+                    value.as_str(),
                     &format!("C4 boundary `{}` description", boundary.alias),
                 )?;
             }
@@ -391,7 +418,7 @@ impl<'a> C4Builder<'a> {
         }
         for (index, relation) in self.model.rels.iter().enumerate() {
             validate_text(
-                &relation.label.as_str(),
+                relation.label.as_str(),
                 &format!("C4 relationship {index} label"),
             )?;
             for (name, value) in [
@@ -399,7 +426,7 @@ impl<'a> C4Builder<'a> {
                 ("description", relation.descr.as_ref()),
             ] {
                 if let Some(value) = value {
-                    validate_text(&value.as_str(), &format!("C4 relationship {index} {name}"))?;
+                    validate_text(value.as_str(), &format!("C4 relationship {index} {name}"))?;
                 }
             }
             if !matches!(
@@ -478,7 +505,7 @@ impl<'a> C4Builder<'a> {
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill,
-                stroke: Some(StrokeStyleWithDash::new(
+                stroke: Some(StrokeStyleWithDash::resolve(
                     border,
                     1.0,
                     meta.node_type.is_none(),
@@ -706,7 +733,7 @@ impl<'a> C4Builder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
-            title: Some(plain_text(&meta.label.as_str()).map_err(unavailable)?),
+            title: Some(plain_text(meta.label.as_str()).map_err(unavailable)?),
             description: meta
                 .descr
                 .as_ref()
@@ -839,7 +866,7 @@ impl<'a> C4Builder<'a> {
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
-            title: Some(plain_text(&meta.label.as_str()).map_err(unavailable)?),
+            title: Some(plain_text(meta.label.as_str()).map_err(unavailable)?),
             description: meta
                 .descr
                 .as_ref()
@@ -942,49 +969,37 @@ impl<'a> C4Builder<'a> {
             let y = center.y + (index as f64 - (line_count - 1.0) / 2.0) * line_height;
             self.draw_text(
                 line,
-                Point::new(center.x, y),
-                Rect::new(
-                    center.x - width.max(1.0) / 2.0,
-                    y - row_height / 2.0,
-                    width.max(1.0),
-                    row_height,
-                ),
-                fill,
-                font.clone(),
-                font_size,
-                line_height,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(center.x, y),
+                    bounds: Rect::new(
+                        center.x - width.max(1.0) / 2.0,
+                        y - row_height / 2.0,
+                        width.max(1.0),
+                        row_height,
+                    ),
+                    style: TextStyle {
+                        font: font.clone(),
+                        font_size,
+                        letter_spacing: 0.0,
+                        line_height,
+                        fill: Paint::solid(fill),
+                    },
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             );
         }
     }
 
-    fn draw_text(
-        &mut self,
-        text: &str,
-        origin: Point,
-        bounds: Rect,
-        fill: Color,
-        font: FontDescriptor,
-        font_size: f64,
-        line_height: f64,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) {
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
                 text: text.to_string(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font,
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height,
-                    fill: Paint::solid(fill),
-                },
-                anchor,
-                baseline,
+                origin: spec.origin,
+                bounds: spec.bounds,
+                style: spec.style,
+                anchor: spec.anchor,
+                baseline: spec.baseline,
                 direction: TextDirection::Auto,
                 language: None,
                 obligation: self.text_obligation.clone(),
@@ -1008,7 +1023,7 @@ impl<'a> C4Builder<'a> {
 struct StrokeStyleWithDash;
 
 impl StrokeStyleWithDash {
-    fn new(color: Color, width: f64, dashed: bool) -> merman_display_list::StrokeStyle {
+    fn resolve(color: Color, width: f64, dashed: bool) -> merman_display_list::StrokeStyle {
         let mut result = stroke(color, width);
         if dashed {
             result.dash_array = vec![7.0, 7.0];
@@ -1386,16 +1401,16 @@ fn validate_text(text: &str, label: &str) -> Result<()> {
         .map_err(|error| unavailable(format!("{label}: {error}")))
 }
 
-fn validate_c4_metadata(
-    alias: &str,
-    sprite: Option<&Value>,
-    tags: Option<&Value>,
-    link: Option<&Value>,
-    shadowing: Option<&Value>,
-    legend_text: Option<&Value>,
-    legend_sprite: Option<&Value>,
-    shape: Option<&Value>,
-) -> Result<()> {
+fn validate_c4_metadata(alias: &str, inputs: C4MetadataInputs<'_>) -> Result<()> {
+    let C4MetadataInputs {
+        sprite,
+        tags,
+        link,
+        shadowing,
+        legend_text,
+        legend_sprite,
+        shape,
+    } = inputs;
     if [sprite, tags, shadowing, legend_text, legend_sprite]
         .into_iter()
         .flatten()
@@ -1465,9 +1480,7 @@ fn validate_box(x: f64, y: f64, width: f64, height: f64, label: &str) -> Result<
     Ok(())
 }
 
-fn unique_shape_layouts<'a>(
-    layout: &'a C4DiagramLayout,
-) -> Result<HashMap<&'a str, &'a C4ShapeLayout>> {
+fn unique_shape_layouts(layout: &C4DiagramLayout) -> Result<HashMap<&str, &C4ShapeLayout>> {
     let mut map = HashMap::with_capacity(layout.shapes.len());
     for shape in &layout.shapes {
         if map.insert(shape.alias.as_str(), shape).is_some() {
@@ -1480,9 +1493,7 @@ fn unique_shape_layouts<'a>(
     Ok(map)
 }
 
-fn unique_boundary_layouts<'a>(
-    layout: &'a C4DiagramLayout,
-) -> Result<HashMap<&'a str, &'a C4BoundaryLayout>> {
+fn unique_boundary_layouts(layout: &C4DiagramLayout) -> Result<HashMap<&str, &C4BoundaryLayout>> {
     let mut map = HashMap::with_capacity(layout.boundaries.len());
     for boundary in &layout.boundaries {
         if map.insert(boundary.alias.as_str(), boundary).is_some() {

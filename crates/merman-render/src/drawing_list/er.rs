@@ -89,6 +89,40 @@ struct ErBuilder<'a> {
     marker_types: std::collections::BTreeSet<String>,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    bounds: Rect,
+    style: TextStyle,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
+impl TextEmitSpec {
+    fn new(
+        origin: Point,
+        bounds: Rect,
+        fill: Color,
+        font: FontDescriptor,
+        font_size: f64,
+        anchor: TextAnchor,
+        baseline: TextBaseline,
+    ) -> Self {
+        Self {
+            origin,
+            bounds,
+            style: TextStyle {
+                font,
+                font_size,
+                letter_spacing: 0.0,
+                line_height: (font_size * 1.35).max(1.0),
+                fill: Paint::solid(fill),
+            },
+            anchor,
+            baseline,
+        }
+    }
+}
+
 impl<'a> ErBuilder<'a> {
     fn is_elk_layout(&self) -> bool {
         crate::er::ErConfigView::new(self.metadata.effective_config.as_value()).is_elk_layout()
@@ -192,7 +226,6 @@ impl<'a> ErBuilder<'a> {
             .relationships
             .iter()
             .enumerate()
-            .map(|(index, relation)| (index, relation))
             .collect::<HashMap<_, _>>();
 
         let builder = Self {
@@ -410,7 +443,7 @@ impl<'a> ErBuilder<'a> {
             ));
         }
         for entity in self.model.entities.values() {
-            if entity.shape != "" && entity.shape != "erBox" {
+            if !entity.shape.is_empty() && entity.shape != "erBox" {
                 return Err(unavailable(format!(
                     "ER entity `{}` uses unsupported shape `{}`",
                     entity.id, entity.shape
@@ -523,17 +556,20 @@ impl<'a> ErBuilder<'a> {
         if !title.trim().is_empty() {
             self.draw_text(
                 &title,
-                Point::new(cluster.title_label.x, cluster.title_label.y),
-                centered_rect(
-                    cluster.title_label.x,
-                    cluster.title_label.y,
-                    cluster.title_label.width,
-                    cluster.title_label.height,
+                TextEmitSpec::new(
+                    Point::new(cluster.title_label.x, cluster.title_label.y),
+                    centered_rect(
+                        cluster.title_label.x,
+                        cluster.title_label.y,
+                        cluster.title_label.width,
+                        cluster.title_label.height,
+                    ),
+                    self.cluster_text,
+                    self.font.clone(),
+                    self.font_size,
+                    TextAnchor::Middle,
+                    TextBaseline::Middle,
                 ),
-                self.cluster_text,
-                self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
             );
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -719,15 +755,17 @@ impl<'a> ErBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.draw_text_sized(
+        self.draw_text(
             &text,
-            Point::new(label.x, label.y),
-            bounds,
-            self.node_text,
-            self.font.clone(),
-            self.relationship_font_size,
-            TextAnchor::Middle,
-            TextBaseline::Middle,
+            TextEmitSpec::new(
+                Point::new(label.x, label.y),
+                bounds,
+                self.node_text,
+                self.font.clone(),
+                self.relationship_font_size,
+                TextAnchor::Middle,
+                TextBaseline::Middle,
+            ),
         );
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -821,23 +859,25 @@ impl<'a> ErBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: "er.title".to_string(),
         });
-        self.draw_text_sized(
+        self.draw_text(
             title,
-            origin,
-            Rect::new(
-                bounds.min_x,
-                origin.y - self.font_size,
-                (bounds.max_x - bounds.min_x).max(1.0),
+            TextEmitSpec::new(
+                origin,
+                Rect::new(
+                    bounds.min_x,
+                    origin.y - self.font_size,
+                    (bounds.max_x - bounds.min_x).max(1.0),
+                    self.font_size,
+                ),
+                self.title_text,
+                FontDescriptor {
+                    weight: 700,
+                    ..self.font.clone()
+                },
                 self.font_size,
+                TextAnchor::Middle,
+                TextBaseline::Alphabetic,
             ),
-            self.title_text,
-            FontDescriptor {
-                weight: 700,
-                ..self.font.clone()
-            },
-            self.font_size,
-            TextAnchor::Middle,
-            TextBaseline::Alphabetic,
         );
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.text_classes
@@ -913,12 +953,15 @@ impl<'a> ErBuilder<'a> {
                 .insert(format!("{semantic_id}#0"), text_class.to_string());
             self.draw_text(
                 &name,
-                Point::new(layout_node.x, layout_node.y),
-                centered_rect(layout_node.x, layout_node.y, label_width, label_height),
-                self.node_text,
-                self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec::new(
+                    Point::new(layout_node.x, layout_node.y),
+                    centered_rect(layout_node.x, layout_node.y, label_width, label_height),
+                    self.node_text,
+                    self.font.clone(),
+                    self.font_size,
+                    TextAnchor::Middle,
+                    TextBaseline::Middle,
+                ),
             );
         } else {
             self.emit_entity_attribute_table(&semantic_id, &measure, bounds)?;
@@ -999,15 +1042,18 @@ impl<'a> ErBuilder<'a> {
             .insert(format!("{semantic_id}#0"), "nodeLabel".to_string());
         self.draw_text(
             measure.label.rendered_text(),
-            Point::new(
-                bounds.x + bounds.width / 2.0,
-                name_bounds.y + line_height / 2.0,
+            TextEmitSpec::new(
+                Point::new(
+                    bounds.x + bounds.width / 2.0,
+                    name_bounds.y + line_height / 2.0,
+                ),
+                name_bounds,
+                self.node_text,
+                self.font.clone(),
+                self.font_size,
+                TextAnchor::Middle,
+                TextBaseline::Middle,
             ),
-            name_bounds,
-            self.node_text,
-            self.font.clone(),
-            TextAnchor::Middle,
-            TextBaseline::Middle,
         );
 
         let padding = if self.entity_measurement.html_labels_raw {
@@ -1065,12 +1111,15 @@ impl<'a> ErBuilder<'a> {
                 };
                 self.draw_text(
                     text,
-                    Point::new(cell_xs[cell_index], cell_y + line_height / 2.0),
-                    Rect::new(cell_xs[cell_index], cell_y, width, height),
-                    self.node_text,
-                    self.font.clone(),
-                    TextAnchor::Start,
-                    TextBaseline::Middle,
+                    TextEmitSpec::new(
+                        Point::new(cell_xs[cell_index], cell_y + line_height / 2.0),
+                        Rect::new(cell_xs[cell_index], cell_y, width, height),
+                        self.node_text,
+                        self.font.clone(),
+                        self.font_size,
+                        TextAnchor::Start,
+                        TextBaseline::Middle,
+                    ),
                 );
             }
         }
@@ -1138,53 +1187,15 @@ impl<'a> ErBuilder<'a> {
         Ok(())
     }
 
-    fn draw_text(
-        &mut self,
-        text: &str,
-        origin: Point,
-        bounds: Rect,
-        fill: Color,
-        font: FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) {
-        self.draw_text_sized(
-            text,
-            origin,
-            bounds,
-            fill,
-            font,
-            self.font_size,
-            anchor,
-            baseline,
-        );
-    }
-
-    fn draw_text_sized(
-        &mut self,
-        text: &str,
-        origin: Point,
-        bounds: Rect,
-        fill: Color,
-        font: FontDescriptor,
-        font_size: f64,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) {
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
                 text: text.to_string(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font,
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height: (font_size * 1.35).max(1.0),
-                    fill: Paint::solid(fill),
-                },
-                anchor,
-                baseline,
+                origin: spec.origin,
+                bounds: spec.bounds,
+                style: spec.style,
+                anchor: spec.anchor,
+                baseline: spec.baseline,
                 direction: TextDirection::Auto,
                 language: None,
                 obligation: self.text_obligation.clone(),
@@ -1446,9 +1457,7 @@ fn validate_label(label: &crate::model::LayoutLabel, edge_id: &str) -> Result<()
     Ok(())
 }
 
-fn unique_layout_nodes<'a>(
-    layout: &'a ErDiagramLayout,
-) -> Result<HashMap<&'a str, &'a LayoutNode>> {
+fn unique_layout_nodes(layout: &ErDiagramLayout) -> Result<HashMap<&str, &LayoutNode>> {
     let mut nodes = HashMap::with_capacity(layout.nodes.len());
     for node in &layout.nodes {
         if nodes.insert(node.id.as_str(), node).is_some() {

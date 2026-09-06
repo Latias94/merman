@@ -94,6 +94,15 @@ struct ArchitectureBuilder<'a> {
     content_bounds: Option<Bounds>,
 }
 
+struct MultilineTextSpec {
+    origin: Point,
+    fill: Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    max_width: f64,
+    include_in_root_bounds: bool,
+}
+
 impl<'a> ArchitectureBuilder<'a> {
     fn new(
         pair: &'a ArchitecturePair,
@@ -434,12 +443,17 @@ impl<'a> ArchitectureBuilder<'a> {
                     self.emit_multiline_text(
                         &format!("{semantic_id}.title"),
                         &title,
-                        Point::new(layout.x + self.icon_size / 2.0, layout.y + self.icon_size),
-                        self.text_color,
-                        TextAnchor::Middle,
-                        TextBaseline::Middle,
-                        self.icon_size * 1.5,
-                        node.in_group.is_none(),
+                        MultilineTextSpec {
+                            origin: Point::new(
+                                layout.x + self.icon_size / 2.0,
+                                layout.y + self.icon_size,
+                            ),
+                            fill: self.text_color,
+                            anchor: TextAnchor::Middle,
+                            baseline: TextBaseline::Middle,
+                            max_width: self.icon_size * 1.5,
+                            include_in_root_bounds: node.in_group.is_none(),
+                        },
                     )?;
                 }
                 if let Some(icon) = node
@@ -548,21 +562,23 @@ impl<'a> ArchitectureBuilder<'a> {
             self.emit_multiline_text(
                 &format!("{semantic_id}.title"),
                 &title,
-                Point::new(
-                    bounds.min_x + 4.0 + if has_icon { group_icon_size } else { 0.0 },
-                    bounds.min_y
-                        + 2.0
-                        + if has_icon {
-                            self.arch_font_size / 2.0 - 3.0
-                        } else {
-                            0.0
-                        },
-                ),
-                self.text_color,
-                TextAnchor::Start,
-                TextBaseline::Hanging,
-                (bounds.max_x - bounds.min_x).max(self.font_size),
-                true,
+                MultilineTextSpec {
+                    origin: Point::new(
+                        bounds.min_x + 4.0 + if has_icon { group_icon_size } else { 0.0 },
+                        bounds.min_y
+                            + 2.0
+                            + if has_icon {
+                                self.arch_font_size / 2.0 - 3.0
+                            } else {
+                                0.0
+                            },
+                    ),
+                    fill: self.text_color,
+                    anchor: TextAnchor::Start,
+                    baseline: TextBaseline::Hanging,
+                    max_width: (bounds.max_x - bounds.min_x).max(self.font_size),
+                    include_in_root_bounds: true,
+                },
             )?;
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -767,17 +783,15 @@ impl<'a> ArchitectureBuilder<'a> {
         Ok(())
     }
 
-    fn emit_multiline_text(
-        &mut self,
-        id: &str,
-        text: &str,
-        origin: Point,
-        fill: Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-        max_width: f64,
-        include_in_root_bounds: bool,
-    ) -> Result<()> {
+    fn emit_multiline_text(&mut self, id: &str, text: &str, spec: MultilineTextSpec) -> Result<()> {
+        let MultilineTextSpec {
+            origin,
+            fill,
+            anchor,
+            baseline,
+            max_width,
+            include_in_root_bounds,
+        } = spec;
         let style = self.architecture_text_style();
         let measurer = self
             .session

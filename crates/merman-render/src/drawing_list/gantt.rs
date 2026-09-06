@@ -82,6 +82,17 @@ struct GanttBuilder<'a> {
     semantics: Vec<SemanticAnnotation>,
 }
 
+#[derive(Clone, Copy)]
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    italic: bool,
+}
+
 impl<'a> GanttBuilder<'a> {
     fn new(
         pair: &'a GanttPair,
@@ -377,14 +388,15 @@ impl<'a> GanttBuilder<'a> {
             self.emit_text(
                 &format!("{tick_semantic_id}.label"),
                 &tick.label,
-                Point::new(x, text_y),
-                10.0,
-                400,
-                self.text_fill,
-                TextAnchor::Middle,
-                TextBaseline::Alphabetic,
-                false,
-                false,
+                TextEmitSpec {
+                    origin: Point::new(x, text_y),
+                    font_size: 10.0,
+                    weight: 400,
+                    color: self.text_fill,
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Alphabetic,
+                    italic: false,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -491,14 +503,15 @@ impl<'a> GanttBuilder<'a> {
             self.emit_text(
                 &format!("{semantic_id}.label"),
                 &task.label.text,
-                Point::new(task.label.x, task.label.y),
-                label_size,
-                if clickable { 700 } else { 400 },
-                label_color,
-                anchor,
-                TextBaseline::Alphabetic,
-                source.milestone,
-                source.vert,
+                TextEmitSpec {
+                    origin: Point::new(task.label.x, task.label.y),
+                    font_size: label_size,
+                    weight: if clickable { 700 } else { 400 },
+                    color: label_color,
+                    anchor,
+                    baseline: TextBaseline::Alphabetic,
+                    italic: source.milestone,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -531,14 +544,15 @@ impl<'a> GanttBuilder<'a> {
                 self.emit_text(
                     &format!("{semantic_id}.line.{line_index}"),
                     line,
-                    Point::new(section.x, y),
-                    self.layout.section_font_size,
-                    400,
-                    self.title_fill,
-                    TextAnchor::Start,
-                    TextBaseline::Middle,
-                    false,
-                    false,
+                    TextEmitSpec {
+                        origin: Point::new(section.x, y),
+                        font_size: self.layout.section_font_size,
+                        weight: 400,
+                        color: self.title_fill,
+                        anchor: TextAnchor::Start,
+                        baseline: TextBaseline::Middle,
+                        italic: false,
+                    },
                 )?;
             }
             self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -623,14 +637,15 @@ impl<'a> GanttBuilder<'a> {
         self.emit_text(
             "gantt.title",
             title,
-            Point::new(self.layout.title_x, self.layout.title_y),
-            18.0,
-            400,
-            self.title_text_fill,
-            TextAnchor::Middle,
-            TextBaseline::Alphabetic,
-            false,
-            false,
+            TextEmitSpec {
+                origin: Point::new(self.layout.title_x, self.layout.title_y),
+                font_size: 18.0,
+                weight: 400,
+                color: self.title_text_fill,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Alphabetic,
+                italic: false,
+            },
         )?;
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -643,19 +658,16 @@ impl<'a> GanttBuilder<'a> {
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        semantic_id: &str,
-        text: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-        italic: bool,
-        _vertical: bool,
-    ) -> Result<()> {
+    fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            anchor,
+            baseline,
+            italic,
+        } = spec;
         if text.is_empty() {
             return Ok(());
         }

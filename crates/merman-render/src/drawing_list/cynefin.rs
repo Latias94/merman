@@ -67,6 +67,16 @@ struct CynefinBuilder<'a> {
     semantics: Vec<SemanticAnnotation>,
 }
 
+#[derive(Clone, Copy)]
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    weight: u16,
+    color: Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 impl<'a> CynefinBuilder<'a> {
     fn new(
         pair: &'a CynefinPair,
@@ -363,13 +373,15 @@ impl<'a> CynefinBuilder<'a> {
             self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.label"),
                 domain_title(domain_name),
-                Point::new(domain.cx, y),
-                self.theme.domain_font_size,
-                700,
-                self.label_color,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
                 "cynefinDomainLabel",
+                TextEmitSpec {
+                    origin: Point::new(domain.cx, y),
+                    font_size: self.theme.domain_font_size,
+                    weight: 700,
+                    color: self.label_color,
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
         }
         let y = if self.layout.show_domain_descriptions {
@@ -380,13 +392,15 @@ impl<'a> CynefinBuilder<'a> {
         self.emit_label_text(
             "cynefin.domain.confusion.label",
             domain_title("confusion"),
-            Point::new(self.layout.width / 2.0, y),
-            self.theme.domain_font_size,
-            700,
-            self.label_color,
-            TextAnchor::Middle,
-            TextBaseline::Middle,
             "cynefinDomainLabel",
+            TextEmitSpec {
+                origin: Point::new(self.layout.width / 2.0, y),
+                font_size: self.theme.domain_font_size,
+                weight: 700,
+                color: self.label_color,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+            },
         )?;
         Ok(())
     }
@@ -401,36 +415,42 @@ impl<'a> CynefinBuilder<'a> {
             self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.model"),
                 model,
-                Point::new(cx, cy - 10.0),
-                (self.theme.item_font_size - 1.0).max(1.0),
-                400,
-                self.text_color,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
                 "cynefinSubtitle",
+                TextEmitSpec {
+                    origin: Point::new(cx, cy - 10.0),
+                    font_size: (self.theme.item_font_size - 1.0).max(1.0),
+                    weight: 400,
+                    color: self.text_color,
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
             self.emit_label_text(
                 &format!("cynefin.domain.{domain_name}.practice"),
                 practice,
-                Point::new(cx, cy + 5.0),
-                (self.theme.item_font_size - 1.0).max(1.0),
-                400,
-                self.text_color,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
                 "cynefinSubtitle",
+                TextEmitSpec {
+                    origin: Point::new(cx, cy + 5.0),
+                    font_size: (self.theme.item_font_size - 1.0).max(1.0),
+                    weight: 400,
+                    color: self.text_color,
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
         }
         self.emit_label_text(
             "cynefin.domain.confusion.subtitle",
             "Disorder",
-            Point::new(self.layout.width / 2.0, self.layout.height / 2.0 + 8.0),
-            (self.theme.item_font_size - 1.0).max(1.0),
-            400,
-            self.text_color,
-            TextAnchor::Middle,
-            TextBaseline::Middle,
             "cynefinSubtitle",
+            TextEmitSpec {
+                origin: Point::new(self.layout.width / 2.0, self.layout.height / 2.0 + 8.0),
+                font_size: (self.theme.item_font_size - 1.0).max(1.0),
+                weight: 400,
+                color: self.text_color,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+            },
         )?;
         Ok(())
     }
@@ -480,12 +500,14 @@ impl<'a> CynefinBuilder<'a> {
             self.emit_text(
                 &format!("{semantic_id}.label"),
                 &item.label,
-                Point::new(item.x + item.text_x, item.y + item.text_y),
-                self.theme.item_font_size,
-                400,
-                self.text_color,
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(item.x + item.text_x, item.y + item.text_y),
+                    font_size: self.theme.item_font_size,
+                    weight: 400,
+                    color: self.text_color,
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -557,12 +579,14 @@ impl<'a> CynefinBuilder<'a> {
                 self.emit_text(
                     &format!("{semantic_id}.label"),
                     label,
-                    Point::new(transition.cpx, transition.cpy - 6.0),
-                    (self.theme.item_font_size - 1.0).max(1.0),
-                    400,
-                    self.text_color,
-                    TextAnchor::Middle,
-                    TextBaseline::Alphabetic,
+                    TextEmitSpec {
+                        origin: Point::new(transition.cpx, transition.cpy - 6.0),
+                        font_size: (self.theme.item_font_size - 1.0).max(1.0),
+                        weight: 400,
+                        color: self.text_color,
+                        anchor: TextAnchor::Middle,
+                        baseline: TextBaseline::Alphabetic,
+                    },
                 )?;
             }
             self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -588,12 +612,14 @@ impl<'a> CynefinBuilder<'a> {
         self.emit_text(
             "cynefin.title",
             title,
-            Point::new(self.layout.width / 2.0, -self.layout.padding / 2.0),
-            self.theme.domain_font_size + 2.0,
-            700,
-            self.label_color,
-            TextAnchor::Middle,
-            TextBaseline::Middle,
+            TextEmitSpec {
+                origin: Point::new(self.layout.width / 2.0, -self.layout.padding / 2.0),
+                font_size: self.theme.domain_font_size + 2.0,
+                weight: 700,
+                color: self.label_color,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+            },
         )?;
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -610,13 +636,8 @@ impl<'a> CynefinBuilder<'a> {
         &mut self,
         semantic_id: &str,
         text: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
         class_name: &str,
+        spec: TextEmitSpec,
     ) -> Result<()> {
         self.semantic_classes
             .insert(semantic_id.to_string(), "cynefin-label".to_string());
@@ -625,16 +646,7 @@ impl<'a> CynefinBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
-        self.emit_text(
-            semantic_id,
-            text,
-            origin,
-            font_size,
-            weight,
-            color,
-            anchor,
-            baseline,
-        )?;
+        self.emit_text(semantic_id, text, spec)?;
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id.to_string(),
@@ -646,17 +658,15 @@ impl<'a> CynefinBuilder<'a> {
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        semantic_id: &str,
-        text: &str,
-        origin: Point,
-        font_size: f64,
-        weight: u16,
-        color: Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<()> {
+    fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            anchor,
+            baseline,
+        } = spec;
         if text.is_empty() {
             return Ok(());
         }

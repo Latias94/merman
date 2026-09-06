@@ -427,7 +427,11 @@ impl<'a> WardleyBuilder<'a> {
                 link.line,
                 self.link_stroke,
                 1.0,
-                link.dashed.then_some([6.0, 6.0].as_slice()).unwrap_or(&[]),
+                if link.dashed {
+                    [6.0, 6.0].as_slice()
+                } else {
+                    &[]
+                },
             )?;
             if link.markers.start {
                 self.add_marker(
@@ -1302,13 +1306,12 @@ fn validate_text(text: &WardleyTextLayout) -> Result<()> {
     {
         return Err(invalid("Wardley text geometry is invalid"));
     }
-    if let Some(rotation) = text.rotation {
-        if [rotation.degrees, rotation.cx, rotation.cy]
+    if let Some(rotation) = text.rotation
+        && [rotation.degrees, rotation.cx, rotation.cy]
             .iter()
             .any(|value| !value.is_finite())
-        {
-            return Err(invalid("Wardley text rotation is invalid"));
-        }
+    {
+        return Err(invalid("Wardley text rotation is invalid"));
     }
     Ok(())
 }

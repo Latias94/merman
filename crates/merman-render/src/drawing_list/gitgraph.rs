@@ -350,6 +350,18 @@ struct GitGraphBuilder<'a> {
     dom_ids: BTreeMap<String, String>,
 }
 
+#[derive(Clone, Copy)]
+struct TextEmitSpec {
+    origin: Point,
+    font_size: f64,
+    bounds_height: f64,
+    color: Color,
+    weight: u16,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    rotation: Option<Transform>,
+}
+
 impl<'a> GitGraphBuilder<'a> {
     fn new(
         pair: &'a GitGraphPair,
@@ -798,14 +810,16 @@ impl<'a> GitGraphBuilder<'a> {
             self.emit_text(
                 &format!("{semantic_id}.label"),
                 &branch.name,
-                text_origin,
-                self.theme.font_size,
-                branch.bbox_height.max(1.0),
-                self.theme.branch_label_color(branch.index),
-                self.branch_label_weight(),
-                TextAnchor::Start,
-                TextBaseline::Alphabetic,
-                None,
+                TextEmitSpec {
+                    origin: text_origin,
+                    font_size: self.theme.font_size,
+                    bounds_height: branch.bbox_height.max(1.0),
+                    color: self.theme.branch_label_color(branch.index),
+                    weight: self.branch_label_weight(),
+                    anchor: TextAnchor::Start,
+                    baseline: TextBaseline::Alphabetic,
+                    rotation: None,
+                },
             )?;
             self.text_classes.insert(
                 format!("{semantic_id}.label"),
@@ -1165,22 +1179,24 @@ impl<'a> GitGraphBuilder<'a> {
         self.emit_text(
             &text_id,
             &commit.id,
-            origin,
-            self.theme.commit_label_font_size,
-            height,
-            if self.theme.use_color_generation {
-                self.theme.node_border
-            } else {
-                self.theme.commit_label_color
+            TextEmitSpec {
+                origin,
+                font_size: self.theme.commit_label_font_size,
+                bounds_height: height,
+                color: if self.theme.use_color_generation {
+                    self.theme.node_border
+                } else {
+                    self.theme.commit_label_color
+                },
+                weight: if self.theme.use_color_generation {
+                    self.theme.note_weight
+                } else {
+                    400
+                },
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+                rotation,
             },
-            if self.theme.use_color_generation {
-                self.theme.note_weight
-            } else {
-                400
-            },
-            TextAnchor::Start,
-            TextBaseline::Alphabetic,
-            rotation,
         )?;
         Ok(())
     }
@@ -1260,14 +1276,16 @@ impl<'a> GitGraphBuilder<'a> {
             self.emit_text(
                 &label_id,
                 tag,
-                geometry.origin,
-                self.theme.tag_label_font_size,
-                max_height.max(1.0),
-                self.theme.tag_label_color,
-                400,
-                TextAnchor::Start,
-                TextBaseline::Alphabetic,
-                geometry.text_transform,
+                TextEmitSpec {
+                    origin: geometry.origin,
+                    font_size: self.theme.tag_label_font_size,
+                    bounds_height: max_height.max(1.0),
+                    color: self.theme.tag_label_color,
+                    weight: 400,
+                    anchor: TextAnchor::Start,
+                    baseline: TextBaseline::Alphabetic,
+                    rotation: geometry.text_transform,
+                },
             )?;
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
@@ -1294,14 +1312,16 @@ impl<'a> GitGraphBuilder<'a> {
         self.emit_text(
             "gitgraph.title",
             title,
-            origin,
-            TITLE_FONT_SIZE,
-            TITLE_FONT_SIZE,
-            self.theme.text_color,
-            400,
-            TextAnchor::Middle,
-            TextBaseline::Alphabetic,
-            None,
+            TextEmitSpec {
+                origin,
+                font_size: TITLE_FONT_SIZE,
+                bounds_height: TITLE_FONT_SIZE,
+                color: self.theme.text_color,
+                weight: 400,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Alphabetic,
+                rotation: None,
+            },
         )?;
         Ok(())
     }
@@ -1342,19 +1362,17 @@ impl<'a> GitGraphBuilder<'a> {
         Ok(())
     }
 
-    fn emit_text(
-        &mut self,
-        id: &str,
-        text: &str,
-        origin: Point,
-        font_size: f64,
-        bounds_height: f64,
-        color: Color,
-        weight: u16,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-        rotation: Option<Transform>,
-    ) -> Result<()> {
+    fn emit_text(&mut self, id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let TextEmitSpec {
+            origin,
+            font_size,
+            bounds_height,
+            color,
+            weight,
+            anchor,
+            baseline,
+            rotation,
+        } = spec;
         if text.is_empty() {
             return Ok(());
         }
@@ -1976,8 +1994,11 @@ fn text_bounds_transformed(
 }
 
 fn should_show_commit_label(commit: &GitGraphCommitLayout, show: bool) -> bool {
-    show && commit.commit_type != 3 && commit.commit_type != 4
-        || show && commit.commit_type == 3 && commit.custom_id.unwrap_or(false)
+    show && match commit.commit_type {
+        3 => commit.custom_id.unwrap_or(false),
+        4 => false,
+        _ => true,
+    }
 }
 
 fn branch_index_for_commit(layout: &GitGraphDiagramLayout, commit: &GitGraphCommitLayout) -> i64 {

@@ -78,6 +78,15 @@ struct ClassBuilder<'a> {
     semantics: Vec<SemanticAnnotation>,
 }
 
+struct TextEmitSpec {
+    origin: Point,
+    bounds: Rect,
+    fill: Color,
+    font: FontDescriptor,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 impl<'a> ClassBuilder<'a> {
     fn new(
         pair: &'a ClassPair,
@@ -379,10 +388,8 @@ impl<'a> ClassBuilder<'a> {
                     edge.id
                 )));
             }
-            for label in edge_labels(edge) {
-                if let Some(label) = label {
-                    validate_label(label, &edge.id)?;
-                }
+            for label in edge_labels(edge).into_iter().flatten() {
+                validate_label(label, &edge.id)?;
             }
         }
         Ok(())
@@ -407,14 +414,15 @@ impl<'a> ClassBuilder<'a> {
             .map_err(|error| unavailable(format!("Class namespace `{}`: {error}", cluster.id)))?;
         if !title.trim().is_empty() {
             self.draw_text(
-                &format!("{semantic_id}.title"),
                 &title,
-                Point::new(cluster.title_label.x, cluster.title_label.y),
-                label_rect(&cluster.title_label),
-                self.namespace_text,
-                self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(cluster.title_label.x, cluster.title_label.y),
+                    bounds: label_rect(&cluster.title_label),
+                    fill: self.namespace_text,
+                    font: self.font.clone(),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             );
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
@@ -606,14 +614,15 @@ impl<'a> ClassBuilder<'a> {
             },
         )?;
         self.draw_text(
-            &format!("{semantic_id}.text"),
             &text,
-            Point::new(label.x, label.y),
-            bounds,
-            self.node_text,
-            self.font.clone(),
-            TextAnchor::Middle,
-            TextBaseline::Middle,
+            TextEmitSpec {
+                origin: Point::new(label.x, label.y),
+                bounds,
+                fill: self.node_text,
+                font: self.font.clone(),
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+            },
         );
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
@@ -648,19 +657,20 @@ impl<'a> ClassBuilder<'a> {
                 },
             )?;
             self.draw_text(
-                &format!("{semantic_id}.text"),
                 &text,
-                Point::new(layout_node.x, layout_node.y),
-                centered_rect(
-                    layout_node.x,
-                    layout_node.y,
-                    layout_node.width,
-                    layout_node.height,
-                ),
-                self.node_text,
-                self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(layout_node.x, layout_node.y),
+                    bounds: centered_rect(
+                        layout_node.x,
+                        layout_node.y,
+                        layout_node.width,
+                        layout_node.height,
+                    ),
+                    fill: self.node_text,
+                    font: self.font.clone(),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             );
             self.semantics.push(SemanticAnnotation {
                 id: semantic_id.clone(),
@@ -688,14 +698,15 @@ impl<'a> ClassBuilder<'a> {
                 },
             )?;
             self.draw_text(
-                &format!("{semantic_id}.text"),
                 &text,
-                Point::new(layout_node.x, layout_node.y),
-                bounds,
-                self.node_text,
-                self.font.clone(),
-                TextAnchor::Middle,
-                TextBaseline::Middle,
+                TextEmitSpec {
+                    origin: Point::new(layout_node.x, layout_node.y),
+                    bounds,
+                    fill: self.node_text,
+                    font: self.font.clone(),
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                },
             );
             self.semantics.push(SemanticAnnotation {
                 id: semantic_id.clone(),
@@ -774,24 +785,25 @@ impl<'a> ClassBuilder<'a> {
         for (line_index, (text, style, weight)) in lines.iter().enumerate() {
             let x = layout_node.x;
             let y = first_y + line_index as f64 * line_height;
-            self.draw_text_with_style(
-                &format!("{semantic_id}.text.{line_index}"),
+            self.draw_text(
                 text,
-                Point::new(x, y),
-                Rect::new(
-                    bounds.x + self.class_padding,
-                    y - line_height / 2.0,
-                    (bounds.width - 2.0 * self.class_padding).max(1.0),
-                    line_height,
-                ),
-                self.node_text,
-                FontDescriptor {
-                    weight: *weight,
-                    style: *style,
-                    ..self.font.clone()
+                TextEmitSpec {
+                    origin: Point::new(x, y),
+                    bounds: Rect::new(
+                        bounds.x + self.class_padding,
+                        y - line_height / 2.0,
+                        (bounds.width - 2.0 * self.class_padding).max(1.0),
+                        line_height,
+                    ),
+                    fill: self.node_text,
+                    font: FontDescriptor {
+                        weight: *weight,
+                        style: *style,
+                        ..self.font.clone()
+                    },
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
                 },
-                TextAnchor::Middle,
-                TextBaseline::Middle,
             );
         }
 
@@ -833,59 +845,26 @@ impl<'a> ClassBuilder<'a> {
         Ok(())
     }
 
-    fn draw_text(
-        &mut self,
-        _resource_hint: &str,
-        text: &str,
-        origin: Point,
-        bounds: Rect,
-        fill: Color,
-        font: FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) {
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
         self.commands.push(DrawingCommand::DrawText {
             run: TextRun {
                 text: text.to_string(),
-                origin,
-                bounds,
+                origin: spec.origin,
+                bounds: spec.bounds,
                 style: TextStyle {
-                    font,
+                    font: spec.font,
                     font_size: self.font_size,
                     letter_spacing: 0.0,
                     line_height: self.line_height,
-                    fill: Paint::solid(fill),
+                    fill: Paint::solid(spec.fill),
                 },
-                anchor,
-                baseline,
+                anchor: spec.anchor,
+                baseline: spec.baseline,
                 direction: TextDirection::Auto,
                 language: None,
                 obligation: self.text_obligation.clone(),
             },
         });
-    }
-
-    fn draw_text_with_style(
-        &mut self,
-        resource_hint: &str,
-        text: &str,
-        origin: Point,
-        bounds: Rect,
-        fill: Color,
-        font: FontDescriptor,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) {
-        self.draw_text(
-            resource_hint,
-            text,
-            origin,
-            bounds,
-            fill,
-            font,
-            anchor,
-            baseline,
-        );
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
@@ -1144,9 +1123,7 @@ fn validate_label(label: &LayoutLabel, edge_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn unique_layout_nodes<'a>(
-    layout: &'a ClassDiagramLayout,
-) -> Result<HashMap<&'a str, &'a LayoutNode>> {
+fn unique_layout_nodes(layout: &ClassDiagramLayout) -> Result<HashMap<&str, &LayoutNode>> {
     let mut nodes = HashMap::with_capacity(layout.nodes.len());
     for node in &layout.nodes {
         if nodes.insert(node.id.as_str(), node).is_some() {
@@ -1159,9 +1136,7 @@ fn unique_layout_nodes<'a>(
     Ok(nodes)
 }
 
-fn unique_layout_edges<'a>(
-    layout: &'a ClassDiagramLayout,
-) -> Result<HashMap<&'a str, &'a LayoutEdge>> {
+fn unique_layout_edges(layout: &ClassDiagramLayout) -> Result<HashMap<&str, &LayoutEdge>> {
     let mut edges = HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
         if edges.insert(edge.id.as_str(), edge).is_some() {

@@ -36,6 +36,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 type RadarPair = FamilyPair<RadarDiagramRenderModel, RadarDiagramLayout>;
+type RadarSeriesPaint = (Option<(Color, f64)>, Option<StrokeStyle>);
 
 const RADAR_LEGEND_BOX_SIZE_PX: f64 = 12.0;
 const RADAR_LEGEND_TEXT_X_PX: f64 = 16.0;
@@ -557,11 +558,7 @@ impl<'a> RadarBuilder<'a> {
         parse_svg_path(&curve.path_d)
     }
 
-    fn series_paint(
-        &self,
-        class_index: i64,
-        legend: bool,
-    ) -> Result<(Option<(Color, f64)>, Option<StrokeStyle>)> {
+    fn series_paint(&self, class_index: i64, legend: bool) -> Result<RadarSeriesPaint> {
         let index = usize::try_from(class_index)
             .map_err(|_| invalid(format!("Radar series class index {class_index} is invalid")))?;
         let styles = PortableStyleResolver::new("radar");

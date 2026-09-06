@@ -1292,11 +1292,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
             self.output.push_str("<g class=\"");
             escape_attr_into(&mut self.output, class.as_str());
-            self.output.push_str("\"");
+            self.output.push('"');
             self.output.push_str(" id=\"");
             let svg_id = self.semantic_svg_id(semantic_id)?;
             escape_attr_into(&mut self.output, svg_id.as_str());
-            self.output.push_str("\"");
+            self.output.push('"');
             if let SvgStructureBody::Zenuml(body) = self.svg_body
                 && let Some(statement_id) = body.semantic_data_statements.get(semantic_id)
             {
@@ -2115,7 +2115,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         };
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
-        self.output.push_str("\"");
+        self.output.push('"');
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
         self.write_sidecar_dom_id(path_id.as_str());
@@ -2123,7 +2123,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
-            self.output.push_str("\"");
+            self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
@@ -2138,18 +2138,17 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_zenuml_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
         let raw_id = path_id.as_str();
         let path = self.path_resource(path_id)?.clone();
-        if raw_id == "zenuml.frame.outer" || raw_id == "zenuml.frame.inner" {
-            if let Some((bounds, radius)) = rounded_rectangle_from_path(&path) {
-                return self.emit_rounded_rect(path_id, bounds, radius, style);
-            }
-        }
-        if raw_id.ends_with(".line")
-            || raw_id.ends_with(".header")
-            || raw_id.ends_with(".separator")
+        if (raw_id == "zenuml.frame.outer" || raw_id == "zenuml.frame.inner")
+            && let Some((bounds, radius)) = rounded_rectangle_from_path(&path)
         {
-            if let Some((start, end)) = line_from_path(&path) {
-                return self.emit_line(path_id, start, end, style);
-            }
+            return self.emit_rounded_rect(path_id, bounds, radius, style);
+        }
+        if (raw_id.ends_with(".line")
+            || raw_id.ends_with(".header")
+            || raw_id.ends_with(".separator"))
+            && let Some((start, end)) = line_from_path(&path)
+        {
+            return self.emit_line(path_id, start, end, style);
         }
         if raw_id.ends_with(".box")
             || raw_id.ends_with(".bar")
@@ -2166,10 +2165,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_rect(path_id, bounds, style);
             }
         }
-        if raw_id.contains(".return.") && raw_id.ends_with(".icon.circle") {
-            if let Some((center, radius)) = circle_from_path(&path) {
-                return self.emit_circle(path_id, center, radius, style);
-            }
+        if raw_id.contains(".return.")
+            && raw_id.ends_with(".icon.circle")
+            && let Some((center, radius)) = circle_from_path(&path)
+        {
+            return self.emit_circle(path_id, center, radius, style);
         }
         self.emit_path_as_standard(path_id, &path, style)
     }
@@ -2391,14 +2391,14 @@ impl<'a> DocumentSvgEncoder<'a> {
         let path_data = path_d(&path.segments);
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
-        self.output.push_str("\"");
+        self.output.push('"');
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
         self.write_sidecar_dom_id(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
-            self.output.push_str("\"");
+            self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
@@ -2443,7 +2443,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
-            self.output.push_str("\"");
+            self.output.push('"');
         }
         self.write_block_inline_path_style(path_id);
         self.write_fill_stroke_style(style)?;
@@ -2790,7 +2790,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             let class = class.into_owned();
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_str());
-            self.output.push_str("\"");
+            self.output.push('"');
         }
         let font_size = if matches!(self.svg_body, SvgStructureBody::Error(_)) {
             format!("{}px", fmt(run.style.font_size))
@@ -2837,7 +2837,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let families = self.font_families(&run.style.font);
         self.output.push_str(" font-family=\"");
         escape_attr_into(&mut self.output, families.as_str());
-        self.output.push_str("\"");
+        self.output.push('"');
         write!(
             self.output,
             " font-weight=\"{}\" font-style=\"{}\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"",
@@ -2852,7 +2852,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if let Some(language) = run.language.as_deref() {
             self.output.push_str(" xml:lang=\"");
             escape_attr_into(&mut self.output, language);
-            self.output.push_str("\"");
+            self.output.push('"');
         }
         if let SvgStructureBody::Gantt(body) = self.svg_body
             && self
@@ -3649,7 +3649,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn write_path_style(&mut self, style: &PathStyle) -> Result<()> {
         self.output.push_str(" fill-rule=\"");
         self.output.push_str(fill_rule_name(style.fill_rule));
-        self.output.push_str("\"");
+        self.output.push('"');
         self.write_fill_stroke_style(style)
     }
 
@@ -3679,7 +3679,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     write!(self.output, "{}", fmt(*value))
                         .map_err(|_| invalid("failed to write stroke dash"))?;
                 }
-                self.output.push_str("\"");
+                self.output.push('"');
             }
             if stroke.dash_offset != 0.0 {
                 write!(
@@ -3778,10 +3778,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             families.push_str("\",");
         }
         for (index, family) in font.families.iter().enumerate() {
-            if index > 0 || !families.is_empty() {
-                if !families.ends_with(',') {
-                    families.push(',');
-                }
+            if (index > 0 || !families.is_empty()) && !families.ends_with(',') {
+                families.push(',');
             }
             families.push_str(family);
         }
