@@ -367,11 +367,12 @@ pub enum ThemeRouteCutoverProjection {
     JourneyTaskFill = 35,
     KanbanTaskStroke = 36,
     JourneyTaskStroke = 37,
+    TreeViewMarkerPaint = 38,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 38] = [
+    const ALL: [Self; 39] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -410,6 +411,7 @@ impl ThemeRouteCutoverProjection {
         Self::JourneyTaskFill,
         Self::KanbanTaskStroke,
         Self::JourneyTaskStroke,
+        Self::TreeViewMarkerPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -452,6 +454,7 @@ impl ThemeRouteCutoverProjection {
             Self::JourneyTaskFill => "task.fill",
             Self::KanbanTaskStroke => "task.default.stroke",
             Self::JourneyTaskStroke => "task.stroke",
+            Self::TreeViewMarkerPaint => "marker.paint",
         }
     }
 
@@ -496,6 +499,7 @@ impl ThemeRouteCutoverProjection {
             | Self::KanbanTaskStroke
             | Self::JourneyTaskFill
             | Self::JourneyTaskStroke => ThemeRouteCutoverProjectionAction::Replace,
+            Self::TreeViewMarkerPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -607,6 +611,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::JourneyTaskStroke);
     pub const REPLACE_KANBAN_TASK_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::KanbanTaskStroke);
+    pub const REPLACE_TREE_VIEW_MARKER_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -701,7 +707,12 @@ impl ThemeRouteCutoverDescriptor {
     /// fill route is therefore observed in the emitted stroke channel during native raster
     /// admission, while its semantic facet remains `Fill` in the route identity and evidence.
     pub fn raster_paint_facet(self) -> ThemeRouteCutoverFacet {
-        if self.family_id() == DiagramFamilyId::SEQUENCE
+        if self.family_id() == DiagramFamilyId::TREE_VIEW && self.target() == ThemeTarget::Marker {
+            // Tree View exposes both semantic Marker facets through the icon's `currentColor`
+            // fill terminal. The raster proof must inspect the emitted fill channel for either
+            // route instead of pretending that an SVG stroke exists.
+            ThemeRouteCutoverFacet::Fill
+        } else if self.family_id() == DiagramFamilyId::SEQUENCE
             && self.target() == ThemeTarget::Message
             && matches!(self.facet(), ThemeRouteCutoverFacet::Fill)
         {
@@ -1056,6 +1067,27 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_marker_paint_is_observed_in_the_native_fill_channel() {
+        for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+            let descriptor = ThemeRouteCutoverDescriptor::new(
+                ThemeRouteCutoverId::new(
+                    DiagramFamilyId::TREE_VIEW,
+                    ThemeTarget::Marker,
+                    ThemeRouteCutoverSelector::StaticUnqualified,
+                    facet,
+                    ThemeRouteCutoverValue::Solid,
+                ),
+                ThemeRouteCutoverProjectionSet::REPLACE_TREE_VIEW_MARKER_PAINT,
+            );
+
+            assert_eq!(
+                descriptor.raster_paint_facet(),
+                ThemeRouteCutoverFacet::Fill
+            );
+        }
+    }
+
+    #[test]
     fn sequence_lifeline_paint_projection_is_one_exact_replacement() {
         let projection = ThemeRouteCutoverProjection::LifelineStroke;
         let projections = ThemeRouteCutoverProjectionSet::REPLACE_LIFELINE_STROKE
@@ -1136,10 +1168,11 @@ mod tests {
     }
 
     #[test]
-    fn journey_projection_discriminants_keep_the_existing_private_slot() {
+    fn appended_projection_discriminants_keep_existing_private_slots() {
         assert_eq!(ThemeRouteCutoverProjection::JourneyTaskFill as u8, 35);
         assert_eq!(ThemeRouteCutoverProjection::KanbanTaskStroke as u8, 36);
         assert_eq!(ThemeRouteCutoverProjection::JourneyTaskStroke as u8, 37);
+        assert_eq!(ThemeRouteCutoverProjection::TreeViewMarkerPaint as u8, 38);
     }
 
     #[test]

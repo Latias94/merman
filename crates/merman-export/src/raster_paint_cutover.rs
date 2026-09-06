@@ -1756,7 +1756,9 @@ fn approximately_equal(left: f64, right: f64) -> bool {
 }
 
 fn semantic_paint_binding_from_id(id: &str) -> Option<RasterPaintSemanticBinding> {
-    if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX) {
+    if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX) {
+        Some(RasterPaintSemanticBinding::Native)
+    } else if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX) {
         Some(RasterPaintSemanticBinding::FillAndStrokeFromStroke)
     } else if id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_PATH_SUFFIX) {
         Some(RasterPaintSemanticBinding::FillFromStroke)
@@ -2427,6 +2429,28 @@ mod tests {
             let (_, _, receipt) = pair.into_parts();
             assert!(receipt.proves_semantics());
         }
+    }
+
+    #[test]
+    fn renderer_owned_native_marker_scopes_a_current_color_fill_terminal() {
+        let solid = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>.icon{{color:#dc2626}}</style><g id="icon{}" class="icon"><path fill="currentColor" d="M4 4H16V16H4Z"/></g></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX
+        );
+        let transparent = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>.icon{{color:transparent}}</style><g id="icon{}" class="icon"><path fill="currentColor" d="M4 4H16V16H4Z"/></g></svg>"##,
+            merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX
+        );
+
+        let pair = encode_pair(
+            &solid,
+            &transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        )
+        .expect("renderer-owned native marker should scope the currentColor fill terminal");
+        let (_, _, receipt) = pair.into_parts();
+        assert!(receipt.proves_semantics());
     }
 
     #[test]

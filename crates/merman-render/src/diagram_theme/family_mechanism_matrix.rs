@@ -419,6 +419,11 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
         (
+            DiagramFamilyId::TREE_VIEW,
+            ThemeTarget::Marker,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TREE_VIEW_MARKER_PAINT),
+        (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::CLASS,
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Stroke,
@@ -1654,6 +1659,13 @@ pub(super) fn classify_rule_facet(
                 )
             ) | (
                 ThemeTarget::Edge,
+                FamilyThemeRuleFacet::Fill(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                ) | FamilyThemeRuleFacet::Stroke(
+                    FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+                )
+            ) | (
+                ThemeTarget::Marker,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 ) | FamilyThemeRuleFacet::Stroke(
@@ -3863,11 +3875,19 @@ mod tests {
             ),
             (
                 ThemeTarget::Edge,
-                ThemeStylePatch::default().with_fill(fill),
+                ThemeStylePatch::default().with_fill(fill.clone()),
             ),
             (
                 ThemeTarget::Edge,
-                ThemeStylePatch::default().with_stroke(stroke),
+                ThemeStylePatch::default().with_stroke(stroke.clone()),
+            ),
+            (
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            ),
+            (
+                ThemeTarget::Marker,
+                ThemeStylePatch::default().with_stroke(stroke.clone()),
             ),
         ] {
             let unqualified = compile_rule_routes(
@@ -3893,6 +3913,33 @@ mod tests {
                 FamilyThemeDisposition::TypedAdapter,
                 "target={target:?}"
             );
+        }
+    }
+
+    #[test]
+    fn tree_view_marker_qualified_scalar_paints_remain_unsupported() {
+        for style in [
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View fill")),
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#654321").expect("valid Tree View stroke")),
+        ] {
+            for variant in ThemeVariant::ALL {
+                if *variant == ThemeVariant::Default {
+                    continue;
+                }
+                let routes = compile_rule_routes(
+                    DiagramFamilyId::TREE_VIEW,
+                    0,
+                    &ThemeRule::new(ThemeTarget::Marker, style.clone()).with_variant(*variant),
+                );
+                assert_eq!(routes.len(), 1, "variant={variant:?}");
+                assert_eq!(
+                    routes[0].disposition(),
+                    FamilyThemeDisposition::Unsupported,
+                    "variant={variant:?}"
+                );
+            }
         }
     }
 
@@ -5662,6 +5709,34 @@ mod tests {
             ),
             (
                 DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Marker,
+                Fill,
+                Transparent,
+                vec!["marker.paint"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Marker,
+                Fill,
+                Solid,
+                vec!["marker.paint"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Marker,
+                Stroke,
+                Transparent,
+                vec!["marker.paint"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
+                ThemeTarget::Marker,
+                Stroke,
+                Solid,
+                vec!["marker.paint"],
+            ),
+            (
+                DiagramFamilyId::TREE_VIEW,
                 ThemeTarget::Text,
                 Fill,
                 Transparent,
@@ -5741,7 +5816,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 124);
+        assert_eq!(qualified.len(), 128);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -5842,6 +5917,16 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
             6
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| {
+                    route.family_id() == DiagramFamilyId::TREE_VIEW
+                        && route.target() == ThemeTarget::Marker
+                })
+                .count(),
+            4
         );
 
         for route in qualified {
@@ -5983,6 +6068,14 @@ mod tests {
                     _ => panic!("unexpected Railroad qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::TREE_VIEW
+                && route.target() == ThemeTarget::Marker
+            {
+                assert_eq!(
+                    projections,
+                    vec![ThemeRouteCutoverProjection::TreeViewMarkerPaint],
+                    "route={route:?}"
+                );
             }
         }
     }

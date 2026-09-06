@@ -11,19 +11,19 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 44;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 45;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x99, 0x5b, 0xb3, 0x4b, 0xfc, 0x18, 0xfe, 0xb6, 0x39, 0x6c, 0x43, 0xab, 0x14, 0x69, 0xfa, 0x42,
-    0xd8, 0x40, 0xce, 0xd4, 0x6d, 0x2d, 0x9e, 0xbb, 0xe2, 0xe7, 0xb2, 0xcd, 0x24, 0x98, 0xf8, 0x8b,
+    0xde, 0x4a, 0xbc, 0x3e, 0x97, 0x15, 0xaa, 0xe2, 0xa7, 0x08, 0x27, 0x67, 0xd6, 0x3f, 0x45, 0x53,
+    0x79, 0x9b, 0x5e, 0xc5, 0xaf, 0x4b, 0x0e, 0x7e, 0x61, 0x4c, 0x6f, 0xac, 0xf1, 0xc0, 0xdb, 0x9a,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 38] = [
+); 39] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -176,6 +176,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::JourneyTaskStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::TreeViewMarkerPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -315,6 +319,8 @@ const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskStroke];
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::KanbanTaskStroke];
+const TREE_VIEW_MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -329,7 +335,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 254] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 262] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -2157,6 +2163,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 254] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREE_VIEW,
+        ThemeTarget::Marker,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREE_VIEW,
@@ -2538,8 +2604,8 @@ mod tests {
         GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, NODE_FILL_PROJECTIONS,
         NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS,
         PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone,
-        TEXT_FILL_PROJECTIONS, TITLE_FILL_PROJECTIONS, authorize_cutover_routes,
-        reconcile_manifest, validate_projection_actions,
+        TEXT_FILL_PROJECTIONS, TITLE_FILL_PROJECTIONS, TREE_VIEW_MARKER_PAINT_PROJECTIONS,
+        authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -2936,7 +3002,7 @@ mod tests {
                         == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
             })
             .collect::<Vec<_>>();
-        assert_eq!(tree_view_default.len(), 8);
+        assert_eq!(tree_view_default.len(), 12);
         assert!(tree_view_default.iter().all(|route| {
             route.projections
                 == match (route.id.target(), route.id.facet()) {
@@ -2947,6 +3013,10 @@ mod tests {
                     (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill)
                     | (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
                         NODE_LABEL_FILL_PROJECTIONS
+                    }
+                    (ThemeTarget::Marker, ThemeRouteCutoverFacet::Fill)
+                    | (ThemeTarget::Marker, ThemeRouteCutoverFacet::Stroke) => {
+                        TREE_VIEW_MARKER_PAINT_PROJECTIONS
                     }
                     _ => return false,
                 }
@@ -2959,7 +3029,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 44);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 45);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

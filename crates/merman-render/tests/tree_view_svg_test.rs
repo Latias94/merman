@@ -895,6 +895,114 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
 }
 
 #[test]
+fn tree_view_typed_marker_paint_reaches_icon_terminal_and_portable_evidence() {
+    let source = "treeView-beta\nRoot icon(folder)\n";
+    let cases = [
+        (false, None, "#123456"),
+        (true, None, "#234567"),
+        (false, Some(ThemeVariant::Default), "#345678"),
+        (true, Some(ThemeVariant::Default), "#456789"),
+    ];
+
+    for (stroke, variant, expected_color) in cases {
+        let paint = CanvasPaint::solid(expected_color).expect("valid Tree View marker paint");
+        let style = if stroke {
+            ThemeStylePatch::default().with_stroke(paint)
+        } else {
+            ThemeStylePatch::default().with_fill(paint)
+        };
+        let mut rule =
+            ThemeRule::new(ThemeTarget::Marker, style).for_family(DiagramFamilyId::TREE_VIEW);
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            source,
+            &tree_view_rules_theme([rule]),
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-view-typed-marker-paint",
+        )
+        .unwrap_or_else(|error| {
+            panic!(
+                "typed Tree View Marker.{channel} {variant:?} route must be portable: {error}",
+                channel = if stroke { "stroke" } else { "fill" },
+                variant = variant,
+            )
+        });
+
+        let document =
+            roxmltree::Document::parse(rendered.svg()).expect("valid typed Tree View marker SVG");
+        let stylesheet = tree_view_stylesheet(rendered.svg());
+        assert!(
+            tree_view_css_rule(&stylesheet, ".treeView-node-icon")
+                .contains(&format!("color: {expected_color};")),
+            "typed Tree View Marker.{channel} {variant:?} did not reach icon CSS: {stylesheet}",
+            channel = if stroke { "stroke" } else { "fill" },
+            variant = variant,
+        );
+        let icon_group = tree_view_icon_group_for_label(&document, "Root");
+        let icon_path = icon_group
+            .descendants()
+            .find(|node| node.has_tag_name("path"))
+            .expect("built-in Tree View icon path");
+        assert_eq!(
+            icon_path.attribute("fill"),
+            Some("currentColor"),
+            "typed marker paint must be consumed through the icon currentColor terminal"
+        );
+        drop(document);
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.accounted_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.applied_count(), 1, "variant={variant:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "variant={variant:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "variant={variant:?}");
+        assert_eq!(
+            evidence.compatibility_residual_count(),
+            0,
+            "variant={variant:?}"
+        );
+        assert_eq!(
+            evidence.mermaid_compatibility_residual_count(),
+            0,
+            "variant={variant:?}"
+        );
+    }
+}
+
+#[test]
+fn tree_view_typed_marker_paint_is_not_applicable_without_icon_terminals() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint")),
+    )]);
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nRoot\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &RenderEnvironment::deterministic(),
+        "tree-view-typed-marker-no-icon",
+    )
+    .expect("marker paint without icon terminals is not applicable");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
 fn tree_view_edge_width_rejects_qualified_ordinal_and_mixed_rules() {
     let source = "treeView-beta\nRoot/\n    Child\n";
     let width_style = tree_view_edge_width_style(Specified::Value(6.0));

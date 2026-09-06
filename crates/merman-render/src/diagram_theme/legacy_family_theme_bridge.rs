@@ -198,9 +198,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Mindmap => {
             compile_mindmap_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::TreeView => {
-            compile_tree_view_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::GitGraph => {
             compile_gitgraph_family(&mut builder, &reader)?;
         }
@@ -242,7 +239,6 @@ fn compile_selected_family(
 enum LegacyFamilyDispatch {
     Node,
     Mindmap,
-    TreeView,
     GitGraph,
     Sequence,
     Task,
@@ -545,7 +541,6 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
         DiagramFamilyId::MINDMAP => LegacyFamilyDispatch::Mindmap,
-        DiagramFamilyId::TREE_VIEW => LegacyFamilyDispatch::TreeView,
         DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
         DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
@@ -565,6 +560,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
+        | DiagramFamilyId::TREE_VIEW
         | DiagramFamilyId::PIE
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::WARDLEY
@@ -775,45 +771,6 @@ fn compile_mindmap_family(
         ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
         [("nodeBorder", reader.stroke(ThemeTarget::Node))],
     );
-    contributions.finish_into(builder)
-}
-
-/// Projects only Tree View paint routes that still require compatibility.
-///
-/// Unqualified and explicit `Default` label/line paint are owned by the family terminal writer and
-/// are suppressed by the matrix-aware reader. Marker paint still retains its historical nested
-/// Mermaid variable until that terminal cutover is authorized.
-fn compile_tree_view_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_typography(reader);
-
-    let mut add_tree_view_color =
-        |mapping: &'static str, key: &'static str, value: Option<String>| {
-            let Some(value) = value else {
-                return;
-            };
-            let tree_view = Map::from_iter([(key.to_string(), Value::String(value))]);
-            let variables = Map::from_iter([("treeView".to_string(), Value::Object(tree_view))]);
-            contributions.add_root_object(mapping, "themeVariables", variables);
-        };
-    add_tree_view_color(
-        ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
-        "labelColor",
-        reader.text_fill(ThemeTarget::NodeLabel),
-    );
-    add_tree_view_color(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        "lineColor",
-        reader.stroke_or_fill(ThemeTarget::Edge),
-    );
-
-    let marker = reader.marker_paint_contribution();
-    add_tree_view_color(marker.contribution_id, "iconColor", marker.value);
-
     contributions.finish_into(builder)
 }
 
@@ -1920,7 +1877,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_view_bridge_keeps_only_explicit_marker_paint() {
+    fn tree_view_no_legacy_dispatch_retires_explicit_marker_paint() {
         let source = "treeView-beta\nroot\n  child\n";
         let label = "#123456";
         let line = "#654321";
@@ -1966,11 +1923,12 @@ mod tests {
             Some(line),
             "the retired line projection must not be recreated"
         );
-        assert_eq!(
+        assert_ne!(
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.iconColor"),
-            Some(icon)
+            Some(icon),
+            "typed Tree View Marker.stroke must not be projected into the compatibility config"
         );
 
         let evidence = theme_parse_evidence(&parsed);
@@ -1980,20 +1938,17 @@ mod tests {
                 .iter()
                 .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.treeView.iconColor"])
+            BTreeSet::new()
         );
-        assert_eq!(
-            contributions
-                .iter()
-                .find_map(|contribution| contribution
-                    .surviving_assignment_value("themeVariables.treeView.iconColor"))
-                .and_then(Value::as_str),
-            Some(icon)
-        );
+        assert!(contributions.iter().all(|contribution| {
+            contribution
+                .surviving_assignment_value("themeVariables.treeView.iconColor")
+                .is_none()
+        }));
     }
 
     #[test]
-    fn tree_view_bridge_does_not_project_typed_default_label_or_line_and_keeps_marker() {
+    fn tree_view_no_legacy_dispatch_does_not_project_typed_default_paint() {
         let source = "treeView-beta\nroot\n  child\n";
         let label = "#123456";
         let line = "#654321";
@@ -2073,11 +2028,12 @@ mod tests {
             Some(edge_fill),
             "typed Default Edge.fill must not be projected"
         );
-        assert_eq!(
+        assert_ne!(
             parsed
                 .effective_config
                 .get_str("themeVariables.treeView.iconColor"),
-            Some(icon)
+            Some(icon),
+            "typed Tree View Marker.stroke must not be projected"
         );
         let evidence = theme_parse_evidence(&parsed);
         let contributions = evidence.fallback_contributions().collect::<Vec<_>>();
@@ -2086,7 +2042,7 @@ mod tests {
                 .iter()
                 .flat_map(|contribution| contribution.surviving_assignment_paths())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.treeView.iconColor"])
+            BTreeSet::new()
         );
     }
 
@@ -2509,6 +2465,7 @@ mod tests {
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
+                DiagramFamilyId::TREE_VIEW,
                 DiagramFamilyId::ARCHITECTURE,
                 DiagramFamilyId::CYNEFIN,
                 DiagramFamilyId::WARDLEY,
@@ -2523,26 +2480,26 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x86, 0xec, 0xfd, 0xfa, 0xf4, 0xd3, 0x66, 0xb5, 0x9b, 0x38, 0x36, 0x25, 0x0b, 0xd2,
-            0x6d, 0x45, 0x2b, 0x3d, 0x2b, 0x13, 0xff, 0x58, 0x26, 0xca, 0x5e, 0x94, 0x41, 0xea,
-            0x1a, 0x6e, 0x2d, 0xec,
+            0xf1, 0x75, 0x69, 0x7f, 0x10, 0x98, 0x3b, 0x41, 0x7d, 0x80, 0x7d, 0x7e, 0x7b, 0xe5,
+            0xad, 0xac, 0x58, 0xff, 0x0a, 0x6f, 0xaf, 0x34, 0x1e, 0x0b, 0xf6, 0x4b, 0x3a, 0xe4,
+            0xcc, 0x94, 0x60, 0x7b,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0x53, 0x8b, 0xdb, 0xf5, 0x9e, 0x50, 0x01, 0xae, 0xc6, 0x9a, 0xd0, 0xef, 0x20, 0x17,
-            0x25, 0x97, 0x7c, 0xf6, 0x91, 0xc8, 0xe4, 0xea, 0xff, 0xc8, 0xda, 0x56, 0xf1, 0x7e,
-            0xbc, 0x09, 0x3d, 0xbc,
+            0x17, 0x7e, 0x46, 0xa3, 0x87, 0x88, 0x4d, 0xc4, 0x52, 0x03, 0x4e, 0x26, 0xa2, 0x95,
+            0x16, 0x62, 0xb0, 0xd1, 0xf9, 0x0a, 0x29, 0x11, 0x6f, 0xfa, 0x03, 0xf9, 0x21, 0xbf,
+            0x57, 0x56, 0x88, 0x3a,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x71, 0x4c, 0x29, 0xe9, 0xc5, 0x6c, 0x18, 0x3f, 0x3e, 0x7e, 0x34, 0xe0, 0x19, 0x8e,
-            0x32, 0xb8, 0xd4, 0xf9, 0x7a, 0x68, 0x2c, 0x18, 0xf0, 0x00, 0xcb, 0x78, 0x87, 0x92,
-            0x01, 0x43, 0xc1, 0x39,
+            0x5c, 0x03, 0x09, 0x50, 0x99, 0xa2, 0x53, 0x7a, 0xc2, 0x89, 0x6d, 0x89, 0x0d, 0x40,
+            0x8f, 0xb2, 0x38, 0x3e, 0x65, 0xd8, 0xcd, 0xc2, 0x75, 0x38, 0x04, 0xb0, 0x90, 0xc3,
+            0x3c, 0x9b, 0xa9, 0xc7,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 306);
-        assert_eq!(status.matrix_family_count(), 20);
-        assert_eq!(status.dispatched_family_count(), 20);
+        assert_eq!(status.matrix_route_count(), 298);
+        assert_eq!(status.matrix_family_count(), 19);
+        assert_eq!(status.dispatched_family_count(), 19);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
         assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
         assert_eq!(

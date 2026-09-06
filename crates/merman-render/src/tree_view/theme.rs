@@ -503,9 +503,9 @@ impl TreeViewThemePlan {
                 }
             }
             if let Some(assignment) = &self.icon_color {
-                if receipt.expected_icon_count > 0
-                    && receipt.icon_color_matches(assignment.paint.css())
-                {
+                if receipt.expected_icon_count == 0 {
+                    evidence.mark_not_applicable(assignment.key.clone());
+                } else if receipt.icon_color_matches(assignment.paint.css()) {
                     evidence.mark_applied_with_capabilities(
                         assignment.key.clone(),
                         [assignment.paint.capability(), ThemeCapability::SolidPaint],

@@ -224,7 +224,9 @@ fn push_tree_view_node(
         )?;
         let _ = write!(
             out,
-            r#"<g class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
+            r#"<g id="treeView-icon-{}{}" class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
+            node.id,
+            crate::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX,
             fmt(node.x + context.layout.padding_x),
             fmt(node.y + context.layout.padding_y),
             icon_svg
