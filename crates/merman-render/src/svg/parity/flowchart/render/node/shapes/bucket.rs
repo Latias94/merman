@@ -131,7 +131,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bucket(
         fmt(top_y),
         fmt(w / 2.0),
         fmt(rim_ry),
-        escape_attr(common.stroke_color),
+        escape_attr(ctx.node_border_color.as_str()),
     );
     out.push_str("</g>");
 

@@ -90,7 +90,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_console(
         r#"<text x="{}" y="{}" class="console-glyph" style="font-family:monospace;font-weight:bold;font-size:14px;fill:{}">{}</text>"#,
         fmt(-w / 2.0 + 12.0),
         fmt(top + 16.0),
-        escape_attr(common.stroke_color),
+        escape_attr(ctx.node_border_color.as_str()),
         escape_xml_display(">_"),
     );
     out.push_str("</g>");

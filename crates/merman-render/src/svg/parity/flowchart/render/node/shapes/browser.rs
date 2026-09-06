@@ -30,7 +30,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_browser(
     let h = (metrics.height + 2.0 * p + bar_height).max(common.layout_node.height.max(0.0));
     let top = -h / 2.0;
     let body_path = path_from_points(&rounded_rect_points(-w / 2.0, top, w, h, radius));
-    let accent = common.stroke_color;
+    // Mermaid's browser chrome is theme-owned decoration. A node-local stroke only
+    // paints the outer body and must not recolor the toolbar or address bar.
+    let accent = ctx.node_border_color.as_str();
 
     if common.look_is_hand_drawn() {
         let _ = write!(

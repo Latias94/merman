@@ -3536,6 +3536,72 @@ C --> D@{ shape: browser, label: "browser" }
 }
 
 #[test]
+fn flowchart_object_shape_decorations_keep_theme_border_when_node_stroke_is_overridden() {
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"themeVariables": {"nodeBorder": "#00ff00"}}}%%
+flowchart TB
+A@{ shape: bucket, label: "bucket" } --> B@{ shape: console, label: "console" }
+B --> C@{ shape: browser, label: "browser" }
+style A stroke:#ff0000
+style B stroke:#ff0000
+style C stroke:#ff0000
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed object-shape SVG");
+    let node = |id: &str| {
+        document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element.attribute("data-id") == Some(id)
+                    && element.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("rendered node {id}: {svg}"))
+    };
+
+    let bucket = node("A");
+    let bucket_rim = bucket
+        .descendants()
+        .find(|element| element.has_tag_name("ellipse"))
+        .expect("bucket rim");
+    assert_eq!(
+        bucket_rim.attribute("style"),
+        Some("fill:none;stroke:#00ff00;stroke-width:1px")
+    );
+
+    let console = node("B");
+    let console_glyph = console
+        .descendants()
+        .find(|element| element.attribute("class") == Some("console-glyph"))
+        .expect("console glyph");
+    assert_eq!(
+        console_glyph.attribute("style"),
+        Some("font-family:monospace;font-weight:bold;font-size:14px;fill:#00ff00")
+    );
+
+    let browser = node("C");
+    let browser_accent = browser
+        .descendants()
+        .find(|element| element.has_tag_name("line"))
+        .expect("browser toolbar line");
+    assert_eq!(
+        browser_accent.attribute("style"),
+        Some("stroke:#00ff00;stroke-width:1px")
+    );
+    let address_bar = browser
+        .descendants()
+        .find(|element| element.attribute("class") == Some("browser-address-bar"))
+        .expect("browser address bar");
+    assert!(
+        address_bar
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:#00ff00")),
+        "browser address bar must keep the theme border: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_hand_drawn_triangle_uses_rough_fill_and_is_deterministic() {
     let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 1}}%%
 flowchart TB
