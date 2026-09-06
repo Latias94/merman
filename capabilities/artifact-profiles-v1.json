@@ -718,7 +718,7 @@
     },
     {
       "id": "rust-render-native-svg",
-      "description": "Native SVG renderer build with explicit layout, math, and system adapters.",
+      "description": "Native SVG and DrawingList renderer build with explicit layout, math, and system adapters.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-render",
@@ -739,14 +739,14 @@
       },
       "expected": {
         "capabilities": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "drawing-list", "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
+          "drawing-list", "layout-cytoscape", "layout-elk", "math", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
-        "outputs": ["svg"]
+        "outputs": ["drawing-list", "svg"]
       }
     },
     {
