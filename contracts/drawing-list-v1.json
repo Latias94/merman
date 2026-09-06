@@ -256,13 +256,19 @@
         }
       }
     },
+    "base64_data": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+      "contentEncoding": "base64"
+    },
     "encoded_asset": {
       "type": "object",
       "required": ["media_type", "data"],
       "additionalProperties": false,
       "properties": {
         "media_type": { "type": "string", "minLength": 1 },
-        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+        "data": { "$ref": "#/$defs/base64_data" }
       }
     },
     "image_media_type": {
@@ -281,7 +287,7 @@
       "additionalProperties": false,
       "properties": {
         "media_type": { "$ref": "#/$defs/image_media_type" },
-        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+        "data": { "$ref": "#/$defs/base64_data" }
       }
     },
     "font_asset": {
@@ -290,7 +296,7 @@
       "additionalProperties": false,
       "properties": {
         "media_type": { "$ref": "#/$defs/font_media_type" },
-        "data": { "type": "string", "minLength": 1, "contentEncoding": "base64" }
+        "data": { "$ref": "#/$defs/base64_data" }
       }
     },
     "image_resource": {
@@ -304,8 +310,8 @@
           "$ref": "#/$defs/image_asset",
           "$comment": "The media_type main type/subtype is validated by the runtime protocol validator; parameters and ASCII case are handled there."
         },
-        "pixel_width": { "type": "integer", "minimum": 1 },
-        "pixel_height": { "type": "integer", "minimum": 1 },
+        "pixel_width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "pixel_height": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "has_alpha": { "type": "boolean" }
       }
     },
@@ -427,7 +433,7 @@
       "required": ["glyph_id", "origin", "advance"],
       "additionalProperties": false,
       "properties": {
-        "glyph_id": { "type": "integer", "minimum": 0 },
+        "glyph_id": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
         "origin": { "$ref": "#/$defs/point" },
         "advance": { "$ref": "#/$defs/point" }
       }
@@ -750,8 +756,8 @@
         "id": { "type": "string", "minLength": 1 },
         "image": { "$ref": "#/$defs/resource_id" },
         "bounds": { "$ref": "#/$defs/rect" },
-        "pixel_width": { "type": "integer", "minimum": 1 },
-        "pixel_height": { "type": "integer", "minimum": 1 },
+        "pixel_width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "pixel_height": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "scale": { "type": "number", "exclusiveMinimum": 0 },
         "format": { "enum": ["png", "jpeg", "webp", "avif"] },
         "alpha": { "enum": ["opaque", "straight", "premultiplied"] },

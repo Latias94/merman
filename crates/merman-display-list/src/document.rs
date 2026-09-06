@@ -973,8 +973,61 @@ impl Serialize for CanonicalDocument<'_> {
         state.serialize_field("commands", &self.document.commands)?;
         state.serialize_field("semantics", &self.semantics)?;
         state.serialize_field("fallbacks", &self.fallbacks)?;
-        state.serialize_field("extensions", &self.document.extensions)?;
+        state.serialize_field(
+            "extensions",
+            &CanonicalJsonValue::Object(&self.document.extensions),
+        )?;
         state.end()
+    }
+}
+
+/// Borrowed recursive JSON view used for canonical extension serialization.
+///
+/// `DrawingListDocument::extensions` is keyed by a `BTreeMap`, but nested JSON values can use an
+/// insertion-ordered object map when the `serde_json` preserve-order feature is enabled.  Sorting
+/// every object level here keeps canonical bytes independent of parser or producer insertion
+/// order without cloning extension payloads.
+enum CanonicalJsonValue<'a> {
+    Value(&'a Value),
+    Object(&'a BTreeMap<String, Value>),
+}
+
+impl Serialize for CanonicalJsonValue<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::{SerializeMap, SerializeSeq};
+
+        match self {
+            Self::Object(object) => {
+                let mut map = serializer.serialize_map(Some(object.len()))?;
+                for (key, value) in object.iter() {
+                    map.serialize_entry(key, &CanonicalJsonValue::Value(value))?;
+                }
+                map.end()
+            }
+            Self::Value(Value::Null) => serializer.serialize_none(),
+            Self::Value(Value::Bool(value)) => serializer.serialize_bool(*value),
+            Self::Value(Value::Number(value)) => value.serialize(serializer),
+            Self::Value(Value::String(value)) => serializer.serialize_str(value),
+            Self::Value(Value::Array(values)) => {
+                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
+                for value in values {
+                    sequence.serialize_element(&CanonicalJsonValue::Value(value))?;
+                }
+                sequence.end()
+            }
+            Self::Value(Value::Object(object)) => {
+                let mut entries = object.iter().collect::<Vec<_>>();
+                entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+                let mut map = serializer.serialize_map(Some(entries.len()))?;
+                for (key, value) in entries {
+                    map.serialize_entry(key, &CanonicalJsonValue::Value(value))?;
+                }
+                map.end()
+            }
+        }
     }
 }
 

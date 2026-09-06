@@ -2,7 +2,7 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::DrawingListDocument;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 #[test]
 fn canonical_json_round_trips_and_uses_a_stable_resource_order() {
@@ -22,6 +22,26 @@ fn canonical_json_round_trips_and_uses_a_stable_resource_order() {
         differently_inserted.canonical_json_bytes().unwrap(),
         canonical,
         "resource insertion order is not wire-significant"
+    );
+}
+
+#[test]
+fn canonical_json_sorts_nested_extension_objects() {
+    let mut document = sample_document();
+    let mut nested = Map::new();
+    nested.insert("z-last".to_string(), json!(1));
+    nested.insert("a-first".to_string(), json!(2));
+    document
+        .extensions
+        .insert("x-nested-order".to_string(), Value::Object(nested));
+
+    let bytes = document
+        .canonical_json_bytes()
+        .expect("nested extension document serializes");
+    let json = String::from_utf8(bytes).expect("canonical JSON is UTF-8");
+    assert!(
+        json.find("\"a-first\"") < json.find("\"z-last\""),
+        "nested extension keys must be emitted in canonical order: {json}"
     );
 }
 
@@ -98,4 +118,34 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         .expect("extended fixture has a font");
     font["font"]["media_type"] = json!("FONT/WoFf2; charset=binary");
     assert!(validator.is_valid(&uppercase_font));
+
+    let mut invalid_u32 = serde_json::to_value(extended_document()).expect("fixture serializes");
+    let image = invalid_u32["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "image")
+        .expect("extended fixture has an image");
+    image["pixel_width"] = json!(4_294_967_296u64);
+    assert!(!validator.is_valid(&invalid_u32));
+
+    let mut invalid_glyph = serde_json::to_value(extended_document()).expect("fixture serializes");
+    invalid_glyph["commands"]
+        .as_array_mut()
+        .expect("commands are an array")
+        .iter_mut()
+        .find_map(|command| command.get_mut("run"))
+        .expect("extended fixture has text")["obligation"]["glyphs"][0]["glyph_id"] =
+        json!(4_294_967_296u64);
+    assert!(!validator.is_valid(&invalid_glyph));
+
+    let mut invalid_base64 = serde_json::to_value(extended_document()).expect("fixture serializes");
+    let image = invalid_base64["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "image")
+        .expect("extended fixture has an image");
+    image["image"]["data"] = json!("not-base64!");
+    assert!(!validator.is_valid(&invalid_base64));
 }
