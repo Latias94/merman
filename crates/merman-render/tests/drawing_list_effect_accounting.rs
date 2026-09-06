@@ -85,6 +85,7 @@ struct EffectCoverageRow {
     family: String,
     source: String,
     assertion: EffectAssertion,
+    expected_effects: Vec<String>,
     expected_error: Option<String>,
     evidence: String,
 }
@@ -100,13 +101,6 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
         .map(merman_render::family::RenderFamilyKind::as_str)
         .collect::<BTreeSet<_>>();
     let mut effect_ids = BTreeSet::new();
-    let declared_effects = matrix
-        .effects
-        .iter()
-        .map(|row| row.assertion.protocol_kind())
-        .collect::<BTreeSet<_>>();
-    let mut observed_effects = BTreeSet::new();
-
     for row in matrix.effects {
         assert!(!row.id.trim().is_empty(), "effect ids must not be empty");
         assert!(
@@ -127,6 +121,17 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
             "{} has no evidence",
             row.id
         );
+        let expected_effects = row
+            .expected_effects
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            expected_effects.len(),
+            row.expected_effects.len(),
+            "{} repeats an expected protocol effect",
+            row.id
+        );
 
         let (family, rendered) = render_drawing_list(&row.source);
         assert_eq!(family, row.family, "{} family fixture drifted", row.id);
@@ -143,7 +148,7 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                         row.id, row.family
                     )
                 });
-                observed_effects.extend(observed_protocol_effects(&document));
+                assert_fixture_effects(&row.id, &row.assertion, &expected_effects, &document);
                 assert_effect_construct(&row.id, row.assertion, &document);
             }
             EffectDisposition::Raster => {
@@ -158,7 +163,7 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                         row.id, row.family
                     )
                 });
-                observed_effects.extend(observed_protocol_effects(&document));
+                assert_fixture_effects(&row.id, &row.assertion, &expected_effects, &document);
                 assert_effect_construct(&row.id, row.assertion, &document);
                 assert!(
                     document
@@ -173,6 +178,11 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
                 assert!(
                     row.expected_error.is_some(),
                     "error effect {} must carry an error expectation",
+                    row.id
+                );
+                assert!(
+                    expected_effects.is_empty(),
+                    "error effect {} cannot declare emitted protocol effects",
                     row.id
                 );
                 let error = rendered.expect_err(&format!(
@@ -197,13 +207,24 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
             }
         }
     }
+}
 
-    for effect in observed_effects {
-        assert!(
-            declared_effects.contains(effect),
-            "observed DrawingList effect {effect:?} has no explicit coverage assertion"
-        );
-    }
+fn assert_fixture_effects(
+    id: &str,
+    assertion: &EffectAssertion,
+    expected_effects: &BTreeSet<&str>,
+    document: &DrawingListDocument,
+) {
+    let asserted_effect = assertion.protocol_kind();
+    assert!(
+        expected_effects.contains(asserted_effect),
+        "{id} does not include its asserted effect {asserted_effect:?} in expected_effects"
+    );
+    assert_eq!(
+        observed_protocol_effects(document),
+        *expected_effects,
+        "{id} must account for every protocol effect emitted by its own fixture"
+    );
 }
 
 fn render_drawing_list(source: &str) -> (String, Result<DrawingListDocument, String>) {

@@ -7,6 +7,7 @@
       "family": "flowchart",
       "source": "flowchart TD\nA[Start] --> B[End]\n",
       "assertion": "path_fill_stroke",
+      "expected_effects": ["expanded_marker", "host_text", "path"],
       "evidence": "DrawingCommand::DrawPath with resolved fill and stroke"
     },
     {
@@ -15,6 +16,7 @@
       "family": "info",
       "source": "info",
       "assertion": "host_text",
+      "expected_effects": ["host_text"],
       "evidence": "DrawingCommand::DrawText with TextObligation::HostText"
     },
     {
@@ -23,6 +25,7 @@
       "family": "sankey",
       "source": "sankey\nSource,Target,10\n",
       "assertion": "linear_gradient",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"],
       "evidence": "DrawingResource::LinearGradient referenced by a link paint"
     },
     {
@@ -31,6 +34,7 @@
       "family": "treemap",
       "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
       "assertion": "clip_path",
+      "expected_effects": ["clip_path", "host_text", "path", "transform"],
       "evidence": "DrawingCommand::ClipPath scopes a section paint"
     },
     {
@@ -39,6 +43,7 @@
       "family": "flowchart",
       "source": "flowchart TD\nA[Start] --> B[End]\nclick A \"https://example.invalid/start\"\n",
       "assertion": "semantic_link",
+      "expected_effects": ["expanded_marker", "host_text", "path", "semantic_link"],
       "evidence": "SemanticAnnotation.link carries a sanitized navigation URI"
     },
     {
@@ -47,6 +52,7 @@
       "family": "cynefin",
       "source": "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
       "assertion": "opacity",
+      "expected_effects": ["host_text", "opacity", "path", "transform"],
       "evidence": "SetOpacity retains translucent domain backgrounds"
     },
     {
@@ -55,6 +61,7 @@
       "family": "sankey",
       "source": "sankey-beta\nA,B,10\n",
       "assertion": "blend_mode",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"],
       "evidence": "SetBlendMode retains the link compositing mode"
     },
     {
@@ -63,6 +70,7 @@
       "family": "quadrantChart",
       "source": "quadrantChart\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
       "assertion": "transform",
+      "expected_effects": ["host_text", "path", "transform"],
       "evidence": "ConcatTransform retains the chart's translated drawing space"
     },
     {
@@ -71,6 +79,7 @@
       "family": "wardley",
       "source": "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
       "assertion": "expanded_marker",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path", "transform"],
       "evidence": "Wardley link and evolution markers are ordinary path resources"
     },
     {
@@ -79,6 +88,7 @@
       "family": "venn",
       "source": "venn-beta\nset A[\"Frontend\"]:20\n  text A1[\"React\"]\n",
       "assertion": "error_message",
+      "expected_effects": [],
       "expected_error": "foreignObject and browser wrapping",
       "evidence": "structured DrawingListUnavailable before a partial document"
     },
@@ -88,6 +98,7 @@
       "family": "treemap",
       "source": "treemap-beta\n\"Engineering\"\n  \"Frontend\": 1:::glow\nclassDef glow fill:#123456,filter:blur(2px);\n",
       "assertion": "error_message",
+      "expected_effects": [],
       "expected_error": "classDef property `filter`",
       "evidence": "structured DrawingListUnavailable instead of dropping a filter"
     },
@@ -97,6 +108,7 @@
       "family": "venn",
       "source": "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
       "assertion": "error_message",
+      "expected_effects": [],
       "expected_error": "RoughJS paths",
       "evidence": "structured DrawingListUnavailable instead of substituting classic geometry"
     },
@@ -106,6 +118,7 @@
       "family": "treeView",
       "source": "treeView-beta\nRoot icon(logos:react)\n",
       "assertion": "error_message",
+      "expected_effects": [],
       "expected_error": "non-builtin icon `logos:react`",
       "evidence": "structured DrawingListUnavailable instead of embedding registry SVG"
     }
