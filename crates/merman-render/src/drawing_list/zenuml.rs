@@ -1599,7 +1599,7 @@ impl<'a> ZenUmlBuilder<'a> {
             TextAnchor::End => origin.x - width,
         };
         let bounds_y = match baseline {
-            TextBaseline::Middle => origin.y - line_height / 2.0,
+            TextBaseline::Middle | TextBaseline::Central => origin.y - line_height / 2.0,
             TextBaseline::Hanging => origin.y,
             _ => origin.y - spec.size,
         };

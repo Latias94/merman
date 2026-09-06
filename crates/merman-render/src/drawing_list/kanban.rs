@@ -748,7 +748,7 @@ impl<'a> KanbanBuilder<'a> {
         };
         let top = match baseline {
             TextBaseline::Alphabetic => origin.y - height,
-            TextBaseline::Middle => origin.y - height / 2.0,
+            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
             TextBaseline::Hanging => origin.y,
             TextBaseline::Ideographic
             | TextBaseline::TextBeforeEdge

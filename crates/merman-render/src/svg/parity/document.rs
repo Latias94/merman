@@ -2120,6 +2120,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_journey_dom_id(path_id.as_str());
         self.write_sidecar_dom_id(path_id.as_str());
         self.write_er_edge_attrs(path_id.as_str());
+        self.write_block_edge_attrs(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -2680,6 +2681,31 @@ impl<'a> DocumentSvgEncoder<'a> {
             escape_attr_into(&mut self.output, marker_id.as_str());
             self.output.push_str(")\"");
         }
+    }
+
+    fn write_block_edge_attrs(&mut self, raw_id: &str) {
+        let SvgStructureBody::Block(body) = self.svg_body else {
+            return;
+        };
+        let Some(metadata) = body.edge_metadata.get(raw_id) else {
+            return;
+        };
+        let data_id = format!("{}-{}", self.diagram_id, metadata.source_id);
+        self.output.push_str(" id=\"");
+        escape_attr_into(
+            &mut self.output,
+            format!("{}-{data_id}", self.diagram_id).as_str(),
+        );
+        self.output.push_str("\" style=\"undefined;;;undefined\"");
+        self.output
+            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"");
+        escape_attr_into(&mut self.output, data_id.as_str());
+        self.output.push_str("\" data-points=\"");
+        let data_points = STANDARD.encode(super::util::json_stringify_points(
+            metadata.points.as_slice(),
+        ));
+        escape_attr_into(&mut self.output, data_points.as_str());
+        self.output.push('"');
     }
 
     fn write_wardley_marker_attributes(&mut self, raw_id: &str) {
@@ -4541,6 +4567,7 @@ fn text_baseline(baseline: TextBaseline) -> &'static str {
         TextBaseline::Hanging => "hanging",
         TextBaseline::Ideographic => "ideographic",
         TextBaseline::Middle => "central",
+        TextBaseline::Central => "central",
         TextBaseline::TextBeforeEdge => "text-before-edge",
         TextBaseline::TextAfterEdge => "text-after-edge",
     }
@@ -4551,6 +4578,7 @@ fn xychart_text_baseline(baseline: TextBaseline) -> &'static str {
         TextBaseline::Alphabetic => "auto",
         TextBaseline::Hanging => "hanging",
         TextBaseline::Middle => "middle",
+        TextBaseline::Central => "central",
         TextBaseline::TextBeforeEdge => "text-before-edge",
         TextBaseline::Ideographic => "ideographic",
         TextBaseline::TextAfterEdge => "text-after-edge",
@@ -4562,6 +4590,7 @@ fn wardley_text_baseline(baseline: TextBaseline) -> &'static str {
         // Wardley's source renderer distinguishes SVG's `middle` from `central`; the latter is
         // a different baseline keyword with subtly different font metrics.
         TextBaseline::Middle => "middle",
+        TextBaseline::Central => "central",
         TextBaseline::Alphabetic => "auto",
         TextBaseline::Hanging => "hanging",
         TextBaseline::Ideographic => "ideographic",

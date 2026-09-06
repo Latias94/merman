@@ -1,3 +1,4 @@
+use base64::Engine as _;
 use merman_core::{
     Engine, OperationControl, ParseOptions, baseline::PINNED_MERMAID_BASELINE_VERSION,
 };
@@ -293,14 +294,32 @@ fn block_canonical_svg_keeps_nodes_routes_styles_and_html_labels() {
         node.attribute("id") == Some("block-parity-B")
             && node.attribute("class") == Some("node default flowchart-label")
     }));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("path")
-            && node.attribute("class").is_some_and(|class| {
-                class
-                    .split_whitespace()
-                    .any(|part| part == "flowchart-link")
-            })
-    }));
+    let route = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|part| part == "flowchart-link")
+                })
+        })
+        .expect("canonical Block SVG keeps the edge route");
+    assert_eq!(route.attribute("data-edge"), Some("true"));
+    assert_eq!(route.attribute("data-et"), Some("edge"));
+    let data_id = route.attribute("data-id").expect("edge data id");
+    assert!(data_id.starts_with("block-parity-"));
+    assert_eq!(
+        route.attribute("id"),
+        Some(format!("block-parity-{data_id}").as_str())
+    );
+    let encoded_points = route.attribute("data-points").expect("edge data points");
+    let decoded_points = base64::engine::general_purpose::STANDARD
+        .decode(encoded_points)
+        .expect("edge data points are Base64");
+    let points: Vec<serde_json::Value> =
+        serde_json::from_slice(decoded_points.as_slice()).expect("edge data points are JSON");
+    assert!(!points.is_empty());
     assert!(document.descendants().any(|node| {
         node.has_tag_name("foreignObject")
             && node
@@ -1366,6 +1385,9 @@ annotation 1,[0.68, 0.62] "Platform boundary"
     }));
     assert!(document.descendants().any(|node| {
         node.has_tag_name("text") && node.attribute("dominant-baseline") == Some("middle")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("dominant-baseline") == Some("central")
     }));
     assert!(!document.descendants().any(|node| {
         node.has_tag_name("path")

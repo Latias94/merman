@@ -1,7 +1,7 @@
 mod common;
 
 use common::{extended_document, sample_document};
-use merman_display_list::DrawingListDocument;
+use merman_display_list::{DrawingCommand, DrawingListDocument, TextBaseline};
 use serde_json::{Map, Value, json};
 
 #[test]
@@ -60,6 +60,16 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         validator.is_valid(&value),
         "published schema rejected runtime document: {value}"
     );
+
+    let mut central_baseline = value.clone();
+    central_baseline["commands"][5]["run"]["baseline"] = json!("central");
+    assert!(validator.is_valid(&central_baseline));
+    let decoded: DrawingListDocument =
+        serde_json::from_value(central_baseline).expect("central baseline decodes");
+    assert!(matches!(
+        &decoded.commands[5],
+        DrawingCommand::DrawText { run } if run.baseline == TextBaseline::Central
+    ));
 
     let mut unknown_command = value.clone();
     unknown_command["commands"][0] = json!({ "kind": "future_visual_command" });

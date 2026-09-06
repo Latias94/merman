@@ -823,7 +823,7 @@ impl<'a> ArchitectureBuilder<'a> {
             TextAnchor::End => origin.x - width,
         };
         let y = match baseline {
-            TextBaseline::Middle => origin.y - height / 2.0,
+            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
             TextBaseline::Hanging => origin.y,
             _ => origin.y - height,
         };

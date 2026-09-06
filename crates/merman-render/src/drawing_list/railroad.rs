@@ -687,7 +687,7 @@ impl<'a> RailroadBuilder<'a> {
         };
         let y = match baseline {
             TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
-            TextBaseline::Middle => origin.y - height / 2.0,
+            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
             TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
                 origin.y - height
             }

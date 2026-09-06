@@ -2316,6 +2316,11 @@ deaccelerator "Legacy Data" [0.45, 0.35]
         merman_display_list::DrawingCommand::DrawText { run }
             if run.text == "Platform Strategy"
     )));
+    assert!(document.commands.iter().any(|command| matches!(
+        command,
+        merman_display_list::DrawingCommand::DrawText { run }
+            if run.baseline == merman_display_list::TextBaseline::Central
+    )));
     assert!(document.semantics.iter().any(|semantic| {
         semantic.role == merman_display_list::SemanticRole::Node
             && semantic.title.as_deref() == Some("API")

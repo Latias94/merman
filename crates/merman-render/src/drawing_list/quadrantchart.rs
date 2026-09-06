@@ -441,7 +441,7 @@ impl<'a> QuadrantChartBuilder<'a> {
         };
         let y = match baseline {
             TextBaseline::Hanging | TextBaseline::TextBeforeEdge => 0.0,
-            TextBaseline::Middle => -height / 2.0,
+            TextBaseline::Middle | TextBaseline::Central => -height / 2.0,
             TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
                 -height
             }

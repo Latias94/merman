@@ -1102,9 +1102,8 @@ fn map_anchor(anchor: WardleyTextAnchor) -> TextAnchor {
 
 fn map_baseline(baseline: Option<WardleyDominantBaseline>) -> TextBaseline {
     match baseline {
-        Some(WardleyDominantBaseline::Middle | WardleyDominantBaseline::Central) => {
-            TextBaseline::Middle
-        }
+        Some(WardleyDominantBaseline::Middle) => TextBaseline::Middle,
+        Some(WardleyDominantBaseline::Central) => TextBaseline::Central,
         Some(WardleyDominantBaseline::Auto) | None => TextBaseline::Alphabetic,
     }
 }

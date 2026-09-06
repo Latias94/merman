@@ -40,7 +40,7 @@ mod zenuml;
 
 use crate::environment::RenderSession;
 use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
-use crate::model::ErrorDiagramLayout;
+use crate::model::{ErrorDiagramLayout, LayoutPoint};
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
@@ -503,6 +503,14 @@ pub(crate) struct BlockSvgBody {
     pub(crate) label_inline_styles: BTreeMap<String, Vec<String>>,
     pub(crate) label_data_ids: BTreeMap<String, String>,
     pub(crate) path_inline_styles: BTreeMap<String, Vec<String>>,
+    pub(crate) edge_metadata: BTreeMap<String, BlockEdgeSvgMetadata>,
+}
+
+/// SVG-only relationship metadata retained for the Block edge path contract.
+#[derive(Debug, Clone)]
+pub(crate) struct BlockEdgeSvgMetadata {
+    pub(crate) source_id: String,
+    pub(crate) points: Vec<LayoutPoint>,
 }
 
 /// SVG-only metadata retained beside the public renderer-neutral Swimlane document.

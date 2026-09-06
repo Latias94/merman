@@ -5,8 +5,8 @@
 //! labels and styles that the v1 contract can represent without dropping visible information.
 
 use super::{
-    BlockSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    theme_color,
+    BlockEdgeSvgMetadata, BlockSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families, theme_color,
 };
 use crate::block::{BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry};
 use crate::config::{
@@ -120,6 +120,7 @@ struct BlockBuilder<'a> {
     label_inline_styles: BTreeMap<String, Vec<String>>,
     label_data_ids: BTreeMap<String, String>,
     path_inline_styles: BTreeMap<String, Vec<String>>,
+    edge_metadata: BTreeMap<String, BlockEdgeSvgMetadata>,
 }
 
 pub(crate) fn build_block_document(
@@ -246,6 +247,7 @@ impl<'a> BlockBuilder<'a> {
             label_inline_styles: BTreeMap::new(),
             label_data_ids: BTreeMap::new(),
             path_inline_styles: BTreeMap::new(),
+            edge_metadata: BTreeMap::new(),
         })
     }
 
@@ -320,6 +322,7 @@ impl<'a> BlockBuilder<'a> {
                     label_inline_styles: std::mem::take(&mut self.label_inline_styles),
                     label_data_ids: std::mem::take(&mut self.label_data_ids),
                     path_inline_styles: std::mem::take(&mut self.path_inline_styles),
+                    edge_metadata: std::mem::take(&mut self.edge_metadata),
                 }),
             },
         })
@@ -581,6 +584,7 @@ impl<'a> BlockBuilder<'a> {
             semantic_id: semantic_id.clone(),
         });
         let mut points = self.edge_points(edge, layout_edge)?;
+        let data_points = points.clone();
         if points.len() >= 2 {
             inset_endpoint(
                 &mut points,
@@ -599,7 +603,13 @@ impl<'a> BlockBuilder<'a> {
             route_id.clone(),
             "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1".to_string(),
         );
-        self.dom_ids.insert(route_id.clone(), edge.id.clone());
+        self.edge_metadata.insert(
+            route_id.clone(),
+            BlockEdgeSvgMetadata {
+                source_id: edge.id.clone(),
+                points: data_points,
+            },
+        );
         self.add_path(
             route_id,
             flowchart_curve_segments(&points, FlowchartCurveKind::Basis, 0.0, false, None),

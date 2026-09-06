@@ -204,6 +204,7 @@ pub enum TextBaseline {
     Hanging,
     Ideographic,
     Middle,
+    Central,
     TextBeforeEdge,
     TextAfterEdge,
 }
