@@ -312,6 +312,10 @@ fn er_rejects_svg_only_effects_instead_of_silently_flattening_them() {
             "per-entity palette semantics",
         ),
         (
+            "%%{init: {\"handDrawnSeed\": 7}}%%\nerDiagram\n  A ||--|| B : owns\n",
+            "explicit handDrawnSeed",
+        ),
+        (
             "erDiagram\n  \"This **is** _Markdown_\"\n",
             "styled Markdown",
         ),

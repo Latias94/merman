@@ -156,6 +156,15 @@ impl<'a> ErBuilder<'a> {
             )));
         }
         if config
+            .get("handDrawnSeed")
+            .and_then(Value::as_f64)
+            .is_some_and(|seed| seed != 0.0)
+        {
+            return Err(unavailable(
+                "ER entity boxes use RoughJS even in classic look, so an explicit handDrawnSeed cannot be represented by DrawingList v1",
+            ));
+        }
+        if config
             .get("theme")
             .and_then(Value::as_str)
             .is_some_and(|theme| matches!(theme, "redux-color" | "redux-dark-color"))
