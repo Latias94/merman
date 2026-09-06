@@ -4811,8 +4811,8 @@ fn safe_media_type(media_type: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{matrix_attr, multiply_transform, path_d};
-    use merman_display_list::{PathSegment, Point, Transform};
+    use super::{matrix_attr, multiply_transform, path_d, wardley_text_baseline};
+    use merman_display_list::{PathSegment, Point, TextBaseline, Transform};
 
     #[test]
     fn path_encoder_preserves_all_protocol_segments() {
@@ -4852,5 +4852,11 @@ mod tests {
         };
         let combined = multiply_transform(translate, scale);
         assert_eq!(matrix_attr(combined), "2 0 0 3 10 20");
+    }
+
+    #[test]
+    fn wardley_svg_preserves_middle_and_central_baselines() {
+        assert_eq!(wardley_text_baseline(TextBaseline::Middle), "middle");
+        assert_eq!(wardley_text_baseline(TextBaseline::Central), "central");
     }
 }

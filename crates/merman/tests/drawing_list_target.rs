@@ -3101,13 +3101,15 @@ fn block_scopes_box_opacity_without_fading_the_label_or_double_charging_paint_al
 }
 
 #[test]
-fn block_preserves_class_opacity_for_shape_and_html_label_cascade() {
+fn block_resolves_shape_and_html_label_class_opacity_in_their_source_orders() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
             r#"block
                 A["Alpha"]
-                classDef faded opacity:0.5
-                class A faded
+                classDef first opacity:0.2
+                classDef second opacity:0.5
+                class A second
+                class A first
             "#,
             OperationControl::new(),
             DrawingListRequest::default(),
@@ -3164,7 +3166,9 @@ fn block_preserves_class_opacity_for_shape_and_html_label_cascade() {
         panic!("Block class opacity should preserve both CSS cascade scopes");
     };
 
-    assert_eq!(*shape_opacity, 0.5);
+    // Mermaid compiles shape styles in the node's assigned-class order, while equal-specificity
+    // class CSS for the HTML label wins in class-definition order.
+    assert_eq!(*shape_opacity, 0.2);
     assert_eq!(*label_opacity, 0.25);
     assert_eq!(run.text, "Alpha");
 }
@@ -3200,6 +3204,31 @@ fn block_inline_background_color_does_not_replace_svg_fill() {
     let baseline = node_fill("block\n  A[\"Alpha\"]\n");
     let with_background = node_fill("block\n  A[\"Alpha\"]\n  style A background-color:#ff0000\n");
     assert_eq!(with_background, baseline);
+}
+
+#[test]
+fn block_class_background_color_is_a_structured_unavailable_effect() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"block
+                A["Alpha"]
+                classDef highlighted background-color:#ff0000
+                class A highlighted
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("an HTML label background must not be silently dropped");
+
+    let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+        family,
+        reason,
+    }) = error
+    else {
+        panic!("expected a structured DrawingList-unavailable error, got {error}");
+    };
+    assert_eq!(family, "block");
+    assert!(reason.contains("HTML label background"), "{reason}");
 }
 
 #[test]

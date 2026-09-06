@@ -436,15 +436,7 @@ impl<'a> TreemapBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Treemap leaf presentation {index}")))?
             .clone();
         let semantic_id = format!("treemap.leaf.{index}");
-        let leaf_index_class = layout
-            .class_selector
-            .as_deref()
-            .filter(|class| !class.trim().is_empty())
-            .map_or_else(
-                || format!("leaf{index}x"),
-                |class| format!("leaf{index} {class}x"),
-            );
-        let leaf_group_class = format!("treemapNode leaf treemapLeafGroup {leaf_index_class}");
+        let leaf_group_class = treemap_leaf_group_class(index, layout.class_selector.as_deref());
         self.semantic_classes
             .insert(semantic_id.clone(), leaf_group_class);
         self.path_classes.insert(
@@ -1175,6 +1167,16 @@ fn translate(x: f64, y: f64) -> Transform {
     }
 }
 
+fn treemap_leaf_group_class(index: usize, class_selector: Option<&str>) -> String {
+    let leaf_index_class = class_selector
+        .filter(|class| !class.trim().is_empty())
+        .map_or_else(
+            || format!("leaf{index}x"),
+            |class| format!("leaf{index} {class}x"),
+        );
+    format!("treemapNode leaf treemapLeafGroup {leaf_index_class}")
+}
+
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
@@ -1185,5 +1187,22 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "treemap".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::treemap_leaf_group_class;
+
+    #[test]
+    fn leaf_group_class_preserves_upstream_suffix_placement() {
+        assert_eq!(
+            treemap_leaf_group_class(0, Some("redClass")),
+            "treemapNode leaf treemapLeafGroup leaf0 redClassx"
+        );
+        assert_eq!(
+            treemap_leaf_group_class(2, None),
+            "treemapNode leaf treemapLeafGroup leaf2x"
+        );
     }
 }

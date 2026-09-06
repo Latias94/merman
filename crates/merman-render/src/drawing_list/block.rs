@@ -911,15 +911,20 @@ impl<'a> BlockBuilder<'a> {
             &self.base_font_family_css,
             self.base_font_size,
         );
-        for class in &source.classes {
-            self.model.class_defs.get(class).ok_or_else(|| {
-                unavailable(format!(
-                    "Block node `{}` references missing class `{class}`",
-                    source.label
-                ))
-            })?;
-        }
+        let assigned_class_defs = source
+            .classes
+            .iter()
+            .map(|class| {
+                self.model.class_defs.get(class).ok_or_else(|| {
+                    unavailable(format!(
+                        "Block node `{}` references missing class `{class}`",
+                        source.label
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         let mut class_label_opacity = None;
+        let resolver = PortableStyleResolver::new("block");
         for class_def in self
             .model
             .class_defs
@@ -927,17 +932,21 @@ impl<'a> BlockBuilder<'a> {
             .filter(|class_def| source.classes.iter().any(|class| class == &class_def.id))
         {
             for declaration in &class_def.styles {
-                let (key, _) = parse_declaration(declaration)?;
+                let (key, value) = parse_declaration(declaration)?;
                 if key == "background-color" {
                     return Err(unavailable(format!(
                         "Block class `{}` uses an HTML label background that DrawingList v1 cannot represent",
                         class_def.id
                     )));
                 }
-                apply_declaration(&mut style, declaration, StyleTarget::Box)?;
                 if key == "opacity" {
-                    class_label_opacity = Some(style.opacity);
+                    class_label_opacity = Some(resolver.opacity("opacity", value.trim())?);
                 }
+            }
+        }
+        for class_def in assigned_class_defs {
+            for declaration in &class_def.styles {
+                apply_declaration(&mut style, declaration, StyleTarget::Box)?;
             }
             for declaration in &class_def.text_styles {
                 apply_declaration(&mut style, declaration, StyleTarget::Text)?;
