@@ -228,6 +228,7 @@ publish attempt, so it also covers `merman-bindings-core`, `merman-ffi`, `merman
 `merman-wasm`.
 
 ```bash
+cargo publish -p merman-display-list --locked --dry-run --registry crates-io
 cargo publish -p merman-render --locked --dry-run --registry crates-io
 cargo publish -p merman-export --locked --dry-run --registry crates-io
 cargo publish -p merman-bindings-core --locked --dry-run --registry crates-io

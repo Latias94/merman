@@ -62,8 +62,9 @@ See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for t
 
 Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
 Typst publishes SVG plus canonical analysis and both layout backends. The private Node candidates
-compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
-profiles because npm package identity is its capability-selection mechanism.
+compile SVG, DrawingList, and both layout backends. Browser WASM keeps package-specific profiles
+because npm package identity is its capability-selection mechanism; the full SDK and render-only
+package expose both SVG and DrawingList output.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 
