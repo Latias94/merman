@@ -53,6 +53,7 @@ guard merman.bindingApiVersionV6() == 6 else {
 
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
 let svg = try merman.renderSvg(source: source, optionsJson: options)
+let drawingListJson = try merman.renderDrawingList(source: source, optionsJson: options)
 
 let request = MermanOperationRequestV4(
     operationId: "ascii",
@@ -75,10 +76,10 @@ let diagnostics = try engine.analyzeJson(source: source, optionsJson: nil)
 
 The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
 values, returned media type, and metadata are owned by Merman's capability descriptor. Named
-methods such as `renderSvg`, `renderPng`, `renderJpeg`, and `renderPdf` are generated convenience
-methods over that path. One-shot request options may select `runtime_policy`; reusable request
-options deeply merge over the construction baseline but cannot replace its constructor-owned
-runtime policy.
+methods such as `renderSvg`, `renderDrawingList`, `renderPng`, `renderJpeg`, and `renderPdf` are
+generated convenience methods over that path. One-shot request options may select
+`runtime_policy`; reusable request options deeply merge over the construction baseline but cannot
+replace its constructor-owned runtime policy.
 
 Attach a `MermanOperationControl` to a generic request when the host needs a relative deadline or
 must stop stale work from another thread:
@@ -101,9 +102,9 @@ Cancellation is cooperative. Parser, layout, SVG/ASCII emission, and export chec
 the shared control, but an opaque callback or encoder call may return before the next checkpoint.
 Use worker or process isolation when the host requires hard preemption.
 
-The default XCFramework supports SVG, ASCII, semantic/layout operations, analysis, validation, and
-document analysis. It omits math and the PNG, JPEG, and PDF exporters. The generated export helpers
-remain valid for custom current-contract libraries; the default artifact returns
+The default XCFramework supports SVG, DrawingList, ASCII, semantic/layout operations, analysis,
+validation, and document analysis. It omits math and the PNG, JPEG, and PDF exporters. The
+generated export helpers remain valid for custom current-contract libraries; the default artifact returns
 `.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,

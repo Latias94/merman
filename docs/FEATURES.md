@@ -5,7 +5,7 @@ verify the exact package version and provenance before copying an install comman
 snippets are for source-tree development.
 
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
-dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
+dependency. Every parser-capable build uses the same Mermaid 11.17.2 language model, detector,
 configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
 user-visible capabilities, output backends, or host adapters.
 
@@ -29,6 +29,7 @@ The public capability leaves are:
 | Capability | Meaning | Global semantic implication |
 | --- | --- | --- |
 | `svg` | SVG rendering | None |
+| `drawing-list` | Renderer-neutral DrawingList v1 JSON | Implies `svg` because it shares the render/layout foundation |
 | `analysis` | Diagnostics, validation, and semantic analysis | None |
 | `editor` | Parser-backed editor intelligence | None |
 | `ascii` | Terminal text output | None |
@@ -46,10 +47,11 @@ their public workflow requires them. Those owner-specific compile combinations d
 global capability implications.
 
 The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
-`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
-not include the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk` aggregate
-when that closure is intended and its notices/provenance will accompany the artifact. Neither
-aggregate includes system adapters, analysis, ASCII, or binary exports.
+`merman-rustdoc` integration crate. In the facade it includes SVG, DrawingList, Cytoscape, and
+math; the Rustdoc crate has no DrawingList API and keeps its SVG-specific closure. Neither
+aggregate includes the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk`
+aggregate when that closure is intended and its notices/provenance will accompany the artifact.
+Neither aggregate includes system adapters, analysis, ASCII, or binary exports.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -69,7 +71,8 @@ select their own direct leaf set instead.
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
-| Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
+| Renderer-neutral DrawingList in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["drawing-list"]` |
+| Full SVG and DrawingList semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
 | Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
 | Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
@@ -87,9 +90,9 @@ select their own direct leaf set instead.
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
 Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
-loader plus one exact-version N-API platform package and uses the deterministic static-SVG recipe:
-SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
-a supported Node transport or fallback.
+loader plus one exact-version N-API platform package and uses the deterministic render recipe:
+SVG, DrawingList, and both layout backends, but not math, analysis, ASCII, or binary export. Browser
+WASM is not a supported Node transport or fallback.
 
 ## Rust examples
 
@@ -288,8 +291,8 @@ Browser package names are the user-facing selection mechanism:
 
 | Package | Compiled workflow | Status |
 | --- | --- | --- |
-| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
-| `@mermanjs/web-render` | SVG, Cytoscape, ELK, and math | Complete SVG-only package |
+| `@mermanjs/web` | SVG, DrawingList, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
+| `@mermanjs/web-render` | SVG, DrawingList, Cytoscape, ELK, and math | Complete rendering package |
 | `@mermanjs/web-analysis` | Analysis | Slim package |
 | `@mermanjs/web-editor` | Analysis and editor | Slim package |
 | `@mermanjs/web-ascii` | ASCII | Slim package |

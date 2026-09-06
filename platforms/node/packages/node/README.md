@@ -1,6 +1,6 @@
 # @mermanjs/node
 
-Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
+Native Mermaid-compatible SVG and DrawingList rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
 This package is experimental and published on npm's `alpha` dist-tag. Pin an exact version when
@@ -28,6 +28,12 @@ try {
 ```
 
 Create an engine once, reuse it for related work, and dispose it during teardown.
+
+For a native graphics host, request the renderer-neutral document instead:
+
+```js
+const drawingListJson = await engine.renderDrawingList("flowchart TD\nA --> B");
+```
 
 ## SVG output pipelines
 
@@ -68,7 +74,7 @@ transports.
 
 ## Capability boundary
 
-The shipped recipe provides deterministic static SVG, Cytoscape and ELK layouts, metadata, layout
+The shipped recipe provides deterministic SVG and DrawingList, Cytoscape and ELK layouts, metadata, layout
 plans, runtime-catalog inspection, and generic admitted operations. Math, binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads are outside this package
 surface. Requests for unavailable optional capabilities return Merman's typed

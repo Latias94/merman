@@ -38,6 +38,10 @@ try {
 Mermaid-compatible SVG structure and is the right choice for trusted input or parity-sensitive
 consumers. `parity` is not a browser DOM-admission or sanitization check.
 
+`renderDrawingList()` and `renderDrawingListSync()` return validated DrawingList v1 JSON for native
+graphics hosts that do not want an SVG interpreter. They use the same parsed semantics, layout,
+resource policy, and cancellation boundary as SVG, but never silently substitute SVG output.
+
 For SVG that will be embedded directly into HTML, or when the Mermaid source is not fully trusted,
 select the sealed `resvg-safe` pipeline explicitly:
 
@@ -54,7 +58,7 @@ provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*
 mounting.
 
 The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its shipped
-recipe includes deterministic SVG plus Cytoscape and ELK layouts. Math, binary export, analysis,
+recipe includes deterministic SVG and DrawingList plus Cytoscape and ELK layouts. Math, binary export, analysis,
 ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
 surface.
 

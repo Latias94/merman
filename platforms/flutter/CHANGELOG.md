@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added `renderDrawingList(...)` to both `Merman` and `MermanEngine`. The generated Dart operation catalog and bundled native profile now expose validated DrawingList v1 JSON, with policy and protocol limits supplied through `optionsJson`.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, published to pub.dev on 2026-09-04 after the complete Native Assets matrix passed the tag-triggered release workflow.

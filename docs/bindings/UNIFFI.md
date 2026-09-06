@@ -51,7 +51,7 @@ projection, and native library are one deployment unit.
 
 Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
 owns the generic operation's options. Named methods such as
-`render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
+`render_svg`, `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
@@ -103,15 +103,15 @@ reference cycle.
 ## Build Profiles
 
 `merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
-analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF, RaTeX math, and
-the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
+analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF,
+RaTeX math, and the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
-Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
+Custom artifacts can select `analysis`, `ascii`, `svg`, `drawing-list`, `png`, `jpeg`, `pdf`,
 `layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
 clock, time-zone, and random behavior is required; UniFFI does not expose partial adapter feature sets.
 `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
@@ -124,7 +124,7 @@ The repository ships a Python package layout. Generate it from the exact cdylib 
 packaged:
 
 ```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_python_package -- \
   --cdylib target/native-distribution/libmerman_uniffi.dylib \

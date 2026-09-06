@@ -32,7 +32,13 @@ svg = client.render_svg(source, None)
 print(svg[:4])  # <svg
 ```
 
-The same one-shot facade exposes `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 6; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding.
+Native graphics hosts can request the renderer-neutral document directly:
+
+```python
+drawing_list_json = client.render_drawing_list(source, None)
+```
+
+The same one-shot facade exposes `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. The default wheel supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default wheel raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 6; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding.
 
 ## Reuse An Engine
 

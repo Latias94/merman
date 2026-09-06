@@ -1,6 +1,6 @@
 # @mermanjs/web
 
-The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-backed editor
+The complete browser SDK for SVG and DrawingList rendering, analysis, ASCII output, and parser-backed editor
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
@@ -26,6 +26,8 @@ renderSvgToElement(target, `flowchart TD
 ```
 
 Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+Use `renderDrawingList()` when a Canvas, WebGL, or other graphics host wants the renderer-neutral
+v1 document instead of SVG.
 
 ## Runtime boundary
 

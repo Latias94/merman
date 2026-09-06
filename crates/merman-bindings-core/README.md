@@ -19,6 +19,7 @@ closure. Feature names describe compile-time inputs; the generated runtime catal
 recipe, and bundled notices describe the resulting artifact.
 
 - `svg` enables SVG rendering through the main Merman facade.
+- `drawing-list` enables validated renderer-neutral DrawingList v1 JSON and implies the shared SVG render/layout foundation.
 - `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `layout-cytoscape` and `layout-elk` enable their named SVG layout engines.

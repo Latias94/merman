@@ -37,7 +37,7 @@ the checked-in single-target report before building the wheel.
 
 ```bash
 cargo build -p merman-uniffi --profile native-distribution --no-default-features \
-  --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+  --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features \
   --features binding-generation --example generate_python_package -- \
   --metadata-library target/native-distribution/libmerman_uniffi.rlib \
@@ -53,7 +53,7 @@ adapter IDs only when present; the Cargo aggregate is not a Python capability na
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
@@ -76,8 +76,10 @@ capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
 assert catalog["transport_api_version"] == api.binding_api_version_v6()
 assert "svg" in capabilities["capability_ids"]
+assert "drawing-list" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+drawing_list_json = api.render_drawing_list("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = api.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = api.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = api.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
@@ -121,8 +123,8 @@ finally:
     engine.close()
 ```
 
-The default wheel omits math, PNG, JPEG, and PDF. Their generated methods remain available for a
-custom current-contract library and otherwise raise `MermanError.Binding` with
+The default wheel includes DrawingList and omits math, PNG, JPEG, and PDF. The omitted generated
+methods remain available for a custom current-contract library and otherwise raise `MermanError.Binding` with
 `MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the

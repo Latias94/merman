@@ -49,9 +49,9 @@ print(result.metadata);
 final semantic = result.jsonObject;
 ```
 
-`MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
+`MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, DrawingList, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
 
-The pub.dev package's prebuilt libraries select the default native SKU: SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
+The pub.dev package's prebuilt libraries select the default native SKU: SVG, DrawingList, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
 
 Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose `exactResourceDetails` with the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, canonical unsigned-decimal actual value, effective maximum, and selected profile. The compatibility `resourceDetails` view remains available only when both counts fit a signed 64-bit Dart `int`.
 
@@ -276,7 +276,7 @@ Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-nati
 `hook/build.dart` maps the requested OS, architecture, and iOS SDK to one file under `native/`, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the generated `@Native` declaration. Flutter performs final copying, multi-architecture Apple framework assembly, install-name rewriting, and signing. The package therefore owns no Flutter plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin wrappers. Android applications must target API 24 or newer; the hook rejects a lower target before bundling.
 
 ```sh
-cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
 The bundled artifacts are deterministic and contain no system adapters. Custom source builds may
@@ -306,7 +306,7 @@ dart run example/smoke.dart
 The local contract test validates the current complete ABI
 3 table boundary through controlled-execution slot `10`, runtime-catalog and typed metadata relations,
 package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
-exercises service-backed SVG, ASCII, and analysis, verifies typed absence for the three binary
+exercises service-backed SVG, DrawingList, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive
 operation and lifecycle cases.
 

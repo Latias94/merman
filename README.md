@@ -94,6 +94,7 @@ Choose one typed target for each request:
 | Parse a typed Mermaid model | `Engine` and `ParseOptions` | Always available |
 | Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Always available |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
+| Render a renderer-neutral DrawingList for a native graphics host | `RenderRequest::drawing_list()` | `drawing-list` |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
 | Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
 | Export PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
@@ -106,19 +107,20 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
-labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
-dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters, and
-ELK remain opt-in.
+The default `merman` dependency enables `complete-svg`: SVG and renderer-neutral DrawingList
+output, Cytoscape layout, and math labels. It intentionally does not pull the optional EPL-2.0 ELK
+implementation into ordinary Cargo dependencies. Analysis, editor APIs, terminal output, binary
+export, ambient system adapters, and ELK remain opt-in.
 
 Cargo features select capabilities and output backends, not Mermaid diagram families. Every
 parser-capable build retains the same language catalog.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG | defaults, or `complete-svg` |
+| Complete deterministic SVG plus DrawingList | defaults, or `complete-svg` |
 | Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
+| DrawingList plus the shared render/layout foundation | `default-features = false, features = ["drawing-list"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |

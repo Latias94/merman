@@ -39,9 +39,18 @@ val svg = result.data.toString(Charsets.UTF_8)
 `MermanOperationResult` contains `operationId`, `mediaType`, `data`, and typed operation metadata
 that retains its original JSON. `Merman` also exposes convenience methods for SVG, ASCII, PNG,
 JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, document analysis, and
-validation. The default AAR supports SVG, ASCII, semantic/layout operations, analysis, validation,
-and document analysis. Binary methods remain in the generated API for custom artifacts and return
-typed missing-capability errors against the default AAR.
+validation. DrawingList is available through generic operation ID `drawing-list-json`. The default
+AAR supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and
+document analysis. Binary methods remain in the generated API for custom artifacts and return typed
+missing-capability errors against the default AAR.
+
+```kotlin
+val drawingList = Merman.execute(
+    operationId = "drawing-list-json",
+    source = "flowchart TD\nA --> B",
+)
+check(drawingList.mediaType == "application/vnd.merman.drawing-list+json;version=1")
+```
 
 Construct `MermanOperationControl(timeoutMs)` to install an optional relative monotonic
 deadline, retain the same object across threads, and call `cancel()` to request cooperative
@@ -103,9 +112,9 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
   ],
   "metadata_ids": ["ascii-capabilities", "..."],
   "capabilities": {
-    "capability_ids": ["analysis", "ascii", "...", "svg"],
-    "operation_ids": ["analysis-json", "...", "svg"],
-    "output_ids": ["ascii", "svg"],
+    "capability_ids": ["analysis", "ascii", "drawing-list", "...", "svg"],
+    "operation_ids": ["analysis-json", "...", "drawing-list-json", "svg"],
+    "output_ids": ["ascii", "drawing-list", "svg"],
     "system_adapter_ids": [],
     "text_measurement": { "protocol_version": 1, "provider_ids": ["deterministic", "host-callback"] }
   },

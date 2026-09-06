@@ -6,7 +6,7 @@ It is not a public Node binding. Applications that need a supported Node or stat
 
 Both `transport-napi` and `transport-wasm` require the direct `drawing-list`, `svg`,
 `layout-cytoscape`, and `layout-elk` features. Those leaves forward to `merman-bindings-core`; both candidates call the
-same `BindingEngine::execute(BindingOperationRequest)` path. These private static-SVG candidates
+same `BindingEngine::execute(BindingOperationRequest)` path. These private rendering candidates
 therefore have an explicit EPL-2.0 ELK notice/provenance obligation; the recipe deliberately omits
 math because the candidate has no separate package identity for that specialist closure. Neither
 transport accepts a JavaScript text-measurement callback.
