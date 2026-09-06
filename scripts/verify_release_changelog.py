@@ -39,16 +39,31 @@ def expected_heading_version(path: Path, version: str) -> str:
     return parsed.canonical
 
 
-def first_release_heading(text: str, path: Path) -> tuple[str, str]:
+def first_release_heading(
+    text: str,
+    path: Path,
+    *,
+    allow_unversioned_prefix: bool = False,
+) -> tuple[str, str]:
+    saw_unversioned_prefix = False
     for line_number, line in enumerate(text.splitlines(), start=1):
         match = RELEASE_HEADING.match(line)
         if match is not None:
+            version = match.group("version")
             heading_date = match.group("date")
+            if version == "Unreleased" and heading_date is None:
+                if allow_unversioned_prefix and not saw_unversioned_prefix:
+                    saw_unversioned_prefix = True
+                    continue
+                raise ReleaseChangelogError(
+                    f"{path}:{line_number} unversioned Unreleased heading must be replaced "
+                    "before immutable release preflight"
+                )
             if heading_date is None:
                 raise ReleaseChangelogError(
                     f"{path}:{line_number} first release heading has no date/status"
                 )
-            return match.group("version"), heading_date
+            return version, heading_date
     raise ReleaseChangelogError(f"{path} has no release heading")
 
 
@@ -64,7 +79,11 @@ def verify_repository(
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             raise ReleaseChangelogError(f"cannot read {relative_path}: {exc}") from exc
-        actual_version, release_date = first_release_heading(text, relative_path)
+        actual_version, release_date = first_release_heading(
+            text,
+            relative_path,
+            allow_unversioned_prefix=not require_date,
+        )
         expected_version = expected_heading_version(relative_path, version)
         if actual_version != expected_version:
             raise ReleaseChangelogError(

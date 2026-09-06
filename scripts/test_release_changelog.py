@@ -41,20 +41,45 @@ class ReleaseChangelogTests(unittest.TestCase):
                     require_date=True,
                 )
 
-    def test_unversioned_first_heading_is_rejected(self) -> None:
+    def test_unversioned_first_heading_is_allowed_during_development(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.write_projection(root)
-            path = root / "CHANGELOG.md"
-            path.write_text(
-                "# Changelog\n\n## [Unreleased]\n\n## [0.8.0-alpha.6] - Unreleased\n",
-                encoding="utf-8",
-            )
+            for relative in verify.CHANGELOG_PATHS:
+                path = root / relative
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "# Changelog\n\n",
+                        "# Changelog\n\n## [Unreleased]\n\n",
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
+            verify.verify_repository(root, "0.8.0-alpha.6")
+
+    def test_unversioned_first_heading_is_rejected_by_immutable_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_projection(root)
+            for relative in verify.CHANGELOG_PATHS:
+                path = root / relative
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "# Changelog\n\n",
+                        "# Changelog\n\n## [Unreleased]\n\n",
+                        1,
+                    ),
+                    encoding="utf-8",
+                )
             with self.assertRaisesRegex(
                 verify.ReleaseChangelogError,
-                "first release heading has no date/status",
+                "must be replaced",
             ):
-                verify.verify_repository(root, "0.8.0-alpha.6")
+                verify.verify_repository(
+                    root,
+                    "0.8.0-alpha.6",
+                    require_date=True,
+                )
 
     def test_invalid_status_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
