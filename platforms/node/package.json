@@ -14,6 +14,6 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "3.7.4",
-    "@xmldom/xmldom": "0.9.10"
+    "@xmldom/xmldom": "0.9.12"
   }
 }
