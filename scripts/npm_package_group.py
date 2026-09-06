@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -18,6 +19,12 @@ NPMJS_REGISTRY_URL = "https://registry.npmjs.org"
 # npm's package metadata can take close to a minute to appear after a publish.
 DEFAULT_REGISTRY_OBSERVATION_ATTEMPTS = 13
 DEFAULT_REGISTRY_OBSERVATION_DELAY_SECONDS = 5.0
+
+
+def npm_executable(*, os_name: str | None = None) -> str:
+    """Return the npm executable name accepted by subprocess on this platform."""
+
+    return "npm.cmd" if (os_name or os.name) == "nt" else "npm"
 
 
 class PackageGroupError(ValueError):
@@ -45,7 +52,7 @@ class NpmCli:
     registry: str | None = None
 
     def _command(self, *args: str) -> list[str]:
-        command = ["npm", *args]
+        command = [npm_executable(), *args]
         if self.registry:
             command.extend(["--registry", self.registry])
         return command
