@@ -55,7 +55,7 @@ const STATIC_SVG_OPTION_GROUP_IDS = BINDING_OPTION_GROUP_SPECS
       spec.always_available ||
       spec.requires_svg_pipeline ||
       spec.any_capability_ids.some((id) =>
-        ["layout-cytoscape", "layout-elk", "svg"].includes(id)
+        ["drawing-list", "layout-cytoscape", "layout-elk", "svg"].includes(id)
       ),
   )
   .map((spec) => spec.id);
@@ -63,7 +63,7 @@ const STATIC_SVG_METADATA_IDS = METADATA_SPECS
   .filter(
     (spec) =>
       spec.required_capability_id === null ||
-      ["layout-cytoscape", "layout-elk", "svg"].includes(
+      ["drawing-list", "layout-cytoscape", "layout-elk", "svg"].includes(
         spec.required_capability_id,
       ),
   )
@@ -175,7 +175,7 @@ const CAPABILITY_RECIPE = {
   capability_recipe: {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "svg"],
+    capabilities: ["drawing-list", "layout-cytoscape", "layout-elk", "svg"],
   },
 };
 const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
@@ -193,21 +193,35 @@ const RUNTIME_CATALOG = {
   constructor_service_ids: [],
   constructor_service_contracts: [],
   capabilities: {
-    capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
-    output_ids: ["svg"],
-    operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+    capability_ids: ["drawing-list", "layout-cytoscape", "layout-elk", "svg"],
+    output_ids: ["drawing-list", "svg"],
+    operation_ids: [
+      "drawing-list-json",
+      "layout-json",
+      "semantic-json",
+      "svg",
+      "svg-plan-json",
+    ],
     system_adapter_ids: [],
     text_measurement: {
       protocol_version: 1,
       provider_ids: ["deterministic"],
     },
   },
-  output_contracts: [{
-    id: "svg",
-    media_type: "image/svg+xml",
-    system_fonts: null,
-    embedded_images: null,
-  }],
+  output_contracts: [
+    {
+      id: "drawing-list",
+      media_type: "application/vnd.merman.drawing-list+json;version=1",
+      system_fonts: null,
+      embedded_images: null,
+    },
+    {
+      id: "svg",
+      media_type: "image/svg+xml",
+      system_fonts: null,
+      embedded_images: null,
+    },
+  ],
   registry: { diagram_family_count: 35 },
   resources: {
     general_binding_default_profile: "interactive",
@@ -219,7 +233,13 @@ const RUNTIME_CATALOG = {
       overridable: true,
       hard_cap: false,
       minimum_value: 1,
-      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+      operation_ids: [
+        "drawing-list-json",
+        "layout-json",
+        "semantic-json",
+        "svg",
+        "svg-plan-json",
+      ],
     }],
     profiles: [
       {
@@ -1088,6 +1108,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       default_features: false,
       capability_recipe: CAPABILITY_RECIPE.capability_recipe,
       features: [
+        "drawing-list",
         "layout-cytoscape",
         "layout-elk",
         "svg",
@@ -1226,6 +1247,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
 
   const profileAsFeature = structuredClone(receipt);
   profileAsFeature.config.features = [
+    "drawing-list",
     "layout-cytoscape",
     "layout-elk",
     "rust-static-svg",
@@ -1256,7 +1278,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
 
   const phantomRuntimeOperation = structuredClone(receipt);
   phantomRuntimeOperation.runtime.catalog.capabilities.operation_ids.splice(
-    1,
+    2,
     0,
     "phantom-json",
   );

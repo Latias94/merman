@@ -154,13 +154,30 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         self.assertEqual(
             baseline["cargo"]["features"],
-            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+            [
+                "analysis",
+                "ascii",
+                "drawing-list",
+                "layout-cytoscape",
+                "layout-elk",
+                "svg",
+            ],
         )
         self.assertEqual(
             baseline["expected"]["capabilities"],
-            ["analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"],
+            [
+                "analysis",
+                "ascii",
+                "drawing-list",
+                "layout-cytoscape",
+                "layout-elk",
+                "svg",
+            ],
         )
-        self.assertEqual(baseline["expected"]["outputs"], ["ascii", "svg"])
+        self.assertEqual(
+            baseline["expected"]["outputs"],
+            ["ascii", "drawing-list", "svg"],
+        )
 
         for profile_id in profile_ids[1:]:
             with self.subTest(profile_id=profile_id):
@@ -178,6 +195,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             (
                 "analysis",
                 "ascii",
+                "drawing-list",
                 "jpeg",
                 "layout-cytoscape",
                 "layout-elk",
