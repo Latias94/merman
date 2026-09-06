@@ -519,7 +519,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             out.checkpoint()?;
             if let Some(receipt) = task_theme_receipt.as_mut() {
                 for line in &st.lines {
-                    receipt.record_typography_text(line);
+                    receipt.record_title_text(line);
                 }
             }
         }
@@ -569,7 +569,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         txt = escape_xml(title),
     );
     if let Some(receipt) = task_theme_receipt.as_mut() {
-        receipt.record_typography_text(title);
+        receipt.record_title_text(title);
     }
 
     out.push_str("</svg>\n");

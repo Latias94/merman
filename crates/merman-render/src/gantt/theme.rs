@@ -655,6 +655,8 @@ impl GanttTaskTheme {
                     key.clone(),
                     pending.capabilities.iter().copied(),
                 );
+            } else if pending.title_fill && !receipt.has_visible_title_fill_terminal() {
+                evidence.mark_not_applicable(key.clone());
             } else if pending.text_fill && !receipt.has_visible_text_fill_terminal() {
                 evidence.mark_not_applicable(key.clone());
             }
@@ -991,6 +993,7 @@ pub(crate) struct GanttTaskThemeReceipt {
     expected_title_fill_css: Option<Box<str>>,
     title_css_recorded: bool,
     title_css_matches: bool,
+    title_text_count: usize,
     expected_title_fill_rule: Option<usize>,
     expected_grid_text_fill_css: Option<Box<str>>,
     expected_task_text_fill_css: Option<Box<str>>,
@@ -1036,6 +1039,7 @@ impl GanttTaskThemeReceipt {
             expected_title_fill_rule,
             title_css_recorded: false,
             title_css_matches: true,
+            title_text_count: 0,
             expected_grid_text_fill_css: expected_grid_text_fill_css.map(Into::into),
             expected_task_text_fill_css: expected_task_text_fill_css.map(Into::into),
             expected_text_fill_rule,
@@ -1066,6 +1070,7 @@ impl GanttTaskThemeReceipt {
             expected_title_fill_rule: None,
             title_css_recorded: false,
             title_css_matches: false,
+            title_text_count: 0,
             expected_grid_text_fill_css: None,
             expected_task_text_fill_css: None,
             expected_text_fill_rule: None,
@@ -1169,6 +1174,13 @@ impl GanttTaskThemeReceipt {
         }
     }
 
+    pub(crate) fn record_title_text(&mut self, text: &str) {
+        if !text.trim().is_empty() {
+            self.typography_text_count = self.typography_text_count.saturating_add(1);
+            self.title_text_count = self.title_text_count.saturating_add(1);
+        }
+    }
+
     pub(crate) fn record_global_css(&mut self, diagram_id: &str, css: &str, font_family: &str) {
         if let Some(fill) = self.expected_title_fill_css.as_deref() {
             if self.title_css_recorded {
@@ -1263,7 +1275,8 @@ impl GanttTaskThemeReceipt {
             && (!pending.title_fill
                 || (self.expected_title_fill_rule == Some(rule_index)
                     && self.title_css_recorded
-                    && self.title_css_matches))
+                    && self.title_css_matches
+                    && self.has_visible_title_fill_terminal()))
             && (!pending.text_fill
                 || (self.expected_text_fill_rule == Some(rule_index)
                     && self.has_visible_text_fill_terminal()))
@@ -1272,6 +1285,10 @@ impl GanttTaskThemeReceipt {
     fn has_visible_text_fill_terminal(&self) -> bool {
         (self.expected_grid_text_fill_css.is_some() && self.grid_text_count != 0)
             || (self.expected_task_text_fill_css.is_some() && self.task_text_count != 0)
+    }
+
+    fn has_visible_title_fill_terminal(&self) -> bool {
+        self.expected_title_fill_css.is_some() && self.title_text_count != 0
     }
 
     fn proves_typography(&self) -> bool {

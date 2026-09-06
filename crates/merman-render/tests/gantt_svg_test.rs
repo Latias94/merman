@@ -634,6 +634,33 @@ fn gantt_title_fill_reaches_section_and_diagram_title_css() {
 }
 
 #[test]
+fn gantt_title_fill_requires_a_visible_title_terminal() {
+    let theme = gantt_title_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid title fill"),
+        None,
+    );
+    let rendered = prepare_gantt_family_with_theme(
+        "gantt\ndateFormat YYYY-MM-DD\nTask: task, 2024-01-01, 1d",
+        &theme,
+    )
+    .render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("gantt-config".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+    .expect("render Gantt without visible title terminal");
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn gantt_text_fill_reaches_grid_and_ordinary_task_label_css() {
     let text_fill = "#123456";
     let svg = render_gantt_svg_from_text_with_theme(
