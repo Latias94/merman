@@ -871,7 +871,13 @@ mod tests {
         );
         assert_eq!(
             string_values(&selected[0].features),
-            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+            vec![
+                "drawing-list",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "svg"
+            ]
         );
         assert!(!selected[0].default_features);
     }
@@ -936,6 +942,7 @@ mod tests {
             vec![
                 "analysis",
                 "ascii",
+                "drawing-list",
                 "editor",
                 "layout-cytoscape",
                 "layout-elk",
@@ -951,17 +958,26 @@ mod tests {
             string_values(&full.runtime_ids),
             string_values(&full.features)
         );
-        assert_eq!(string_values(&full.outputs), vec!["ascii", "svg"]);
+        assert_eq!(
+            string_values(&full.outputs),
+            vec!["ascii", "drawing-list", "svg"]
+        );
 
         let render = web
             .iter()
             .find(|artifact| artifact.id == "web-render")
             .unwrap();
-        let complete_svg = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
+        let complete_svg = vec![
+            "drawing-list",
+            "layout-cytoscape",
+            "layout-elk",
+            "math",
+            "svg",
+        ];
         assert_eq!(string_values(&render.features), complete_svg);
         assert_eq!(string_values(&render.capabilities), complete_svg);
         assert_eq!(string_values(&render.runtime_ids), complete_svg);
-        assert_eq!(string_values(&render.outputs), vec!["svg"]);
+        assert_eq!(string_values(&render.outputs), vec!["drawing-list", "svg"]);
     }
 
     #[test]
