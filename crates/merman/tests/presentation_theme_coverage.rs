@@ -690,7 +690,8 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
                 r#"class="node c4-shape c4-component_db""#,
                 r#"class="node c4-shape c4-component_queue""#,
                 r#"class="basic label-container outer-path""#,
-                r#"style="fill:#111827;stroke:#475569""#,
+                r##"fill="#111827""##,
+                r##"stroke="#475569""##,
             ],
         ),
         (
