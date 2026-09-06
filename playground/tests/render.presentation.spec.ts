@@ -525,7 +525,7 @@ test("font-only theme config preserves the computed shared palette", async ({ pa
       "kanban",
       "kanban\n  todo[Todo]\n    docs[Create documentation]",
       UPSTREAM_KANBAN_SECTION_1,
-      '[data-merman-resource="kanban.section.0.background"]',
+      ".sections > .section-1 > rect",
     ],
     [
       "mindmap",
@@ -556,7 +556,7 @@ test("font-only theme config preserves the computed shared palette", async ({ pa
   errors.assertNone();
 });
 
-test("Quadrant resolves invalid upstream HSL into a portable point color", async ({ page }) => {
+test("Quadrant keeps raw parity color while inheriting Mermaid's root fill", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await renderSource(
@@ -572,8 +572,8 @@ test("Quadrant resolves invalid upstream HSL into a portable point color", async
   );
 
   await expect.poll(() => quadrantPointPresentation(page)).toEqual({
-    rawFill: "#000000",
-    computedFill: "rgb(0, 0, 0)",
+    rawFill: "hsl(240, 100%, NaN%)",
+    computedFill: "rgb(51, 51, 51)",
   });
   errors.assertNone();
 });
@@ -961,13 +961,7 @@ async function c4RelationPresentations(
       const label = [...(svg?.querySelectorAll<SVGTextElement>("text") ?? [])].find(
         (candidate) => candidate.textContent?.startsWith(`${index}: `)
       );
-      const owner = label?.closest(
-        '[data-merman-semantic-id^="c4.relation."]'
-      );
-      const line =
-        owner?.querySelector<SVGGraphicsElement>(
-          ':scope > [data-merman-resource$=".route"]'
-        ) ?? label?.previousElementSibling;
+      const line = label?.previousElementSibling;
       if (
         !label ||
         !line ||
