@@ -388,6 +388,7 @@ pub(crate) struct StateSvgBody {
     pub(crate) path_classes: BTreeMap<String, String>,
     pub(crate) text_classes: BTreeMap<String, String>,
     pub(crate) semantic_looks: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public Treemap document.

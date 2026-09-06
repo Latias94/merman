@@ -446,14 +446,15 @@ impl<'a> TreemapBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Treemap leaf presentation {index}")))?
             .clone();
         let semantic_id = format!("treemap.leaf.{index}");
-        let custom_class = layout
+        let leaf_index_class = layout
             .class_selector
             .as_deref()
             .filter(|class| !class.trim().is_empty())
-            .map(|class| format!(" {class}x"))
-            .unwrap_or_default();
-        let leaf_group_class =
-            format!("treemapNode leaf treemapLeafGroup leaf{index}x{custom_class}");
+            .map_or_else(
+                || format!("leaf{index}x"),
+                |class| format!("leaf{index} {class}x"),
+            );
+        let leaf_group_class = format!("treemapNode leaf treemapLeafGroup {leaf_index_class}");
         self.semantic_classes
             .insert(semantic_id.clone(), leaf_group_class);
         self.path_classes.insert(

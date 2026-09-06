@@ -311,6 +311,41 @@ fn block_canonical_svg_keeps_nodes_routes_styles_and_html_labels() {
 }
 
 #[test]
+fn treemap_canonical_svg_preserves_upstream_custom_class_tokens() {
+    let svg = render_svg(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/treemap/upstream_cypress_treemap_spec_12_should_apply_classdef_fill_color_to_leaf_nodes_019.mmd"
+        )),
+        "treemap-class-parity",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("canonical Treemap SVG is XML");
+    let leaf_classes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|token| token == "treemapLeafGroup")
+                })
+        })
+        .filter_map(|node| node.attribute("class"))
+        .collect::<Vec<_>>();
+
+    assert!(leaf_classes.iter().any(|class| {
+        class.split_whitespace().any(|token| token == "leaf0")
+            && class.split_whitespace().any(|token| token == "redClassx")
+            && !class.split_whitespace().any(|token| token == "leaf0x")
+    }));
+    assert!(leaf_classes.iter().any(|class| {
+        class.split_whitespace().any(|token| token == "leaf1")
+            && class.split_whitespace().any(|token| token == "blueClassx")
+            && !class.split_whitespace().any(|token| token == "leaf1x")
+    }));
+}
+
+#[test]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",

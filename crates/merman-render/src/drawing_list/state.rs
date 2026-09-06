@@ -79,6 +79,7 @@ struct StateBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     semantic_looks: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
 }
 
 impl<'a> StateBuilder<'a> {
@@ -201,6 +202,7 @@ impl<'a> StateBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             semantic_looks: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
         };
         builder.preflight()?;
         Ok(builder)
@@ -280,6 +282,7 @@ impl<'a> StateBuilder<'a> {
                     path_classes: std::mem::take(&mut self.path_classes),
                     text_classes: std::mem::take(&mut self.text_classes),
                     semantic_looks: std::mem::take(&mut self.semantic_looks),
+                    dom_ids: std::mem::take(&mut self.dom_ids),
                 }),
             },
         })
@@ -667,6 +670,15 @@ impl<'a> StateBuilder<'a> {
             .insert(semantic_id.clone(), semantic_class.to_string());
         self.semantic_looks
             .insert(semantic_id.clone(), "classic".to_string());
+        let dom_id = node.dom_id.trim();
+        self.dom_ids.insert(
+            semantic_id.clone(),
+            if dom_id.is_empty() {
+                node.id.clone()
+            } else {
+                dom_id.to_string()
+            },
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });

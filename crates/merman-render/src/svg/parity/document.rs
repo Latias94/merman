@@ -3894,6 +3894,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(format!("{}-{}", self.diagram_id, raw_id));
         }
+        if let SvgStructureBody::State(body) = self.svg_body
+            && let Some(raw_id) = body.dom_ids.get(id)
+        {
+            return Ok(format!("{}-{}", self.diagram_id, raw_id));
+        }
         if let SvgStructureBody::Block(body) = self.svg_body
             && let Some(raw_id) = body.dom_ids.get(id)
         {
