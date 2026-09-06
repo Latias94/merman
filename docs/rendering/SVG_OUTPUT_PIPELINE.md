@@ -66,10 +66,11 @@ styles must inject them before the fallback stage (through the same `SvgPipeline
 after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
 Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
 
-For Mermaid 11.16 Quadrant, the legacy parity renderer may retain upstream's invalid
-`hsl(..., NaN%)` point presentation attributes. The canonical typed Quadrant document instead
-resolves that non-portable value to `fill="#000000" stroke="none"`; this keeps the export visible
-without teaching the raw comparator that invalid HSL and RGB are equivalent.
+For the pinned Mermaid 11.17.2 Quadrant renderer, parity SVG deliberately retains upstream's
+invalid `hsl(..., NaN%)` point presentation attributes. The typed DrawingList adapter resolves the
+same point to portable paint values, while `SvgPipeline::resvg_safe()` normalizes the SVG export to
+`fill="#000000" stroke="none"`. This keeps each artifact lane truthful without teaching the raw
+parity comparator that invalid HSL and RGB are equivalent.
 
 ## Rendering With A Pipeline
 
