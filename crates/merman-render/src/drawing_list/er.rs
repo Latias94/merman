@@ -5,8 +5,8 @@
 //! Mermaid's visible relationship edges without exposing internal layout helpers.
 
 use super::{
-    ErSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    theme_color,
+    ErEdgeSvgMetadata, ErSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families, theme_color,
 };
 use crate::config::{config_bool, config_f64_explicit_css_px, config_string};
 use crate::drawing_list::support::{stroke, text_obligation};
@@ -20,6 +20,7 @@ use crate::model::{Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutNod
 use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
 use crate::text::TextMeasurer as _;
 use crate::{Error, Result};
+use base64::Engine as _;
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::er::{
@@ -84,6 +85,8 @@ struct ErBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
+    edge_metadata: BTreeMap<String, ErEdgeSvgMetadata>,
+    marker_types: std::collections::BTreeSet<String>,
 }
 
 impl<'a> ErBuilder<'a> {
@@ -247,6 +250,8 @@ impl<'a> ErBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
+            edge_metadata: BTreeMap::new(),
+            marker_types: std::collections::BTreeSet::new(),
         };
         builder.preflight()?;
         Ok(builder)
@@ -388,6 +393,8 @@ impl<'a> ErBuilder<'a> {
                     path_classes: std::mem::take(&mut self.path_classes),
                     text_classes: std::mem::take(&mut self.text_classes),
                     dom_ids: std::mem::take(&mut self.dom_ids),
+                    edge_metadata: std::mem::take(&mut self.edge_metadata),
+                    marker_types: std::mem::take(&mut self.marker_types),
                 }),
             },
         })
@@ -558,6 +565,28 @@ impl<'a> ErBuilder<'a> {
             .insert(format!("{semantic_id}.marker.start"), "marker".to_string());
         self.path_classes
             .insert(format!("{semantic_id}.marker.end"), "marker".to_string());
+        let edge_path_id = format!("{semantic_id}.route");
+        let data_points = base64::engine::general_purpose::STANDARD.encode(
+            serde_json::to_vec(&edge.points)
+                .map_err(|_| invalid("failed to encode ER edge points"))?,
+        );
+        for marker in [edge.start_marker.as_deref(), edge.end_marker.as_deref()]
+            .into_iter()
+            .flatten()
+        {
+            if let Some(marker_type) = marker_type_name(marker) {
+                self.marker_types.insert(marker_type.to_string());
+            }
+        }
+        self.edge_metadata.insert(
+            edge_path_id.clone(),
+            ErEdgeSvgMetadata {
+                dom_id: edge_dom_id(edge, &self.model.relationships),
+                data_points,
+                start_marker: edge.start_marker.clone(),
+                end_marker: edge.end_marker.clone(),
+            },
+        );
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
         });
@@ -568,7 +597,7 @@ impl<'a> ErBuilder<'a> {
             line.dash_array = vec![8.0, 8.0];
         }
         self.add_path(
-            format!("{semantic_id}.route"),
+            edge_path_id,
             segments,
             PathStyle {
                 fill_rule: FillRule::NonZero,
@@ -1203,6 +1232,21 @@ fn edge_dom_id(edge: &LayoutEdge, relationships: &[ErRelationshipRenderModel]) -
         return edge.id.clone();
     };
     format!("id_{}_{}_{}", relation.entity_a, relation.entity_b, index)
+}
+
+fn marker_type_name(marker: &str) -> Option<&'static str> {
+    let base = marker
+        .trim()
+        .strip_suffix("_START")
+        .or_else(|| marker.trim().strip_suffix("_END"))?;
+    match base {
+        "ONLY_ONE" => Some("onlyOne"),
+        "ZERO_OR_ONE" => Some("zeroOrOne"),
+        "ONE_OR_MORE" => Some("oneOrMore"),
+        "ZERO_OR_MORE" => Some("zeroOrMore"),
+        "MD_PARENT" => Some("mdParent"),
+        _ => None,
+    }
 }
 
 fn validate_attribute(attribute: &ErAttributeRenderModel) -> std::result::Result<(), String> {

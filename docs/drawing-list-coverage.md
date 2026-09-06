@@ -57,8 +57,10 @@ bridge.
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the
 renderer-neutral document, while `legacy-bridge` records an explicit compatibility path selected
-for a legacy family, a browser-only effect, or a diagnostic request.  This distinction is useful
-for migration telemetry and prevents an effect-specific fallback from being mistaken for complete
+for a legacy family, a browser-only effect, or a diagnostic request.  When the bridge is selected,
+`serialization_bridge_reason()` exposes a structured reason (`LegacyFamily`, diagnostic kind, or
+the original `DrawingListUnavailable` family/effect message).  This distinction is useful for
+migration telemetry and prevents an effect-specific fallback from being mistaken for complete
 canonical coverage.
 
 ## Exercised effect accounting

@@ -1,7 +1,7 @@
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession};
-use merman_render::family::{self, SvgSerializationRoute};
+use merman_render::family::{self, SvgSerializationBridgeReason, SvgSerializationRoute};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
@@ -90,6 +90,12 @@ fn prepared_svg_reports_the_serializer_route_used_for_each_request() {
     assert_eq!(
         bridged.serialization_route(),
         SvgSerializationRoute::LegacyBridge
+    );
+    assert_eq!(
+        bridged.serialization_bridge_reason(),
+        Some(&SvgSerializationBridgeReason::LegacyFamily {
+            family: family::RenderFamilyKind::Flowchart,
+        })
     );
 }
 

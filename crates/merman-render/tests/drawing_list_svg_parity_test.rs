@@ -34,7 +34,9 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
     let document = roxmltree::Document::parse(&svg).expect("canonical Info SVG is XML");
     let root = document.root_element();
 
-    assert_eq!(root.attribute("class"), Some("info"));
+    // The pinned Mermaid Info renderer does not attach a family class to the root; keep the
+    // canonical-document serializer aligned with that source-backed DOM contract.
+    assert_eq!(root.attribute("class"), None);
     assert_eq!(root.attribute("viewBox"), None);
     assert_eq!(
         root.attribute("style"),
@@ -45,6 +47,10 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
             .descendants()
             .any(|node| node.has_tag_name("text") && node.attribute("class") == Some("version"))
     );
+    assert!(svg.contains("<style>"));
+    assert!(svg.contains("</style><g/><g><text"));
+    assert!(!svg.contains("aria-labelledby="));
+    assert!(!svg.contains("merman-semantic-info-"));
     assert!(svg.contains(&format!(">v{PINNED_MERMAID_BASELINE_VERSION}</text>")));
 }
 
@@ -1215,6 +1221,35 @@ fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() 
         node.attribute("data-merman-resource")
             .is_some_and(|id| id == "er.entity.0.divider.column.0")
     }));
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-merman-resource") == Some("er.edge.0.route")
+        })
+        .expect("canonical ER relationship route");
+    assert_eq!(edge.attribute("data-edge"), Some("true"));
+    assert_eq!(edge.attribute("data-et"), Some("edge"));
+    assert_eq!(edge.attribute("data-look"), Some("classic"));
+    assert!(
+        edge.attribute("data-id")
+            .is_some_and(|id| id.starts_with("id_entity-"))
+    );
+    assert!(
+        edge.attribute("data-points")
+            .is_some_and(|value| !value.is_empty())
+    );
+    assert_eq!(
+        edge.attribute("marker-start"),
+        Some("url(#er-parity_er-onlyOneStart)")
+    );
+    assert_eq!(
+        edge.attribute("marker-end"),
+        Some("url(#er-parity_er-zeroOrMoreEnd)")
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("marker") && node.attribute("id") == Some("er-parity_er-zeroOrMoreEnd")
+    }));
     for text in ["CAR", "string", "registrationNumber", "make", "model"] {
         assert!(
             document
@@ -1293,6 +1328,9 @@ annotation 1,[0.68, 0.62] "Platform boundary"
         node.has_tag_name("line")
             && node.attribute("data-merman-resource") == Some("wardley.trend.0.line")
             && node.attribute("marker-end") == Some("url(#arrow-wardley-parity)")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text") && node.attribute("dominant-baseline") == Some("middle")
     }));
     assert!(!document.descendants().any(|node| {
         node.has_tag_name("path")

@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{LayoutOptions, RenderFamilyKind, SvgRenderOptions, SvgSerializationRoute};
+use merman::svg::{
+    LayoutOptions, RenderFamilyKind, SvgRenderOptions, SvgSerializationBridgeReason,
+    SvgSerializationRoute,
+};
 use merman::{
     OperationControl, OperationExecutionPath, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
@@ -38,6 +41,25 @@ fn completed_svg_evidence_records_the_canonical_execution_path() {
     assert_eq!(
         output.serialization_route(),
         SvgSerializationRoute::CanonicalDocument
+    );
+}
+
+#[test]
+fn completed_svg_evidence_records_a_legacy_bridge_reason() {
+    let output = render_svg(
+        &Renderer::new(),
+        "flowchart TD\nA --> B\n",
+        svg_request("bridge-reason"),
+    );
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::LegacyBridge
+    );
+    assert_eq!(
+        output.serialization_bridge_reason(),
+        Some(&SvgSerializationBridgeReason::LegacyFamily {
+            family: RenderFamilyKind::Flowchart,
+        })
     );
 }
 

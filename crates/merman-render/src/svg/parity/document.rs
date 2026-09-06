@@ -213,7 +213,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         let (title, description) = match self.svg_body {
-            SvgStructureBody::Mindmap(_) => (None, None),
+            // Info's version label is the authored payload, not an SVG document title.  The
+            // pinned Mermaid renderer keeps the root free of title/ARIA references and emits the
+            // label inside the document body instead.
+            SvgStructureBody::Info(_) | SvgStructureBody::Mindmap(_) => (None, None),
             SvgStructureBody::C4(body) => (body.acc_title.clone(), body.acc_description.clone()),
             SvgStructureBody::Wardley(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
@@ -315,6 +318,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
 
         self.write_family_style()?;
+        if matches!(self.svg_body, SvgStructureBody::Info(_)) {
+            // Preserve the empty structural group emitted by Mermaid's Info renderer.  It is
+            // part of the established DOM shape and does not carry visual content.
+            self.output.push_str("<g/>");
+        }
         self.write_defs()?;
         self.write_accessibility_metadata(
             title.as_deref(),
@@ -332,6 +340,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         // that source-backed root order without changing the renderer-neutral command stream.
         if matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
             self.write_wardley_marker_defs();
+        }
+        if matches!(self.svg_body, SvgStructureBody::Er(_)) {
+            self.write_er_marker_defs();
         }
 
         if !self.saves.is_empty() || !self.groups.is_empty() {
@@ -741,7 +752,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn root_class(&self) -> Option<&'static str> {
         match self.svg_body {
-            SvgStructureBody::Info(_) | SvgStructureBody::Error(_) => Some(self.family.as_str()),
+            SvgStructureBody::Error(_) => Some(self.family.as_str()),
             SvgStructureBody::Railroad(_) => Some("railroad-diagram"),
             SvgStructureBody::GitGraph(_) => Some("gitGraph"),
             SvgStructureBody::Requirement(_) => Some("requirementDiagram"),
@@ -921,6 +932,59 @@ impl<'a> DocumentSvgEncoder<'a> {
             escaped_attr(theme.link_stroke.as_str()),
         )
         .expect("writing to String cannot fail");
+        self.output.push_str("</defs>");
+    }
+
+    fn write_er_marker_defs(&mut self) {
+        let SvgStructureBody::Er(body) = self.svg_body else {
+            return;
+        };
+        if body.marker_types.is_empty() {
+            return;
+        }
+        let diagram_id = escaped_attr(self.diagram_id.as_str());
+        let diagram_type = escaped_attr(body.diagram_type.as_str());
+        self.output.push_str("<defs>");
+        for marker_type in &body.marker_types {
+            match marker_type.as_str() {
+                "mdParent" => {
+                    write!(
+                        self.output,
+                        "<marker id=\"{diagram_id}_{diagram_type}-mdParentStart\" class=\"marker mdParent er\" refX=\"0\" refY=\"7\" markerWidth=\"190\" markerHeight=\"240\" orient=\"auto\"><path d=\"M 18,7 L9,13 L1,7 L9,1 Z\"/></marker><marker id=\"{diagram_id}_{diagram_type}-mdParentEnd\" class=\"marker mdParent er\" refX=\"19\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L1,7 L9,1 Z\"/></marker>"
+                    )
+                    .expect("writing to String cannot fail");
+                }
+                "onlyOne" => {
+                    write!(
+                        self.output,
+                        "<marker id=\"{diagram_id}_{diagram_type}-onlyOneStart\" class=\"marker onlyOne er\" refX=\"0\" refY=\"9\" markerWidth=\"18\" markerHeight=\"18\" orient=\"auto\"><path d=\"M9,0 L9,18 M15,0 L15,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-onlyOneEnd\" class=\"marker onlyOne er\" refX=\"18\" refY=\"9\" markerWidth=\"18\" markerHeight=\"18\" orient=\"auto\"><path d=\"M3,0 L3,18 M9,0 L9,18\"/></marker>"
+                    )
+                    .expect("writing to String cannot fail");
+                }
+                "zeroOrOne" => {
+                    write!(
+                        self.output,
+                        "<marker id=\"{diagram_id}_{diagram_type}-zeroOrOneStart\" class=\"marker zeroOrOne er\" refX=\"0\" refY=\"9\" markerWidth=\"30\" markerHeight=\"18\" orient=\"auto\"><circle fill=\"white\" cx=\"21\" cy=\"9\" r=\"6\"/><path d=\"M9,0 L9,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-zeroOrOneEnd\" class=\"marker zeroOrOne er\" refX=\"30\" refY=\"9\" markerWidth=\"30\" markerHeight=\"18\" orient=\"auto\"><circle fill=\"white\" cx=\"9\" cy=\"9\" r=\"6\"/><path d=\"M21,0 L21,18\"/></marker>"
+                    )
+                    .expect("writing to String cannot fail");
+                }
+                "oneOrMore" => {
+                    write!(
+                        self.output,
+                        "<marker id=\"{diagram_id}_{diagram_type}-oneOrMoreStart\" class=\"marker oneOrMore er\" refX=\"18\" refY=\"18\" markerWidth=\"45\" markerHeight=\"36\" orient=\"auto\"><path d=\"M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27\"/></marker><marker id=\"{diagram_id}_{diagram_type}-oneOrMoreEnd\" class=\"marker oneOrMore er\" refX=\"27\" refY=\"18\" markerWidth=\"45\" markerHeight=\"36\" orient=\"auto\"><path d=\"M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18\"/></marker>"
+                    )
+                    .expect("writing to String cannot fail");
+                }
+                "zeroOrMore" => {
+                    write!(
+                        self.output,
+                        "<marker id=\"{diagram_id}_{diagram_type}-zeroOrMoreStart\" class=\"marker zeroOrMore er\" refX=\"18\" refY=\"18\" markerWidth=\"57\" markerHeight=\"36\" orient=\"auto\"><circle fill=\"white\" cx=\"48\" cy=\"18\" r=\"6\"/><path d=\"M0,18 Q18,0 36,18 Q18,36 0,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-zeroOrMoreEnd\" class=\"marker zeroOrMore er\" refX=\"39\" refY=\"18\" markerWidth=\"57\" markerHeight=\"36\" orient=\"auto\"><circle fill=\"white\" cx=\"9\" cy=\"18\" r=\"6\"/><path d=\"M21,18 Q39,0 57,18 Q39,36 21,18\"/></marker>"
+                    )
+                    .expect("writing to String cannot fail");
+                }
+                _ => {}
+            }
+        }
         self.output.push_str("</defs>");
     }
 
@@ -1189,6 +1253,22 @@ impl<'a> DocumentSvgEncoder<'a> {
         })?;
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.begin_mindmap_semantic_group(semantic_id);
+        }
+        if matches!(self.svg_body, SvgStructureBody::Info(_)) {
+            // Info has two semantic scopes in the renderer-neutral document, but Mermaid's SVG
+            // contract exposes only one ordinary group around the version text.  Keep both scopes
+            // on the command stack so semantic ownership remains validated without adding DOM
+            // wrappers that the source renderer never emits.
+            let emitted = semantic_id == "info.document";
+            if emitted {
+                self.output.push_str("<g>");
+            }
+            self.groups.push(GroupKind::Semantic {
+                linked: false,
+                emitted,
+                semantic_id: semantic_id.to_owned(),
+            });
+            return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Zenuml(_))
             && let Some(class) = self.semantic_extra_class(semantic_id).map(str::to_owned)
@@ -1640,6 +1720,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Zenuml(_)) {
             return self.emit_zenuml_path(path_id, style);
         }
+        if self.is_er_marker_path(path_id.as_str()) {
+            // ER cardinality markers are expanded into public DrawingList paths, while Mermaid's
+            // canonical SVG contract uses marker definitions referenced from the relationship
+            // route. Keep the geometry in the renderer-neutral document and project the source
+            // DOM shape from the sidecar below.
+            return Ok(());
+        }
         if self.is_wardley_marker_path(path_id.as_str()) {
             // DrawingList expands markers into ordinary paths for renderer-neutral hosts.  The
             // canonical Wardley SVG projection uses Mermaid's marker DOM instead, so omit only
@@ -2032,6 +2119,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_gantt_dom_id(path_id.as_str());
         self.write_journey_dom_id(path_id.as_str());
         self.write_sidecar_dom_id(path_id.as_str());
+        self.write_er_edge_attrs(path_id.as_str());
         if let Some(class) = self.path_class(path_id) {
             self.output.push_str(" class=\"");
             self.output.push_str(class.as_ref());
@@ -2541,6 +2629,51 @@ impl<'a> DocumentSvgEncoder<'a> {
             || (raw_id.starts_with("wardley.trend.") && raw_id.ends_with(".end"))
     }
 
+    fn is_er_marker_path(&self, raw_id: &str) -> bool {
+        matches!(self.svg_body, SvgStructureBody::Er(_))
+            && raw_id.starts_with("er.edge.")
+            && (raw_id.ends_with(".marker.start") || raw_id.ends_with(".marker.end"))
+    }
+
+    fn write_er_edge_attrs(&mut self, raw_id: &str) {
+        let SvgStructureBody::Er(body) = self.svg_body else {
+            return;
+        };
+        let Some(metadata) = body.edge_metadata.get(raw_id) else {
+            return;
+        };
+        self.output.push_str(" id=\"");
+        escape_attr_into(
+            &mut self.output,
+            format!("{}-{}", self.diagram_id, metadata.dom_id).as_str(),
+        );
+        self.output.push_str("\" style=\"undefined;;;undefined\"");
+        self.output
+            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"");
+        escape_attr_into(&mut self.output, metadata.dom_id.as_str());
+        self.output.push_str("\" data-points=\"");
+        escape_attr_into(&mut self.output, metadata.data_points.as_str());
+        self.output.push_str("\" data-look=\"");
+        escape_attr_into(&mut self.output, body.data_look.as_str());
+        self.output.push('"');
+        if let Some(marker) = metadata.start_marker.as_deref()
+            && let Some(marker_id) =
+                er_marker_svg_id(self.diagram_id.as_str(), body.diagram_type.as_str(), marker)
+        {
+            self.output.push_str(" marker-start=\"url(#");
+            escape_attr_into(&mut self.output, marker_id.as_str());
+            self.output.push_str(")\"");
+        }
+        if let Some(marker) = metadata.end_marker.as_deref()
+            && let Some(marker_id) =
+                er_marker_svg_id(self.diagram_id.as_str(), body.diagram_type.as_str(), marker)
+        {
+            self.output.push_str(" marker-end=\"url(#");
+            escape_attr_into(&mut self.output, marker_id.as_str());
+            self.output.push_str(")\"");
+        }
+    }
+
     fn write_wardley_marker_attributes(&mut self, raw_id: &str) {
         if !matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
             return;
@@ -2605,6 +2738,19 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if matches!(self.svg_body, SvgStructureBody::Info(_)) {
+            write!(
+                self.output,
+                r#"<text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">"#,
+                fmt(run.origin.x),
+                fmt(run.origin.y),
+                fmt(run.style.font_size),
+            )
+            .map_err(|_| invalid("failed to write Info text"))?;
+            escape_xml_into(&mut self.output, run.text.as_str());
+            self.output.push_str("</text>");
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.emit_mindmap_html_text(run, semantic_id.as_deref());
         }
@@ -2651,10 +2797,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         } else {
             fmt(run.style.font_size).to_string()
         };
-        let baseline = if matches!(self.svg_body, SvgStructureBody::XyChart(_)) {
-            xychart_text_baseline(run.baseline)
-        } else {
-            text_baseline(run.baseline)
+        let baseline = match self.svg_body {
+            SvgStructureBody::XyChart(_) => xychart_text_baseline(run.baseline),
+            SvgStructureBody::Wardley(_) => wardley_text_baseline(run.baseline),
+            _ => text_baseline(run.baseline),
         };
         let gitgraph_branch_label = matches!(self.svg_body, SvgStructureBody::GitGraph(body)
         if self.current_semantic_id().is_some_and(|id| {
@@ -4117,6 +4263,26 @@ fn scoped_id(diagram_id: &str, prefix: &str, index: usize, raw: &str) -> String 
     format!("merman-{prefix}-{scope}-{index}-{suffix}")
 }
 
+fn er_marker_svg_id(diagram_id: &str, diagram_type: &str, marker: &str) -> Option<String> {
+    let marker = marker.trim();
+    let (base, suffix) = if let Some(base) = marker.strip_suffix("_START") {
+        (base, "Start")
+    } else if let Some(base) = marker.strip_suffix("_END") {
+        (base, "End")
+    } else {
+        return None;
+    };
+    let marker_type = match base {
+        "ONLY_ONE" => "onlyOne",
+        "ZERO_OR_ONE" => "zeroOrOne",
+        "ONE_OR_MORE" => "oneOrMore",
+        "ZERO_OR_MORE" => "zeroOrMore",
+        "MD_PARENT" => "mdParent",
+        _ => return None,
+    };
+    Some(format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}"))
+}
+
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
@@ -4325,6 +4491,19 @@ fn xychart_text_baseline(baseline: TextBaseline) -> &'static str {
         TextBaseline::Middle => "middle",
         TextBaseline::TextBeforeEdge => "text-before-edge",
         TextBaseline::Ideographic => "ideographic",
+        TextBaseline::TextAfterEdge => "text-after-edge",
+    }
+}
+
+fn wardley_text_baseline(baseline: TextBaseline) -> &'static str {
+    match baseline {
+        // Wardley's source renderer distinguishes SVG's `middle` from `central`; the latter is
+        // a different baseline keyword with subtly different font metrics.
+        TextBaseline::Middle => "middle",
+        TextBaseline::Alphabetic => "auto",
+        TextBaseline::Hanging => "hanging",
+        TextBaseline::Ideographic => "ideographic",
+        TextBaseline::TextBeforeEdge => "text-before-edge",
         TextBaseline::TextAfterEdge => "text-after-edge",
     }
 }

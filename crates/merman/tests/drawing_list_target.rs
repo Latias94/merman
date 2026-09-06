@@ -573,6 +573,31 @@ fn info_emits_typed_version_text_and_semantics() {
 }
 
 #[test]
+fn info_rejects_unresolved_theme_css_without_silent_visual_loss() {
+    let site_config = MermaidConfig::from_value(serde_json::json!({
+        "themeCSS": ".version { fill: red; }",
+    }));
+    let error = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .render(RenderRequest::drawing_list(
+            "info",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("Info themeCSS must not be silently omitted from DrawingList output");
+
+    let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+        family,
+        reason,
+    }) = error
+    else {
+        panic!("expected a structured DrawingList-unavailable error, got {error}");
+    };
+    assert_eq!(family, "info");
+    assert!(reason.contains("themeCSS"));
+}
+
+#[test]
 fn drawing_list_footprint_is_admitted_to_operation_work_accounting() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(
@@ -2590,6 +2615,40 @@ kanban
             && semantic.link.as_deref() == Some("https://example.invalid/tickets/K-1")
     }));
     assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn kanban_preserves_duplicate_ids_across_sections() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "kanban\n  Todo\n    id3[First]\n  Done\n    id3[Second]\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("duplicate Kanban ids in separate sections should remain renderable");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    for label in ["First", "Second"] {
+        assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == label
+            )),
+            "missing Kanban card label {label}"
+        );
+    }
+    assert_eq!(
+        document
+            .semantics
+            .iter()
+            .filter(|semantic| semantic.role == merman_display_list::SemanticRole::Node)
+            .count(),
+        2,
+        "both cards need independent semantic nodes even when their source ids repeat"
+    );
 }
 
 #[test]

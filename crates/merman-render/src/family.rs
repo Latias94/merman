@@ -776,6 +776,26 @@ impl SvgSerializationRoute {
     }
 }
 
+/// Structured evidence for an SVG request that used the compatibility bridge.
+///
+/// The bridge remains a deliberate migration seam.  Keeping its reason beside the route makes
+/// a successful legacy SVG auditable without changing the public DrawingList protocol or the C
+/// ABI.  The detail carried by [`Self::DrawingListUnavailable`] is the renderer's structured
+/// capability message, not an instruction for a host to retry through another target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SvgSerializationBridgeReason {
+    /// The caller requested timing diagnostics, which are emitted by the legacy path today.
+    TimingDiagnostics,
+    /// The caller requested the flowchart edge trace diagnostic path.
+    FlowchartEdgeTrace,
+    /// The family has a typed document adapter but has not crossed the canonical SVG gate.
+    LegacyFamily { family: RenderFamilyKind },
+    /// The canonical document builder rejected a visual capability and SVG retained its
+    /// source-backed legacy representation.
+    DrawingListUnavailable { family: String, reason: String },
+}
+
 /// A completed family SVG produced by the canonical typed render operation.
 ///
 /// Root completion evidence is private to the renderer and cannot be named by callers:
@@ -797,6 +817,7 @@ pub struct RenderedFamilySvg {
     metadata: ParseMetadata,
     required_capabilities: Vec<RenderCapability>,
     serialization_route: SvgSerializationRoute,
+    serialization_bridge_reason: Option<SvgSerializationBridgeReason>,
     session: RenderSession,
 }
 
@@ -825,6 +846,11 @@ impl RenderedFamilySvg {
     /// observable instead of making the family-level coverage row look like a per-request claim.
     pub const fn serialization_route(&self) -> SvgSerializationRoute {
         self.serialization_route
+    }
+
+    /// Returns the structured reason when this SVG used the compatibility bridge.
+    pub fn serialization_bridge_reason(&self) -> Option<&SvgSerializationBridgeReason> {
+        self.serialization_bridge_reason.as_ref()
     }
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
@@ -865,6 +891,7 @@ impl RenderedFamilySvg {
             family_kind: self.family_kind,
             metadata: self.metadata,
             serialization_route: self.serialization_route,
+            serialization_bridge_reason: self.serialization_bridge_reason,
             session: self.session,
         })
     }
@@ -891,6 +918,7 @@ pub struct RenderedResvgCompatibleSvg {
     family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
     serialization_route: SvgSerializationRoute,
+    serialization_bridge_reason: Option<SvgSerializationBridgeReason>,
     session: RenderSession,
 }
 
@@ -901,6 +929,11 @@ impl RenderedResvgCompatibleSvg {
 
     pub const fn serialization_route(&self) -> SvgSerializationRoute {
         self.serialization_route
+    }
+
+    /// Returns the structured reason when this SVG used the compatibility bridge.
+    pub fn serialization_bridge_reason(&self) -> Option<&SvgSerializationBridgeReason> {
+        self.serialization_bridge_reason.as_ref()
     }
 
     pub fn into_parts(
@@ -1057,7 +1090,8 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let (svg, serialization_route) = render_family_artifact_svg(&self, options, render_debug)?;
+        let (svg, serialization_route, serialization_bridge_reason) =
+            render_family_artifact_svg(&self, options, render_debug)?;
         admit_rendered_svg_output(&self.session, &svg)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         if let Some((destination, staging, _)) = trace_stage {
@@ -1080,6 +1114,7 @@ impl FamilyRenderArtifact {
             metadata,
             required_capabilities,
             serialization_route,
+            serialization_bridge_reason,
             session,
         })
     }
@@ -1101,15 +1136,32 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<(String, SvgSerializationRoute)> {
+) -> Result<(
+    String,
+    SvgSerializationRoute,
+    Option<SvgSerializationBridgeReason>,
+)> {
     let options = crate::svg::normalize_svg_render_options(request, &artifact.session)?;
 
-    let use_legacy_bridge = debug.include_timing_diagnostics
-        || debug.flowchart_edge_trace().is_some()
-        || !canonical_svg_family_enabled(artifact.family.kind());
-    if use_legacy_bridge {
-        return render_legacy_family_artifact_svg(artifact, &options, debug)
-            .map(|svg| (svg, SvgSerializationRoute::LegacyBridge));
+    let bridge_reason = if debug.include_timing_diagnostics {
+        Some(SvgSerializationBridgeReason::TimingDiagnostics)
+    } else if debug.flowchart_edge_trace().is_some() {
+        Some(SvgSerializationBridgeReason::FlowchartEdgeTrace)
+    } else if !canonical_svg_family_enabled(artifact.family.kind()) {
+        Some(SvgSerializationBridgeReason::LegacyFamily {
+            family: artifact.family.kind(),
+        })
+    } else {
+        None
+    };
+    if let Some(bridge_reason) = bridge_reason {
+        return render_legacy_family_artifact_svg(artifact, &options, debug).map(|svg| {
+            (
+                svg,
+                SvgSerializationRoute::LegacyBridge,
+                Some(bridge_reason),
+            )
+        });
     }
 
     // The canonical document serializer is admitted family-by-family.  This keeps the existing
@@ -1130,14 +1182,19 @@ fn render_family_artifact_svg(
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
-        .map(|svg| (svg, SvgSerializationRoute::CanonicalDocument)),
-        Err(Error::DrawingListUnavailable { .. }) => {
+        .map(|svg| (svg, SvgSerializationRoute::CanonicalDocument, None)),
+        Err(Error::DrawingListUnavailable { family, reason }) => {
             // A family may still contain a browser-only effect that the SVG adapter can emit
             // faithfully while the renderer-neutral contract is not yet able to represent it.
             // Keep this as an explicit, measurable migration bridge rather than hiding a partial
             // DrawingList behind the SVG target.
-            render_legacy_family_artifact_svg(artifact, &options, debug)
-                .map(|svg| (svg, SvgSerializationRoute::LegacyBridge))
+            render_legacy_family_artifact_svg(artifact, &options, debug).map(|svg| {
+                (
+                    svg,
+                    SvgSerializationRoute::LegacyBridge,
+                    Some(SvgSerializationBridgeReason::DrawingListUnavailable { family, reason }),
+                )
+            })
         }
         Err(error) => Err(error),
     }

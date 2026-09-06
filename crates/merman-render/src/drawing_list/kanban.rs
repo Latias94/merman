@@ -23,7 +23,7 @@ use crate::text::{
     TextMeasurer as _, TextStyle as MeasurementTextStyle, WrapMode, wrap_text_lines_measurer,
 };
 use crate::{Error, Result};
-use merman_core::diagrams::kanban::KanbanDiagramRenderModel;
+use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
@@ -324,6 +324,22 @@ impl<'a> KanbanBuilder<'a> {
     }
 
     fn emit_items(&mut self) -> Result<()> {
+        // Mermaid permits the same user-facing node id in different sections (the upstream
+        // renderer keeps both DOM nodes).  Index sources by `(id, parent)` and consume each
+        // occurrence in layout order instead of using a first-match lookup that aliases the
+        // second occurrence to the first node.
+        let mut sources_by_key: BTreeMap<(String, String), Vec<&KanbanRenderNode>> =
+            BTreeMap::new();
+        for source in self.model.nodes.iter().filter(|node| !node.is_group) {
+            if let Some(parent_id) = source.parent_id.as_deref() {
+                sources_by_key
+                    .entry((source.id.clone(), parent_id.to_owned()))
+                    .or_default()
+                    .push(source);
+            }
+        }
+        let mut source_offsets: BTreeMap<(String, String), usize> = BTreeMap::new();
+
         for (index, (item, prepared)) in self
             .layout
             .items
@@ -332,23 +348,18 @@ impl<'a> KanbanBuilder<'a> {
             .enumerate()
         {
             self.session.checkpoint(OperationPhase::Emit)?;
-            let source = self
-                .model
-                .nodes
-                .iter()
-                .find(|node| node.id == item.id)
+            let key = (item.id.clone(), item.parent_id.clone());
+            let offset = source_offsets.entry(key.clone()).or_default();
+            let _source = sources_by_key
+                .get(&key)
+                .and_then(|sources| sources.get(*offset))
                 .ok_or_else(|| {
                     invalid(format!(
-                        "Kanban layout item `{}` has no semantic source",
-                        item.id
+                        "Kanban layout item `{}` is not paired with its semantic parent `{}`",
+                        item.id, item.parent_id
                     ))
                 })?;
-            if source.is_group || source.parent_id.as_deref() != Some(item.parent_id.as_str()) {
-                return Err(invalid(format!(
-                    "Kanban layout item `{}` is not paired with its semantic parent",
-                    item.id
-                )));
-            }
+            *offset = offset.saturating_add(1);
 
             let semantic_id = format!("kanban.item.{index}");
             self.semantic_classes

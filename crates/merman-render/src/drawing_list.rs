@@ -53,7 +53,7 @@ use merman_display_list::{
     Viewport,
 };
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use svgtypes::{PathParser, PathSegment as SvgPathSegment};
 
@@ -541,6 +541,17 @@ pub(crate) struct ErSvgBody {
     pub(crate) path_classes: BTreeMap<String, String>,
     pub(crate) text_classes: BTreeMap<String, String>,
     pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) edge_metadata: BTreeMap<String, ErEdgeSvgMetadata>,
+    pub(crate) marker_types: BTreeSet<String>,
+}
+
+/// SVG-only relationship metadata retained for the ER edge path contract.
+#[derive(Debug, Clone)]
+pub(crate) struct ErEdgeSvgMetadata {
+    pub(crate) dom_id: String,
+    pub(crate) data_points: String,
+    pub(crate) start_marker: Option<String>,
+    pub(crate) end_marker: Option<String>,
 }
 
 pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
