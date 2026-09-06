@@ -907,32 +907,23 @@ fn compile_task_family(
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
 
-    match family {
-        DiagramFamilyId::GANTT => {
-            // Gantt task fill/stroke state variants are owned by the typed adapter.
-            // Keep only the warning-line projection, which still has no terminal
-            // typed route.
-            contributions.add_theme_variables(
-                "task.warning",
-                [
-                    (
-                        "todayLineColor",
-                        reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
-                    ),
-                    (
-                        "vertLineColor",
-                        reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
-                    ),
-                ],
-            );
-        }
-        DiagramFamilyId::KANBAN => {
-            contributions.add_theme_variables(
-                ThemeRouteCutoverProjection::KanbanTaskStroke.contribution_id(),
-                [("nodeBorder", reader.stroke(ThemeTarget::Task))],
-            );
-        }
-        _ => unreachable!("task compatibility is limited to Gantt and Kanban"),
+    if family == DiagramFamilyId::GANTT {
+        // Gantt task fill/stroke state variants are owned by the typed adapter.
+        // Keep only the warning-line projection, which still has no terminal
+        // typed route.
+        contributions.add_theme_variables(
+            "task.warning",
+            [
+                (
+                    "todayLineColor",
+                    reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
+                ),
+                (
+                    "vertLineColor",
+                    reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
+                ),
+            ],
+        );
     }
 
     contributions.finish_into(builder)
@@ -2969,6 +2960,28 @@ mod tests {
         ] {
             assert!(!kanban.contribution_ids.contains(retired_id));
         }
+    }
+
+    #[test]
+    fn typed_kanban_task_stroke_has_no_bridge_contribution() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Task,
+                    ThemeStylePatch::default().with_stroke(solid("#334455")),
+                )
+                .for_family(DiagramFamilyId::KANBAN),
+            ),
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::KANBAN);
+
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(
+            !bridge(&spec).owns_contribution_id(
+                ThemeRouteCutoverProjection::KanbanTaskStroke.contribution_id()
+            )
+        );
     }
 
     #[test]
