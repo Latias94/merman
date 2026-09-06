@@ -453,6 +453,7 @@ fn assert_optional_embedded_image_contract(value: &Value, output_id: &str) {
 fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
     let expected_media_type = match output_id {
         "ascii" => "text/plain; charset=utf-8",
+        "drawing-list" => "application/vnd.merman.drawing-list+json;version=1",
         "jpeg" => "image/jpeg",
         "pdf" => "application/pdf",
         "png" => "image/png",
@@ -461,7 +462,7 @@ fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
     };
     assert_eq!(contract["media_type"], expected_media_type);
 
-    if matches!(output_id, "ascii" | "svg") {
+    if matches!(output_id, "ascii" | "drawing-list" | "svg") {
         assert!(contract["system_fonts"].is_null());
         assert!(contract["embedded_images"].is_null());
         return;
