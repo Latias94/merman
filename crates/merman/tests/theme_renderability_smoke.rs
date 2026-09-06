@@ -1102,10 +1102,20 @@ fn requirement_default_visible_stroke_uses_node_border() {
         ),
         "Requirement legacy CSS should keep Mermaid's requirementBorderColor rule: {svg}"
     );
+
+    let document =
+        roxmltree::Document::parse(&svg).expect("Requirement theme smoke should emit valid XML");
+    let shape_stroke = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("data-merman-resource") == Some("requirement.node.0.shape.stroke")
+        })
+        .expect("Requirement canonical shape should expose its visible stroke path");
     assert!(
-        svg.contains(
-            r##"class="reqBox" fill-rule="nonzero" fill="#ececff" stroke="#9370db" stroke-width="1.3""##,
-        ),
+        shape_stroke.attribute("fill") == Some("none")
+            && shape_stroke.attribute("stroke") == Some("#9370db")
+            && shape_stroke.attribute("stroke-width") == Some("1.3"),
         "Requirement canonical shape strokes should use nodeBorder by default: {svg}"
     );
     assert!(
