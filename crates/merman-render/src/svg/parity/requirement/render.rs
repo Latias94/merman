@@ -893,27 +893,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
         if let Some(divider_y_offset) = rendered_node.divider_y_offset {
             let divider_y = y + divider_y_offset;
             let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
-                if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
-                    .randomness(hand_drawn_seed.clone())
-                    .roughness(0.0)
-                    .fill_style(roughr::core::FillStyle::Solid)
-                    .stroke(stroke)
-                    .stroke_width(stroke_width as f32)
-                    .stroke_line_dash(vec![0.0, 0.0])
-                    .stroke_line_dash_offset(0.0)
-                    .fill_line_dash(vec![0.0, 0.0])
-                    .fill_line_dash_offset(0.0)
-                    .disable_multi_stroke(false)
-                    .disable_multi_stroke_fill(false)
-                    .build()
-                {
-                    roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
-                        x,
-                        divider_y,
-                        x + n.width,
-                        divider_y,
-                        &mut opts,
-                    ))
+                if let Ok(line) = crate::rough_geometry::rough_line_opset(
+                    x,
+                    divider_y,
+                    x + n.width,
+                    divider_y,
+                    stroke,
+                    stroke_width as f32,
+                    &hand_drawn_seed,
+                ) {
+                    roughjs_ops_to_svg_path_d(&line)
                 } else {
                     rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
                 }

@@ -363,6 +363,7 @@ pub(crate) struct RequirementSvgBody {
     pub(crate) text_classes: BTreeMap<String, String>,
     pub(crate) semantic_looks: BTreeMap<String, String>,
     pub(crate) semantic_color_ids: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
 }
 
 /// SVG-only metadata retained beside the public Sankey document.

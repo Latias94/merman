@@ -140,37 +140,24 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
 
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
-    let mut opts = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(0.0)
-        .fill_style(roughr::core::FillStyle::Solid)
-        .fill(fill)
-        .stroke(stroke)
-        .stroke_width(stroke_width)
-        .stroke_line_dash(vec![0.0, 0.0])
-        .stroke_line_dash_offset(0.0)
-        .fill_line_dash(vec![0.0, 0.0])
-        .fill_line_dash_offset(0.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
+    let opsets =
+        crate::rough_geometry::rough_rectangle_opsets(crate::rough_geometry::RoughRectangleSpec {
+            x,
+            y,
+            width: w,
+            height: h,
+            fill: Some(fill),
+            stroke: Some(stroke),
+            stroke_width,
+            randomness,
+        })
         .ok()?;
-
-    let fill_poly = vec![vec![
-        roughr::Point2D::new(x, y),
-        roughr::Point2D::new(x + w, y),
-        roughr::Point2D::new(x + w, y + h),
-        roughr::Point2D::new(x, y + h),
-    ]];
-    // Rough.js computes the rectangle outline first (advancing the PRNG state), then the fill, and
-    // finally emits the fill path before the stroke path. Keep the same generation order to match
-    // Mermaid's seeded output.
-    let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
-    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
+    let fill_opset = opsets.fill.as_ref()?;
+    let stroke_opset = opsets.stroke.as_ref()?;
 
     Some((
-        ops_to_svg_path_d(&fill_opset),
-        ops_to_svg_path_d(&stroke_opset),
+        ops_to_svg_path_d(fill_opset),
+        ops_to_svg_path_d(stroke_opset),
     ))
 }
 

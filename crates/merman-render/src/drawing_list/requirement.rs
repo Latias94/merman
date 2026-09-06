@@ -2,8 +2,9 @@
 //!
 //! Requirement layout owns the Dagre positions and the prepared label plans.  The adapter keeps
 //! those coordinates, expands relationship markers into ordinary paths, and accepts only labels
-//! whose prepared Markdown is plain text.  Browser HTML, RoughJS/hand-drawn strokes, filters, and
-//! unsupported class declarations remain explicit failures instead of becoming silent omissions.
+//! whose prepared Markdown is plain text. Classic Rough.js box and divider geometry is lowered to
+//! ordinary path segments; browser HTML, hand-drawn styling, filters, and unsupported class
+//! declarations remain explicit failures instead of becoming silent omissions.
 
 use super::{
     RenderDocument, RequirementSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families,
@@ -21,6 +22,10 @@ use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
 use crate::requirement::{
     RequirementEdgeLabelPlan, RequirementNodeLabelPlan, RequirementNodeRenderPlan,
     RequirementPreparedArtifact,
+};
+use crate::rough_geometry::{
+    RoughRectangleSpec, display_color_to_srgba, operation_randomness, opset_to_path_segments,
+    rough_line_opset, rough_rectangle_opsets,
 };
 use crate::text::{
     TextMeasurer as _, TextStyle as MeasurementTextStyle, mermaid_markdown_to_xhtml_label_fragment,
@@ -97,6 +102,7 @@ struct RequirementBuilder<'a> {
     default_stroke: Color,
     default_text: Color,
     relation_width: f64,
+    rough_randomness: roughr::core::RoughRandomness,
     border_colors: Vec<String>,
     background_colors: Vec<String>,
     text_obligation: TextObligation,
@@ -108,6 +114,7 @@ struct RequirementBuilder<'a> {
     text_classes: BTreeMap<String, String>,
     semantic_looks: BTreeMap<String, String>,
     semantic_color_ids: BTreeMap<String, String>,
+    dom_ids: BTreeMap<String, String>,
 }
 
 impl<'a> RequirementBuilder<'a> {
@@ -197,6 +204,11 @@ impl<'a> RequirementBuilder<'a> {
             default_stroke,
             default_text,
             relation_width,
+            rough_randomness: operation_randomness(
+                session,
+                settings.hand_drawn_seed,
+                "render.requirement.roughjs",
+            ),
             border_colors: config_string_vec(config, &["themeVariables", "borderColorArray"]),
             background_colors: config_string_vec(config, &["themeVariables", "bkgColorArray"]),
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
@@ -213,6 +225,7 @@ impl<'a> RequirementBuilder<'a> {
             text_classes: BTreeMap::new(),
             semantic_looks: BTreeMap::new(),
             semantic_color_ids: BTreeMap::new(),
+            dom_ids: BTreeMap::new(),
         })
     }
 
@@ -291,6 +304,7 @@ impl<'a> RequirementBuilder<'a> {
                     text_classes: self.text_classes,
                     semantic_looks: self.semantic_looks,
                     semantic_color_ids: self.semantic_color_ids,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -468,6 +482,8 @@ impl<'a> RequirementBuilder<'a> {
                 )));
             };
             let semantic_id = format!("requirement.node.{source_index}");
+            self.dom_ids
+                .insert(semantic_id.clone(), source.name().to_string());
             self.semantic_classes
                 .insert(semantic_id.clone(), "node default".to_string());
             self.semantic_looks
@@ -482,47 +498,64 @@ impl<'a> RequirementBuilder<'a> {
                 semantic_id: semantic_id.clone(),
             });
             let style = self.node_style(*source_index, source)?;
-            let shape = rounded_rect_path(
-                node.x + node.width / 2.0,
-                node.y + node.height / 2.0,
-                node.width,
-                node.height,
-                0.0,
-            );
-            if style.fill.is_some() || style.stroke.is_some() {
-                self.path_classes
-                    .insert(format!("{semantic_id}.shape"), "reqBox".to_string());
+            let rough_shape = rough_rectangle_opsets(RoughRectangleSpec {
+                x: node.x,
+                y: node.y,
+                width: node.width,
+                height: node.height,
+                fill: style.fill.map(display_color_to_srgba),
+                stroke: style.stroke.map(display_color_to_srgba),
+                stroke_width: style.stroke_width as f32,
+                randomness: &self.rough_randomness,
+            })?;
+            if let (Some(fill), Some(fill_geometry)) = (style.fill, rough_shape.fill.as_ref()) {
                 self.add_path(
-                    format!("{semantic_id}.shape"),
-                    shape.clone(),
+                    format!("{semantic_id}.shape.fill"),
+                    opset_to_path_segments(fill_geometry)?,
                     PathStyle {
                         fill_rule: FillRule::NonZero,
-                        fill: style.fill.map(Paint::solid),
-                        stroke: style.stroke.map(|color| stroke(color, style.stroke_width)),
+                        fill: Some(Paint::solid(fill)),
+                        stroke: None,
+                    },
+                )?;
+            }
+            if let (Some(stroke_color), Some(stroke_geometry)) =
+                (style.stroke, rough_shape.stroke.as_ref())
+            {
+                self.add_path(
+                    format!("{semantic_id}.shape.stroke"),
+                    opset_to_path_segments(stroke_geometry)?,
+                    PathStyle {
+                        fill_rule: FillRule::NonZero,
+                        fill: None,
+                        stroke: Some(stroke(stroke_color, style.stroke_width)),
                     },
                 )?;
             }
             self.emit_node_labels(&semantic_id, node, plan, style)?;
-            if let Some(divider_offset) = plan.divider_y_offset {
+            if let (Some(divider_offset), Some(stroke_color)) =
+                (plan.divider_y_offset, style.stroke)
+            {
                 self.path_classes
                     .insert(format!("{semantic_id}.divider"), "divider".to_string());
+                let start = Point::new(node.x, node.y + divider_offset);
+                let end = Point::new(node.x + node.width, node.y + divider_offset);
+                let divider = rough_line_opset(
+                    start.x,
+                    start.y,
+                    end.x,
+                    end.y,
+                    display_color_to_srgba(stroke_color),
+                    style.stroke_width as f32,
+                    &self.rough_randomness,
+                )?;
                 self.add_path(
                     format!("{semantic_id}.divider"),
-                    vec![
-                        PathSegment::MoveTo {
-                            to: Point::new(node.x, node.y + divider_offset - node.height / 2.0),
-                        },
-                        PathSegment::LineTo {
-                            to: Point::new(
-                                node.x + node.width,
-                                node.y + divider_offset - node.height / 2.0,
-                            ),
-                        },
-                    ],
+                    opset_to_path_segments(&divider)?,
                     PathStyle {
                         fill_rule: FillRule::NonZero,
                         fill: None,
-                        stroke: style.stroke.map(|color| stroke(color, style.stroke_width)),
+                        stroke: Some(stroke(stroke_color, style.stroke_width)),
                     },
                 )?;
             }

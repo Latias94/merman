@@ -545,9 +545,10 @@ fn requirement_svg_hand_drawn_seed_controls_visible_rough_paths() {
             )
         },
         &[
-            r#"id="requirement-seed-req1" data-look="classic""#,
-            r#"class="basic label-container outer-path""#,
+            r#"id="requirement-seed-req1""#,
+            r#"data-merman-resource="requirement.node.0.shape.fill""#,
             r##"fill="#f0fdf4""##,
+            r#"data-merman-resource="requirement.node.0.shape.stroke""#,
             r##"stroke="#16a34a" stroke-width="1.3""##,
             r#"class="divider""#,
         ],

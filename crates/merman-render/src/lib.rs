@@ -46,6 +46,7 @@ pub mod railroad;
 pub(crate) mod render_geometry;
 pub mod requirement;
 pub mod resources;
+mod rough_geometry;
 pub mod sankey;
 pub mod sequence;
 pub mod state;

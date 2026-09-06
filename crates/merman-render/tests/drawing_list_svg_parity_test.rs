@@ -189,11 +189,21 @@ fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
                 .attribute("class")
                 .is_some_and(|class| class.contains("relationshipLine"))
     }));
-    assert!(
-        document
-            .descendants()
-            .any(|node| { node.has_tag_name("path") && node.attribute("class") == Some("reqBox") })
-    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-merman-resource") == Some("requirement.node.0.shape.fill")
+            && node.attribute("fill").is_some_and(|fill| fill != "none")
+            && node.attribute("stroke") == Some("none")
+    }));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("path")
+            && node.attribute("data-merman-resource") == Some("requirement.node.0.shape.stroke")
+            && node.attribute("fill") == Some("none")
+            && node
+                .attribute("stroke")
+                .is_some_and(|stroke| stroke != "none")
+            && node.attribute("d").is_some_and(|path| path.contains('C'))
+    }));
     assert!(
         document.descendants().any(|node| {
             node.has_tag_name("path") && node.attribute("class") == Some("divider")

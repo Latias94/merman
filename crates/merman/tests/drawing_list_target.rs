@@ -713,14 +713,32 @@ fn requirement_emits_typed_nodes_relationships_markers_labels_and_semantics() {
     )));
     for path_id in [
         "requirement.edge.0.marker.end",
-        "requirement.node.0.shape",
-        "requirement.node.1.shape",
+        "requirement.node.0.shape.fill",
+        "requirement.node.0.shape.stroke",
+        "requirement.node.1.shape.fill",
+        "requirement.node.1.shape.stroke",
     ] {
         assert!(document.resources.iter().any(|resource| matches!(
             resource,
             merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
         )));
     }
+    let divider_origin = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            merman_display_list::DrawingResource::Path(path)
+                if path.id.as_str() == "requirement.node.0.divider" =>
+            {
+                match path.segments.first() {
+                    Some(merman_display_list::PathSegment::MoveTo { to }) => Some(*to),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .expect("Requirement divider origin");
+    assert!(divider_origin.y >= document.viewport.bounds.y);
     for text in ["req1", "system", "<<satisfies>>"] {
         assert!(document.commands.iter().any(|command| matches!(
             command,
@@ -735,6 +753,55 @@ fn requirement_emits_typed_nodes_relationships_markers_labels_and_semantics() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("<<satisfies>>")
     }));
+}
+
+#[test]
+fn requirement_preserves_seeded_rough_geometry_in_the_public_drawing_list() {
+    let render_stroke = |seed: u64| {
+        let source = format!(
+            r#"%%{{init: {{"handDrawnSeed": {seed}}}}}%%
+requirementDiagram
+  requirement req1 {{
+    id: REQ-1
+    text: Seeded requirement
+    risk: high
+    verifymethod: test
+  }}
+"#
+        );
+        let output = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                &source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect("seeded Requirement should render as vector DrawingList geometry");
+        let RenderOutput::DrawingList(Some(output)) = output else {
+            panic!("expected a DrawingList output");
+        };
+        output
+            .document()
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                merman_display_list::DrawingResource::Path(path)
+                    if path.id.as_str() == "requirement.node.0.shape.stroke" =>
+                {
+                    Some(path.segments.clone())
+                }
+                _ => None,
+            })
+            .expect("Requirement rough stroke path")
+    };
+
+    let seed_7 = render_stroke(7);
+    assert_eq!(seed_7, render_stroke(7));
+    assert_ne!(seed_7, render_stroke(8));
+    assert!(
+        seed_7
+            .iter()
+            .any(|segment| matches!(segment, merman_display_list::PathSegment::CubicTo { .. }))
+    );
 }
 
 #[test]

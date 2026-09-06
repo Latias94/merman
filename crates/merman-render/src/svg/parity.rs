@@ -709,16 +709,7 @@ impl<'a> SvgExecution<'a> {
         configured_seed: f64,
         owner_domain: &str,
     ) -> roughr::core::RoughRandomness {
-        let resolved_seed = if configured_seed == 0.0 {
-            self.seed() as f64
-        } else {
-            configured_seed
-        };
-        let operation = self.session.operation_context();
-        roughr::core::RoughRandomness::new(
-            roughr::core::RoughJsSeed::new(resolved_seed),
-            roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
-        )
+        crate::rough_geometry::operation_randomness(self.session, configured_seed, owner_domain)
     }
 
     pub(crate) fn timing(&self) -> timing::RenderTiming {
