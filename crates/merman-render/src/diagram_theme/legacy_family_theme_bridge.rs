@@ -538,7 +538,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
         DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
-        DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
+        DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
         DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
@@ -550,6 +550,7 @@ fn legacy_family_dispatch(
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
+        | DiagramFamilyId::GANTT
         | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
@@ -2436,6 +2437,7 @@ mod tests {
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
+                DiagramFamilyId::GANTT,
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
@@ -2466,18 +2468,32 @@ mod tests {
             0xa7, 0x0f, 0x18, 0xb3,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x88, 0x04, 0xd4, 0xec, 0x9b, 0x15, 0xf6, 0xe2, 0x0f, 0xd4, 0xf1, 0x06, 0x0d, 0xa0,
-            0xe7, 0xa6, 0xdf, 0x65, 0xda, 0x80, 0x2e, 0x67, 0x5e, 0x4e, 0xa2, 0x8b, 0xd6, 0xba,
-            0x81, 0xa5, 0xbd, 0x57,
+            0xcc, 0x78, 0xeb, 0xdd, 0x8d, 0x32, 0xee, 0xb6, 0x96, 0x5b, 0x1d, 0x94, 0x59, 0xb0,
+            0xa2, 0xa1, 0xec, 0x28, 0x43, 0x86, 0x24, 0x88, 0x7d, 0x9c, 0x8f, 0x03, 0x3c, 0xdd,
+            0xb9, 0x67, 0x5a, 0x61,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 282);
-        assert_eq!(status.matrix_family_count(), 17);
-        assert_eq!(status.dispatched_family_count(), 17);
-        assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
-        assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
+        assert_eq!(status.matrix_route_count(), 276);
+        assert_eq!(status.matrix_family_count(), 16);
+        assert_eq!(status.dispatched_family_count(), 16);
+        assert_eq!(
+            status.matrix_route_digest(),
+            [
+                0x82, 0x05, 0xdb, 0xe1, 0x4f, 0xc2, 0x55, 0xa3, 0xd1, 0xce, 0xe6, 0xc1, 0x4b, 0x84,
+                0x88, 0x4d, 0xe9, 0xaa, 0xb9, 0xce, 0xa6, 0x1f, 0xf5, 0x7f, 0x09, 0x06, 0x09, 0xc5,
+                0xde, 0xdc, 0x35, 0x4f,
+            ]
+        );
+        assert_eq!(
+            status.matrix_family_digest(),
+            [
+                0x4a, 0xc2, 0x67, 0x2f, 0x90, 0x43, 0xa3, 0xe4, 0xad, 0x5a, 0x39, 0x9e, 0x53, 0x01,
+                0xa4, 0xd7, 0x09, 0x2c, 0x30, 0xec, 0x8a, 0xe8, 0xe5, 0x60, 0x7e, 0x7b, 0xb7, 0x16,
+                0xf3, 0xaf, 0xf8, 0x22,
+            ]
+        );
         assert_eq!(
             status.dispatched_family_digest(),
             EXPECTED_DISPATCH_FAMILY_DIGEST
@@ -4884,7 +4900,7 @@ mod tests {
     }
 
     #[test]
-    fn gantt_warning_lines_keep_their_legacy_projection() {
+    fn gantt_warning_lines_are_owned_by_the_typed_writer() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
                 ThemeRule::new(
@@ -4898,25 +4914,26 @@ mod tests {
         let parsed = parse(&spec, GANTT_FIXTURE);
         let compiled = bridge(&spec).compile_for_family(DiagramFamilyId::GANTT);
 
+        let baseline = parse(&DiagramThemeSpec::new(), GANTT_FIXTURE);
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.todayLineColor"),
-            Some("#d97706")
+            baseline
+                .effective_config
+                .get_str("themeVariables.todayLineColor")
         );
         assert_eq!(
             parsed
                 .effective_config
                 .get_str("themeVariables.vertLineColor"),
-            Some("#d97706")
+            baseline
+                .effective_config
+                .get_str("themeVariables.vertLineColor")
         );
-        assert_eq!(fallback_contribution_count(&parsed), 1);
-        assert_eq!(compiled.contribution_ids.len(), 1);
-        assert!(
-            compiled
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.gantt.task.warning")
-        );
+        assert_eq!(fallback_contribution_count(&parsed), 0);
+        assert!(compiled.overlay.is_empty());
+        assert!(compiled.contribution_ids.is_empty());
     }
 
     #[test]

@@ -86,6 +86,16 @@ fn gantt_task_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
     ))
 }
 
+fn gantt_warning_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
+    gantt_task_rule_theme(
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default().with_stroke(stroke),
+        )
+        .with_variant(ThemeVariant::Warning),
+    )
+}
+
 fn gantt_title_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
     let rule = ThemeRule::new(
         ThemeTarget::Title,
@@ -478,6 +488,101 @@ fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
         assert_eq!(stroke, expected, "incorrect final-key owner for {id}");
     }
 
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_reaches_today_and_vertical_terminals() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker 2024-01-03\nsection Delivery\nVertical marker: vert, vertical-marker, 2024-01-02, 0d\nTask: regular-task, 2024-01-02, 1d\n";
+    let theme = gantt_warning_stroke_theme(
+        CanvasPaint::solid("#d97706").expect("valid Gantt warning stroke"),
+    );
+    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-warning".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render typed Gantt warning stroke");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Gantt warning SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Gantt warning stylesheet");
+    assert!(
+        stylesheet.contains("#gantt-warning .today{fill:none;stroke:#d97706;stroke-width:2px;}")
+    );
+    assert!(stylesheet.contains(
+        "#gantt-warning .vert{stroke:#d97706;}#gantt-warning .vertText{font-size:15px;text-anchor:middle;fill:#d97706!important;}"
+    ));
+
+    let today = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("line")
+                && node.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "today")
+                })
+        })
+        .expect("today line terminal");
+    assert!(
+        !today
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:"))
+    );
+
+    let vertical_task = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("gantt-warning-vertical-marker")
+        })
+        .expect("vertical task terminal");
+    assert_eq!(
+        style_property(
+            vertical_task.attribute("style").unwrap_or_default(),
+            "stroke"
+        ),
+        Some("#d97706")
+    );
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.attribute("class").is_some_and(|class| {
+                class
+                    .split_ascii_whitespace()
+                    .any(|token| token == "vertText")
+            })
+    }));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_is_not_applicable_without_warning_terminals() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nTask: regular-task, 2024-01-02, 1d\n";
+    let theme = gantt_warning_stroke_theme(
+        CanvasPaint::solid("#d97706").expect("valid Gantt warning stroke"),
+    );
+    let artifact = prepare_gantt_family_with_theme(source, &theme);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Gantt without warning terminals");
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);

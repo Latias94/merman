@@ -11,19 +11,19 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 49;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 50;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x42, 0x91, 0x00, 0xbd, 0x3b, 0x4f, 0x65, 0x08, 0xc7, 0x1b, 0xe5, 0x21, 0x27, 0xa6, 0x22, 0x08,
-    0xbf, 0x25, 0xda, 0x68, 0xce, 0xf9, 0xcc, 0xc8, 0xef, 0x28, 0x14, 0xde, 0xcd, 0xd5, 0x87, 0xff,
+    0x09, 0x10, 0xc4, 0xa9, 0x73, 0x64, 0xcd, 0xb0, 0xb8, 0xf0, 0xb8, 0x3a, 0x89, 0xe0, 0x59, 0xe0,
+    0x0a, 0x24, 0x82, 0xa4, 0xf3, 0x67, 0xeb, 0xb4, 0x80, 0x61, 0xc5, 0xeb, 0xd4, 0xff, 0x6d, 0xc6,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 40] = [
+); 41] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -162,6 +162,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::GanttTaskWarningStroke,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
     (
@@ -321,6 +325,8 @@ const GANTT_TASK_SUCCESS_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::GanttTaskSuccessStroke];
 const GANTT_TASK_ERROR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::GanttTaskErrorStroke];
+const GANTT_TASK_WARNING_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GanttTaskWarningStroke];
 const JOURNEY_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskFill];
 const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -343,7 +349,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 282] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 284] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -2201,6 +2207,22 @@ const ACTIVE_ROUTES: [RouteAuthorization; 282] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         GANTT_TASK_ERROR_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Warning,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TASK_WARNING_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Task,
+        ThemeVariant::Warning,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TASK_WARNING_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::JOURNEY,
@@ -2759,11 +2781,12 @@ mod tests {
         ACTIVE_ROUTES, ACTOR_FILL_PROJECTIONS, CLUSTER_FILL_PROJECTIONS,
         CLUSTER_STROKE_PROJECTIONS, CUTOVER_AUTHORIZATION_MANIFEST_VERSION,
         CutoverAuthorizationManifest, EDGE_STROKE_ONLY_PROJECTIONS, EDGE_STROKE_PROJECTIONS,
-        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, MANIFEST, NODE_FILL_PROJECTIONS,
-        NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS, PIE_SLICE_FILL_PROJECTIONS,
-        PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS, RouteAuthorization, RouteTombstone,
-        TEXT_FILL_PROJECTIONS, TITLE_FILL_PROJECTIONS, TREE_VIEW_MARKER_PAINT_PROJECTIONS,
-        authorize_cutover_routes, reconcile_manifest, validate_projection_actions,
+        GANTT_TASK_ACTIVE_FILL_PROJECTIONS, GANTT_TASK_WARNING_STROKE_PROJECTIONS, MANIFEST,
+        NODE_FILL_PROJECTIONS, NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS,
+        PIE_SLICE_FILL_PROJECTIONS, PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS,
+        RouteAuthorization, RouteTombstone, TEXT_FILL_PROJECTIONS, TITLE_FILL_PROJECTIONS,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS, authorize_cutover_routes, reconcile_manifest,
+        validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -2969,7 +2992,7 @@ mod tests {
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::GANTT)
             .collect::<Vec<_>>();
-        assert_eq!(gantt_routes.len(), 28);
+        assert_eq!(gantt_routes.len(), 30);
 
         let gantt_title_routes = gantt_routes
             .iter()
@@ -3043,6 +3066,24 @@ mod tests {
                 }
             }
         }
+
+        let warning_routes = gantt_routes
+            .iter()
+            .filter(|route| {
+                route.id.target() == ThemeTarget::Task
+                    && route.id.selector()
+                        == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning)
+                    && route.id.facet() == ThemeRouteCutoverFacet::Stroke
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(warning_routes.len(), 2);
+        assert!(warning_routes.iter().all(|route| {
+            route.projections == GANTT_TASK_WARNING_STROKE_PROJECTIONS
+                && matches!(
+                    route.id.value(),
+                    ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
+                )
+        }));
 
         for family in [DiagramFamilyId::REQUIREMENT, DiagramFamilyId::BLOCK] {
             let qualified = ACTIVE_ROUTES
@@ -3201,7 +3242,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 49);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 50);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

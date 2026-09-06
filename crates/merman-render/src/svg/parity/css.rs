@@ -1671,6 +1671,8 @@ where
         None,
         None,
         None,
+        None,
+        None,
     )
 }
 
@@ -1681,6 +1683,8 @@ pub(super) fn gantt_css_with_overrides<I>(
     resolved_title_color: Option<&str>,
     resolved_text_color: Option<&str>,
     resolved_task_text_color: Option<&str>,
+    resolved_today_line_color: Option<&str>,
+    resolved_vert_line_color: Option<&str>,
 ) -> String
 where
     I: SvgDiagramIdValue,
@@ -1700,7 +1704,7 @@ where
     let alt_section_bkg_color = &theme.alt_section_bkg_color;
     let title_color = resolved_title_color.unwrap_or(theme.title_color.as_str());
     let grid_color = &theme.grid_color;
-    let today_line_color = &theme.today_line_color;
+    let today_line_color = resolved_today_line_color.unwrap_or(&theme.today_line_color);
     let task_text_dark_color = &theme.task_text_dark_color;
     let task_text_clickable_color = &theme.task_text_clickable_color;
     let task_text_color = resolved_task_text_color.unwrap_or(&theme.task_text_color);
@@ -1713,7 +1717,7 @@ where
     let done_task_bkg_color = &theme.done_task_bkg_color;
     let crit_border_color = &theme.crit_border_color;
     let crit_bkg_color = &theme.crit_bkg_color;
-    let vert_line_color = &theme.vert_line_color;
+    let vert_line_color = resolved_vert_line_color.unwrap_or(&theme.vert_line_color);
     let title_text_color = if title_color.trim().is_empty() {
         text_color
     } else {

@@ -9,7 +9,7 @@ use crate::runner::{
 use merman::svg::{
     CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontAssetSpec,
     FontCatalogSpec, FontEmbeddingRequirement, FontSource, GenericFontFamily, ThemeAssets,
-    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderArtifactKind, RenderOutput,
@@ -274,6 +274,13 @@ todayMarker off
 section Delivery
 Task: task, 2024-01-01, 1d
 "#;
+const GANTT_WARNING_STROKE_SOURCE: &str = r#"gantt
+dateFormat YYYY-MM-DD
+todayMarker 2024-01-03
+section Delivery
+Vertical marker: vert, vertical-marker, 2024-01-02, 0d
+Task: task, regular-task, 2024-01-02, 1d
+"#;
 const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
     Ship release: 5: Maintainer
@@ -522,6 +529,12 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::GANTT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(GANTT_TASK_FILL_SOURCE)
+        }
+        (DiagramFamilyId::GANTT, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke)
+            if route.selector()
+                == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning) =>
+        {
+            Ok(GANTT_WARNING_STROKE_SOURCE)
         }
         (
             DiagramFamilyId::GANTT,
@@ -1415,11 +1428,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_282_routes_and_310_artifact_witnesses() {
+    fn route_inventory_retains_284_routes_and_312_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 282);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 310);
+        assert_eq!(inventory.len(), 284);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 312);
     }
 
     #[test]

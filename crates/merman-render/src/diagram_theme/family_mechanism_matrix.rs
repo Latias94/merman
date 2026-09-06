@@ -615,6 +615,9 @@ fn gantt_task_projections(
         (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Error)) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_ERROR_STROKE)
         }
+        (ThemeRouteCutoverFacet::Stroke, StaticVariant(ThemeVariant::Warning)) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GANTT_TASK_WARNING_STROKE)
+        }
         _ => None,
     }
 }
@@ -1772,7 +1775,7 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Task
-        && matches!(
+        && (matches!(
             selector,
             FamilyThemeSelectorShape::Static {
                 variant: None
@@ -1781,7 +1784,12 @@ pub(super) fn classify_rule_facet(
                     | Some(ThemeVariant::Success)
                     | Some(ThemeVariant::Error)
             }
-        )
+        ) || (matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: Some(ThemeVariant::Warning)
+            }
+        ) && matches!(facet, FamilyThemeRuleFacet::Stroke(_))))
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -3802,7 +3810,7 @@ mod tests {
                 &ThemeRule::new(ThemeTarget::Task, task_stroke).with_variant(ThemeVariant::Warning),
             )[0]
             .disposition(),
-            FamilyThemeDisposition::LegacyCompatibility
+            FamilyThemeDisposition::TypedAdapter
         );
     }
 
@@ -5986,7 +5994,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 138);
+        assert_eq!(qualified.len(), 140);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6009,7 +6017,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GANTT)
                 .count(),
-            20
+            22
         );
         assert_eq!(
             qualified
@@ -6206,6 +6214,11 @@ mod tests {
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Error),
                         ThemeRouteCutoverFacet::Stroke,
                     ) => ThemeRouteCutoverProjection::GanttTaskErrorStroke,
+                    (
+                        ThemeTarget::Task,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning),
+                        ThemeRouteCutoverFacet::Stroke,
+                    ) => ThemeRouteCutoverProjection::GanttTaskWarningStroke,
                     _ => panic!("unexpected Gantt qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");

@@ -369,11 +369,12 @@ pub enum ThemeRouteCutoverProjection {
     JourneyTaskStroke = 37,
     TreeViewMarkerPaint = 38,
     GitGraphCommitLabelBackgroundFill = 39,
+    GanttTaskWarningStroke = 40,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 40] = [
+    const ALL: [Self; 41] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -414,6 +415,7 @@ impl ThemeRouteCutoverProjection {
         Self::JourneyTaskStroke,
         Self::TreeViewMarkerPaint,
         Self::GitGraphCommitLabelBackgroundFill,
+        Self::GanttTaskWarningStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -458,6 +460,7 @@ impl ThemeRouteCutoverProjection {
             Self::JourneyTaskStroke => "task.stroke",
             Self::TreeViewMarkerPaint => "marker.paint",
             Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
+            Self::GanttTaskWarningStroke => "task.warning.stroke",
         }
     }
 
@@ -504,6 +507,7 @@ impl ThemeRouteCutoverProjection {
             | Self::JourneyTaskStroke
             | Self::TreeViewMarkerPaint
             | Self::GitGraphCommitLabelBackgroundFill => ThemeRouteCutoverProjectionAction::Replace,
+            Self::GanttTaskWarningStroke => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -619,6 +623,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
     pub const REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill);
+    pub const REPLACE_GANTT_TASK_WARNING_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GanttTaskWarningStroke);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -1182,6 +1188,10 @@ mod tests {
         assert_eq!(
             ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill as u8,
             39
+        );
+        assert_eq!(
+            ThemeRouteCutoverProjection::GanttTaskWarningStroke as u8,
+            40
         );
     }
 

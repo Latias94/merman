@@ -204,6 +204,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
         task_theme.title_fill_css(),
         task_theme.grid_text_fill_css(),
         task_theme.task_text_fill_css(),
+        task_theme.warning_today_line_css(),
+        task_theme.warning_vert_line_css(),
     );
     if let Some(receipt) = task_theme_receipt.as_mut() {
         receipt.record_global_css(
@@ -360,7 +362,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let ry = fmt(t.bar.ry);
             let terminal_id = gantt_dom_id(diagram_id, &t.bar.id);
             let terminal_fill = task_theme.terminal_fill_for_layout_task(*task_index);
-            let terminal_stroke = task_theme.terminal_stroke_for_layout_task(*task_index);
+            // A typed warning stroke is the final owner for vertical task bars. Keep it as an
+            // inline terminal value so the ordinary task-state inline stroke cannot override the
+            // `.vert` semantic route in the browser cascade.
+            let terminal_stroke = task_theme
+                .warning_stroke_for_layout_task(*task_index)
+                .or_else(|| task_theme.terminal_stroke_for_layout_task(*task_index));
             let section_suffix = crate::gantt::gantt_section_class_suffix(
                 &t.task_type,
                 &layout.categories,
@@ -403,7 +410,13 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     terminal_fill,
                     terminal_stroke,
                 );
+                if t.vert {
+                    receipt.record_vertical_terminal(*task_index, terminal_stroke);
+                }
             }
+        }
+        if let Some(receipt) = task_theme_receipt.as_mut() {
+            receipt.record_vertical_terminal_visibility(layout.tasks.iter().any(|task| task.vert));
         }
 
         for (_task_index, t) in &tasks_in_draw_order {
@@ -557,7 +570,12 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
         }
         out.push_str("/></g>");
+        if let Some(receipt) = task_theme_receipt.as_mut() {
+            receipt.record_today_terminal(!layout.tasks.is_empty(), style_raw);
+        }
         out.checkpoint()?;
+    } else if let Some(receipt) = task_theme_receipt.as_mut() {
+        receipt.record_today_terminal(false, "");
     }
 
     let title = layout.title.as_deref().unwrap_or_default();

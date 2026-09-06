@@ -97,6 +97,28 @@ struct GanttTextFillResolution {
     source_owned: bool,
 }
 
+/// The warning stroke is not an ordinary task-bar stroke in Mermaid.
+///
+/// `todayLineColor` owns the `.today` line while `vertLineColor` owns the
+/// vertical-task bar/text surface.  Keep the two ownership bits separate:
+/// callers may explicitly configure either source value, and a typed route
+/// must not claim the source-owned half as renderer-owned evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GanttWarningStrokeExpectation {
+    today_css: Box<str>,
+    vert_css: Box<str>,
+    today_typed: bool,
+    vert_typed: bool,
+    rule_index: usize,
+    capability: ThemeCapability,
+}
+
+#[derive(Debug, Default)]
+struct GanttWarningStrokeResolution {
+    expectation: Option<GanttWarningStrokeExpectation>,
+    source_owned: bool,
+}
+
 impl GanttTaskStrokeExpectation {
     const fn typed_rule_index(&self) -> Option<usize> {
         match self.owner {
@@ -121,6 +143,7 @@ struct GanttTaskTerminalExpectation {
     radius_rule_index: Option<usize>,
     fill: Option<GanttTaskFillExpectation>,
     stroke: Option<GanttTaskStrokeExpectation>,
+    vert: bool,
 }
 
 impl GanttTaskTerminalExpectation {
@@ -132,6 +155,7 @@ impl GanttTaskTerminalExpectation {
             radius_rule_index: None,
             fill: None,
             stroke: None,
+            vert: task.vert,
         }
     }
 }
@@ -143,6 +167,7 @@ pub(crate) struct GanttTaskTheme {
     font_family_css: Box<str>,
     title_fill: Option<GanttGlobalFillExpectation>,
     text_fill: Option<GanttTextFillExpectation>,
+    warning_stroke: Option<GanttWarningStrokeExpectation>,
     typed_font_stack_requested: bool,
     typed_font_stack_active: bool,
     unsupported_typography_properties: BTreeSet<ThemeTypographyProperty>,
@@ -268,6 +293,35 @@ impl GanttTaskTheme {
         let text_fill = text_fill_resolution.expectation;
         let text_fill_source_owned = text_fill_resolution.source_owned;
 
+        let warning_stroke_resolution =
+            resolve_gantt_warning_stroke(theme, effective_config, work_meter)?;
+        let warning_stroke = warning_stroke_resolution.expectation;
+        let warning_stroke_source_owned = warning_stroke_resolution.source_owned;
+        if let Some(warning) = warning_stroke.as_ref().filter(|warning| warning.vert_typed) {
+            for expectation in &mut task_expectations {
+                if expectation.vert {
+                    expectation.stroke = Some(GanttTaskStrokeExpectation {
+                        css: warning.vert_css.clone(),
+                        owner: GanttTaskStrokeOwner::Typed {
+                            rule_index: warning.rule_index,
+                            capability: warning.capability,
+                        },
+                    });
+                }
+            }
+        }
+        if warning_stroke.is_some() || warning_stroke_source_owned {
+            let warning_style = theme.style_with_work_meter(
+                ThemeTarget::Task,
+                ThemeVariant::Warning,
+                None,
+                work_meter,
+            )?;
+            for (property, origin) in warning_style.winner_rule_properties() {
+                winner_properties.insert((origin.rule_index(), property));
+            }
+        }
+
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let mut observations = BTreeMap::<(usize, ThemeTarget), GanttTaskRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
@@ -275,6 +329,7 @@ impl GanttTaskTheme {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
                     target: ThemeTarget::Task,
+                    selector,
                     facet,
                     ..
                 } => {
@@ -286,6 +341,36 @@ impl GanttTaskTheme {
                         continue;
                     }
                     observation.applicable = true;
+                    if matches!(
+                        (selector, facet),
+                        (
+                            crate::diagram_theme::FamilyThemeSelectorShape::Static {
+                                variant: Some(ThemeVariant::Warning)
+                            },
+                            FamilyThemeRuleFacet::Stroke(_)
+                        )
+                    ) {
+                        if let Some(expectation) = warning_stroke.as_ref() {
+                            if expectation.rule_index == rule_index
+                                && (expectation.today_typed || expectation.vert_typed)
+                            {
+                                observation.pending.warning_stroke = true;
+                                observation
+                                    .pending
+                                    .capabilities
+                                    .insert(expectation.capability);
+                            } else if warning_stroke_source_owned {
+                                observation.suppressed = true;
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        } else if warning_stroke_source_owned {
+                            observation.suppressed = true;
+                        } else {
+                            observation.incomplete = true;
+                        }
+                        continue;
+                    }
                     match (route.disposition(), facet) {
                         (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Radius) => {
                             if radius_rules.contains(&rule_index) {
@@ -493,6 +578,7 @@ impl GanttTaskTheme {
             font_family_css: typography.font_family_css,
             title_fill,
             text_fill,
+            warning_stroke,
             typed_font_stack_requested: typography.typed_font_stack_requested,
             typed_font_stack_active: typography.typed_font_stack_active,
             unsupported_typography_properties: typography.unsupported_typography_properties,
@@ -513,6 +599,7 @@ impl GanttTaskTheme {
             font_family_css: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.into(),
             title_fill: None,
             text_fill: None,
+            warning_stroke: None,
             typed_font_stack_requested: false,
             typed_font_stack_active: false,
             unsupported_typography_properties: BTreeSet::new(),
@@ -547,6 +634,20 @@ impl GanttTaskTheme {
             .as_ref()
             .filter(|fill| fill.task_typed)
             .map(|fill| fill.task_css.as_ref())
+    }
+
+    pub(crate) fn warning_today_line_css(&self) -> Option<&str> {
+        self.warning_stroke
+            .as_ref()
+            .filter(|warning| warning.today_typed)
+            .map(|warning| warning.today_css.as_ref())
+    }
+
+    pub(crate) fn warning_vert_line_css(&self) -> Option<&str> {
+        self.warning_stroke
+            .as_ref()
+            .filter(|warning| warning.vert_typed)
+            .map(|warning| warning.vert_css.as_ref())
     }
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
@@ -595,6 +696,19 @@ impl GanttTaskTheme {
             .map(|stroke| stroke.css.as_ref())
     }
 
+    /// Returns the typed warning stroke for a vertical task, when that route
+    /// owns the final vertical bar terminal. The renderer should use this
+    /// value as the emitted terminal stroke so inline task styles cannot hide
+    /// the `.vert` warning surface.
+    pub(crate) fn warning_stroke_for_layout_task(&self, layout_index: usize) -> Option<&str> {
+        let task = self.layout_task(layout_index)?;
+        task.vert
+            .then_some(())
+            .and_then(|_| self.warning_stroke.as_ref())
+            .filter(|warning| warning.vert_typed)
+            .map(|warning| warning.vert_css.as_ref())
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskThemeReceipt> {
         let requires_receipt = !self.pending.is_empty()
             || self
@@ -604,7 +718,8 @@ impl GanttTaskTheme {
             || self.typed_font_stack_active
             || !self.unsupported_typography_properties.is_empty()
             || self.title_fill.is_some()
-            || self.text_fill.is_some();
+            || self.text_fill.is_some()
+            || self.warning_stroke.is_some();
         requires_receipt.then(|| {
             let Some(layout_occurrences) = self.layout_occurrences.get() else {
                 return GanttTaskThemeReceipt::invalid(self.task_count());
@@ -629,6 +744,7 @@ impl GanttTaskTheme {
                         .as_ref()
                         .and_then(|fill| fill.task_typed.then_some(fill.task_css.as_ref())),
                     self.text_fill.as_ref().map(|fill| fill.rule_index),
+                    self.warning_stroke.as_ref(),
                 )
             }
         })
@@ -658,6 +774,8 @@ impl GanttTaskTheme {
             } else if pending.title_fill && !receipt.has_visible_title_fill_terminal() {
                 evidence.mark_not_applicable(key.clone());
             } else if pending.text_fill && !receipt.has_visible_text_fill_terminal() {
+                evidence.mark_not_applicable(key.clone());
+            } else if pending.warning_stroke && !receipt.has_visible_warning_terminal() {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -701,6 +819,75 @@ impl GanttTaskTheme {
         let semantic_index = *self.layout_occurrences.get()?.get(layout_index)?;
         self.tasks.get(semantic_index)
     }
+}
+
+fn resolve_gantt_warning_stroke(
+    theme: &ResolvedDiagramTheme,
+    effective_config: &MermaidConfig,
+    work_meter: &OperationWorkMeter,
+) -> crate::Result<GanttWarningStrokeResolution> {
+    let style =
+        theme.style_with_work_meter(ThemeTarget::Task, ThemeVariant::Warning, None, work_meter)?;
+    let Some(origin) = style.stroke_resolution().winner() else {
+        return Ok(GanttWarningStrokeResolution::default());
+    };
+    if origin.variant() != Some(ThemeVariant::Warning) {
+        return Ok(GanttWarningStrokeResolution::default());
+    }
+    let Some(typed) = resolve_direct_static_stroke(
+        theme,
+        &style,
+        &[ThemeTarget::Task],
+        DirectStaticSelectorDomain::State(ThemeVariant::Warning),
+    ) else {
+        return Ok(GanttWarningStrokeResolution::default());
+    };
+    let (typed_css, rule_index, capability) = typed.into_parts();
+    let today_source_owned = merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        "themeVariables.todayLineColor",
+    );
+    let vert_source_owned = merman_core::__private::config_path_overrides_typed_default(
+        effective_config,
+        "themeVariables.vertLineColor",
+    );
+    if today_source_owned && vert_source_owned {
+        return Ok(GanttWarningStrokeResolution {
+            expectation: None,
+            source_owned: true,
+        });
+    }
+    let today_css = if today_source_owned {
+        effective_config
+            .get_str("themeVariables.todayLineColor")
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: "Gantt warning today-line owner had no effective value".to_string(),
+            })?
+            .into()
+    } else {
+        typed_css.clone()
+    };
+    let vert_css = if vert_source_owned {
+        effective_config
+            .get_str("themeVariables.vertLineColor")
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: "Gantt warning vertical-line owner had no effective value".to_string(),
+            })?
+            .into()
+    } else {
+        typed_css
+    };
+    Ok(GanttWarningStrokeResolution {
+        expectation: Some(GanttWarningStrokeExpectation {
+            today_css,
+            vert_css,
+            today_typed: !today_source_owned,
+            vert_typed: !vert_source_owned,
+            rule_index,
+            capability,
+        }),
+        source_owned: false,
+    })
 }
 
 fn gantt_config_font_family_css(config: &MermaidConfig) -> String {
@@ -966,12 +1153,18 @@ struct GanttTaskPendingEvidence {
     stroke: bool,
     title_fill: bool,
     text_fill: bool,
+    warning_stroke: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
 impl GanttTaskPendingEvidence {
     const fn requires_terminal_proof(&self) -> bool {
-        self.radius || self.fill || self.stroke || self.title_fill || self.text_fill
+        self.radius
+            || self.fill
+            || self.stroke
+            || self.title_fill
+            || self.text_fill
+            || self.warning_stroke
     }
 }
 
@@ -1004,12 +1197,25 @@ pub(crate) struct GanttTaskThemeReceipt {
     task_text_css_matches: bool,
     grid_text_count: usize,
     task_text_count: usize,
+    expected_warning_today_css: Option<Box<str>>,
+    expected_warning_vert_css: Option<Box<str>>,
+    warning_today_css_recorded: bool,
+    warning_today_css_matches: bool,
+    warning_vert_css_recorded: bool,
+    warning_vert_css_matches: bool,
+    warning_today_terminal_recorded: bool,
+    warning_today_terminal_visible: bool,
+    warning_today_terminal_matches: bool,
+    warning_vert_terminal_count: usize,
+    warning_vert_terminal_visible: bool,
+    warning_vert_terminal_matches: bool,
+    expected_warning_rule: Option<usize>,
 }
 
 impl GanttTaskThemeReceipt {
     #[cfg(test)]
     fn new(expectations: Vec<GanttTaskTerminalExpectation>) -> Self {
-        Self::new_with_typography(expectations, "", false, None, None, None, None, None)
+        Self::new_with_typography(expectations, "", false, None, None, None, None, None, None)
     }
 
     fn new_with_typography(
@@ -1021,6 +1227,7 @@ impl GanttTaskThemeReceipt {
         expected_grid_text_fill_css: Option<&str>,
         expected_task_text_fill_css: Option<&str>,
         expected_text_fill_rule: Option<usize>,
+        warning_stroke: Option<&GanttWarningStrokeExpectation>,
     ) -> Self {
         Self {
             checkpointed_tasks: vec![false; expectations.len()],
@@ -1049,6 +1256,23 @@ impl GanttTaskThemeReceipt {
             task_text_css_matches: true,
             grid_text_count: 0,
             task_text_count: 0,
+            expected_warning_today_css: warning_stroke
+                .filter(|warning| warning.today_typed)
+                .map(|warning| warning.today_css.clone()),
+            expected_warning_vert_css: warning_stroke
+                .filter(|warning| warning.vert_typed)
+                .map(|warning| warning.vert_css.clone()),
+            warning_today_css_recorded: false,
+            warning_today_css_matches: true,
+            warning_vert_css_recorded: false,
+            warning_vert_css_matches: true,
+            warning_today_terminal_recorded: false,
+            warning_today_terminal_visible: false,
+            warning_today_terminal_matches: true,
+            warning_vert_terminal_count: 0,
+            warning_vert_terminal_visible: false,
+            warning_vert_terminal_matches: true,
+            expected_warning_rule: warning_stroke.map(|warning| warning.rule_index),
         }
     }
 
@@ -1080,6 +1304,19 @@ impl GanttTaskThemeReceipt {
             task_text_css_matches: false,
             grid_text_count: 0,
             task_text_count: 0,
+            expected_warning_today_css: None,
+            expected_warning_vert_css: None,
+            warning_today_css_recorded: false,
+            warning_today_css_matches: false,
+            warning_vert_css_recorded: false,
+            warning_vert_css_matches: false,
+            warning_today_terminal_recorded: false,
+            warning_today_terminal_visible: false,
+            warning_today_terminal_matches: false,
+            warning_vert_terminal_count: 0,
+            warning_vert_terminal_visible: false,
+            warning_vert_terminal_matches: false,
+            expected_warning_rule: None,
         }
     }
 
@@ -1221,6 +1458,29 @@ impl GanttTaskThemeReceipt {
                 self.task_text_css_matches = css.contains(&expected);
             }
         }
+
+        if let Some(color) = self.expected_warning_today_css.as_deref() {
+            if self.warning_today_css_recorded {
+                self.warning_today_css_matches = false;
+            } else {
+                self.warning_today_css_recorded = true;
+                let expected =
+                    format!("#{diagram_id} .today{{fill:none;stroke:{color};stroke-width:2px;}}");
+                self.warning_today_css_matches = css.contains(&expected);
+            }
+        }
+
+        if let Some(color) = self.expected_warning_vert_css.as_deref() {
+            if self.warning_vert_css_recorded {
+                self.warning_vert_css_matches = false;
+            } else {
+                self.warning_vert_css_recorded = true;
+                let expected = format!(
+                    "#{diagram_id} .vert{{stroke:{color};}}#{diagram_id} .vertText{{font-size:15px;text-anchor:middle;fill:{color}!important;}}"
+                );
+                self.warning_vert_css_matches = css.contains(&expected);
+            }
+        }
     }
 
     pub(crate) fn record_grid_text(&mut self, text: &str) {
@@ -1247,6 +1507,43 @@ impl GanttTaskThemeReceipt {
         }
     }
 
+    pub(crate) fn record_today_terminal(&mut self, visible: bool, inline_style: &str) {
+        if self.expected_warning_today_css.is_none() {
+            return;
+        }
+        if self.warning_today_terminal_recorded {
+            self.warning_today_terminal_matches = false;
+            return;
+        }
+        self.warning_today_terminal_recorded = true;
+        self.warning_today_terminal_visible = visible;
+        let inline_owns_stroke = inline_style
+            .split(';')
+            .any(|declaration| declaration.trim_start().starts_with("stroke:"));
+        self.warning_today_terminal_matches = !visible || !inline_owns_stroke;
+    }
+
+    pub(crate) fn record_vertical_terminal(
+        &mut self,
+        _layout_index: usize,
+        emitted_stroke: Option<&str>,
+    ) {
+        let Some(expected) = self.expected_warning_vert_css.as_deref() else {
+            return;
+        };
+        self.warning_vert_terminal_visible = true;
+        self.warning_vert_terminal_count = self.warning_vert_terminal_count.saturating_add(1);
+        if emitted_stroke != Some(expected) {
+            self.warning_vert_terminal_matches = false;
+        }
+    }
+
+    pub(crate) fn record_vertical_terminal_visibility(&mut self, visible: bool) {
+        if self.expected_warning_vert_css.is_some() {
+            self.warning_vert_terminal_visible = visible;
+        }
+    }
+
     fn has_visible_typography(&self) -> bool {
         self.typography_text_count != 0
     }
@@ -1265,6 +1562,10 @@ impl GanttTaskThemeReceipt {
                 || (self.grid_text_css_recorded && self.grid_text_css_matches))
             && (self.expected_task_text_fill_css.is_none()
                 || (self.task_text_css_recorded && self.task_text_css_matches))
+            && (self.expected_warning_today_css.is_none()
+                || (self.warning_today_css_recorded && self.warning_today_css_matches))
+            && (self.expected_warning_vert_css.is_none()
+                || (self.warning_vert_css_recorded && self.warning_vert_css_matches))
     }
 
     fn proves_rule(&self, rule_index: usize, pending: &GanttTaskPendingEvidence) -> bool {
@@ -1280,6 +1581,9 @@ impl GanttTaskThemeReceipt {
             && (!pending.text_fill
                 || (self.expected_text_fill_rule == Some(rule_index)
                     && self.has_visible_text_fill_terminal()))
+            && (!pending.warning_stroke
+                || (self.proves_warning_stroke() && self.has_visible_warning_terminal()))
+            && (!pending.warning_stroke || self.expected_warning_rule == Some(rule_index))
     }
 
     fn has_visible_text_fill_terminal(&self) -> bool {
@@ -1289,6 +1593,20 @@ impl GanttTaskThemeReceipt {
 
     fn has_visible_title_fill_terminal(&self) -> bool {
         self.expected_title_fill_css.is_some() && self.title_text_count != 0
+    }
+
+    fn proves_warning_stroke(&self) -> bool {
+        let today_proved = self.expected_warning_today_css.is_none()
+            || (self.warning_today_terminal_recorded && self.warning_today_terminal_matches);
+        let vert_proved = self.expected_warning_vert_css.is_none()
+            || (!self.warning_vert_terminal_visible
+                || (self.warning_vert_terminal_count != 0 && self.warning_vert_terminal_matches));
+        today_proved && vert_proved
+    }
+
+    fn has_visible_warning_terminal(&self) -> bool {
+        (self.expected_warning_today_css.is_some() && self.warning_today_terminal_visible)
+            || (self.expected_warning_vert_css.is_some() && self.warning_vert_terminal_count != 0)
     }
 
     fn proves_typography(&self) -> bool {
@@ -1506,6 +1824,7 @@ mod tests {
                     capability: ThemeCapability::SolidPaint,
                 },
             }),
+            vert: false,
         };
         let missing = GanttTaskThemeReceipt::new(vec![expectation.clone()]);
         assert!(!missing.proves_complete());
