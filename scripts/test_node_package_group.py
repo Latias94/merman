@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 from scripts import node_package_group
-from scripts.npm_package_group import DryRunNpmClient, reconcile_group
+from scripts.npm_package_group import DryRunNpmClient, npm_executable, reconcile_group
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +18,10 @@ DESCRIPTOR = ROOT / "platforms" / "node" / "package-surfaces.json"
 
 
 class NodePackageGroupTests(unittest.TestCase):
+    def test_npm_executable_uses_cmd_on_windows(self) -> None:
+        self.assertEqual(npm_executable(os_name="nt"), "npm.cmd")
+        self.assertEqual(npm_executable(os_name="posix"), "npm")
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.artifacts = Path(self.temporary.name)
