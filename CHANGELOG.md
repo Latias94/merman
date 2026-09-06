@@ -106,7 +106,7 @@ The detailed contracts remain in **Breaking changes** below. Before mixing alpha
 
 ### Availability and known limitations
 
-- The workspace crates and CLI/LSP archives are published as `0.8.0-alpha.6` from immutable tag `v0.8.0-alpha.6`. The Typst `0.3.0` package, Web group, Flutter package, Python wheels, Apple XCFramework, and Android AAR are published independently from the alpha.6 source line; the Node.js group remains pending its first-publication bootstrap.
+- The workspace crates and CLI/LSP archives are published as `0.8.0-alpha.6` from immutable tag `v0.8.0-alpha.6`. The Typst `0.3.0` package, Web group, Flutter package, Python wheels, Apple XCFramework, Android AAR, and seven-package Node.js group are published independently from the alpha.6 source line. The Node group was manually bootstrapped from its verified package-group artifact, so its immutable alpha.6 npm tarballs have no npm provenance; later Node releases use Trusted Publishing.
 - The default Android, Apple, Python, and Flutter profiles intentionally omit math, PNG, JPEG, PDF, and native runtime adapters. Use the runtime catalog or a custom artifact when those capabilities are required; ELK requires `complete-svg-elk` or `layout-elk`.
 - The Node.js package group remains experimental and follows an independent publication track. The Typst `0.3.0` package is also independently versioned; neither channel should be inferred from the workspace version alone.
 
