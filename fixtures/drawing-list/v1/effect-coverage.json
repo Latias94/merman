@@ -1,5 +1,174 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "family_baselines": [
+    {
+      "family": "error",
+      "source": "flowchart TD\nA -->\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "mindmap",
+      "source": "mindmap\n  root((Merman))\n    Parser\n    Renderer[Render]\n",
+      "expected_effects": ["host_text", "path"],
+      "required_feature": "layout_cytoscape"
+    },
+    {
+      "family": "state",
+      "source": "stateDiagram-v2\n  A --> B: next\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "sequence",
+      "source": "sequenceDiagram\n  participant A\n  participant B\n  A->>B: hello\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "zenuml",
+      "source": "zenuml\n@Starter(Client)\nClient->Service: call\nService-->Client: done\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "swimlane",
+      "source": "swimlane-beta LR\n  subgraph Customer\n    request[Request]\n  end\n  subgraph Support\n    answer[Answer]\n  end\n  request --> answer\n",
+      "expected_effects": ["expanded_marker", "host_text", "path", "transform"]
+    },
+    {
+      "family": "architecture",
+      "source": "%%{init: {\"architecture\": {\"numIter\": 1, \"randomize\": false}}}%%\narchitecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[Database] in core\n  api:R --> L:db\n",
+      "expected_effects": ["host_text", "path"],
+      "required_feature": "layout_cytoscape"
+    },
+    {
+      "family": "class",
+      "source": "classDiagram\n  class A\n  class B\n  A --> B : uses\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "c4",
+      "source": "C4Context\n  Person(user, \"User\")\n  System(api, \"API\", \"Service\")\n  Rel(user, api, \"uses\")\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "cynefin",
+      "source": "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "wardley",
+      "source": "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "railroad",
+      "source": "railroad-beta\nexpr = sequence(terminal(\"a\"), nonterminal(\"b\"));\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "kanban",
+      "source": "kanban\n  todo[Todo]\n    task[Task]\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "gantt",
+      "source": "gantt\n  dateFormat YYYY-MM-DD\n  section Core\n  Build :a1, 2026-01-01, 4d\n",
+      "expected_effects": ["host_text", "opacity", "path"]
+    },
+    {
+      "family": "pie",
+      "source": "pie\n  \"A\" : 1\n  \"B\" : 2\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "packet",
+      "source": "packet\n  title Header\n  0-7: \"Version\"\n  8-15: \"Length\"\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "timeline",
+      "source": "timeline\n  title Release history\n  section Planning\n    Plan : Build\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "journey",
+      "source": "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "requirement",
+      "source": "requirementDiagram\n  requirement req1 {\n    id: REQ-1\n    text: Login\n    risk: high\n    verifymethod: test\n  }\n  element system {\n    type: service\n    docref: docs\n  }\n  system - satisfies -> req1\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "sankey",
+      "source": "sankey\nSource,Target,10\nTarget,Done,4\n",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"]
+    },
+    {
+      "family": "radar",
+      "source": "radar-beta\n  axis Speed, Quality, Reach\n  curve Current{80, 60, 90}\n  ticks 3\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "info",
+      "source": "info",
+      "expected_effects": ["host_text"]
+    },
+    {
+      "family": "treemap",
+      "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+      "expected_effects": ["clip_path", "host_text", "path", "transform"]
+    },
+    {
+      "family": "block",
+      "source": "block\n  A[\"A\"]\n  B[\"B\"]\n  A --> B\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "er",
+      "source": "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "quadrantChart",
+      "source": "quadrantChart\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "xychart",
+      "source": "xychart\n  x-axis [Q1, Q2]\n  y-axis 0 --> 100\n  bar [20, 40]\n  line [30, 50]\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "gitGraph",
+      "source": "gitGraph\n  commit id: \"base\"\n  branch feature\n  checkout feature\n  commit id: \"work\"\n  checkout main\n  merge feature\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "treeView",
+      "source": "treeView-beta\nRoot icon(folder)\n  Child icon(file)\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "ishikawa",
+      "source": "ishikawa-beta\n  Effect\n  Cause\n    Detail\n",
+      "expected_effects": ["expanded_marker", "host_text", "path", "transform"]
+    },
+    {
+      "family": "eventmodeling",
+      "source": "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "venn",
+      "source": "venn-beta\nset A\nset B\nunion A,B\n",
+      "expected_effects": ["host_text", "opacity", "path"]
+    }
+  ],
   "effects": [
     {
       "id": "path-fill-stroke",

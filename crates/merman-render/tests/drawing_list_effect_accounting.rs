@@ -11,11 +11,50 @@ const EFFECT_COVERAGE_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../fixtures/drawing-list/v1/effect-coverage.json"
 ));
+const FAMILY_COVERAGE_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../fixtures/drawing-list/v1/family-coverage.json"
+));
 
 #[derive(Debug, Deserialize)]
 struct EffectCoverageMatrix {
     schema_version: u32,
+    family_baselines: Vec<FamilyEffectBaseline>,
     effects: Vec<EffectCoverageRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FamilyEffectBaseline {
+    family: String,
+    source: String,
+    expected_effects: Vec<String>,
+    required_feature: Option<RequiredFeature>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum RequiredFeature {
+    LayoutCytoscape,
+}
+
+impl RequiredFeature {
+    const fn enabled(self) -> bool {
+        match self {
+            Self::LayoutCytoscape => cfg!(feature = "layout-cytoscape"),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FamilyCoverageMatrix {
+    schema_version: u32,
+    families: Vec<FamilyCoverageRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FamilyCoverageRow {
+    id: String,
+    document_adapter: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,10 +130,82 @@ struct EffectCoverageRow {
 }
 
 #[test]
+fn every_direct_family_has_a_family_local_effect_baseline() {
+    let matrix: EffectCoverageMatrix = serde_json::from_str(EFFECT_COVERAGE_JSON)
+        .expect("effect coverage fixture must be valid JSON");
+    let family_matrix: FamilyCoverageMatrix = serde_json::from_str(FAMILY_COVERAGE_JSON)
+        .expect("family coverage fixture must be valid JSON");
+    assert_eq!(matrix.schema_version, 2);
+    assert_eq!(family_matrix.schema_version, 1);
+
+    let direct_families = family_matrix
+        .families
+        .iter()
+        .filter(|row| row.document_adapter == "direct")
+        .map(|row| row.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let baseline_families = matrix
+        .family_baselines
+        .iter()
+        .map(|baseline| baseline.family.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        baseline_families.len(),
+        matrix.family_baselines.len(),
+        "family effect baselines must be unique"
+    );
+    assert_eq!(
+        baseline_families, direct_families,
+        "every direct DrawingList family must have exactly one effect baseline"
+    );
+
+    for baseline in &matrix.family_baselines {
+        assert!(
+            !baseline.family.trim().is_empty(),
+            "family must not be empty"
+        );
+        assert!(
+            !baseline.source.trim().is_empty(),
+            "{} family baseline has no source",
+            baseline.family
+        );
+        expected_effects(&baseline.family, baseline.expected_effects.as_slice());
+    }
+
+    for baseline in matrix.family_baselines {
+        if baseline
+            .required_feature
+            .is_some_and(|feature| !feature.enabled())
+        {
+            continue;
+        }
+        let expected = expected_effects(&baseline.family, &baseline.expected_effects);
+        let (actual_family, rendered) = render_drawing_list(&baseline.source);
+        assert_eq!(
+            actual_family, baseline.family,
+            "{} family baseline drifted",
+            baseline.family
+        );
+        let document = rendered.unwrap_or_else(|error| {
+            panic!(
+                "{} baseline failed instead of producing a document: {error}",
+                baseline.family
+            )
+        });
+        assert_eq!(
+            observed_protocol_effects(&document),
+            expected,
+            "{} family baseline emitted an undeclared effect or stopped emitting a declared effect",
+            baseline.family
+        );
+    }
+}
+
+#[test]
 fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
     let matrix: EffectCoverageMatrix = serde_json::from_str(EFFECT_COVERAGE_JSON)
         .expect("effect coverage fixture must be valid JSON");
-    assert_eq!(matrix.schema_version, 1);
+    assert_eq!(matrix.schema_version, 2);
     assert!(!matrix.effects.is_empty());
     let known_families = merman_render::family::RenderFamilyKind::ALL
         .into_iter()
@@ -121,17 +232,7 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
             "{} has no evidence",
             row.id
         );
-        let expected_effects = row
-            .expected_effects
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            expected_effects.len(),
-            row.expected_effects.len(),
-            "{} repeats an expected protocol effect",
-            row.id
-        );
+        let expected_effects = expected_effects(&row.id, &row.expected_effects);
 
         let (family, rendered) = render_drawing_list(&row.source);
         assert_eq!(family, row.family, "{} family fixture drifted", row.id);
@@ -207,6 +308,16 @@ fn exercised_effects_have_an_explicit_vector_raster_or_error_disposition() {
             }
         }
     }
+}
+
+fn expected_effects<'a>(id: &str, effects: &'a [String]) -> BTreeSet<&'a str> {
+    let expected = effects.iter().map(String::as_str).collect::<BTreeSet<_>>();
+    assert_eq!(
+        expected.len(),
+        effects.len(),
+        "{id} repeats an expected protocol effect"
+    );
+    expected
 }
 
 fn assert_fixture_effects(
