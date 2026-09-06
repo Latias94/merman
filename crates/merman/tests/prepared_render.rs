@@ -180,17 +180,26 @@ Second: second,after first,2ms
     let second = render_svg(&second_renderer, source, svg_request("gantt-time"));
 
     fn today_line(svg: &str) -> &str {
-        let marker = r#"data-merman-resource="gantt.today.line""#;
-        let marker_offset = svg.find(marker).expect("today marker");
-        let start = svg[..marker_offset]
-            .rfind("<line")
-            .or_else(|| svg[..marker_offset].rfind("<path"))
-            .expect("today marker element");
-        let end = svg[marker_offset..]
-            .find("/>")
-            .map(|offset| marker_offset + offset + 2)
-            .expect("today marker end");
-        &svg[start..end]
+        let document = roxmltree::Document::parse(svg).expect("valid Gantt SVG");
+        let marker = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && (node.attribute("data-merman-resource") == Some("gantt.today.line")
+                        || (node.tag_name().name() == "line"
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes.split_whitespace().any(|class| class == "today")
+                            })
+                            && node.ancestors().any(|ancestor| {
+                                ancestor.is_element()
+                                    && ancestor.tag_name().name() == "g"
+                                    && ancestor.attribute("class").is_some_and(|classes| {
+                                        classes.split_whitespace().any(|class| class == "today")
+                                    })
+                            })))
+            })
+            .expect("today marker");
+        &svg[marker.range()]
     }
 
     assert_ne!(today_line(first.svg()), today_line(second.svg()));
