@@ -39,8 +39,14 @@ fn canonical_json_sorts_nested_extension_objects() {
         .canonical_json_bytes()
         .expect("nested extension document serializes");
     let json = String::from_utf8(bytes).expect("canonical JSON is UTF-8");
+    let first = json
+        .find("\"a-first\"")
+        .expect("canonical JSON retains the first nested key");
+    let last = json
+        .find("\"z-last\"")
+        .expect("canonical JSON retains the last nested key");
     assert!(
-        json.find("\"a-first\"") < json.find("\"z-last\""),
+        first < last,
         "nested extension keys must be emitted in canonical order: {json}"
     );
 }
