@@ -210,6 +210,79 @@ fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
+fn svg_presentation_property(node: roxmltree::Node<'_, '_>, property: &str) -> Option<String> {
+    node.attribute("style")
+        .and_then(|style| {
+            style.split(';').find_map(|declaration| {
+                let (name, value) = declaration.split_once(':')?;
+                (name.trim() == property).then(|| value.trim().to_owned())
+            })
+        })
+        .or_else(|| node.attribute(property).map(str::to_owned))
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn assert_c4_shapes_consume_presentation_theme(name: &str, svg: &str) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+
+    for shape_class in ["c4-component_db", "c4-component_queue"] {
+        let shape_group = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == shape_class)
+                    })
+            })
+            .unwrap_or_else(|| panic!("{name}: missing {shape_class} group: {svg}"));
+        let shape = shape_group
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "outer-path")
+                    })
+            })
+            .unwrap_or_else(|| panic!("{name}: missing {shape_class} outer path: {svg}"));
+
+        assert_eq!(
+            svg_presentation_property(shape, "fill"),
+            Some("#111827".to_owned()),
+            "{name}: {shape_class} should consume the themed fill regardless of SVG presentation syntax: {svg}"
+        );
+        assert_eq!(
+            svg_presentation_property(shape, "stroke"),
+            Some("#475569".to_owned()),
+            "{name}: {shape_class} should consume the themed stroke regardless of SVG presentation syntax: {svg}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn assert_svg_has_presentation_pair(
+    name: &str,
+    svg: &str,
+    element: &str,
+    fill: &str,
+    stroke: &str,
+) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+    assert!(
+        document.descendants().any(|node| {
+            node.is_element()
+                && node.tag_name().name() == element
+                && svg_presentation_property(node, "fill").as_deref() == Some(fill)
+                && svg_presentation_property(node, "stroke").as_deref() == Some(stroke)
+        }),
+        "{name}: expected a {element} with fill {fill} and stroke {stroke}: {svg}"
+    );
+}
+
 fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str, expected: &[&str]) {
     let document =
         roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
@@ -690,8 +763,6 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
                 r#"class="node c4-shape c4-component_db""#,
                 r#"class="node c4-shape c4-component_queue""#,
                 r#"class="basic label-container outer-path""#,
-                r##"fill="#111827""##,
-                r##"stroke="#475569""##,
             ],
         ),
         (
@@ -710,8 +781,8 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ),
             &["#e5e7eb", "#111827", "#94a3b8"],
             &[
-                "ishikawa-spine,#presentation-theme-ishikawa",
-                ".ishikawa-head{fill:#111827;stroke:#94a3b8;",
+                ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch { stroke: #94a3b8;",
+                ".ishikawa .ishikawa-head { fill: #111827; stroke: #94a3b8;",
             ],
         ),
         (
@@ -720,14 +791,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             &[
                 "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",
             ],
-            &[
-                "em-swimlane",
-                "fill=\"#1e293b\" stroke=\"#475569\"",
-                "fill=\"#111827\" stroke=\"#475569\"",
-                "fill=\"#34d399\" stroke=\"#34d399\"",
-                "fill=\"#60a5fa\" stroke=\"#94a3b8\"",
-                "fill=\"#f59e0b\" stroke=\"#fbbf24\"",
-            ],
+            &["em-swimlane"],
         ),
     ];
 
@@ -735,5 +799,19 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
         let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
         assert_current_dom_consumes(name, &svg, dom_expected);
+        if *name == "presentation-theme-c4" {
+            assert_c4_shapes_consume_presentation_theme(name, &svg);
+        }
+        if *name == "presentation-theme-eventmodeling" {
+            for (fill, stroke) in [
+                ("#1e293b", "#475569"),
+                ("#111827", "#475569"),
+                ("#34d399", "#34d399"),
+                ("#60a5fa", "#94a3b8"),
+                ("#f59e0b", "#fbbf24"),
+            ] {
+                assert_svg_has_presentation_pair(name, &svg, "rect", fill, stroke);
+            }
+        }
     }
 }
