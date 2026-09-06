@@ -58,6 +58,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
                 common.stroke_width,
                 common.stroke_dasharray,
                 common.look_is_hand_drawn(),
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         }) {

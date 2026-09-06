@@ -930,7 +930,23 @@ impl OperationWorkMeter {
 
     /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
     pub(crate) fn charge(&self, additional: usize) -> Result<(), OperationWorkError> {
-        let phase = OperationPhase::Layout;
+        self.charge_work(additional, OperationPhase::Layout)
+    }
+
+    /// Charges render-time geometry work while preserving the shared layout-work ceiling.
+    ///
+    /// RoughJS generation happens during SVG emission, but it still consumes the same
+    /// `max_layout_work_units` budget as other derived geometry. Keeping the operation phase as
+    /// `Emit` makes cancellation and resource failures point at the stage that actually ran.
+    pub(crate) fn charge_emit_work(&self, additional: usize) -> Result<(), OperationWorkError> {
+        self.charge_work(additional, OperationPhase::Emit)
+    }
+
+    fn charge_work(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(phase)?;
         if additional == 0 {
             return Ok(());

@@ -259,6 +259,7 @@ pub(super) fn hand_drawn_path_pair(
         common.stroke_color,
         common.stroke_width,
         common.stroke_dasharray,
+        common.work_meter,
         common.hand_drawn_seed,
     )
 }
@@ -272,6 +273,7 @@ pub(super) fn hand_drawn_path_pair_with_colors(
     stroke_color: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
     hand_drawn_seed: &roughr::core::RoughRandomness,
 ) -> Option<(String, String)> {
     if !hand_drawn {
@@ -285,6 +287,7 @@ pub(super) fn hand_drawn_path_pair_with_colors(
             stroke_color,
             stroke_width,
             stroke_dasharray,
+            work_meter,
             hand_drawn_seed,
         )
     })

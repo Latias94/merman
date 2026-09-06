@@ -28,6 +28,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
                 HAND_DRAWN_FILL_WEIGHT,
                 HAND_DRAWN_HACHURE_GAP,
                 HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

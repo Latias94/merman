@@ -97,6 +97,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
                     FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
                     FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
                     FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })

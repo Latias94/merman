@@ -87,6 +87,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
             &cluster_border,
             common.stroke_width,
             common.stroke_dasharray,
+            common.work_meter,
             common.hand_drawn_seed,
         ) {
             let _ = write!(

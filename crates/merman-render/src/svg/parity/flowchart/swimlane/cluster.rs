@@ -88,6 +88,7 @@ fn write_swimlane_rect(
                 SWIMLANE_HAND_DRAWN_FILL_WEIGHT,
                 SWIMLANE_HAND_DRAWN_HACHURE_GAP,
                 SWIMLANE_HAND_DRAWN_ROUGHNESS,
+                ctx.work_meter,
                 &ctx.hand_drawn_seed,
             )
         {

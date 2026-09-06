@@ -122,6 +122,7 @@ fn render_icon_rect_frame(
             common.fill_color,
             1.3,
             "0 0",
+            common.work_meter,
             common.hand_drawn_seed,
         )
     } else {

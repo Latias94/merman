@@ -33,6 +33,7 @@ fn render_polygon_shape(
                     FLOWCHART_POLYGON_HAND_DRAWN_FILL_WEIGHT,
                     FLOWCHART_POLYGON_HAND_DRAWN_HACHURE_GAP,
                     FLOWCHART_POLYGON_HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })

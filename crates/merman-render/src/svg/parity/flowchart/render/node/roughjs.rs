@@ -3,7 +3,9 @@
 //! Mermaid uses RoughJS for "hand-drawn" flowchart node rendering, and in a few cases even when
 //! roughness is zero. These helpers mirror Mermaid's RoughJS call ordering to keep SVG DOM parity.
 
+use crate::resources::OperationWorkMeter;
 use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use merman_core::OperationPhase;
 use roughr::core::RoughRandomness;
 
 // Mermaid's `userNodeOverrides(...)` defaults for hand-drawn flowchart shapes.
@@ -11,6 +13,187 @@ use roughr::core::RoughRandomness;
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
+
+// These estimates intentionally describe the allocations that RoughJS performs before the SVG
+// sink can observe the result: points sampled along the path plus hachure scanlines. They are
+// admission bounds, not output-size claims. The final bounded SVG sink remains authoritative.
+const HAND_DRAWN_WORK_UNITS_PER_POINT: usize = 4;
+const HAND_DRAWN_WORK_UNITS_PER_SCANLINE: usize = 8;
+const HAND_DRAWN_SVG_BYTES_PER_POINT: usize = 32;
+const HAND_DRAWN_SVG_BYTES_PER_SCANLINE: usize = 96;
+const HAND_DRAWN_SVG_BYTES_OVERHEAD: usize = 512;
+
+#[derive(Debug, Clone, Copy)]
+struct HandDrawnPathBudget {
+    work_units: usize,
+    svg_bytes: usize,
+}
+
+fn ceil_to_usize(value: f64) -> Option<usize> {
+    if !value.is_finite() || value < 0.0 || value > usize::MAX as f64 {
+        return None;
+    }
+    Some(value.ceil() as usize)
+}
+
+fn hand_drawn_path_budget(
+    path_data: &str,
+    hachure_gap: f32,
+    roughness: f32,
+) -> Option<HandDrawnPathBudget> {
+    let bounds = crate::svg::parity::path_bounds::svg_path_bounds_from_d(path_data)?;
+    let path_length = crate::svg::parity::path_bounds::svg_path_length_from_d(path_data)?;
+    let width = (bounds.max_x - bounds.min_x).abs();
+    let height = (bounds.max_y - bounds.min_y).abs();
+    hand_drawn_geometry_budget(
+        path_length,
+        width,
+        height,
+        hachure_gap,
+        roughness,
+        path_data.len(),
+    )
+}
+
+fn hand_drawn_geometry_budget(
+    path_length: f64,
+    width: f64,
+    height: f64,
+    hachure_gap: f32,
+    roughness: f32,
+    path_bytes: usize,
+) -> Option<HandDrawnPathBudget> {
+    if !path_length.is_finite()
+        || !width.is_finite()
+        || !height.is_finite()
+        || !roughness.is_finite()
+    {
+        return None;
+    }
+
+    // RoughR's path sampler uses `(1 + roughness) / 2` as its simplification distance. Use the
+    // same lower bound here so the admission estimate does not undercount sampled points when a
+    // caller selects a smoother path.
+    let sample_distance = ((1.0 + f64::from(roughness.max(0.0))) / 2.0).max(0.1);
+    let point_count = ceil_to_usize(path_length.max(1.0) / sample_distance)?.checked_add(1)?;
+    let diagonal = width.abs().hypot(height.abs()).max(1.0);
+    let gap = f64::from(hachure_gap.abs()).max(1.0);
+    let scanline_count = ceil_to_usize(diagonal / gap)?.checked_add(2)?;
+
+    let work_units = path_bytes
+        .checked_add(point_count.checked_mul(HAND_DRAWN_WORK_UNITS_PER_POINT)?)?
+        .checked_add(scanline_count.checked_mul(HAND_DRAWN_WORK_UNITS_PER_SCANLINE)?)?;
+    let svg_bytes = HAND_DRAWN_SVG_BYTES_OVERHEAD
+        .checked_add(path_bytes.checked_mul(4)?)?
+        .checked_add(point_count.checked_mul(HAND_DRAWN_SVG_BYTES_PER_POINT)?)?
+        .checked_add(scanline_count.checked_mul(HAND_DRAWN_SVG_BYTES_PER_SCANLINE)?)?;
+
+    Some(HandDrawnPathBudget {
+        work_units,
+        svg_bytes,
+    })
+}
+
+fn admit_hand_drawn_geometry(
+    path_length: f64,
+    width: f64,
+    height: f64,
+    hachure_gap: f32,
+    roughness: f32,
+    path_bytes: usize,
+    work_meter: &OperationWorkMeter,
+) -> Option<crate::resources::SvgByteReservation> {
+    work_meter.checkpoint(OperationPhase::Emit).ok()?;
+    let budget = hand_drawn_geometry_budget(
+        path_length,
+        width,
+        height,
+        hachure_gap,
+        roughness,
+        path_bytes,
+    )?;
+    work_meter.charge_emit_work(budget.work_units).ok()?;
+
+    let reservation = work_meter.reserve_svg_bytes_up_to(budget.svg_bytes).ok()?;
+    if let Some(error) = reservation.limit_error {
+        let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+        let _ = work_meter.terminate_absolute_resource_error(error, OperationPhase::Emit);
+        return None;
+    }
+    Some(reservation)
+}
+
+fn admit_hand_drawn_path(
+    path_data: &str,
+    hachure_gap: f32,
+    roughness: f32,
+    work_meter: &OperationWorkMeter,
+) -> Option<crate::resources::SvgByteReservation> {
+    let bounds = crate::svg::parity::path_bounds::svg_path_bounds_from_d(path_data)?;
+    let path_length = crate::svg::parity::path_bounds::svg_path_length_from_d(path_data)?;
+    admit_hand_drawn_geometry(
+        path_length,
+        bounds.max_x - bounds.min_x,
+        bounds.max_y - bounds.min_y,
+        hachure_gap,
+        roughness,
+        path_data.len(),
+        work_meter,
+    )
+}
+
+fn admit_hand_drawn_rect(
+    width: f64,
+    height: f64,
+    hachure_gap: f32,
+    roughness: f32,
+    work_meter: &OperationWorkMeter,
+) -> Option<crate::resources::SvgByteReservation> {
+    admit_hand_drawn_geometry(
+        2.0 * (width.abs() + height.abs()),
+        width,
+        height,
+        hachure_gap,
+        roughness,
+        64,
+        work_meter,
+    )
+}
+
+fn admit_hand_drawn_circle(
+    diameter: f64,
+    hachure_gap: f32,
+    work_meter: &OperationWorkMeter,
+) -> Option<crate::resources::SvgByteReservation> {
+    admit_hand_drawn_geometry(
+        std::f64::consts::PI * diameter.abs(),
+        diameter,
+        diameter,
+        hachure_gap,
+        HAND_DRAWN_ROUGHNESS,
+        32,
+        work_meter,
+    )
+}
+
+fn reconcile_hand_drawn_path(
+    work_meter: &OperationWorkMeter,
+    reservation: crate::resources::SvgByteReservation,
+    paths: Option<(String, String)>,
+) -> Option<(String, String)> {
+    let Some((fill_d, stroke_d)) = paths else {
+        let _ = work_meter.reconcile_svg_bytes(reservation.additional_bytes, 0);
+        return None;
+    };
+    let actual_bytes = fill_d.len().checked_add(stroke_d.len())?;
+    if work_meter
+        .reconcile_svg_bytes(reservation.additional_bytes, actual_bytes)
+        .is_err()
+    {
+        return None;
+    }
+    (!fill_d.is_empty() && !stroke_d.is_empty()).then_some((fill_d, stroke_d))
+}
 
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
@@ -231,12 +414,14 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     fill_weight: f32,
     hachure_gap: f32,
     roughness: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let stroke =
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let reservation = admit_hand_drawn_path(svg_path_data, hachure_gap, roughness, work_meter)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -273,7 +458,11 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
         }
     }
 
-    Some((fill_d?, stroke_d?))
+    let paths = match (fill_d, stroke_d) {
+        (Some(fill_d), Some(stroke_d)) => Some((fill_d, stroke_d)),
+        _ => None,
+    };
+    reconcile_hand_drawn_path(work_meter, reservation, paths)
 }
 
 /// Render a path with Mermaid's default hand-drawn node options.
@@ -283,6 +472,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     // Object-shape renderers use this helper alongside the hand-drawn circle path. Keep both
@@ -298,6 +488,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
         HAND_DRAWN_FILL_WEIGHT,
         HAND_DRAWN_HACHURE_GAP,
         HAND_DRAWN_ROUGHNESS,
+        work_meter,
         randomness,
     )
 }
@@ -313,10 +504,17 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_solid_svg_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
+    let reservation = admit_hand_drawn_path(
+        svg_path_data,
+        HAND_DRAWN_HACHURE_GAP,
+        HAND_DRAWN_ROUGHNESS,
+        work_meter,
+    )?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -351,7 +549,11 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_solid_svg_path(
         }
     }
 
-    Some((fill_d?, stroke_d?))
+    let paths = match (fill_d, stroke_d) {
+        (Some(fill_d), Some(stroke_d)) => Some((fill_d, stroke_d)),
+        _ => None,
+    };
+    reconcile_hand_drawn_path(work_meter, reservation, paths)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -367,12 +569,14 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     fill_weight: f32,
     hachure_gap: f32,
     roughness: f32,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let stroke =
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
+    let reservation = admit_hand_drawn_rect(w, h, hachure_gap, roughness, work_meter)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -409,7 +613,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
         }
     }
 
-    Some((fill_d?, stroke_d?))
+    reconcile_hand_drawn_path(work_meter, reservation, Some((fill_d?, stroke_d?)))
 }
 
 /// Render a rectangle with Mermaid's default hand-drawn fill and stroke options.
@@ -422,6 +626,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_rect(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     // Keep the hand-drawn path and classic fallback on the same admission boundary. The generic
@@ -442,6 +647,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_rect(
         HAND_DRAWN_FILL_WEIGHT,
         HAND_DRAWN_HACHURE_GAP,
         HAND_DRAWN_ROUGHNESS,
+        work_meter,
         randomness,
     )
 }
@@ -527,10 +733,17 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
     stroke_width: f32,
     stroke_dasharray: &str,
     hand_drawn: bool,
+    work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
+    let reservation = hand_drawn
+        .then(|| admit_hand_drawn_circle(diameter, HAND_DRAWN_HACHURE_GAP, work_meter))
+        .flatten();
+    if hand_drawn && reservation.is_none() {
+        return None;
+    }
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -575,5 +788,160 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
         }
     }
 
-    Some((fill_d?, stroke_d?))
+    let paths = match (fill_d, stroke_d) {
+        (Some(fill_d), Some(stroke_d)) => Some((fill_d, stroke_d)),
+        _ => None,
+    };
+    match (hand_drawn, reservation) {
+        (true, Some(reservation)) => reconcile_hand_drawn_path(work_meter, reservation, paths),
+        (false, None) => paths,
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resources::{
+        OperationWorkError, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
+    };
+    use merman_core::OperationControl;
+
+    fn randomness() -> RoughRandomness {
+        RoughRandomness::new(
+            roughr::core::RoughJsSeed::new(1.0),
+            roughr::core::RoughMathRandom::new(7),
+        )
+    }
+
+    fn path() -> &'static str {
+        "M0 0 H1000000 V1000000 H0 Z"
+    }
+
+    fn assert_limit(error: OperationWorkError, limit: &str, phase: ResourceLimitPhase) {
+        let OperationWorkError::ResourceLimitExceeded(details) = error else {
+            panic!("expected resource rejection");
+        };
+        assert_eq!(details.limit, limit);
+        assert_eq!(details.phase, phase);
+    }
+
+    #[test]
+    fn hand_drawn_hachure_rejects_before_roughr_at_work_ceiling() {
+        let budget = hand_drawn_path_budget(path(), HAND_DRAWN_HACHURE_GAP, HAND_DRAWN_ROUGHNESS)
+            .expect("fixture path must have a finite budget");
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, budget.work_units - 1)
+            .expect("valid work ceiling");
+        let meter = OperationWorkMeter::new(policy);
+
+        assert!(
+            roughjs_paths_for_hand_drawn_svg_path(
+                path(),
+                "#ffffff",
+                "#000000",
+                1.0,
+                "0 0",
+                &meter,
+                &randomness(),
+            )
+            .is_none()
+        );
+        assert_limit(
+            meter
+                .checkpoint(OperationPhase::Emit)
+                .expect_err("work ceiling must become terminal"),
+            ResourceLimitId::MaxLayoutWorkUnits.as_str(),
+            ResourceLimitPhase::LayoutModel,
+        );
+        assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn hand_drawn_hachure_rejects_before_roughr_at_svg_ceiling() {
+        let budget = hand_drawn_path_budget(path(), HAND_DRAWN_HACHURE_GAP, HAND_DRAWN_ROUGHNESS)
+            .expect("fixture path must have a finite budget");
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, budget.svg_bytes - 1)
+            .expect("valid SVG ceiling");
+        let meter = OperationWorkMeter::new(policy);
+
+        assert!(
+            roughjs_paths_for_hand_drawn_svg_path(
+                path(),
+                "#ffffff",
+                "#000000",
+                1.0,
+                "0 0",
+                &meter,
+                &randomness(),
+            )
+            .is_none()
+        );
+        assert_limit(
+            meter
+                .checkpoint(OperationPhase::Emit)
+                .expect_err("SVG ceiling must become terminal"),
+            ResourceLimitId::MaxSvgBytes.as_str(),
+            ResourceLimitPhase::SvgOutput,
+        );
+        assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn hand_drawn_hachure_replays_cancellation_before_generation() {
+        let control = OperationControl::new();
+        control.cancel();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+
+        assert!(
+            roughjs_paths_for_hand_drawn_svg_path(
+                "M0 0 H80 V40 H0 Z",
+                "#ffffff",
+                "#000000",
+                1.0,
+                "0 0",
+                &meter,
+                &randomness(),
+            )
+            .is_none()
+        );
+        assert!(matches!(
+            meter.checkpoint(OperationPhase::Emit),
+            Err(OperationWorkError::Cancelled(_))
+        ));
+    }
+
+    #[test]
+    fn hand_drawn_hachure_reconciles_a_bounded_success() {
+        let path = "M0 0 H80 V40 H0 Z";
+        let budget = hand_drawn_path_budget(path, HAND_DRAWN_HACHURE_GAP, HAND_DRAWN_ROUGHNESS)
+            .expect("fixture path must have a finite budget");
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, budget.work_units)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxSvgBytes, budget.svg_bytes)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        let (fill_d, stroke_d) = roughjs_paths_for_hand_drawn_svg_path(
+            path,
+            "#ffffff",
+            "#000000",
+            1.0,
+            "0 0",
+            &meter,
+            &randomness(),
+        )
+        .expect("bounded ordinary path must remain renderable");
+        assert!(!fill_d.is_empty());
+        assert!(!stroke_d.is_empty());
+        assert!(meter.projected_svg_bytes() <= budget.svg_bytes);
+        meter
+            .checkpoint(OperationPhase::Emit)
+            .expect("successful path must not poison the operation");
+    }
 }

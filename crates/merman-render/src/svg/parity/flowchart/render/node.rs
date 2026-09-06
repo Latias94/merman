@@ -37,6 +37,7 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub corner_radius: f64,
     pub emit_corner_radius: bool,
     pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
+    pub work_meter: &'a crate::resources::OperationWorkMeter,
     pub wrapped_in_a: bool,
     pub timing: RenderTiming,
 }
@@ -309,6 +310,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             .unwrap_or(ctx.node_corner_radius),
         emit_corner_radius: look == "neo" || typed_radius_selected,
         hand_drawn_seed: &ctx.hand_drawn_seed,
+        work_meter: ctx.work_meter,
         wrapped_in_a,
         timing,
     };
@@ -489,5 +491,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         );
     }
 
+    // HandDrawn RoughJS generation may reject before the bounded SVG sink sees its output. Replay
+    // that terminal here so a fallback shape cannot silently turn a resource rejection into a
+    // successful render.
+    ctx.checkpoint_emit()?;
     Ok(())
 }

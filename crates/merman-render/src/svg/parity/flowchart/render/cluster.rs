@@ -105,6 +105,7 @@ fn write_flowchart_cluster_shape(
             FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
             FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
             FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
+            ctx.work_meter,
             &ctx.hand_drawn_seed,
         ) {
             let background_style = cluster_rough_background_style(rect_style);

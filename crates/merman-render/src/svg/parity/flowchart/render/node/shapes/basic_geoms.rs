@@ -41,6 +41,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
                 FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
                 FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
                 FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

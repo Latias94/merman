@@ -60,6 +60,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
                     common.stroke_color,
                     common.stroke_width,
                     common.stroke_dasharray,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })
@@ -91,6 +92,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_person(
                     common.stroke_width,
                     common.stroke_dasharray,
                     true,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })

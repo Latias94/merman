@@ -79,6 +79,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
                 FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
                 FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
                 FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })

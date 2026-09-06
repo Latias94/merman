@@ -25,6 +25,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_datastore(
                 common.stroke_color,
                 common.stroke_width,
                 common.stroke_dasharray,
+                common.work_meter,
                 common.hand_drawn_seed,
             )?;
             let top_d = roughjs_hand_drawn_line_path(

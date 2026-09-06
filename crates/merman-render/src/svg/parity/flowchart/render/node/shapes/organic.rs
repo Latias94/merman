@@ -48,6 +48,7 @@ fn render_organic_shape(
                     HAND_DRAWN_FILL_WEIGHT,
                     HAND_DRAWN_HACHURE_GAP,
                     HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })
