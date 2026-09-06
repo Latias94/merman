@@ -509,11 +509,12 @@ pub(crate) struct BlockSvgBody {
 
 /// Path properties whose source declaration must retain Mermaid's inline CSS precedence.
 ///
-/// The sidecar records only precedence, never the resolved visual value. The SVG serializer reads
-/// each value from the canonical [`PathStyle`] and graphics state so DrawingList and SVG keep one
-/// paint source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Paint properties read their resolved value from the canonical [`PathStyle`] and graphics state.
+/// `BackgroundColor` retains a non-paint SVG compatibility declaration: CSS background color does
+/// not replace an SVG shape's fill, but Mermaid still preserves the declaration in the DOM.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum BlockInlinePathProperty {
+    BackgroundColor(String),
     Fill,
     Stroke,
     StrokeWidth,

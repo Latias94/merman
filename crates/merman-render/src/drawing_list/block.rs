@@ -70,6 +70,7 @@ struct BlockStyle {
     miter_limit: f64,
     fill_rule: FillRule,
     opacity: f64,
+    label_opacity: f64,
     fill_opacity: f64,
     stroke_opacity: f64,
     text: Color,
@@ -530,6 +531,13 @@ impl<'a> BlockBuilder<'a> {
             layout_width.max(0.0)
         };
         let label_left = label_center.x - label_width / 2.0;
+        let scoped_opacity = style.label_opacity != 1.0;
+        if scoped_opacity {
+            self.commands.push(DrawingCommand::Save);
+            self.commands.push(DrawingCommand::SetOpacity {
+                opacity: style.label_opacity,
+            });
+        }
         for (line_index, line) in lines.iter().enumerate() {
             if line.is_empty() {
                 continue;
@@ -569,6 +577,9 @@ impl<'a> BlockBuilder<'a> {
                     obligation: self.text_obligation.clone(),
                 },
             });
+        }
+        if scoped_opacity {
+            self.commands.push(DrawingCommand::Restore);
         }
         Ok(())
     }
@@ -901,18 +912,41 @@ impl<'a> BlockBuilder<'a> {
             self.base_font_size,
         );
         for class in &source.classes {
-            let class_def = self.model.class_defs.get(class).ok_or_else(|| {
+            self.model.class_defs.get(class).ok_or_else(|| {
                 unavailable(format!(
                     "Block node `{}` references missing class `{class}`",
                     source.label
                 ))
             })?;
+        }
+        let mut class_label_opacity = None;
+        for class_def in self
+            .model
+            .class_defs
+            .values()
+            .filter(|class_def| source.classes.iter().any(|class| class == &class_def.id))
+        {
             for declaration in &class_def.styles {
+                let (key, _) = parse_declaration(declaration)?;
+                if key == "background-color" {
+                    return Err(unavailable(format!(
+                        "Block class `{}` uses an HTML label background that DrawingList v1 cannot represent",
+                        class_def.id
+                    )));
+                }
                 apply_declaration(&mut style, declaration, StyleTarget::Box)?;
+                if key == "opacity" {
+                    class_label_opacity = Some(style.opacity);
+                }
             }
             for declaration in &class_def.text_styles {
                 apply_declaration(&mut style, declaration, StyleTarget::Text)?;
             }
+        }
+        if let Some(opacity) = class_label_opacity {
+            // Mermaid's Block HTML labels match both `.class > *` and `.class span`, so class
+            // opacity is applied once to the label group and once to its span.
+            style.label_opacity = opacity * opacity;
         }
         for declaration in &source.styles {
             apply_declaration(&mut style, declaration, StyleTarget::Box)?;
@@ -1008,6 +1042,7 @@ impl BlockStyle {
             miter_limit: 4.0,
             fill_rule: FillRule::NonZero,
             opacity: 1.0,
+            label_opacity: 1.0,
             fill_opacity: 1.0,
             stroke_opacity: 1.0,
             text,
@@ -1382,13 +1417,21 @@ fn validate_declaration(raw: &str) -> Result<()> {
 fn inline_path_properties(styles: &[String]) -> Result<Vec<BlockInlinePathProperty>> {
     let mut properties = Vec::new();
     for raw in styles {
-        let (key, _) = crate::mermaid_style::parse_safe_style_decl(raw).ok_or_else(|| {
-            unavailable(format!(
-                "Block style declaration `{raw}` is malformed or unsafe"
-            ))
-        })?;
-        let property = match key.trim().to_ascii_lowercase().as_str() {
-            "fill" | "background-color" => Some(BlockInlinePathProperty::Fill),
+        let (key, value) = parse_declaration(raw)?;
+        let property = match key.as_str() {
+            "background-color" => {
+                if let Some(existing) = properties.iter_mut().find(|property| {
+                    matches!(property, BlockInlinePathProperty::BackgroundColor(_))
+                }) {
+                    *existing = BlockInlinePathProperty::BackgroundColor(value.trim().to_string());
+                    None
+                } else {
+                    Some(BlockInlinePathProperty::BackgroundColor(
+                        value.trim().to_string(),
+                    ))
+                }
+            }
+            "fill" => Some(BlockInlinePathProperty::Fill),
             "stroke" => Some(BlockInlinePathProperty::Stroke),
             "stroke-width" => Some(BlockInlinePathProperty::StrokeWidth),
             "stroke-dasharray" => Some(BlockInlinePathProperty::StrokeDashArray),
@@ -1412,12 +1455,7 @@ fn inline_path_properties(styles: &[String]) -> Result<Vec<BlockInlinePathProper
 }
 
 fn apply_declaration(style: &mut BlockStyle, raw: &str, target: StyleTarget) -> Result<()> {
-    let (key, value) = crate::mermaid_style::parse_safe_style_decl(raw).ok_or_else(|| {
-        unavailable(format!(
-            "Block style declaration `{raw}` is malformed or unsafe"
-        ))
-    })?;
-    let key = key.trim().to_ascii_lowercase();
+    let (key, value) = parse_declaration(raw)?;
     let value = value.trim();
     let resolver = PortableStyleResolver::new("block");
     match key.as_str() {
@@ -1425,9 +1463,9 @@ fn apply_declaration(style: &mut BlockStyle, raw: &str, target: StyleTarget) -> 
             StyleTarget::Box => style.fill = resolver.optional_color("fill", value)?,
             StyleTarget::Text => style.text = resolver.color("fill", value)?,
         },
-        "background-color" => {
-            style.fill = resolver.optional_color("background-color", value)?;
-        }
+        // CSS background-color is not SVG paint and must not replace the shape fill. The
+        // declaration remains in the private SVG sidecar for DOM compatibility.
+        "background-color" => {}
         "stroke" => {
             if matches!(target, StyleTarget::Text) {
                 return Err(unavailable(
@@ -1507,6 +1545,15 @@ fn apply_declaration(style: &mut BlockStyle, raw: &str, target: StyleTarget) -> 
         }
     }
     Ok(())
+}
+
+fn parse_declaration(raw: &str) -> Result<(String, &str)> {
+    let (key, value) = crate::mermaid_style::parse_safe_style_decl(raw).ok_or_else(|| {
+        unavailable(format!(
+            "Block style declaration `{raw}` is malformed or unsafe"
+        ))
+    })?;
+    Ok((key.trim().to_ascii_lowercase(), value))
 }
 
 fn parse_font_size(value: &str, inherited: f64) -> Result<f64> {

@@ -3518,6 +3518,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 declarations.push(';');
             }
             match property {
+                BlockInlinePathProperty::BackgroundColor(value) => {
+                    write!(declarations, "background-color:{} !important", value)
+                }
                 BlockInlinePathProperty::Fill => write!(
                     declarations,
                     "fill:{} !important",

@@ -3101,6 +3101,108 @@ fn block_scopes_box_opacity_without_fading_the_label_or_double_charging_paint_al
 }
 
 #[test]
+fn block_preserves_class_opacity_for_shape_and_html_label_cascade() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"block
+                A["Alpha"]
+                classDef faded opacity:0.5
+                class A faded
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Block class opacity should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let semantic_id = output
+        .document()
+        .semantics
+        .iter()
+        .find(|semantic| semantic.title.as_deref() == Some("Alpha"))
+        .map(|semantic| semantic.id.as_str())
+        .expect("Block node semantics");
+    let group_start = output
+        .document()
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::BeginSemanticGroup { semantic_id: actual }
+                    if actual == semantic_id
+            )
+        })
+        .expect("Block node semantic group");
+    let group_end = output.document().commands[group_start + 1..]
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::EndSemanticGroup
+            )
+        })
+        .map(|offset| group_start + 1 + offset)
+        .expect("Block node semantic group end");
+    let [
+        merman_display_list::DrawingCommand::Save,
+        merman_display_list::DrawingCommand::SetOpacity {
+            opacity: shape_opacity,
+        },
+        merman_display_list::DrawingCommand::DrawPath { .. },
+        merman_display_list::DrawingCommand::Restore,
+        merman_display_list::DrawingCommand::Save,
+        merman_display_list::DrawingCommand::SetOpacity {
+            opacity: label_opacity,
+        },
+        merman_display_list::DrawingCommand::DrawText { run },
+        merman_display_list::DrawingCommand::Restore,
+    ] = &output.document().commands[group_start + 1..group_end]
+    else {
+        panic!("Block class opacity should preserve both CSS cascade scopes");
+    };
+
+    assert_eq!(*shape_opacity, 0.5);
+    assert_eq!(*label_opacity, 0.25);
+    assert_eq!(run.text, "Alpha");
+}
+
+#[test]
+fn block_inline_background_color_does_not_replace_svg_fill() {
+    let node_fill = |source: &str| {
+        let output = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect("Block should render as a DrawingList");
+        let RenderOutput::DrawingList(Some(output)) = output else {
+            panic!("expected a DrawingList output");
+        };
+        output
+            .document()
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                merman_display_list::DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "block.node.0.shape" =>
+                {
+                    style.fill.clone()
+                }
+                _ => None,
+            })
+            .expect("Block node fill")
+    };
+
+    let baseline = node_fill("block\n  A[\"Alpha\"]\n");
+    let with_background = node_fill("block\n  A[\"Alpha\"]\n  style A background-color:#ff0000\n");
+    assert_eq!(with_background, baseline);
+}
+
+#[test]
 fn block_rejects_unmapped_visual_effects_instead_of_dropping_them() {
     let error = Renderer::new()
         .render(RenderRequest::drawing_list(

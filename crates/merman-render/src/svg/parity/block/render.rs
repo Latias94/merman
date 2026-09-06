@@ -204,7 +204,7 @@ pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String,
             }
             continue;
         };
-        if is_rect_style_key(key) {
+        if is_rect_style_key(key) || key == "background-color" {
             push_ordered_decl(&mut box_decls, key, trimmed);
         }
         if is_text_style_key(key) {

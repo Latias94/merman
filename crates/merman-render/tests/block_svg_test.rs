@@ -363,6 +363,30 @@ fn block_svg_serializes_box_opacity_once_without_fading_the_label() {
 }
 
 #[test]
+fn block_svg_preserves_background_color_without_turning_it_into_fill() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  style A background-color:#ff0000
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let shape = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .and_then(|node| node.children().find(|child| child.has_tag_name("rect")))
+        .expect("Block node shape");
+
+    assert_ne!(shape.attribute("fill"), Some("#ff0000"));
+    assert!(
+        shape
+            .attribute("style")
+            .is_some_and(|style| style.contains("background-color:#ff0000 !important")),
+        "the non-paint CSS declaration should remain available to DOM consumers: {svg}"
+    );
+}
+
+#[test]
 fn block_svg_applies_class_definitions_to_assigned_nodes() {
     let svg = render_block_svg_from_text(
         r#"block
