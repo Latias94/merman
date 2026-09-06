@@ -846,7 +846,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(feature = "drawing-list")]
     #[test]
     fn drawing_list_errors_keep_target_specific_structured_context() {
         let unavailable = classify_render_error(
