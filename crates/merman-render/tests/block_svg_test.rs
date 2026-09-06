@@ -312,6 +312,57 @@ fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
 }
 
 #[test]
+fn block_svg_serializes_box_opacity_once_without_fading_the_label() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  style A fill:#112233,stroke:#445566,color:#778899,opacity:0.5,fill-opacity:0.4,stroke-opacity:0.2
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("Block node DOM identity");
+    assert!(node.attribute("class").is_some_and(|class| {
+        class
+            .split_ascii_whitespace()
+            .any(|token| token == "flowchart-label")
+    }));
+    let shape = node
+        .children()
+        .find(|child| child.has_tag_name("rect"))
+        .expect("Block node shape");
+
+    assert_eq!(shape.attribute("opacity"), Some("0.5"));
+    assert_eq!(shape.attribute("fill"), Some("#112233"));
+    assert_eq!(shape.attribute("stroke"), Some("#445566"));
+    assert_eq!(shape.attribute("fill-opacity"), Some("0.4"));
+    assert_eq!(shape.attribute("stroke-opacity"), Some("0.2"));
+    let inline_style = shape
+        .attribute("style")
+        .expect("authored Block style keeps inline precedence");
+    for declaration in [
+        "fill:#112233 !important",
+        "stroke:#445566 !important",
+        "opacity:0.5 !important",
+        "fill-opacity:0.4 !important",
+        "stroke-opacity:0.2 !important",
+    ] {
+        assert!(
+            inline_style.split(';').any(|actual| actual == declaration),
+            "missing canonical inline declaration {declaration:?} in {inline_style:?}"
+        );
+    }
+    assert_eq!(
+        node.descendants()
+            .filter_map(|descendant| descendant.attribute("opacity"))
+            .collect::<Vec<_>>(),
+        vec!["0.5"]
+    );
+}
+
+#[test]
 fn block_svg_applies_class_definitions_to_assigned_nodes() {
     let svg = render_block_svg_from_text(
         r#"block

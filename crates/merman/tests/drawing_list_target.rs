@@ -3025,6 +3025,82 @@ fn block_emits_source_backed_shapes_routes_styles_and_semantics() {
 }
 
 #[test]
+fn block_scopes_box_opacity_without_fading_the_label_or_double_charging_paint_alpha() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"block
+                A["Alpha"]
+                style A fill:#112233,stroke:#445566,color:#778899,opacity:0.5,fill-opacity:0.4,stroke-opacity:0.2
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("portable Block opacity should render as a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    let semantic_id = document
+        .semantics
+        .iter()
+        .find(|semantic| semantic.title.as_deref() == Some("Alpha"))
+        .map(|semantic| semantic.id.as_str())
+        .expect("Block node semantics");
+    let group_start = document
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::BeginSemanticGroup { semantic_id: actual }
+                    if actual == semantic_id
+            )
+        })
+        .expect("Block node semantic group");
+    let group_end = document.commands[group_start + 1..]
+        .iter()
+        .position(|command| {
+            matches!(
+                command,
+                merman_display_list::DrawingCommand::EndSemanticGroup
+            )
+        })
+        .map(|offset| group_start + 1 + offset)
+        .expect("Block node semantic group end");
+    let [
+        merman_display_list::DrawingCommand::Save,
+        merman_display_list::DrawingCommand::SetOpacity { opacity },
+        merman_display_list::DrawingCommand::DrawPath { path, style },
+        merman_display_list::DrawingCommand::Restore,
+        merman_display_list::DrawingCommand::DrawText { run },
+    ] = &document.commands[group_start + 1..group_end]
+    else {
+        panic!("Block box opacity must be scoped to shape drawing");
+    };
+
+    assert_eq!(*opacity, 0.5);
+    assert_eq!(path.as_str(), format!("{semantic_id}.shape"));
+    assert_eq!(
+        style.fill,
+        Some(merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0x11, 0x22, 0x33, 102)
+        ))
+    );
+    assert_eq!(
+        style.stroke.as_ref().map(|stroke| &stroke.paint),
+        Some(&merman_display_list::Paint::solid(
+            merman_display_list::Color::rgba(0x44, 0x55, 0x66, 51)
+        ))
+    );
+    assert_eq!(run.text, "Alpha");
+    assert_eq!(
+        run.style.fill,
+        merman_display_list::Paint::solid(merman_display_list::Color::rgba(0x77, 0x88, 0x99, 0xff))
+    );
+}
+
+#[test]
 fn block_rejects_unmapped_visual_effects_instead_of_dropping_them() {
     let error = Renderer::new()
         .render(RenderRequest::drawing_list(

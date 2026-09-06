@@ -503,8 +503,29 @@ pub(crate) struct BlockSvgBody {
     pub(crate) label_max_widths: BTreeMap<String, f64>,
     pub(crate) label_inline_styles: BTreeMap<String, Vec<String>>,
     pub(crate) label_data_ids: BTreeMap<String, String>,
-    pub(crate) path_inline_styles: BTreeMap<String, Vec<String>>,
+    pub(crate) path_inline_properties: BTreeMap<String, Vec<BlockInlinePathProperty>>,
     pub(crate) edge_metadata: BTreeMap<String, BlockEdgeSvgMetadata>,
+}
+
+/// Path properties whose source declaration must retain Mermaid's inline CSS precedence.
+///
+/// The sidecar records only precedence, never the resolved visual value. The SVG serializer reads
+/// each value from the canonical [`PathStyle`] and graphics state so DrawingList and SVG keep one
+/// paint source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockInlinePathProperty {
+    Fill,
+    Stroke,
+    StrokeWidth,
+    StrokeDashArray,
+    StrokeDashOffset,
+    StrokeLineCap,
+    StrokeLineJoin,
+    StrokeMiterLimit,
+    FillRule,
+    Opacity,
+    FillOpacity,
+    StrokeOpacity,
 }
 
 /// SVG-only relationship metadata retained for the Block edge path contract.

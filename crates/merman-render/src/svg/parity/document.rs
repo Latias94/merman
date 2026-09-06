@@ -8,7 +8,7 @@
 use super::root_svg;
 use super::util::{escape_attr_into, escape_xml_into, fmt};
 use super::{SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
-use crate::drawing_list::{RenderDocument, SvgStructureBody};
+use crate::drawing_list::{BlockInlinePathProperty, RenderDocument, SvgStructureBody};
 use crate::environment::RenderSession;
 use crate::family::RenderFamilyKind;
 use crate::wardley::WardleyTheme;
@@ -2127,7 +2127,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
-        self.write_block_inline_path_style(path_id);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
         self.write_state_attrs();
@@ -2403,7 +2403,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
-        self.write_block_inline_path_style(path_id);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
         self.write_state_attrs();
@@ -2448,7 +2448,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str(class.as_ref());
             self.output.push('"');
         }
-        self.write_block_inline_path_style(path_id);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2486,8 +2486,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
-        self.write_block_inline_path_style(path_id);
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2519,7 +2519,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
-        self.write_block_inline_path_style(path_id);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2555,6 +2555,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(12.0);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
@@ -2620,7 +2621,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_wardley_marker_attributes(path_id.as_str());
         self.write_zenuml_path_attrs(path_id.as_str());
-        self.write_block_inline_path_style(path_id);
+        self.write_block_inline_path_style(path_id, style)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -3482,20 +3483,136 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push('"');
     }
 
-    fn write_block_inline_path_style(&mut self, key: &ResourceId) {
-        let Some(styles) = (match self.svg_body {
-            SvgStructureBody::Block(body) => body.path_inline_styles.get(key.as_str()),
+    fn write_block_inline_path_style(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<()> {
+        let properties = match self.svg_body {
+            SvgStructureBody::Block(body) => {
+                body.path_inline_properties.get(path_id.as_str()).cloned()
+            }
             _ => None,
-        }) else {
-            return;
         };
-        let (box_style, _, _) = super::block::block_inline_styles(styles);
-        if box_style.is_empty() {
-            return;
+        let Some(properties) = properties else {
+            return Ok(());
+        };
+
+        let paint_css = |encoder: &mut Self, paint: Option<&Paint>| -> Result<String> {
+            match paint {
+                Some(Paint::Solid { color }) => Ok(color_css(*color)),
+                Some(Paint::Resource { id }) => {
+                    Ok(format!("url(#{})", encoder.svg_resource_id(id.as_str())?))
+                }
+                None => Ok("none".to_string()),
+            }
+        };
+        let paint_opacity = |paint: Option<&Paint>| match paint {
+            Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
+            Some(Paint::Resource { .. }) | None => 1.0,
+        };
+
+        let mut declarations = String::new();
+        for property in properties {
+            if !declarations.is_empty() {
+                declarations.push(';');
+            }
+            match property {
+                BlockInlinePathProperty::Fill => write!(
+                    declarations,
+                    "fill:{} !important",
+                    paint_css(self, style.fill.as_ref())?
+                ),
+                BlockInlinePathProperty::Stroke => write!(
+                    declarations,
+                    "stroke:{} !important",
+                    paint_css(self, style.stroke.as_ref().map(|stroke| &stroke.paint))?
+                ),
+                BlockInlinePathProperty::StrokeWidth => write!(
+                    declarations,
+                    "stroke-width:{}px !important",
+                    fmt(style.stroke.as_ref().map_or(0.0, |stroke| stroke.width))
+                ),
+                BlockInlinePathProperty::StrokeDashArray => {
+                    declarations.push_str("stroke-dasharray:");
+                    if let Some(stroke) = style.stroke.as_ref()
+                        && !stroke.dash_array.is_empty()
+                    {
+                        for (index, value) in stroke.dash_array.iter().enumerate() {
+                            if index > 0 {
+                                declarations.push(',');
+                            }
+                            write!(declarations, "{}", fmt(*value))
+                                .expect("writing to String cannot fail");
+                        }
+                    } else {
+                        declarations.push_str("none");
+                    }
+                    declarations.push_str(" !important");
+                    Ok(())
+                }
+                BlockInlinePathProperty::StrokeDashOffset => write!(
+                    declarations,
+                    "stroke-dashoffset:{}px !important",
+                    fmt(style
+                        .stroke
+                        .as_ref()
+                        .map_or(0.0, |stroke| stroke.dash_offset))
+                ),
+                BlockInlinePathProperty::StrokeLineCap => write!(
+                    declarations,
+                    "stroke-linecap:{} !important",
+                    style
+                        .stroke
+                        .as_ref()
+                        .map_or("butt", |stroke| line_cap(stroke.line_cap))
+                ),
+                BlockInlinePathProperty::StrokeLineJoin => write!(
+                    declarations,
+                    "stroke-linejoin:{} !important",
+                    style
+                        .stroke
+                        .as_ref()
+                        .map_or("miter", |stroke| line_join(stroke.line_join))
+                ),
+                BlockInlinePathProperty::StrokeMiterLimit => write!(
+                    declarations,
+                    "stroke-miterlimit:{} !important",
+                    fmt(style
+                        .stroke
+                        .as_ref()
+                        .map_or(4.0, |stroke| stroke.miter_limit))
+                ),
+                BlockInlinePathProperty::FillRule => write!(
+                    declarations,
+                    "fill-rule:{} !important",
+                    fill_rule_name(style.fill_rule)
+                ),
+                BlockInlinePathProperty::Opacity => write!(
+                    declarations,
+                    "opacity:{} !important",
+                    fmt(self.state.opacity)
+                ),
+                BlockInlinePathProperty::FillOpacity => write!(
+                    declarations,
+                    "fill-opacity:{} !important",
+                    fmt(paint_opacity(style.fill.as_ref()))
+                ),
+                BlockInlinePathProperty::StrokeOpacity => write!(
+                    declarations,
+                    "stroke-opacity:{} !important",
+                    fmt(paint_opacity(
+                        style.stroke.as_ref().map(|stroke| &stroke.paint)
+                    ))
+                ),
+            }
+            .map_err(|_| invalid("failed to write Block inline path style"))?;
         }
+
         self.output.push_str(" style=\"");
-        escape_attr_into(&mut self.output, box_style.as_str());
+        escape_attr_into(&mut self.output, declarations.as_str());
         self.output.push('"');
+        Ok(())
     }
 
     fn write_c4_shape_inline_style(

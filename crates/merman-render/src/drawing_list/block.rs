@@ -5,8 +5,8 @@
 //! labels and styles that the v1 contract can represent without dropping visible information.
 
 use super::{
-    BlockEdgeSvgMetadata, BlockSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
-    parse_font_families, theme_color,
+    BlockEdgeSvgMetadata, BlockInlinePathProperty, BlockSvgBody, RenderDocument, SvgStructureBody,
+    SvgStructureSidecar, parse_font_families, theme_color,
 };
 use crate::block::{BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry};
 use crate::config::{
@@ -119,7 +119,7 @@ struct BlockBuilder<'a> {
     label_max_widths: BTreeMap<String, f64>,
     label_inline_styles: BTreeMap<String, Vec<String>>,
     label_data_ids: BTreeMap<String, String>,
-    path_inline_styles: BTreeMap<String, Vec<String>>,
+    path_inline_properties: BTreeMap<String, Vec<BlockInlinePathProperty>>,
     edge_metadata: BTreeMap<String, BlockEdgeSvgMetadata>,
 }
 
@@ -236,7 +236,7 @@ impl<'a> BlockBuilder<'a> {
             label_max_widths: BTreeMap::new(),
             label_inline_styles: BTreeMap::new(),
             label_data_ids: BTreeMap::new(),
-            path_inline_styles: BTreeMap::new(),
+            path_inline_properties: BTreeMap::new(),
             edge_metadata: BTreeMap::new(),
         })
     }
@@ -311,7 +311,7 @@ impl<'a> BlockBuilder<'a> {
                     label_max_widths: std::mem::take(&mut self.label_max_widths),
                     label_inline_styles: std::mem::take(&mut self.label_inline_styles),
                     label_data_ids: std::mem::take(&mut self.label_data_ids),
-                    path_inline_styles: std::mem::take(&mut self.path_inline_styles),
+                    path_inline_properties: std::mem::take(&mut self.path_inline_properties),
                     edge_metadata: std::mem::take(&mut self.edge_metadata),
                 }),
             },
@@ -395,17 +395,18 @@ impl<'a> BlockBuilder<'a> {
         geometry: &BlockShapeGeometry,
         style: &BlockStyle,
     ) -> Result<()> {
-        let inline_styles = self
+        let inline_properties = self
             .sources
             .get(&node.id)
-            .map(|source| source.styles.clone())
+            .map(|source| inline_path_properties(&source.styles))
+            .transpose()?
             .unwrap_or_default();
         let fill = style
             .fill
-            .map(|color| with_alpha(color, style.opacity * style.fill_opacity));
+            .map(|color| with_alpha(color, style.fill_opacity));
         let stroke_color = style
             .stroke
-            .map(|color| with_alpha(color, style.opacity * style.stroke_opacity));
+            .map(|color| with_alpha(color, style.stroke_opacity));
         let path_style = |fill: Option<Color>, stroke_color: Option<Color>| PathStyle {
             fill_rule: style.fill_rule,
             fill: fill.map(Paint::solid),
@@ -419,6 +420,13 @@ impl<'a> BlockBuilder<'a> {
                 miter_limit: style.miter_limit,
             }),
         };
+        let scoped_opacity = style.opacity != 1.0;
+        if scoped_opacity {
+            self.commands.push(DrawingCommand::Save);
+            self.commands.push(DrawingCommand::SetOpacity {
+                opacity: style.opacity,
+            });
+        }
 
         match &geometry.boundary {
             BlockShapeBoundary::DoubleCircle {
@@ -432,11 +440,11 @@ impl<'a> BlockBuilder<'a> {
                     .insert(outer_id.clone(), "outer-circle".to_string());
                 self.path_classes
                     .insert(inner_id.clone(), "inner-circle".to_string());
-                if !inline_styles.is_empty() {
-                    self.path_inline_styles
-                        .insert(outer_id.clone(), inline_styles.clone());
-                    self.path_inline_styles
-                        .insert(inner_id.clone(), inline_styles.clone());
+                if !inline_properties.is_empty() {
+                    self.path_inline_properties
+                        .insert(outer_id.clone(), inline_properties.clone());
+                    self.path_inline_properties
+                        .insert(inner_id.clone(), inline_properties.clone());
                 }
                 self.add_path(
                     outer_id,
@@ -468,9 +476,9 @@ impl<'a> BlockBuilder<'a> {
                     }
                 };
                 self.path_classes.insert(id.to_string(), class.to_string());
-                if !inline_styles.is_empty() {
-                    self.path_inline_styles
-                        .insert(id.to_string(), inline_styles.clone());
+                if !inline_properties.is_empty() {
+                    self.path_inline_properties
+                        .insert(id.to_string(), inline_properties);
                 }
                 self.add_path(
                     id.to_string(),
@@ -478,6 +486,9 @@ impl<'a> BlockBuilder<'a> {
                     path_style(fill, stroke_color),
                 )?;
             }
+        }
+        if scoped_opacity {
+            self.commands.push(DrawingCommand::Restore);
         }
         Ok(())
     }
@@ -549,7 +560,7 @@ impl<'a> BlockBuilder<'a> {
                         font_size: style.font_size,
                         letter_spacing: 0.0,
                         line_height: text_line_height,
-                        fill: Paint::solid(with_alpha(style.text, style.opacity)),
+                        fill: Paint::solid(style.text),
                     },
                     anchor: style.text_anchor,
                     baseline: TextBaseline::Middle,
@@ -1366,6 +1377,38 @@ fn validate_declaration(raw: &str) -> Result<()> {
         ))
     })?;
     Ok(())
+}
+
+fn inline_path_properties(styles: &[String]) -> Result<Vec<BlockInlinePathProperty>> {
+    let mut properties = Vec::new();
+    for raw in styles {
+        let (key, _) = crate::mermaid_style::parse_safe_style_decl(raw).ok_or_else(|| {
+            unavailable(format!(
+                "Block style declaration `{raw}` is malformed or unsafe"
+            ))
+        })?;
+        let property = match key.trim().to_ascii_lowercase().as_str() {
+            "fill" | "background-color" => Some(BlockInlinePathProperty::Fill),
+            "stroke" => Some(BlockInlinePathProperty::Stroke),
+            "stroke-width" => Some(BlockInlinePathProperty::StrokeWidth),
+            "stroke-dasharray" => Some(BlockInlinePathProperty::StrokeDashArray),
+            "stroke-dashoffset" => Some(BlockInlinePathProperty::StrokeDashOffset),
+            "stroke-linecap" => Some(BlockInlinePathProperty::StrokeLineCap),
+            "stroke-linejoin" => Some(BlockInlinePathProperty::StrokeLineJoin),
+            "stroke-miterlimit" => Some(BlockInlinePathProperty::StrokeMiterLimit),
+            "fill-rule" => Some(BlockInlinePathProperty::FillRule),
+            "opacity" => Some(BlockInlinePathProperty::Opacity),
+            "fill-opacity" => Some(BlockInlinePathProperty::FillOpacity),
+            "stroke-opacity" => Some(BlockInlinePathProperty::StrokeOpacity),
+            _ => None,
+        };
+        if let Some(property) = property
+            && !properties.contains(&property)
+        {
+            properties.push(property);
+        }
+    }
+    Ok(properties)
 }
 
 fn apply_declaration(style: &mut BlockStyle, raw: &str, target: StyleTarget) -> Result<()> {
