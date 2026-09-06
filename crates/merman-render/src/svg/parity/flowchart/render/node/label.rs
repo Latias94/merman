@@ -39,10 +39,6 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
         }
     }
 
-    pub(super) const fn has_typed_label_fill(&self) -> bool {
-        self.typed_label_fill.is_some()
-    }
-
     fn typed_label_fill_style(&self) -> Option<String> {
         self.typed_label_fill.map(|fill| {
             let mut style = String::new();
@@ -189,7 +185,7 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
                     crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
                 ),
             )
-            .with_label_fill_reach(typography_applicable, self.typed_label_fill.is_some())
+            .with_label_fill_reach(typography_applicable, true)
             .with_html_typography_statuses(html_font_stack, html_font_size)
     }
 }
@@ -477,10 +473,7 @@ fn render_flowchart_node_label_with_wrapper(
                 crate::flowchart::FlowchartSvgLabelRenderPlan::emitted_admitted_typography,
             ),
         )
-        .with_label_fill_reach(
-            typography_applicable,
-            common.label_emission.has_typed_label_fill(),
-        )
+        .with_label_fill_reach(typography_applicable, true)
         .with_html_typography_statuses(html_typography_statuses.0, html_typography_statuses.1)
 }
 

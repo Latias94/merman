@@ -112,15 +112,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .unwrap_or(1.3);
     let node_typography_config_ownership =
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
-    let node_label_fill_config_override = [
-        "themeVariables.primaryTextColor",
-        "themeVariables.nodeTextColor",
-        "themeVariables.textColor",
-    ]
-    .into_iter()
-    .any(|path| {
-        merman_core::__private::config_path_overrides_typed_default(effective_config, path)
-    });
+    let node_label_fill_config_override =
+        flowchart_node_label_fill_config_override(effective_config);
     let node_border_config_override = merman_core::__private::config_path_overrides_typed_default(
         effective_config,
         "themeVariables.nodeBorder",
@@ -196,4 +189,50 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         edge_label_padding,
         compact_edge_corners,
     }
+}
+
+fn flowchart_node_label_fill_config_override(
+    effective_config: &merman_core::MermaidConfig,
+) -> bool {
+    const NODE_TEXT_COLOR: &str = "themeVariables.nodeTextColor";
+    const PRIMARY_TEXT_COLOR: &str = "themeVariables.primaryTextColor";
+    const TEXT_COLOR: &str = "themeVariables.textColor";
+
+    // Mermaid's Flowchart stylesheet resolves this terminal as
+    // `nodeTextColor || textColor`. `primaryTextColor` only owns the terminal when the
+    // materialized `nodeTextColor` is its direct derived value.
+    let theme_variables = effective_config
+        .as_value()
+        .get("themeVariables")
+        .and_then(serde_json::Value::as_object);
+    let node_text_color = theme_variables
+        .and_then(|variables| variables.get("nodeTextColor"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|color| !color.is_empty());
+
+    let owns =
+        |path| merman_core::__private::config_path_overrides_typed_default(effective_config, path);
+    let Some(node_text_color) = node_text_color else {
+        return owns(TEXT_COLOR);
+    };
+    if owns(NODE_TEXT_COLOR) {
+        return true;
+    }
+
+    let theme = effective_config
+        .get_str("theme")
+        .and_then(|name| merman_core::MermaidThemeId::parse(name).ok())
+        .unwrap_or_default();
+    if !matches!(
+        theme,
+        merman_core::MermaidThemeId::Default | merman_core::MermaidThemeId::Base
+    ) {
+        return false;
+    }
+
+    theme_variables
+        .and_then(|variables| variables.get("primaryTextColor"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|primary_text_color| *primary_text_color == node_text_color)
+        .is_some_and(|_| owns(PRIMARY_TEXT_COLOR))
 }

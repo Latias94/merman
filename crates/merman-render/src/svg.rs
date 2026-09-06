@@ -36,6 +36,7 @@ pub(crate) use fallback::{
     FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR,
     PREPARED_TEXT_LABEL_DATA_ATTR,
 };
+pub(crate) use icon_registry::IconCurrentColorUse;
 pub(crate) use parity::FlowchartEdgeStylePlan;
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;

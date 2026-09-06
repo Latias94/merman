@@ -72,6 +72,9 @@ fn resolve_tree_view_paint(
                 &[ResolvedStyleProperty::Stroke, ResolvedStyleProperty::Fill]
             }
         };
+        if target == ThemeTarget::Marker {
+            record_unsupported_marker_winners(theme, &style, residuals);
+        }
         for selected_property in properties {
             let resolution = match selected_property {
                 ResolvedStyleProperty::Fill => style.fill_resolution(),
@@ -138,6 +141,52 @@ fn resolve_tree_view_paint(
         }
     }
     Ok(None)
+}
+
+fn record_unsupported_marker_winners(
+    theme: &ResolvedDiagramTheme,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
+    residuals: &mut BTreeMap<FamilyThemeMechanismKey, FamilyThemeResidualReason>,
+) {
+    let winners = style.winner_rule_properties().collect::<Vec<_>>();
+    for route in theme.family_mechanism_routes().iter().copied() {
+        let FamilyThemeMechanism::RuleFacet {
+            rule_index,
+            target: ThemeTarget::Marker,
+            selector,
+            facet,
+        } = route.mechanism()
+        else {
+            continue;
+        };
+        if route.disposition() != FamilyThemeDisposition::Unsupported {
+            continue;
+        }
+        let property = resolved_style_property_for_facet(facet);
+        let winner_matches = winners.iter().any(|(winner_property, origin)| {
+            let selector_matches = match selector {
+                FamilyThemeSelectorShape::Static { variant } => {
+                    origin.ordinal().is_none() && origin.variant() == variant
+                }
+                FamilyThemeSelectorShape::Ordinal { variant, selector } => {
+                    origin.ordinal() == Some(selector) && origin.variant() == variant
+                }
+            };
+            *winner_property == property
+                && origin.rule_index() == rule_index
+                && origin.target() == ThemeTarget::Marker
+                && selector_matches
+        });
+        if winner_matches {
+            residuals.insert(
+                FamilyThemeMechanismKey::Rule {
+                    index: rule_index,
+                    target: ThemeTarget::Marker,
+                },
+                unsupported_residual_for_facet(facet),
+            );
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -505,6 +554,10 @@ impl TreeViewThemePlan {
             if let Some(assignment) = &self.icon_color {
                 if receipt.expected_icon_count == 0 {
                     evidence.mark_not_applicable(assignment.key.clone());
+                } else if receipt.paintable_icons_seen == 0 && receipt.unverified_icons_seen == 0 {
+                    // Fixed-color and empty/unknown icon bodies are occurrence-local N/A: they
+                    // do not consume the Tree View icon color terminal.
+                    evidence.mark_not_applicable(assignment.key.clone());
                 } else if receipt.icon_color_matches(assignment.paint.css()) {
                     evidence.mark_applied_with_capabilities(
                         assignment.key.clone(),
@@ -667,6 +720,9 @@ pub(crate) struct TreeViewThemeReceipt {
     css_matches: bool,
     labels_seen: usize,
     icons_seen: usize,
+    paintable_icons_seen: usize,
+    fixed_icons_seen: usize,
+    unverified_icons_seen: usize,
     lines_seen: usize,
     terminal_matches: bool,
 }
@@ -695,6 +751,9 @@ impl TreeViewThemeReceipt {
             css_matches: true,
             labels_seen: 0,
             icons_seen: 0,
+            paintable_icons_seen: 0,
+            fixed_icons_seen: 0,
+            unverified_icons_seen: 0,
             lines_seen: 0,
             terminal_matches: true,
         }
@@ -731,10 +790,25 @@ impl TreeViewThemeReceipt {
         }
     }
 
-    pub(crate) fn record_icon(&mut self, emitted_color: &str) {
+    pub(crate) fn record_icon(
+        &mut self,
+        emitted_color: &str,
+        current_color_use: crate::svg::IconCurrentColorUse,
+    ) {
         self.icons_seen = self.icons_seen.saturating_add(1);
-        if let Some(expected) = &self.expected_icon_color {
-            self.terminal_matches &= emitted_color == expected.as_ref();
+        match current_color_use {
+            crate::svg::IconCurrentColorUse::Consumed => {
+                self.paintable_icons_seen = self.paintable_icons_seen.saturating_add(1);
+                if let Some(expected) = &self.expected_icon_color {
+                    self.terminal_matches &= emitted_color == expected.as_ref();
+                }
+            }
+            crate::svg::IconCurrentColorUse::NotConsumed => {
+                self.fixed_icons_seen = self.fixed_icons_seen.saturating_add(1);
+            }
+            crate::svg::IconCurrentColorUse::Unverified => {
+                self.unverified_icons_seen = self.unverified_icons_seen.saturating_add(1);
+            }
         }
     }
 
@@ -753,6 +827,7 @@ impl TreeViewThemeReceipt {
             && self.css_matches
             && self.labels_seen == self.expected_label_count
             && self.icons_seen == self.expected_icon_count
+            && self.unverified_icons_seen == 0
             && self.lines_seen == self.expected_line_count
             && self.terminal_matches
             && plan.expected_line_count == self.expected_line_count
@@ -776,6 +851,8 @@ impl TreeViewThemeReceipt {
         self.css_seen
             && self.css_matches
             && self.icons_seen == self.expected_icon_count
+            && self.paintable_icons_seen > 0
+            && self.unverified_icons_seen == 0
             && self.expected_icon_color.as_deref() == Some(expected)
     }
 
@@ -834,7 +911,7 @@ mod tests {
         );
         complete.record_css("Excalifont", "#123456", "#654321", "#abcdef");
         complete.record_label("#123456");
-        complete.record_icon("#abcdef");
+        complete.record_icon("#abcdef", crate::svg::IconCurrentColorUse::Consumed);
         complete.record_line("#654321", Some("6"));
         assert!(complete.css_matches);
         assert_eq!(complete.labels_seen, 1);

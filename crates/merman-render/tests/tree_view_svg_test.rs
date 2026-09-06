@@ -1003,6 +1003,120 @@ fn tree_view_typed_marker_paint_is_not_applicable_without_icon_terminals() {
 }
 
 #[test]
+fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies() {
+    let registry = IconRegistry::from_packs([IconPack::new(
+        br##"{
+            "prefix":"test",
+            "icons":{
+                "current":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V16H0Z\"/>"},
+                "fixed":{"body":"<path fill=\"#ff0000\" d=\"M0 0H16V16H0Z\"/>"},
+                "mixed":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V8H0Z\"/><path fill=\"#ff0000\" d=\"M0 8H16V16H0Z\"/>"},
+                "empty":{"body":""}
+            }
+        }"##,
+    )])
+    .expect("compile Tree View icon registry fixture");
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint")),
+    )]);
+    let source = "treeView-beta\nCurrent icon(test:current)\nFixed icon(test:fixed)\nMissing icon(test:missing)\nEmpty icon(test:empty)\n";
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-icon-facts",
+    )
+    .expect("currentColor icon should prove the typed marker route");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Tree View SVG");
+    for label in ["Fixed", "Missing", "Empty"] {
+        let icon = tree_view_icon_group_for_label(&document, label);
+        assert_eq!(
+            icon.attribute("id").is_some_and(
+                |id| id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
+            ),
+            false,
+            "fixed/unknown/empty icon must not be marked as a native currentColor terminal: {label}"
+        );
+    }
+    let current = tree_view_icon_group_for_label(&document, "Current");
+    assert!(current.attribute("id").is_some_and(|id| {
+        id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let (_, fixed_only_rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nFixed icon(test:fixed)\nMissing icon(test:missing)\nEmpty icon(test:empty)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-fixed-icons",
+    )
+    .expect("fixed/unknown/empty icons should remain valid terminals");
+    let fixed_only_evidence =
+        merman_render::__private::family_evidence(fixed_only_rendered.into_completion().report());
+    assert_eq!(fixed_only_evidence.applied_count(), 0);
+    assert_eq!(fixed_only_evidence.not_applicable_count(), 1);
+    assert_eq!(fixed_only_evidence.theme_residual_count(), 0);
+
+    let mixed_result = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nMixed icon(test:mixed)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-marker-mixed-icon",
+    );
+    let mixed_error = match mixed_result {
+        Ok((_, _rendered)) => {
+            panic!("mixed currentColor/fixed icon paint must fail closed")
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        mixed_error.incomplete_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1, 0))
+    );
+}
+
+#[test]
+fn tree_view_mixed_marker_paint_and_unsupported_facet_fails_closed() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid Tree View marker paint"))
+            .with_padding(InsetsPx::all(2.0)),
+    )]);
+    let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot icon(folder)\n", &theme)
+        .expect_err("mixed typed/unsupported Marker rule must fail closed");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+    );
+}
+
+#[test]
+fn tree_view_unsupported_only_marker_facet_fails_closed() {
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default().with_padding(InsetsPx::all(2.0)),
+    )]);
+    let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot icon(folder)\n", &theme)
+        .expect_err("unsupported-only Marker rule must fail closed");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::TREE_VIEW, 1))
+    );
+}
+
+#[test]
 fn tree_view_edge_width_rejects_qualified_ordinal_and_mixed_rules() {
     let source = "treeView-beta\nRoot/\n    Child\n";
     let width_style = tree_view_edge_width_style(Specified::Value(6.0));

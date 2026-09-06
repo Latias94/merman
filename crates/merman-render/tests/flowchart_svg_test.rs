@@ -3,10 +3,12 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::flowchart::FlowchartModel;
-use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::{
+    DiagramFamilyId, Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
+};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, InsetsPx, Specified,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStrokePatch, ThemeStylePatch,
     ThemeTarget, ThemeVariant,
 };
@@ -117,6 +119,24 @@ fn edge_stroke_width_theme_rule(width: f32, explicit_default: bool) -> DiagramTh
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
         .expect("compile edge stroke-width theme")
+}
+
+fn node_label_fill_theme(family: DiagramFamilyId, color: &str) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid(color).expect("valid Flowchart NodeLabel fill"),
+                        ),
+                    )
+                    .for_family(family),
+                ),
+            ),
+        )
+        .expect("compile Flowchart NodeLabel fill theme")
 }
 
 fn prepare_flowchart_family_with_theme(
@@ -2398,6 +2418,214 @@ fn flowchart_source_and_explicit_config_stroke_width_override_the_typed_edge_val
         assert_eq!(evidence.applied_count(), 0, "{case}");
         assert_eq!(evidence.not_applicable_count(), 1, "{case}");
         assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_source_label_color_supersedes_typed_fill_without_residual() {
+    for (family, source) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            "---\nconfig:\n  htmlLabels: false\n---\nflowchart LR\nclassDef local color:#22c55e\nA[Alpha]:::local\n",
+        ),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n  htmlLabels: false\n---\nflowchart TD\nclassDef local color:#22c55e\nA[Alpha]:::local\n",
+        ),
+    ] {
+        let theme = node_label_fill_theme(family, "#ef4444");
+        let rendered = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!("source-owned {family} NodeLabel fill must remain portable: {error}")
+            });
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
+        let node = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some("A")
+                    && node.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("{family} node A: {}", rendered.svg()));
+        let label_style = node
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "label")
+                    })
+                    && node
+                        .descendants()
+                        .any(|descendant| descendant.text() == Some("Alpha"))
+            })
+            .and_then(|node| node.attribute("style"))
+            .unwrap_or_else(|| panic!("{family} node label style: {}", rendered.svg()));
+        assert!(
+            label_style.contains("color:#22c55e !important"),
+            "{family}: {label_style}"
+        );
+        assert!(!label_style.contains("#ef4444"), "{family}: {label_style}");
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{family}");
+        assert_eq!(evidence.accounted_count(), 1, "{family}");
+        assert_eq!(evidence.applied_count(), 0, "{family}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{family}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{family}");
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_node_label_fill_uses_the_effective_mermaid_color_owner() {
+    struct Case {
+        name: &'static str,
+        config: serde_json::Value,
+        typed_applies: bool,
+    }
+
+    let cases = [
+        Case {
+            name: "default textColor is shadowed by nodeTextColor",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "base textColor is shadowed by nodeTextColor",
+            config: serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "explicit nodeTextColor owns the winner",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {
+                    "nodeTextColor": "#16a34a",
+                    "textColor": "#2563eb"
+                }
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "default primaryTextColor owns derived nodeTextColor",
+            config: serde_json::json!({
+                "theme": "default",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "base primaryTextColor owns derived nodeTextColor",
+            config: serde_json::json!({
+                "theme": "base",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "dark primaryTextColor does not own textColor fallback",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"primaryTextColor": "#16a34a"}
+            }),
+            typed_applies: true,
+        },
+        Case {
+            name: "dark nodeTextColor owns the winner",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"nodeTextColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+        Case {
+            name: "dark textColor owns the fallback winner",
+            config: serde_json::json!({
+                "theme": "dark",
+                "themeVariables": {"textColor": "#16a34a"}
+            }),
+            typed_applies: false,
+        },
+    ];
+
+    for (family, source) in [
+        (DiagramFamilyId::FLOWCHART, "flowchart LR\nA[Alpha]\n"),
+        (
+            DiagramFamilyId::SWIMLANE,
+            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA[Alpha]\n",
+        ),
+    ] {
+        for case in &cases {
+            let theme = node_label_fill_theme(family, "#ef4444");
+            let engine =
+                Engine::new().with_site_config(MermaidConfig::from_value(case.config.clone()));
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap_or_else(|error| {
+                panic!(
+                    "{} {family} NodeLabel fill must remain portable: {error}",
+                    case.name
+                )
+            });
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid themed SVG");
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("data-id") == Some("A")
+                        && node.attribute("data-et") == Some("node")
+                })
+                .unwrap_or_else(|| panic!("{} {family} node A: {}", case.name, rendered.svg()));
+            let label = node
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class").is_some_and(|class| {
+                            class.split_ascii_whitespace().any(|part| part == "label")
+                        })
+                        && node
+                            .descendants()
+                            .any(|descendant| descendant.text() == Some("Alpha"))
+                })
+                .unwrap_or_else(|| panic!("{} {family} node label: {}", case.name, rendered.svg()));
+            let label_style = label.attribute("style").unwrap_or_default();
+            assert_eq!(
+                label_style.contains("fill:#ef4444 !important;color:#ef4444 !important"),
+                case.typed_applies,
+                "{} {family}: {label_style}",
+                case.name
+            );
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{} {family}", case.name);
+            assert_eq!(evidence.accounted_count(), 1, "{} {family}", case.name);
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(case.typed_applies),
+                "{} {family}",
+                case.name
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!case.typed_applies),
+                "{} {family}",
+                case.name
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{} {family}", case.name);
+        }
     }
 }
 
