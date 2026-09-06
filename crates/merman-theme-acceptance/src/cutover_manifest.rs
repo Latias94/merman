@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 46;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 47;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x65, 0xec, 0xf2, 0xc2, 0x41, 0x7a, 0x90, 0x03, 0x20, 0xda, 0x2f, 0xe9, 0xe3, 0xd3, 0xd8, 0x23,
-    0x43, 0x1e, 0xb1, 0x6a, 0x21, 0x82, 0xbb, 0xab, 0xa5, 0x5b, 0x22, 0xe2, 0x07, 0x20, 0x17, 0x90,
+    0x98, 0xec, 0x49, 0xd3, 0x3c, 0xf2, 0x66, 0xa6, 0xaf, 0x96, 0x84, 0x83, 0x2b, 0x5e, 0x4b, 0x82,
+    0xa7, 0xf0, 0xa6, 0xf5, 0x75, 0x34, 0x1a, 0x60, 0x6f, 0xe3, 0x37, 0x75, 0x68, 0x40, 0x14, 0x5f,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -335,7 +335,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 266] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 274] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1843,6 +1843,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 266] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::MINDMAP,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        NODE_STROKE_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::MINDMAP,

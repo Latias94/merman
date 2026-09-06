@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
@@ -327,6 +329,7 @@ fn push_mindmap_shadow_defs(
 struct MindmapCssEmission {
     css: String,
     font_family_css: Box<str>,
+    writer_tokens: crate::mindmap::MindmapWriterThemeTokens,
 }
 
 fn mindmap_css(
@@ -378,8 +381,11 @@ fn mindmap_css(
     let look = crate::config::mermaid_config_diagram_look(config);
     let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
     let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
-    let node_border = crate::mindmap::mindmap_node_border_css(config);
-    let main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
+    let base_node_border = crate::mindmap::mindmap_node_border_css(config);
+    let base_main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
+    let writer_tokens = node_palette.writer_theme_tokens(&base_main_bkg, &base_node_border);
+    let node_border = writer_tokens.node_border_css();
+    let main_bkg = writer_tokens.main_background_css();
     let stroke_width = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "strokeWidth"],
@@ -413,23 +419,23 @@ fn mindmap_css(
             17_i64 - 3_i64 * (i as i64)
         };
         let neo_node_fill = if theme == "redux" || theme == "redux-dark" || theme == "neutral" {
-            main_bkg.as_str()
+            main_bkg
         } else {
             c_scale.as_str()
         };
         let neo_node_stroke = if theme == "redux" || theme == "redux-dark" {
-            node_border.as_str()
+            node_border
         } else {
             c_scale.as_str()
         };
         let neo_edge_stroke = if crate::mindmap::mindmap_neo_edges_use_node_border(theme) {
-            node_border.as_str()
+            node_border
         } else {
             c_scale.as_str()
         };
         let neo_text_label_index = if theme == "neutral" { 1 } else { i };
         let neo_text_label = if theme == "redux" || theme == "redux-dark" {
-            node_border.clone()
+            node_border.to_string()
         } else {
             theme_token(
                 effective_config,
@@ -516,7 +522,7 @@ fn mindmap_css(
 
     // Root section overrides.
     let root_span = if theme.contains("redux") {
-        node_border.as_str()
+        node_border
     } else {
         root_label.as_str()
     };
@@ -552,13 +558,13 @@ fn mindmap_css(
         diagram_id
     );
     let neo_root_fill = if theme.contains("redux") {
-        main_bkg.as_str()
+        main_bkg
     } else {
         root_fill.as_str()
     };
     let neo_root_text_label_index = if theme == "neutral" { 1 } else { 0 };
     let neo_root_text = if theme.contains("redux") {
-        node_border
+        node_border.to_string()
     } else {
         theme_token(
             effective_config,
@@ -594,6 +600,17 @@ fn mindmap_css(
 
     out.push_str(&parts.root_rule);
 
+    // `info_css_parts_with_font_family` intentionally reads the original config. When a direct
+    // Mindmap Node.stroke historically replaced `nodeBorder`, retain only the shared Neo root
+    // selector that actually consumed that token instead of cloning and globally rewriting config.
+    if writer_tokens.has_direct_node_stroke() && !use_gradient {
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="neo"].mindmap-node.section-root rect,#{} [data-look="neo"].mindmap-node.section-root path,#{} [data-look="neo"].mindmap-node.section-root circle,#{} [data-look="neo"].mindmap-node.section-root polygon{{stroke:{};}}"#,
+            id, id, id, id, node_border
+        );
+    }
+
     for section in 0..crate::mindmap::MINDMAP_SECTION_COUNT {
         if let Some(fill) = node_palette.css_fill_for_section(section, theme_color_limit) {
             let _ = write!(
@@ -611,6 +628,7 @@ fn mindmap_css(
     MindmapCssEmission {
         css: out,
         font_family_css: parts.font_family.into_boxed_str(),
+        writer_tokens,
     }
 }
 
@@ -847,6 +865,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     );
     let _ = write!(&mut out, "<style>{}</style>", css.css);
     node_palette_receipt.record_typography_css(&css.font_family_css);
+    node_palette_receipt.record_node_paint_css(
+        css.writer_tokens.main_background_css(),
+        css.writer_tokens.node_border_css(),
+    );
+    let mindmap_theme = config.get_str("theme").unwrap_or_default();
+    let neo_branch_uses_main_background =
+        use_gradient || matches!(mindmap_theme, "redux" | "redux-dark" | "neutral");
+    let neo_branch_uses_node_border =
+        !use_gradient && matches!(mindmap_theme, "redux" | "redux-dark");
     out.push_str(&mindmap_gradient_defs(
         diagram_id.semantic_str(),
         config.as_value(),
@@ -937,7 +964,14 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let typed_stroke = node_palette.terminal_edge_stroke(edge_index);
         let terminal_style = typed_stroke.map(|(_, css)| format!("stroke:{css} !important"));
         let terminal_source = node_palette.terminal_edge_source(edge_index);
-        let source_stroke = terminal_source.map(|source| source.final_css(config));
+        let source_stroke = terminal_source.map(|source| match source {
+            crate::mindmap::MindmapEdgeStrokeSource::ColorScale { section } => {
+                Cow::Owned(crate::mindmap::mindmap_color_scale_css(config, section + 1))
+            }
+            crate::mindmap::MindmapEdgeStrokeSource::NodeBorder => {
+                Cow::Borrowed(css.writer_tokens.node_border_css())
+            }
+        });
         let final_stroke = typed_stroke
             .map(|(_, css)| css)
             .or(source_stroke.as_deref());
@@ -967,6 +1001,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 terminal_source,
                 final_stroke,
                 terminal_style.as_deref(),
+            );
+        }
+        if typed_stroke.is_none()
+            && terminal_source == Some(crate::mindmap::MindmapEdgeStrokeSource::NodeBorder)
+            && let Some(stroke) = final_stroke
+        {
+            node_palette_receipt.record_node_paint_terminal(
+                crate::mindmap::MindmapWriterThemeToken::NodeBorder,
+                stroke,
             );
         }
     }
@@ -1003,6 +1046,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let node_classes = mindmap_normalize_section_classes(&n.css_classes);
         let class = format!("node {}", node_classes.trim());
         let look = crate::mindmap::mindmap_model_look(&n.look, config);
+        let is_root = node_classes
+            .split_whitespace()
+            .any(|class| class == "section-root");
         let data_look_attr = mindmap_data_look_attr(look);
         let fill_source = if look == "neo" {
             neo_fill_source
@@ -1319,6 +1365,34 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        let root_uses_node_border = is_root
+            && (mindmap_theme.contains("redux")
+                || (look == "neo" && !use_gradient && css.writer_tokens.has_direct_node_stroke()));
+        if root_uses_node_border {
+            // Redux carries `nodeBorder` into the root XHTML label in every look. This is the
+            // only Classic consumer of the historical Node.stroke bridge token. The explicit
+            // Neo root overlay below is the corresponding non-Redux shape consumer.
+            node_palette_receipt.record_node_paint_terminal(
+                crate::mindmap::MindmapWriterThemeToken::NodeBorder,
+                css.writer_tokens.node_border_css(),
+            );
+        }
+        if look == "neo" {
+            if (!is_root && neo_branch_uses_main_background)
+                || (is_root && (mindmap_theme.contains("redux") || use_gradient))
+            {
+                node_palette_receipt.record_node_paint_terminal(
+                    crate::mindmap::MindmapWriterThemeToken::MainBackground,
+                    css.writer_tokens.main_background_css(),
+                );
+            }
+            if !use_gradient && !is_root && neo_branch_uses_node_border {
+                node_palette_receipt.record_node_paint_terminal(
+                    crate::mindmap::MindmapWriterThemeToken::NodeBorder,
+                    css.writer_tokens.node_border_css(),
+                );
+            }
+        }
         node_palette_receipt.record_checkpointed_node(node_index, terminal_decision);
     }
     out.push_str("</g>");

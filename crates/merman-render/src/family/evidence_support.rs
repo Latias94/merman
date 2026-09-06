@@ -101,6 +101,18 @@ impl DirectPaintTerminalLedger {
             .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
     }
 
+    pub(crate) fn has_effective_property(
+        &self,
+        rule_index: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.effective_by_property
+            .get(&(rule_index, property))
+            .copied()
+            .unwrap_or(0)
+            != 0
+    }
+
     pub(crate) fn proves_property(
         &self,
         terminal_complete: bool,

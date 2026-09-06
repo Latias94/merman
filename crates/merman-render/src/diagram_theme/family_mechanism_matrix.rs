@@ -391,7 +391,8 @@ fn legacy_bridge_projections(
             DiagramFamilyId::FLOWCHART
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::BLOCK
-            | DiagramFamilyId::CLASS,
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::MINDMAP,
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL),
@@ -399,7 +400,8 @@ fn legacy_bridge_projections(
             DiagramFamilyId::FLOWCHART
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::BLOCK
-            | DiagramFamilyId::CLASS,
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::MINDMAP,
             ThemeTarget::Node,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE),
@@ -1621,6 +1623,25 @@ pub(super) fn classify_rule_facet(
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::MINDMAP
+        && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
     {
@@ -2890,7 +2911,29 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_and_gitgraph_own_only_static_unqualified_edge_stroke() {
+    fn mindmap_owns_static_node_paint_and_unqualified_edge_stroke() {
+        for paint_kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for facet in [
+                    FamilyThemeRuleFacet::Fill(paint_kind),
+                    FamilyThemeRuleFacet::Stroke(paint_kind),
+                ] {
+                    assert_eq!(
+                        classify_rule_facet(
+                            DiagramFamilyId::MINDMAP,
+                            ThemeTarget::Node,
+                            FamilyThemeSelectorShape::Static { variant },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::TypedAdapter,
+                        "variant={variant:?} facet={facet:?}"
+                    );
+                }
+            }
+        }
         for family in [DiagramFamilyId::MINDMAP, DiagramFamilyId::GIT_GRAPH] {
             for paint_kind in [
                 FamilyThemePaintKind::Transparent,
@@ -5231,6 +5274,34 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["task.default.stroke"],
+            ),
+            (
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                Fill,
+                Transparent,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                Fill,
+                Solid,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::MINDMAP,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
             ),
             (
                 DiagramFamilyId::MINDMAP,

@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 40);
+    assert_eq!(support.claim_revision(), 41);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -518,6 +518,30 @@ fn mindmap_terminal_less_paint_claims_are_unsupported() {
             ["theme-support.no-supported-route"],
             "target={} facet={facet:?}",
             target.id()
+        );
+    }
+}
+
+#[test]
+fn mindmap_node_paint_is_reported_as_a_family_owned_partial_surface() {
+    for facet in [ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::MINDMAP.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            ThemeTarget::Node.id(),
+            facet,
+        );
+
+        let support = describe_theme_support(&query);
+
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ],
+            "facet={facet:?}"
         );
     }
 }

@@ -4,9 +4,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    MermaidThemeCompatibility, OrdinalPalette, ThemeAdmissionPolicy, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, TrustedThemeLane, TrustedThemeLanes, TypographySpec,
+    MermaidThemeCompatibility, OrdinalPalette, OrdinalSelector, ThemeAdmissionPolicy,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TrustedThemeLane, TrustedThemeLanes, TypographySpec,
 };
 use merman_render::environment::{RenderEnvironment, RenderSession};
 use merman_render::family;
@@ -73,6 +73,69 @@ fn mindmap_edge_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
         .expect("compile Mindmap Edge stroke")
 }
 
+fn mindmap_node_paint_theme(
+    fill: CanvasPaint,
+    stroke: CanvasPaint,
+    variant: Option<ThemeVariant>,
+) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(fill)
+            .with_stroke(stroke),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Mindmap Node paint")
+}
+
+fn mindmap_node_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Mindmap Node fill")
+}
+
+fn mindmap_node_stroke_theme(stroke: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(stroke),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP);
+    let rule = match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    };
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Mindmap Node stroke")
+}
+
+fn mindmap_ordinal_node_fill_theme(fill: CanvasPaint, ordinal: OrdinalSelector) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP)
+    .with_ordinal(ordinal);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Mindmap ordinal Node fill")
+}
+
 fn mindmap_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_typography(
@@ -116,13 +179,13 @@ fn prepare_mindmap_with_theme_and_engine(
         .expect("prepare themed Mindmap")
 }
 
-fn render_mindmap_with_theme_and_engine(
+fn try_render_mindmap_with_theme_and_engine(
     source: &str,
     theme: &DiagramTheme,
     engine: Engine,
     diagram_id: &str,
     portability: ThemePortabilityRequirement,
-) -> family::RenderedFamilySvg {
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed Mindmap")
@@ -131,15 +194,23 @@ fn render_mindmap_with_theme_and_engine(
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Mindmap session");
-    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed Mindmap")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some(diagram_id.to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+}
+
+fn render_mindmap_with_theme_and_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    portability: ThemePortabilityRequirement,
+) -> family::RenderedFamilySvg {
+    try_render_mindmap_with_theme_and_engine(source, theme, engine, diagram_id, portability)
         .expect("render themed Mindmap")
 }
 
@@ -172,6 +243,43 @@ fn mindmap_stylesheet(svg: &str) -> String {
         .filter(|node| node.has_tag_name("style"))
         .filter_map(|node| node.text())
         .collect::<String>()
+}
+
+fn assert_mindmap_neo_root_shape_terminal(svg: &str, node_dom_id: &str) {
+    let document = roxmltree::Document::parse(svg).expect("valid Mindmap SVG");
+    let root = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(node_dom_id))
+        .expect("Mindmap root node group");
+    let classes = root.attribute("class").unwrap_or_default();
+    assert!(
+        classes
+            .split_whitespace()
+            .any(|class| class == "mindmap-node"),
+        "the root terminal must retain the Mindmap node class: {svg}"
+    );
+    assert!(
+        classes
+            .split_whitespace()
+            .any(|class| class == "section-root"),
+        "the root terminal must retain the root section class: {svg}"
+    );
+    assert!(
+        classes
+            .split_whitespace()
+            .any(|class| class == "section--1"),
+        "the root terminal must retain the gradient section class: {svg}"
+    );
+    assert_eq!(root.attribute("data-look"), Some("neo"));
+    assert!(
+        root.descendants().any(|node| {
+            node.has_tag_name("rect")
+                || node.has_tag_name("path")
+                || node.has_tag_name("circle")
+                || node.has_tag_name("polygon")
+        }),
+        "the Neo root selector must reach a real shape terminal: {svg}"
+    );
 }
 
 fn mindmap_rule_fill<'a>(
@@ -233,7 +341,7 @@ fn mindmap_typed_neo_section_shape_fill<'a>(
 fn mindmap_neo_section_shape_fill<'a>(
     stylesheet: &'a str,
     diagram_id: &str,
-    section: usize,
+    section: i32,
 ) -> &'a str {
     let selector = format!(
         "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} polygon"
@@ -245,6 +353,23 @@ fn mindmap_neo_section_shape_fill<'a>(
         .and_then(|(_, fill)| fill.split_once(';'))
         .map(|(fill, _)| fill)
         .expect("final neo Mindmap section shape fill rule")
+}
+
+fn mindmap_neo_section_shape_stroke<'a>(
+    stylesheet: &'a str,
+    diagram_id: &str,
+    section: usize,
+) -> &'a str {
+    let selector = format!(
+        "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-{section} polygon"
+    );
+    stylesheet
+        .rsplit_once(&selector)
+        .and_then(|(_, remaining)| remaining.split_once('}'))
+        .and_then(|(declarations, _)| declarations.split_once("stroke:"))
+        .and_then(|(_, stroke)| stroke.split_once(';'))
+        .map(|(stroke, _)| stroke)
+        .expect("final neo Mindmap section shape stroke rule")
 }
 
 fn try_render_mindmap_svg_with_resource_policy(
@@ -598,6 +723,523 @@ fn mindmap_direct_edge_stroke_reaches_classic_hand_drawn_neo_and_redux_paths() {
             );
         }
     }
+}
+
+#[test]
+fn mindmap_direct_node_paint_owns_only_real_neo_redux_token_consumers() {
+    let source = "mindmap\n  Root\n    Child\n";
+    for (selector_name, variant) in [
+        ("unqualified", None),
+        ("default", Some(ThemeVariant::Default)),
+    ] {
+        for (paint_name, fill, stroke, expected_fill, expected_stroke) in [
+            (
+                "solid",
+                CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+                CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
+                "#123456",
+                "#654321",
+            ),
+            (
+                "transparent",
+                CanvasPaint::Transparent,
+                CanvasPaint::Transparent,
+                "transparent",
+                "transparent",
+            ),
+        ] {
+            let diagram_id = format!("mindmap-node-{selector_name}-{paint_name}");
+            let rendered = render_mindmap_with_theme_and_engine(
+                source,
+                &mindmap_node_paint_theme(fill, stroke, variant),
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "theme": "redux",
+                    "look": "neo"
+                }))),
+                &diagram_id,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            let stylesheet = mindmap_stylesheet(rendered.svg());
+
+            assert_eq!(
+                mindmap_neo_section_shape_fill(&stylesheet, &diagram_id, 0),
+                expected_fill,
+                "selector={selector_name} paint={paint_name}"
+            );
+            assert_eq!(
+                mindmap_neo_section_shape_stroke(&stylesheet, &diagram_id, 0),
+                expected_stroke,
+                "selector={selector_name} paint={paint_name}"
+            );
+            assert!(
+                stylesheet.contains(&format!(
+                    "#{diagram_id} [data-look=\"neo\"].section-edge-0{{stroke:{expected_stroke};}}"
+                )),
+                "the historical nodeBorder token coupling must remain on Redux Neo edges: {stylesheet}"
+            );
+            assert!(
+                stylesheet.contains(&format!(
+                    "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root polygon{{fill:{expected_fill};}}"
+                )),
+                "the historical mainBkg token coupling must remain on the Redux Neo root: {stylesheet}"
+            );
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.required_count(),
+                1,
+                "selector={selector_name} paint={paint_name}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                1,
+                "selector={selector_name} paint={paint_name}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                0,
+                "selector={selector_name} paint={paint_name}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "selector={selector_name} paint={paint_name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn mindmap_direct_node_paint_facets_are_property_local_in_neo_redux() {
+    let source = "mindmap\n  Root\n    First\n      First child\n    Second\n";
+    for (selector_name, variant) in [
+        ("unqualified", None),
+        ("default", Some(ThemeVariant::Default)),
+    ] {
+        for (paint_name, paint, expected) in [
+            (
+                "solid",
+                CanvasPaint::solid("#123456").expect("valid Mindmap Node paint"),
+                "#123456",
+            ),
+            ("transparent", CanvasPaint::Transparent, "transparent"),
+        ] {
+            let fill_id = format!("mindmap-node-fill-{selector_name}-{paint_name}");
+            let fill = render_mindmap_with_theme_and_engine(
+                source,
+                &mindmap_node_fill_theme(paint.clone(), variant),
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "theme": "redux",
+                    "look": "neo"
+                }))),
+                &fill_id,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(
+                mindmap_neo_section_shape_fill(&mindmap_stylesheet(fill.svg()), &fill_id, 0),
+                expected,
+                "facet=fill selector={selector_name} paint={paint_name}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(fill.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+
+            let stroke_id = format!("mindmap-node-stroke-{selector_name}-{paint_name}");
+            let stroke = render_mindmap_with_theme_and_engine(
+                source,
+                &mindmap_node_stroke_theme(paint, variant),
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "theme": "redux",
+                    "look": "neo"
+                }))),
+                &stroke_id,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            assert_eq!(
+                mindmap_neo_section_shape_stroke(&mindmap_stylesheet(stroke.svg()), &stroke_id, 0),
+                expected,
+                "facet=stroke selector={selector_name} paint={paint_name}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(stroke.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn mindmap_direct_node_stroke_keeps_redux_classic_root_label_fanout() {
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &mindmap_node_stroke_theme(
+            CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
+            None,
+        ),
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "classic"
+        }))),
+        "mindmap-node-stroke-classic",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("#mindmap-node-stroke-classic .section-root span{color:#654321;}"),
+        "Redux Classic root XHTML label must retain historical nodeBorder fanout: {stylesheet}"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_direct_node_stroke_reaches_the_neo_root_overlay() {
+    let diagram_id = "mindmap-node-stroke-neo-neutral";
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n",
+        &mindmap_node_stroke_theme(
+            CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
+            None,
+        ),
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "neutral",
+            "look": "neo",
+            "themeVariables": { "useGradient": false }
+        }))),
+        diagram_id,
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_mindmap_neo_root_shape_terminal(rendered.svg(), &format!("{diagram_id}-node_0"));
+    assert!(
+        stylesheet.contains(&format!(
+            "#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root rect,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root path,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root circle,#{diagram_id} [data-look=\"neo\"].mindmap-node.section-root polygon{{stroke:#654321;}}"
+        )),
+        "the Neo root overlay must retain the historical nodeBorder fanout: {stylesheet}"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_terminal() {
+    let source = "mindmap\n  Root\n";
+    let theme = mindmap_node_paint_theme(
+        CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+        CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
+        None,
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "neutral",
+        "look": "neo",
+        "themeVariables": { "useGradient": false }
+    })));
+    let rendered = render_mindmap_with_theme_and_engine(
+        source,
+        &theme,
+        engine.clone(),
+        "mindmap-combined-node-paint-root-only",
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("stroke:#654321;"),
+        "the root stroke terminal must remain present: {stylesheet}"
+    );
+    let root_selector = format!(
+        "#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root rect,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root path,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root circle,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root polygon{{fill:"
+    );
+    assert_ne!(
+        mindmap_rule_fill(&stylesheet, &root_selector, ";}", "Neo root fill rule",),
+        "#123456",
+        "the root-only neutral branch has no mainBkg terminal"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+
+    let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse strict root-only Mindmap")
+        .expect("detect strict root-only Mindmap");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin strict root-only Mindmap session");
+    let error = match family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare strict root-only Mindmap")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("strict Mindmap must reject a partially proven combined Node paint rule"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::MINDMAP, 1)),
+    );
+}
+
+#[test]
+fn mindmap_gradient_root_fill_is_accounted_as_a_real_main_background_terminal() {
+    let diagram_id = "mindmap-gradient-root-fill";
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n",
+        &mindmap_node_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+            None,
+        ),
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "neutral",
+            "look": "neo",
+            "themeVariables": { "useGradient": true }
+        }))),
+        diagram_id,
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_mindmap_neo_root_shape_terminal(rendered.svg(), &format!("{diagram_id}-node_0"));
+    assert_eq!(
+        mindmap_neo_section_shape_fill(&stylesheet, diagram_id, -1),
+        "#123456",
+        "the gradient root must consume the typed mainBkg token"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_ordinal_node_fill_fails_closed_when_it_wins_an_occurrence() {
+    let source = "mindmap\n  Root\n    Child\n";
+    let site_config = MermaidConfig::from_value(json!({
+        "theme": "redux",
+        "look": "neo",
+        "themeVariables": { "useGradient": false }
+    }));
+    for (case, ordinal) in [
+        (
+            "exact",
+            OrdinalSelector::exact(1).expect("valid exact Mindmap Node ordinal"),
+        ),
+        (
+            "cycle",
+            OrdinalSelector::cycle(1, 0).expect("valid cycle Mindmap Node ordinal"),
+        ),
+    ] {
+        let theme = mindmap_ordinal_node_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+            ordinal,
+        );
+        let rendered = render_mindmap_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(site_config.clone()),
+            &format!("mindmap-ordinal-node-fill-{case}"),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{case}");
+        assert_eq!(evidence.applied_count(), 0, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 1, "{case}");
+
+        let error = match try_render_mindmap_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(site_config.clone()),
+            &format!("mindmap-ordinal-node-fill-strict-{case}"),
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("a winning ordinal Mindmap Node fill must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::MINDMAP, 1)),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn mindmap_out_of_range_ordinal_node_fill_is_not_applicable() {
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &mindmap_ordinal_node_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+            OrdinalSelector::exact(99).expect("valid out-of-range Mindmap Node ordinal"),
+        ),
+        Engine::new(),
+        "mindmap-out-of-range-ordinal-node-fill",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_static_node_fill_remains_applied_when_an_ordinal_rule_wins_an_occurrence() {
+    let static_rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid static Mindmap Node fill")),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP);
+    let ordinal_rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#abcdef").expect("valid ordinal Mindmap Node fill")),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP)
+    .with_ordinal(OrdinalSelector::cycle(1, 0).expect("valid Mindmap Node cycle"));
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(static_rule)
+                    .with_rule(ordinal_rule),
+            ),
+        )
+        .expect("compile mixed Mindmap Node fill theme");
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": { "useGradient": false }
+        }))),
+        "mindmap-static-and-ordinal-node-fill",
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn mindmap_later_static_node_fill_makes_an_ordinal_rule_not_applicable() {
+    let ordinal_rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#abcdef").expect("valid ordinal Mindmap Node fill")),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP)
+    .with_ordinal(OrdinalSelector::cycle(1, 0).expect("valid Mindmap Node cycle"));
+    let static_rule = ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid static Mindmap Node fill")),
+    )
+    .for_family(merman_render::DiagramFamilyId::MINDMAP);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ordinal_rule)
+                    .with_rule(static_rule),
+            ),
+        )
+        .expect("compile shadowed Mindmap ordinal fill theme");
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": { "useGradient": false }
+        }))),
+        "mindmap-shadowed-ordinal-node-fill",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_source_owned_node_tokens_outrank_direct_node_paint() {
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &mindmap_node_paint_theme(
+            CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+            CanvasPaint::solid("#654321").expect("valid Mindmap Node stroke"),
+            None,
+        ),
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {
+                "mainBkg": "#fedcba",
+                "nodeBorder": "#abcdef"
+            }
+        }))),
+        "mindmap-source-node-paint",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_eq!(
+        mindmap_neo_section_shape_fill(&stylesheet, "mindmap-source-node-paint", 0),
+        "#fedcba"
+    );
+    assert_eq!(
+        mindmap_neo_section_shape_stroke(&stylesheet, "mindmap-source-node-paint", 0),
+        "#abcdef"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_direct_node_paint_is_not_applicable_when_classic_has_no_token_consumer() {
+    let rendered = render_mindmap_with_theme_and_engine(
+        "mindmap\n  Root\n    Child\n",
+        &mindmap_node_fill_theme(
+            CanvasPaint::solid("#123456").expect("valid Mindmap Node fill"),
+            None,
+        ),
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "look": "classic"
+        }))),
+        "mindmap-classic-node-paint",
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let stylesheet = mindmap_stylesheet(rendered.svg());
+    assert_ne!(
+        mindmap_mermaid_section_shape_fill(&stylesheet, "mindmap-classic-node-paint", 0),
+        "#123456",
+        "classic Mindmap branch fill is cScale-owned, not mainBkg-owned"
+    );
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

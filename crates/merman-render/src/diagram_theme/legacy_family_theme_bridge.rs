@@ -195,9 +195,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Node => {
             compile_node_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Mindmap => {
-            compile_mindmap_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::GitGraph => {
             compile_gitgraph_family(&mut builder, &reader)?;
         }
@@ -238,7 +235,6 @@ fn compile_selected_family(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LegacyFamilyDispatch {
     Node,
-    Mindmap,
     GitGraph,
     Sequence,
     Task,
@@ -540,7 +536,6 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
-        DiagramFamilyId::MINDMAP => LegacyFamilyDispatch::Mindmap,
         DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
         DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
@@ -559,6 +554,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
         | DiagramFamilyId::TREE_VIEW
+        | DiagramFamilyId::MINDMAP
         | DiagramFamilyId::PIE
         | DiagramFamilyId::SANKEY
         | DiagramFamilyId::WARDLEY
@@ -748,28 +744,6 @@ fn compile_node_family(
         ],
     );
 
-    contributions.finish_into(builder)
-}
-
-/// 仅投影 Mindmap writer 仍然消费的 legacy 变量。
-///
-/// 分支 palette 与边 stroke 已由 typed adapter 接管；这里仅保留节点填充和边框实际读取的
-/// Mermaid token，避免通用 node-family bridge 再生成 writer 不会读取的全局字段。
-fn compile_mindmap_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_typography(reader);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
-        [("mainBkg", reader.fill(ThemeTarget::Node))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
-        [("nodeBorder", reader.stroke(ThemeTarget::Node))],
-    );
     contributions.finish_into(builder)
 }
 
@@ -1572,14 +1546,14 @@ mod tests {
 
         let partial = legacy_projection_probe(
             super::super::legacy_tombstones::ThemeLegacyRouteId::new(
-                DiagramFamilyId::MINDMAP,
-                ThemeTarget::Node,
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Text,
                 ThemeLegacyRouteSelector::StaticUnqualified,
                 ThemeLegacyRouteFacet::Fill,
             ),
             ThemeLegacyRouteValue::Solid,
         )
-        .expect("observe current Mindmap node facts");
+        .expect("observe current Treemap text facts");
         assert_eq!(
             partial.disposition(),
             ThemeLegacyProjectionDisposition::LegacyCompatibility
@@ -1590,7 +1564,7 @@ mod tests {
                 .iter()
                 .map(ThemeLegacyProjectionObservation::assignment_path)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.mainBkg"])
+            BTreeSet::from(["themeVariables.textColor"])
         );
     }
 
@@ -1793,7 +1767,7 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_legacy_node_paint_keeps_its_historical_projection_shape() {
+    fn direct_mindmap_node_paint_does_not_mutate_parse_time_compatibility_config() {
         let source = "mindmap\nroot(Root)\n Child(Child)\n";
         let fill = "#123456";
         let stroke = "#654321";
@@ -1809,18 +1783,17 @@ mod tests {
             ),
         );
 
+        let baseline = parse(&DiagramThemeSpec::default(), source);
         let parsed = parse(&spec, source);
 
-        for (path, value) in [
-            ("themeVariables.mainBkg", fill),
-            ("themeVariables.nodeBorder", stroke),
-        ] {
+        for path in ["themeVariables.mainBkg", "themeVariables.nodeBorder"] {
             assert_eq!(
                 parsed.effective_config.get_str(path),
-                Some(value),
+                baseline.effective_config.get_str(path),
                 "path={path}"
             );
         }
+        assert_eq!(fallback_contribution_count(&parsed), 0);
     }
 
     #[test]
@@ -2479,26 +2452,26 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x5f, 0x45, 0x68, 0x85, 0xf5, 0x78, 0x7e, 0x21, 0xe9, 0xd2, 0x99, 0x01, 0x71, 0x4a,
-            0x02, 0x21, 0xd1, 0xb2, 0xdf, 0x5e, 0xbe, 0xd2, 0x43, 0x9d, 0xf7, 0xf8, 0x9f, 0xca,
-            0x16, 0x91, 0xc3, 0x78,
+            0x30, 0x11, 0xb3, 0xf5, 0x28, 0x96, 0xb2, 0xaf, 0x03, 0xac, 0x5d, 0xe4, 0xc1, 0x53,
+            0x23, 0xc3, 0x5d, 0x11, 0x05, 0x50, 0xe2, 0x84, 0xd3, 0x28, 0x94, 0x1e, 0x12, 0xa3,
+            0x08, 0xb0, 0x7c, 0xbe,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0xc1, 0x50, 0xaf, 0x79, 0x9c, 0x7e, 0x66, 0x23, 0x9b, 0x9f, 0x50, 0x99, 0x2b, 0x5c,
-            0x3b, 0x45, 0x69, 0x3b, 0xcf, 0xf9, 0xd8, 0xc7, 0xe9, 0x26, 0x87, 0xe0, 0xd9, 0xed,
-            0x10, 0x3a, 0x53, 0x31,
+            0x13, 0x5b, 0xf6, 0x83, 0xa6, 0x12, 0xc3, 0xce, 0x52, 0xb5, 0xe1, 0xc2, 0xb7, 0xcc,
+            0x3a, 0x8c, 0xb1, 0xd2, 0x4c, 0x4c, 0x24, 0x0b, 0x9f, 0x3f, 0x90, 0xee, 0x03, 0xc1,
+            0xa7, 0x0f, 0x18, 0xb3,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x09, 0xba, 0xfb, 0x87, 0x42, 0x25, 0x0b, 0x93, 0x2a, 0xd7, 0xcb, 0xb3, 0x26, 0x34,
-            0xca, 0xb5, 0x3f, 0x42, 0xb9, 0x30, 0xc3, 0x8d, 0xd0, 0x14, 0xc4, 0xb6, 0xed, 0x44,
-            0x40, 0x29, 0xb0, 0xb3,
+            0x88, 0x04, 0xd4, 0xec, 0x9b, 0x15, 0xf6, 0xe2, 0x0f, 0xd4, 0xf1, 0x06, 0x0d, 0xa0,
+            0xe7, 0xa6, 0xdf, 0x65, 0xda, 0x80, 0x2e, 0x67, 0x5e, 0x4e, 0xa2, 0x8b, 0xd6, 0xba,
+            0x81, 0xa5, 0xbd, 0x57,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 294);
-        assert_eq!(status.matrix_family_count(), 18);
-        assert_eq!(status.dispatched_family_count(), 18);
+        assert_eq!(status.matrix_route_count(), 286);
+        assert_eq!(status.matrix_family_count(), 17);
+        assert_eq!(status.dispatched_family_count(), 17);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
         assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
         assert_eq!(

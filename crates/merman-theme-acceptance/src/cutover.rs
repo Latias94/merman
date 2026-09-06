@@ -242,7 +242,7 @@ const ER_RELATION_SOURCE: &str = r#"erDiagram
   A ||--o{ B : owns
   SELF ||--o{ SELF : refers
 "#;
-const MINDMAP_EDGE_SOURCE: &str = r#"mindmap
+const MINDMAP_PAINT_SOURCE: &str = r#"mindmap
   Root
     First
       First child
@@ -300,6 +300,10 @@ impl CutoverWitnessProfile {
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
     const CLASS_EDGE: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const ISHIKAWA_TEXT: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
+    // Mindmap Node.fill historically projected `mainBkg`, which reaches a branch shape only in
+    // the Redux Neo writer path. The native Node.stroke witness stays on Neo so shape/edge stroke
+    // terminals, rather than the Classic root-label fanout, prove the route.
+    const MINDMAP_NODE: [Self; 1] = [Self::NeoStatic];
 
     const fn id(self) -> &'static str {
         match self {
@@ -332,6 +336,10 @@ impl CutoverWitnessProfile {
             && route.target() == ThemeTarget::Text
         {
             &Self::ISHIKAWA_TEXT
+        } else if route.family_id() == DiagramFamilyId::MINDMAP
+            && route.target() == ThemeTarget::Node
+        {
+            &Self::MINDMAP_NODE
         } else if route.family_id() == DiagramFamilyId::FLOWCHART
             && route.target() == ThemeTarget::Cluster
         {
@@ -495,8 +503,13 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::ARCHITECTURE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(ARCHITECTURE_TEXT_SOURCE)
         }
-        (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(MINDMAP_EDGE_SOURCE)
+        (
+            DiagramFamilyId::MINDMAP,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        )
+        | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(MINDMAP_PAINT_SOURCE)
         }
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(GITGRAPH_EDGE_SOURCE)
@@ -1097,16 +1110,28 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
             // every visible text glyph without a host fallback.
             "fontFamily": "Excalifont"
         }),
+        (DiagramFamilyId::MINDMAP, ThemeTarget::Node) => serde_json::json!({
+            // The route-local raster proof isolates paint and intentionally rejects SVG group
+            // effects. Keep the Redux Neo writer path that consumes `mainBkg`/`nodeBorder`, but
+            // disable its orthogonal shadow and gradient effects for this witness.
+            "dropShadow": "none",
+            "useGradient": false
+        }),
         _ => serde_json::json!({}),
     };
-    Renderer::new().with_engine(Engine::new().with_site_config(MermaidConfig::from_value(
-        serde_json::json!({
-            "htmlLabels": false,
-            "look": profile.look(),
-            "flowchart": { "htmlLabels": false },
-            "themeVariables": theme_variables
-        }),
-    )))
+    let mut site_config = serde_json::json!({
+        "htmlLabels": false,
+        "look": profile.look(),
+        "flowchart": { "htmlLabels": false },
+        "themeVariables": theme_variables
+    });
+    if witness.route().family_id() == DiagramFamilyId::MINDMAP
+        && witness.route().target() == ThemeTarget::Node
+    {
+        site_config["theme"] = serde_json::Value::String("redux".to_string());
+    }
+    Renderer::new()
+        .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(site_config)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1384,11 +1409,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_266_routes_and_294_artifact_witnesses() {
+    fn route_inventory_retains_274_routes_and_302_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 266);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 294);
+        assert_eq!(inventory.len(), 274);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 302);
     }
 
     #[test]
