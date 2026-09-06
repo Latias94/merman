@@ -962,20 +962,6 @@ fn compile_requirement_family(
             ("lineColor", reader.stroke_or_fill(ThemeTarget::Relation)),
         ],
     );
-    contributions.add_theme_variables(
-        "table.odd.fill",
-        [(
-            "rowOdd",
-            reader.fill_variant(ThemeTarget::Table, ThemeVariant::Odd),
-        )],
-    );
-    contributions.add_theme_variables(
-        "table.even.fill",
-        [(
-            "rowEven",
-            reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
-        )],
-    );
     contributions.finish_into(builder)
 }
 
@@ -2457,16 +2443,6 @@ mod tests {
 
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
-        const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xb2, 0x49, 0xae, 0x2f, 0xfa, 0xa9, 0xbc, 0xaa, 0xf0, 0xdb, 0x40, 0xb9, 0xc4, 0xc7,
-            0xad, 0x6c, 0xc5, 0x5f, 0x3d, 0xf1, 0x3a, 0x2f, 0x63, 0xc9, 0x43, 0x2c, 0x95, 0x16,
-            0xc3, 0xd0, 0xe2, 0x7d,
-        ];
-        const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0x13, 0x5b, 0xf6, 0x83, 0xa6, 0x12, 0xc3, 0xce, 0x52, 0xb5, 0xe1, 0xc2, 0xb7, 0xcc,
-            0x3a, 0x8c, 0xb1, 0xd2, 0x4c, 0x4c, 0x24, 0x0b, 0x9f, 0x3f, 0x90, 0xee, 0x03, 0xc1,
-            0xa7, 0x0f, 0x18, 0xb3,
-        ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
             0xcc, 0x78, 0xeb, 0xdd, 0x8d, 0x32, 0xee, 0xb6, 0x96, 0x5b, 0x1d, 0x94, 0x59, 0xb0,
             0xa2, 0xa1, 0xec, 0x28, 0x43, 0x86, 0x24, 0x88, 0x7d, 0x9c, 0x8f, 0x03, 0x3c, 0xdd,
@@ -2475,15 +2451,15 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 276);
+        assert_eq!(status.matrix_route_count(), 270);
         assert_eq!(status.matrix_family_count(), 16);
         assert_eq!(status.dispatched_family_count(), 16);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                0x82, 0x05, 0xdb, 0xe1, 0x4f, 0xc2, 0x55, 0xa3, 0xd1, 0xce, 0xe6, 0xc1, 0x4b, 0x84,
-                0x88, 0x4d, 0xe9, 0xaa, 0xb9, 0xce, 0xa6, 0x1f, 0xf5, 0x7f, 0x09, 0x06, 0x09, 0xc5,
-                0xde, 0xdc, 0x35, 0x4f,
+                0x06, 0xf4, 0xea, 0xe0, 0x71, 0x15, 0x5f, 0x45, 0x92, 0x4e, 0xc6, 0xe3, 0x2b, 0x6e,
+                0x9b, 0x32, 0x20, 0x1f, 0x75, 0x15, 0xac, 0x06, 0xf1, 0x77, 0x80, 0x99, 0xe8, 0x95,
+                0x96, 0x52, 0x60, 0xb5,
             ]
         );
         assert_eq!(
@@ -4978,6 +4954,43 @@ mod tests {
         );
         assert!(compiled.overlay.is_empty());
         assert!(compiled.contribution_ids.is_empty());
+    }
+
+    #[test]
+    fn unsupported_requirement_table_paint_does_not_mutate_row_colors() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Table,
+                        ThemeStylePatch::default().with_fill(solid("#f8fafc")),
+                    )
+                    .with_variant(ThemeVariant::Odd)
+                    .for_family(DiagramFamilyId::REQUIREMENT),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Table,
+                        ThemeStylePatch::default().with_fill(solid("#e2e8f0")),
+                    )
+                    .with_variant(ThemeVariant::Even)
+                    .for_family(DiagramFamilyId::REQUIREMENT),
+                ),
+        );
+        let parsed = parse(&spec, REQUIREMENT_FIXTURE);
+        let baseline = parse(&DiagramThemeSpec::default(), REQUIREMENT_FIXTURE);
+        let compiled = bridge(&spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
+
+        for path in ["themeVariables.rowOdd", "themeVariables.rowEven"] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "unsupported Requirement table paint must not mutate `{path}`"
+            );
+        }
+        assert!(compiled.overlay.is_empty());
+        assert!(compiled.contribution_ids.is_empty());
+        assert_eq!(fallback_contribution_count(&parsed), 0);
     }
 
     #[test]

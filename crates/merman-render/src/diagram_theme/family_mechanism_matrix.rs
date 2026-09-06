@@ -2495,7 +2495,6 @@ fn legacy_paint_variants(
         Family::REQUIREMENT => match (target, channel) {
             (Target::Requirement | Target::Relation, Fill | Stroke) => DEFAULT,
             (Target::Text, Fill) => DEFAULT,
-            (Target::Table, Fill) => ODD_EVEN,
             _ => &[],
         },
         Family::ER => match (target, channel) {
@@ -3651,6 +3650,24 @@ mod tests {
                     "facet={facet:?}"
                 );
             }
+        }
+
+        for variant in [
+            None,
+            Some(ThemeVariant::Default),
+            Some(ThemeVariant::Odd),
+            Some(ThemeVariant::Even),
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::REQUIREMENT,
+                    ThemeTarget::Table,
+                    FamilyThemeSelectorShape::Static { variant },
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+                ),
+                FamilyThemeDisposition::Unsupported,
+                "Requirement table fill must remain unsupported: variant={variant:?}"
+            );
         }
     }
 
