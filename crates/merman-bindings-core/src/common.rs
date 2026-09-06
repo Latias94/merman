@@ -1337,6 +1337,16 @@ fn reject_untrusted_binding_css_options(value: &Value) -> Result<(), BindingErro
                 "site_config.secure is not accepted by general bindings because callers cannot replace the host security boundary; configure it only through a trusted Rust or native CLI host",
             ));
         }
+        for field in ["maxEdges", "max_edges"] {
+            if site_config.contains_key(field) {
+                return Err(BindingError::new(
+                    BindingStatus::OptionsJsonError,
+                    format!(
+                        "site_config.{field} is not accepted by general bindings because it can raise the parser edge budget beyond the host resource ceiling"
+                    ),
+                ));
+            }
+        }
         for field in [
             "securityLevel",
             "security_level",
@@ -4585,14 +4595,17 @@ mod tests {
         for input in [
             r#"{"site_config":{"themeCSS":".node {}"}}"#,
             r#"{"site_config":{"secure":[]}}"#,
+            r#"{"site_config":{"maxEdges":1000000}}"#,
             r#"{"site_config":{"securityLevel":"loose"}}"#,
             r#"{"site_config":{"dompurifyConfig":{"ADD_ATTR":["onclick"]}}}"#,
             r#"{"analysis":{"site_config":{"themeCSS":".node {}"}}}"#,
             r#"{"analysis":{"site_config":{"secure":[]}}}"#,
+            r#"{"analysis":{"site_config":{"maxEdges":1000000}}}"#,
             r#"{"analysis":{"site_config":{"securityLevel":"loose"}}}"#,
             r#"{"analysis":{"site_config":{"dompurifyConfig":{"ADD_URI_SAFE_ATTR":["href"]}}}}"#,
             r#"{"merman":{"site_config":{"themeCSS":".node {}"}}}"#,
             r#"{"merman":{"site_config":{"secure":[]}}}"#,
+            r#"{"merman":{"site_config":{"max_edges":1000000}}}"#,
             r#"{"merman":{"site_config":{"security_level":"loose"}}}"#,
             r#"{"merman":{"site_config":{"dompurify_config":{"ADD_ATTR":["onclick"]}}}}"#,
         ] {
@@ -4601,6 +4614,8 @@ mod tests {
             assert!(
                 error.message().contains("site_config.themeCSS")
                     || error.message().contains("site_config.secure")
+                    || error.message().contains("site_config.maxEdges")
+                    || error.message().contains("site_config.max_edges")
                     || error.message().contains("site_config.securityLevel")
                     || error.message().contains("site_config.security_level")
                     || error.message().contains("site_config.dompurifyConfig")
