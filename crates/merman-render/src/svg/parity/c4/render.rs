@@ -1,5 +1,10 @@
 use super::super::*;
 use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
+use crate::svg::parity::flowchart::{
+    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
+    roughjs_paths_for_hand_drawn_svg_path,
+};
+use crate::svg::parity::roughjs_common::closed_path_d_from_points;
 use merman_core::diagrams::c4::{
     C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
 };
@@ -384,15 +389,266 @@ fn c4_write_unified_section(
     out.push_str("</text></g></g>");
 }
 
+const C4_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
+const C4_HAND_DRAWN_FILL_WEIGHT: f64 = 4.0;
+
+fn c4_rounded_rect_path_d(width: f64, height: f64, radius: f64) -> String {
+    let width = width.max(1.0);
+    let height = height.max(1.0);
+    let radius = radius.min(width / 2.0).min(height / 2.0).max(0.0);
+    let left = -width / 2.0;
+    let right = width / 2.0;
+    let top = -height / 2.0;
+    let bottom = height / 2.0;
+    let mut points = vec![(left + radius, top), (right - radius, top)];
+
+    let mut append_arc = |cx: f64, cy: f64, start: f64, end: f64| {
+        for step in 1..=6 {
+            let t = step as f64 / 6.0;
+            let angle = start + (end - start) * t;
+            points.push((cx + radius * angle.cos(), cy + radius * angle.sin()));
+        }
+    };
+
+    append_arc(
+        right - radius,
+        top + radius,
+        -std::f64::consts::FRAC_PI_2,
+        0.0,
+    );
+    append_arc(
+        right - radius,
+        bottom - radius,
+        0.0,
+        std::f64::consts::FRAC_PI_2,
+    );
+    append_arc(
+        left + radius,
+        bottom - radius,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    append_arc(
+        left + radius,
+        top + radius,
+        std::f64::consts::PI,
+        std::f64::consts::PI * 1.5,
+    );
+
+    closed_path_d_from_points(&points)
+}
+
+fn c4_hand_drawn_paths(
+    path_data: &str,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    randomness: &roughr::core::RoughRandomness,
+) -> Result<(String, String)> {
+    roughjs_paths_for_hand_drawn_svg_path(path_data, fill, stroke, stroke_width, "0 0", randomness)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "c4: handDrawn shape colors must be representable by the RoughJS adapter"
+                .to_string(),
+        })
+}
+
+fn c4_hand_drawn_stroke(
+    path_data: &str,
+    randomness: &roughr::core::RoughRandomness,
+) -> Result<String> {
+    roughjs_hand_drawn_stroke_path_for_svg_path(path_data, C4_HAND_DRAWN_ROUGHNESS, randomness)
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "c4: failed to generate handDrawn stroke geometry".to_string(),
+        })
+}
+
+fn c4_write_hand_drawn_pair(
+    out: &mut impl SvgOutput,
+    pair: &(String, String),
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+) -> Result<()> {
+    let (fill_d, stroke_d) = pair;
+    let _ = write!(
+        out,
+        r#"<path class="rough-fill" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/><path class="rough-stroke" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
+        escape_attr(fill_d),
+        escape_attr(fill),
+        fmt(C4_HAND_DRAWN_FILL_WEIGHT),
+        fmt(C4_HAND_DRAWN_FILL_WEIGHT),
+        escape_attr(stroke_d),
+        escape_attr(stroke),
+        fmt(stroke_width as f64),
+        fmt(stroke_width as f64),
+    );
+    out.checkpoint()
+}
+
 fn c4_write_unified_shape(
     out: &mut impl SvgOutput,
     shape: &crate::model::C4ShapeLayout,
     node_shape: crate::c4::C4NodeShape,
     fill: &str,
     stroke: &str,
-) {
+    look: crate::c4::C4Look,
+    randomness: &roughr::core::RoughRandomness,
+) -> Result<()> {
     let width = shape.width.max(1.0);
     let height = shape.height.max(1.0);
+
+    if look.is_hand_drawn() {
+        match node_shape {
+            crate::c4::C4NodeShape::Rounded => {
+                let path = c4_rounded_rect_path_d(width, height, 12.0);
+                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, randomness)?;
+                out.push_str(r#"<g class="basic label-container">"#);
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
+                out.push_str("</g>");
+                return out.checkpoint();
+            }
+            crate::c4::C4NodeShape::Framed => {
+                let path = c4_rounded_rect_path_d(width, height, 12.0);
+                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, randomness)?;
+                let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
+                let frame_path = format!(
+                    "M{} {} L{} {} M{} {} L{} {}",
+                    fmt(-frame_x),
+                    fmt(-height / 2.0),
+                    fmt(-frame_x),
+                    fmt(height / 2.0),
+                    fmt(frame_x),
+                    fmt(-height / 2.0),
+                    fmt(frame_x),
+                    fmt(height / 2.0),
+                );
+                let frame_d = c4_hand_drawn_stroke(&frame_path, randomness)?;
+                out.push_str(r#"<g class="basic label-container">"#);
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
+                let _ = write!(
+                    out,
+                    r#"<path class="rough-frame" d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="stroke-width:{}px !important"/>"#,
+                    escape_attr(&frame_d),
+                    escape_attr(stroke),
+                    fmt(2.0),
+                    fmt(2.0),
+                );
+                out.checkpoint()?;
+                out.push_str("</g>");
+                return out.checkpoint();
+            }
+            crate::c4::C4NodeShape::Person => {
+                let head_radius = (width * 0.23).clamp(16.0, 56.0);
+                let overlap = head_radius * 0.27;
+                let body_height = (height - (2.0 * head_radius - overlap)).max(1.0);
+                let body_radius = (width * 0.177).min(body_height * 0.45);
+                let total_height = body_height + 2.0 * head_radius - overlap;
+                let top = -total_height / 2.0;
+                let body_top = top + 2.0 * head_radius - overlap;
+                // The path helper is centered, so translate the body into the person silhouette
+                // after generation instead of baking the offset into the shape's layout box.
+                let body_pair = c4_hand_drawn_paths(
+                    &c4_rounded_rect_path_d(width, body_height, body_radius),
+                    fill,
+                    stroke,
+                    2.0,
+                    randomness,
+                )?;
+                let head_pair = roughjs_paths_for_circle(
+                    head_radius * 2.0,
+                    fill,
+                    stroke,
+                    2.0,
+                    "0 0",
+                    true,
+                    randomness,
+                )
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message:
+                        "c4: handDrawn person colors must be representable by the RoughJS adapter"
+                            .to_string(),
+                })?;
+                out.push_str(r#"<g class="basic label-container">"#);
+                out.checkpoint()?;
+                let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(body_top));
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &body_pair, fill, stroke, 2.0)?;
+                out.push_str("</g>");
+                let _ = write!(
+                    out,
+                    r#"<g transform="translate(0,{})">"#,
+                    fmt(top + head_radius)
+                );
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &head_pair, fill, stroke, 2.0)?;
+                out.push_str("</g></g>");
+                return out.checkpoint();
+            }
+            crate::c4::C4NodeShape::Cylinder => {
+                let rx = width / 2.0;
+                let ry = rx / (2.5 + width / 50.0);
+                let body_height = (height - 2.0 * ry).max(1.0);
+                let path = format!(
+                    "M0,{}a{},{} 0,0,0 {},0a{},{} 0,0,0 {},0l0,{}a{},{} 0,0,0 {},0l0,{}",
+                    fmt(ry),
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(width),
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(-width),
+                    fmt(body_height),
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(width),
+                    fmt(-body_height)
+                );
+                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, randomness)?;
+                out.push_str(r#"<g class="basic label-container" transform="translate("#);
+                let _ = write!(
+                    out,
+                    "{}, {})\">",
+                    fmt(-width / 2.0),
+                    fmt(-(body_height / 2.0 + ry))
+                );
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
+                out.push_str("</g>");
+                return out.checkpoint();
+            }
+            crate::c4::C4NodeShape::HorizontalCylinder => {
+                let h = height.max(1.0);
+                let ry = h / 2.0;
+                let rx = ry / (2.5 + h / 50.0);
+                let path = format!(
+                    "M0,0 a{},{} 0,0,1 0,-{} l{},0 a{},{} 0,0,1 0,{} M{},-{} a{},{} 0,0,0 0,{} l-{},0",
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(h),
+                    fmt(width),
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(h),
+                    fmt(width),
+                    fmt(h),
+                    fmt(rx),
+                    fmt(ry),
+                    fmt(h),
+                    fmt(width),
+                );
+                let pair = c4_hand_drawn_paths(&path, fill, stroke, 2.0, randomness)?;
+                out.push_str(r#"<g class="basic label-container" transform="translate("#);
+                let _ = write!(out, "{}, {})\">", fmt(-width / 2.0), fmt(h / 2.0));
+                out.checkpoint()?;
+                c4_write_hand_drawn_pair(out, &pair, fill, stroke, 2.0)?;
+                out.push_str("</g>");
+                return out.checkpoint();
+            }
+        }
+    }
+
     let shape_style = |with_radius: bool| {
         if with_radius {
             format!(
@@ -521,6 +777,7 @@ fn c4_write_unified_shape(
             );
         }
     }
+    out.checkpoint()
 }
 
 pub(crate) fn render_c4_diagram_svg_typed(
@@ -563,6 +820,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     let viewbox_x = bounds.min_x - diagram_margin_x;
     let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
+    let hand_drawn_outset = if look.is_hand_drawn() { 8.0 } else { 0.0 };
+    let root_width = width + 2.0 * hand_drawn_outset;
+    let root_height = height + extra_vert_for_title + 2.0 * hand_drawn_outset;
 
     let aria_roledescription = "c4";
 
@@ -581,13 +841,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
-        viewbox_x,
-        viewbox_y,
-        width,
-        height + extra_vert_for_title,
+        viewbox_x - hand_drawn_outset,
+        viewbox_y - hand_drawn_outset,
+        root_width,
+        root_height,
     );
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(width));
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
@@ -664,6 +924,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
     let mut cluster_theme_receipt = cluster_theme.begin_terminal_receipt();
     let mut boundary_emission_ordinal = 0usize;
+    let hand_drawn_randomness = options.rough_randomness(0.0, "render.c4.roughjs");
 
     for item in c4_paint_order(layout)? {
         options.checkpoint_emit()?;
@@ -709,8 +970,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 );
                 out.checkpoint()?;
 
-                c4_write_unified_shape(&mut out, s, node_shape, &bg_color, &border_color);
-                out.checkpoint()?;
+                c4_write_unified_shape(
+                    &mut out,
+                    s,
+                    node_shape,
+                    &bg_color,
+                    &border_color,
+                    look,
+                    &hand_drawn_randomness,
+                )?;
 
                 let sections = [
                     (

@@ -779,19 +779,32 @@ System(framed, "Framed", "Component description", $shape="component")
 }
 
 #[test]
-fn c4_hand_drawn_look_is_rejected_instead_of_emitting_classic_geometry() {
+fn c4_hand_drawn_look_emits_rough_shape_geometry() {
     let source = r#"%%{init: {"look": "handDrawn"}}%%
 C4Context
+Person(person, "Person")
 System(service, "Service")
+ContainerDb(database, "Database", "PostgreSQL")
+System(component, "Component", "Rust", $shape="component")
+System(queue, "Queue", "SQS", $shape="queue")
 "#;
 
-    let error = try_render_c4_svg_with_environment(source, &RenderEnvironment::deterministic())
-        .expect_err("typed C4 must not silently downgrade handDrawn to classic");
-    assert!(matches!(
-        error,
-        merman_render::Error::InvalidModel { message }
-            if message.contains("look `handDrawn` is not supported")
-    ));
+    let svg = render_c4_svg_with_environment(source, &RenderEnvironment::deterministic());
+    let document = roxmltree::Document::parse(&svg).expect("valid hand-drawn C4 SVG");
+    let shape_groups = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g")
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|c| c == "c4-shape"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(shape_groups.len(), 5);
+    assert!(shape_groups.iter().all(|group| {
+        group.attribute("data-look") == Some("handDrawn")
+            && group.descendants().any(|node| node.has_tag_name("path"))
+    }));
 }
 
 #[test]

@@ -39,6 +39,10 @@ pub(crate) fn write_flowchart_svg_label_plan_for_test(
     label::write_flowchart_svg_label_plan(out, plan, include_style);
 }
 
+pub(in crate::svg::parity) use render::node::roughjs::{
+    roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
+    roughjs_paths_for_hand_drawn_svg_path,
+};
 use render::{
     FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
     render_flowchart_node, render_flowchart_root,

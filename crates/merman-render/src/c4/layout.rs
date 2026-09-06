@@ -1044,15 +1044,6 @@ pub(crate) fn layout_c4_diagram_typed(
     let c4_cfg = C4ConfigView::new(effective_config);
     let conf = c4_cfg.layout_settings();
 
-    // C4's typed renderer currently has no RoughJS path implementation. Rejecting the
-    // hand-drawn look here keeps layout, SVG, and portability behavior honest instead of
-    // silently emitting classic geometry for a requested variant.
-    if conf.look.is_hand_drawn() {
-        return Err(Error::InvalidModel {
-            message: "c4: look `handDrawn` is not supported by the typed renderer".to_string(),
-        });
-    }
-
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
     let c4_boundary_in_row = (model.layout.c4_boundary_in_row.max(1)) as usize;
 
