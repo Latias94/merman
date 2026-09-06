@@ -2583,7 +2583,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             drop(plan);
 
             let hits_before_render = flowchart.svg_label_sidecar().prepared_hit_count(owner);
-            let (svg, _) = render_family_artifact_svg(
+            let (svg, _, _) = render_family_artifact_svg(
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
@@ -2718,7 +2718,7 @@ linkStyle 0 font-size:12px,font-style:italic
             drop(plan);
 
             let hits_before_render = swimlane.svg_label_sidecar().prepared_hit_count(owner);
-            let (svg, _) = render_family_artifact_svg(
+            let (svg, _, _) = render_family_artifact_svg(
                 &artifact,
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions::default(),
