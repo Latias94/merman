@@ -1017,7 +1017,7 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
 }
 
 #[test]
-fn quadrant_canonical_and_resvg_safe_outputs_keep_resolved_color_contracts() {
+fn quadrant_parity_and_resvg_safe_outputs_keep_separate_color_contracts() {
     let source = r#"quadrantChart
   title Reach and engagement
   x-axis Low Reach --> High Reach
@@ -1028,22 +1028,20 @@ fn quadrant_canonical_and_resvg_safe_outputs_keep_resolved_color_contracts() {
         .with_deterministic_text_measurer()
         .with_diagram_id("quadrant-artifact-lanes");
 
-    let canonical_svg = renderer
+    let parity_svg = renderer
         .render_svg(source)
-        .expect("canonical render should succeed")
+        .expect("parity render should succeed")
         .expect("quadrant should be detected");
-    assert!(
-        !canonical_svg.contains("NaN"),
-        "canonical SVG should resolve invalid browser-only colors: {canonical_svg}"
-    );
-    let canonical_document =
-        roxmltree::Document::parse(&canonical_svg).expect("valid canonical SVG XML");
-    let canonical_point = canonical_document
+    let parity_document = roxmltree::Document::parse(&parity_svg).expect("valid parity SVG XML");
+    let parity_point = parity_document
         .descendants()
         .find(|node| node.has_tag_name("circle"))
-        .expect("canonical quadrant point circle");
-    assert_eq!(canonical_point.attribute("fill"), Some("#000000"));
-    assert_eq!(canonical_point.attribute("stroke"), Some("none"));
+        .expect("parity quadrant point circle");
+    assert_eq!(parity_point.attribute("fill"), Some("hsl(240, 100%, NaN%)"));
+    assert_eq!(
+        parity_point.attribute("stroke"),
+        Some("hsl(240, 100%, NaN%)")
+    );
 
     let resvg_safe_svg = renderer
         .render_resvg_safe(source)
