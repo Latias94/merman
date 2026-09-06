@@ -1972,6 +1972,7 @@ fn prepare_non_class_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -2014,6 +2015,40 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn family_coverage_inventory_matches_the_runtime_svg_gate() {
+        #[derive(Deserialize)]
+        struct CoverageMatrix {
+            families: Vec<CoverageRow>,
+        }
+
+        #[derive(Deserialize)]
+        struct CoverageRow {
+            id: String,
+            svg_serializer: String,
+        }
+
+        let matrix: CoverageMatrix = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/drawing-list/v1/family-coverage.json"
+        )))
+        .expect("family coverage fixture must be valid JSON");
+
+        for family in RenderFamilyKind::ALL {
+            let row = matrix
+                .families
+                .iter()
+                .find(|row| row.id == family.as_str())
+                .unwrap_or_else(|| panic!("missing coverage row for {}", family.as_str()));
+            assert_eq!(
+                row.svg_serializer == "canonical",
+                canonical_svg_family_enabled(family),
+                "coverage status for {} must match the runtime SVG route gate",
+                family.as_str()
+            );
+        }
     }
 
     #[test]
