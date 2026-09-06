@@ -56,30 +56,14 @@ data ItemAddedData {
     assert!(svg.contains(r#"aria-roledescription="eventmodeling""#));
     assert!(svg.contains(r#"width="100%""#));
     assert!(svg.contains(r#"max-width:"#));
-    let document = roxmltree::Document::parse(svg).expect("valid canonical EventModeling SVG");
-    assert!(document.descendants().any(|node| {
-        node.attribute("class")
-            .is_some_and(|class| class.split_whitespace().any(|token| token == "em-swimlane"))
-    }));
-    assert!(document.descendants().any(|node| {
-        node.attribute("class")
-            .is_some_and(|class| class.split_whitespace().any(|token| token == "em-relation"))
-    }));
-    assert!(document.descendants().any(|node| {
-        node.attribute("class")
-            .is_some_and(|class| class.split_whitespace().any(|token| token == "em-box"))
-    }));
-    assert!(document.descendants().any(|node| {
-        node.attribute("class").is_some_and(|class| {
-            class
-                .split_whitespace()
-                .any(|token| token == "em-arrowhead")
-        })
-    }));
+    assert!(svg.contains(r#"<g/><g class="em-swimlane">"#));
+    assert!(svg.contains(r#"class="em-relation""#));
+    assert!(svg.contains(r#"class="em-box""#));
+    assert!(svg.contains(r#"id="em-arrowhead-eventmodeling-test""#));
     assert!(svg.contains(r#"font-family: "trebuchet ms",verdana,arial,sans-serif;"#));
     assert!(svg.contains(r#"color: #111111;"#));
     assert!(svg.contains(r##"stroke="#135790""##));
-    assert!(svg.to_ascii_lowercase().contains(r##"fill="#ddeeff""##));
+    assert!(svg.contains(r##"fill="#DDEEFF""##));
 }
 
 #[test]

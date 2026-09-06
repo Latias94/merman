@@ -87,7 +87,7 @@ fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
 }
 
 #[test]
-fn c4_canonical_svg_expands_arrowheads_and_scopes_shape_ids() {
+fn c4_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(
         r#"C4Context
 Person(customer, "Customer")
@@ -96,19 +96,11 @@ Rel(customer, system, "Uses")"#,
         "m15-c4",
     );
 
-    assert_scoped_definition_id(&svg, "m15-c4", "customer");
-    assert!(
-        !svg.contains("<marker"),
-        "canonical C4 should not depend on SVG marker definitions:\n{svg}"
-    );
-    assert!(
-        svg.contains(r#"data-merman-resource="c4.relation.0.marker.end""#),
-        "canonical C4 should keep explicit relationship arrowhead geometry:\n{svg}"
-    );
+    assert_scoped_marker(&svg, "m15-c4", "arrowhead");
 }
 
 #[test]
-fn journey_canonical_svg_expands_activity_arrowhead_into_geometry() {
+fn journey_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(
         r#"journey
 title My day
@@ -118,18 +110,11 @@ section Work
         "m15-journey",
     );
 
-    assert!(
-        !svg.contains("<marker"),
-        "canonical Journey should not depend on SVG marker definitions:\n{svg}"
-    );
-    assert!(
-        svg.contains(r#"data-merman-resource="journey.activity.arrowhead""#),
-        "canonical Journey should keep explicit activity arrowhead geometry:\n{svg}"
-    );
+    assert_scoped_marker(&svg, "m15-journey", "arrowhead");
 }
 
 #[test]
-fn timeline_canonical_svg_expands_arrowheads_into_scoped_resources() {
+fn timeline_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(
         r#"timeline
 title Release
@@ -139,19 +124,11 @@ section Phase
         "m15-timeline",
     );
 
-    assert!(
-        !svg.contains("<marker"),
-        "canonical Timeline should not depend on SVG marker definitions:\n{svg}"
-    );
-    assert!(
-        svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.arrowhead""#)
-            && svg.contains(r#"data-merman-resource="timeline.activity.arrowhead""#),
-        "canonical Timeline should keep explicit arrowhead geometry:\n{svg}"
-    );
+    assert_scoped_marker(&svg, "m15-timeline", "arrowhead");
 }
 
 #[test]
-fn vertical_timeline_canonical_svg_preserves_activity_and_connector_arrows() {
+fn vertical_timeline_preserves_upstream_marker_contract() {
     let svg = render_svg_from_text(
         r#"timeline TD
 title Release
@@ -162,13 +139,17 @@ section Phase
     );
 
     assert!(
-        !svg.contains("<marker"),
-        "canonical vertical Timeline should not depend on SVG marker definitions:\n{svg}"
+        svg.contains(r#"id="undefined-arrowhead""#),
+        "expected Mermaid's vertical Timeline marker id:\n{svg}"
     );
     assert!(
-        svg.contains(r#"data-merman-resource="timeline.activity.arrowhead""#)
-            && svg.contains(r#"data-merman-resource="timeline.task.0.connector.0.arrowhead""#),
-        "canonical vertical Timeline should retain activity and connector arrow geometry:\n{svg}"
+        svg.contains(r#"marker-end="url(#arrowhead)""#),
+        "expected Mermaid's vertical Timeline marker reference:\n{svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="m15-timeline-vertical-arrowhead""#)
+            && !svg.contains(r#"url(#m15-timeline-vertical-arrowhead)"#),
+        "vertical Timeline must not use the horizontal renderer's scoped marker contract:\n{svg}"
     );
 }
 

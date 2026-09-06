@@ -61,52 +61,17 @@ union A,B["Shared"]:4
 
     let (layout, svg) = render_typed_venn(input);
     assert_eq!(layout.areas.len(), 3);
-    let document = roxmltree::Document::parse(&svg).expect("valid canonical Venn SVG");
-    let root = document.root_element();
-    assert_eq!(root.attribute("aria-roledescription"), Some("venn"));
-    assert_eq!(root.attribute("viewBox"), Some("0 0 800 450"));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("text")
-            && node.attribute("class") == Some("venn-title")
-            && node.text() == Some("Product Surface")
-    }));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node.attribute("class").is_some_and(|classes| {
-                classes
-                    .split_whitespace()
-                    .any(|class| class == "venn-circle")
-            })
-            && node.attribute("data-venn-sets") == Some("A")
-    }));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node.attribute("class").is_some_and(|classes| {
-                classes
-                    .split_whitespace()
-                    .any(|class| class == "venn-circle")
-            })
-            && node.attribute("data-venn-sets") == Some("B")
-    }));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node.attribute("class").is_some_and(|classes| {
-                classes
-                    .split_whitespace()
-                    .any(|class| class == "venn-intersection")
-            })
-            && node.attribute("data-venn-sets") == Some("A_B")
-    }));
-    assert!(
-        document
-            .descendants()
-            .any(|node| node.has_tag_name("text") && node.text() == Some("Core"))
-    );
-    assert!(
-        document
-            .descendants()
-            .any(|node| node.has_tag_name("text") && node.text() == Some("Shared"))
-    );
+    assert!(svg.contains(r#"aria-roledescription="venn""#));
+    assert!(svg.contains(r#"viewBox="0 0 800 450""#));
+    assert!(svg.contains(r#"<text class="venn-title""#));
+    assert!(svg.contains(">Product Surface</text>"));
+    assert!(svg.contains(r#"<g transform="translate(0, 24)">"#));
+    assert!(svg.contains(r#"class="venn-area venn-circle venn-set-0""#));
+    assert!(svg.contains(r#"class="venn-area venn-circle venn-set-1""#));
+    assert!(svg.contains(r#"class="venn-area venn-intersection""#));
+    assert!(svg.contains(r#"data-venn-sets="A_B""#));
+    assert!(svg.contains(">Core</tspan></text>"));
+    assert!(svg.contains(">Shared</tspan></text>"));
 }
 
 #[test]
@@ -166,20 +131,11 @@ union A,B
         .svg()
         .to_owned();
 
-    let document = roxmltree::Document::parse(&svg).expect("valid canonical Venn SVG");
-    let root = document.root_element();
-    assert_eq!(root.attribute("aria-roledescription"), Some("venn"));
-    assert_eq!(root.attribute("viewBox"), Some("0 0 640 360"));
-    assert_ne!(root.attribute("width"), Some("100%"));
-    assert_eq!(root.attribute("height"), Some("360"));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node.attribute("class").is_some_and(|classes| {
-                classes
-                    .split_whitespace()
-                    .any(|class| class == "venn-intersection")
-            })
-    }));
+    assert!(svg.contains(r#"aria-roledescription="venn""#));
+    assert!(svg.contains(r#"viewBox="0 0 640 360""#));
+    assert!(!svg.contains(r#"width="100%""#));
+    assert!(svg.contains(r#"height="360""#));
+    assert!(svg.contains(r#"class="venn-area venn-intersection""#));
 }
 
 #[test]
@@ -193,20 +149,8 @@ union A,B
     let (layout, svg) = render_typed_venn(input);
 
     assert_eq!(layout.areas.len(), 3);
-    let document = roxmltree::Document::parse(&svg).expect("valid canonical Venn SVG");
-    assert_eq!(
-        document.root_element().attribute("aria-roledescription"),
-        Some("venn")
-    );
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node.attribute("class").is_some_and(|classes| {
-                classes
-                    .split_whitespace()
-                    .any(|class| class == "venn-circle")
-            })
-            && node.attribute("data-venn-sets") == Some("A")
-    }));
+    assert!(svg.contains(r#"aria-roledescription="venn""#));
+    assert!(svg.contains(r#"class="venn-area venn-circle venn-set-0""#));
 }
 
 #[test]
@@ -274,18 +218,15 @@ union A,A,B["Repeated"]:3
     let self_pair = find_venn_area(&document, "A_A", "venn-intersection");
     let repeated_union = find_venn_area(&document, "A_A_B", "venn-intersection");
     for area in [self_pair, repeated_union] {
-        assert!(area.descendants().all(|node| {
-            node.attribute("d")
-                .is_none_or(|path| !path.contains("NaN") && !path.contains("inf"))
-        }));
+        let path = area
+            .children()
+            .find(|child| child.has_tag_name("path"))
+            .and_then(|path| path.attribute("d"))
+            .expect("rendered intersection path");
+        assert!(!path.is_empty());
+        assert!(!path.contains("NaN") && !path.contains("inf"));
     }
-    assert_eq!(
-        document
-            .descendants()
-            .filter(|node| node.has_tag_name("text") && node.text() == Some("Repeated"))
-            .count(),
-        1
-    );
+    assert_eq!(svg.matches(">Repeated</tspan></text>").count(), 1);
 }
 
 #[test]

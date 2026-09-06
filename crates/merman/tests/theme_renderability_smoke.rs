@@ -340,8 +340,8 @@ radar-beta
                 "#22c55e",
                 "#facc15",
                 "#334155",
-                "stroke-width=\"4\"",
-                "stroke-width=\"5\"",
+                r#"#theme-radar .radarAxisLine{stroke:#facc15;stroke-width:4;}"#,
+                r#"#theme-radar .radarCurve-0{color:#22c55e;fill:#22c55e;fill-opacity:0.9;stroke:#22c55e;stroke-width:5;}"#,
             ],
         ),
         (
@@ -566,16 +566,36 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         }),
         "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
     );
-    for resource in ["c4.shape.0.body", "c4.shape.0.head"] {
-        let style = person
-            .descendants()
-            .find(|node| node.attribute("data-merman-resource") == Some(resource))
-            .and_then(|node| node.attribute("style"))
-            .unwrap_or_else(|| panic!("C4 person shape {resource} should have an inline style"));
+    let person_container = person
+        .children()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    ["basic", "label-container"].iter().all(|expected| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == *expected)
+                    })
+                })
+        })
+        .expect("C4 person should expose its visible shape container");
+    let person_shapes = person_container
+        .children()
+        .filter(|node| node.has_tag_name("rect") || node.has_tag_name("circle"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        person_shapes.len(),
+        2,
+        "C4 person should expose body and head shapes: {svg}"
+    );
+    for shape in person_shapes {
+        let style = shape
+            .attribute("style")
+            .expect("C4 person shape should have an inline style");
         assert!(
             style.contains("fill:#334155 !important")
                 && style.contains("stroke:#f97316 !important"),
-            "UpdateElementStyle colors should reach visible C4 person shape {resource}: {svg}"
+            "UpdateElementStyle colors should reach each visible C4 person shape: {svg}"
         );
     }
     let person_labels = person
@@ -586,14 +606,25 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
     assert!(
         person_labels.iter().all(|node| {
             node.attribute("style")
-                .is_some_and(|style| style.contains("fill: #fde68a !important;"))
+                .is_some_and(|style| style.contains("fill:#fde68a !important"))
         }),
         "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
     );
 
-    let system_shape = document
+    let system = document
         .descendants()
-        .find(|node| node.attribute("data-merman-resource") == Some("c4.shape.1.shape"))
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "c4-system")
+                })
+        })
+        .expect("C4 system group should be visible");
+    let system_shape = system
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
         .expect("C4 system shape should be visible");
     assert!(
         system_shape.attribute("style").is_some_and(|style| {
@@ -602,21 +633,32 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         "C4 config colors should reach the visible system shape: {svg}"
     );
 
-    let relation = document
+    let relation_line = document
         .descendants()
-        .find(|node| node.attribute("data-merman-semantic-id") == Some("c4.relation.0"))
-        .expect("C4 relationship should be visible");
-    let relation_line = relation
-        .descendants()
-        .find(|node| node.attribute("data-merman-resource") == Some("c4.relation.0.route"))
+        .find(|node| {
+            node.has_tag_name("line")
+                && node.attribute("stroke") == Some("#facc15")
+                && node.attribute("stroke-width") == Some("1")
+        })
         .expect("C4 relationship route should be visible");
     assert_eq!(relation_line.attribute("stroke"), Some("#facc15"));
     assert_eq!(relation_line.attribute("stroke-width"), Some("1"));
+    let relation_labels = document
+        .descendants()
+        .filter(|node| {
+            if !node.has_tag_name("text") || node.attribute("fill") != Some("#a7f3d0") {
+                return false;
+            }
+            let text = node
+                .descendants()
+                .filter(|descendant| descendant.is_text())
+                .filter_map(|descendant| descendant.text())
+                .collect::<String>();
+            matches!(text.as_str(), "Uses" | "[HTTPS]")
+        })
+        .collect::<Vec<_>>();
     assert!(
-        relation
-            .descendants()
-            .filter(|node| node.has_tag_name("text"))
-            .all(|node| node.attribute("fill") == Some("#a7f3d0")),
+        relation_labels.len() == 2,
         "UpdateRelStyle textColor should reach visible C4 relationship labels: {svg}"
     );
 }
@@ -1039,33 +1081,8 @@ gitGraph
         neo.contains(r#"<defs><linearGradient id="gitgraph-neo-visible-gradient""#),
         "neo GitGraph should emit the gradient defs consumed by branch label backgrounds: {neo}"
     );
-    let document =
-        roxmltree::Document::parse(&neo).expect("neo GitGraph theme smoke should emit valid XML");
-    let gradient_ids = document
-        .descendants()
-        .filter(|node| node.has_tag_name("linearGradient"))
-        .filter_map(|node| node.attribute("id"))
-        .collect::<std::collections::BTreeSet<_>>();
-    let branch_label_strokes = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("rect")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes
-                        .split_ascii_whitespace()
-                        .any(|class| class == "branchLabelBkg")
-                })
-        })
-        .filter_map(|node| node.attribute("stroke"))
-        .collect::<Vec<_>>();
     assert!(
-        branch_label_strokes.len() == 2
-            && branch_label_strokes.iter().all(|stroke| {
-                stroke
-                    .strip_prefix("url(#")
-                    .and_then(|value| value.strip_suffix(')'))
-                    .is_some_and(|id| gradient_ids.contains(id))
-            }),
+        neo.contains(r#"#gitgraph-neo-visible .label0{fill:#ffffff;stroke:url(#gitgraph-neo-visible-gradient);stroke-width:2;}"#),
         "neo GitGraph branch label backgrounds should consume the scoped gradient: {neo}"
     );
     assert!(
@@ -1083,7 +1100,7 @@ gitGraph
 }
 
 #[test]
-fn requirement_default_visible_stroke_uses_node_border() {
+fn requirement_default_visible_rough_stroke_uses_node_border() {
     let svg = render_svg(
         "requirement-default-stroke",
         r##"requirementDiagram
@@ -1103,26 +1120,11 @@ fn requirement_default_visible_stroke_uses_node_border() {
         "Requirement legacy CSS should keep Mermaid's requirementBorderColor rule: {svg}"
     );
 
-    let document =
-        roxmltree::Document::parse(&svg).expect("Requirement theme smoke should emit valid XML");
-    let shape_stroke = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("path")
-                && node.attribute("data-merman-resource") == Some("requirement.node.0.shape.stroke")
-        })
-        .expect("Requirement canonical shape should expose its visible stroke path");
-    assert!(
-        shape_stroke.attribute("fill") == Some("none")
-            && shape_stroke.attribute("stroke") == Some("#9370db")
-            && shape_stroke.attribute("stroke-width") == Some("1.3"),
-        "Requirement canonical shape strokes should use nodeBorder by default: {svg}"
-    );
     assert!(
         svg.contains(
-            r##"class="divider" fill-rule="nonzero" fill="none" stroke="#9370db" stroke-width="1.3""##,
+            r##"stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
         ),
-        "Requirement canonical divider strokes should use nodeBorder by default: {svg}"
+        "Requirement visible rough shape/divider strokes should use nodeBorder by default: {svg}"
     );
 }
 
@@ -1202,9 +1204,10 @@ journey
         "Journey's current plain line DOM is visibly driven by themeVariables.textColor: {svg}"
     );
     assert!(
-        svg.contains(r##"fill="none" stroke="#f8fafc" stroke-width="4""##)
-            && svg.contains(r#"data-merman-resource="journey.activity.line""#),
-        "canonical Journey should emit the resolved activity line style and resource: {svg}"
+        svg.contains(
+            r##"stroke-width="4" stroke="black" marker-end="url(#journey-line-audit-arrowhead)""##,
+        ),
+        "Journey should preserve the current visible activity line and arrow marker contract: {svg}"
     );
     assert!(
         svg.contains(r#"#journey-line-audit .flowchart-link{stroke:#22c55e;fill:none;}"#),
@@ -1301,9 +1304,8 @@ timeline
         "Timeline redux lineWrapper CSS should consume nodeBorder/strokeWidth with matching DOM: {svg}"
     );
     assert!(
-        svg.contains(r#"class="lineWrapper""#)
-            && svg.contains(r#"data-merman-resource="timeline.activity.line""#),
-        "Timeline redux lineWrapper CSS should only be counted when the canonical line resource is rendered: {svg}"
+        svg.contains(r#"class="lineWrapper"><line"#),
+        "Timeline redux lineWrapper CSS should only be counted when line DOM exists: {svg}"
     );
     assert!(
         svg.contains(r#"class="timeline-node section--1""#),

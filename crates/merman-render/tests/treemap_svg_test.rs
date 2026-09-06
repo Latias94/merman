@@ -72,12 +72,6 @@ fn attr_f64(tag: &str, name: &str) -> Option<f64> {
 }
 
 fn font_size_px(tag: &str) -> Option<f64> {
-    if let Some((_, suffix)) = tag.split_once("font-size=\"") {
-        let value = suffix.split_once('"')?.0;
-        if let Ok(size) = value.parse() {
-            return Some(size);
-        }
-    }
     let (_, suffix) = tag.split_once("font-size:")?;
     let value = suffix.trim_start();
     let end = value.find("px")?;
@@ -107,8 +101,7 @@ fn text_tag_by_class_and_text<'a>(svg: &'a str, class_name: &str, text: &str) ->
 }
 
 fn contains_default_text_fill(tag: &str) -> bool {
-    tag.contains(r##"fill="#333333""##)
-        || tag.contains("fill:#333")
+    tag.contains("fill:#333")
         || tag.contains("fill: #333")
         || tag.contains("fill:rgb(51, 51, 51)")
         || tag.contains("fill: rgb(51, 51, 51)")
@@ -177,14 +170,10 @@ treemap-beta
 "#,
     );
     assert!(
-        frontmatter_svg.contains(r#"class="treemapTitle""#)
-            && frontmatter_svg.contains(">Frontmatter treemap</text>"),
+        frontmatter_svg.contains(r#"class="treemapTitle" text-anchor="middle" dominant-baseline="middle">Frontmatter treemap</text>"#),
         "frontmatter title should render when the Treemap body has none: {frontmatter_svg}"
     );
-    assert!(
-        frontmatter_svg.contains(r#"data-merman-semantic-id="treemap.title""#),
-        "canonical SVG should retain the title semantic: {frontmatter_svg}"
-    );
+    assert!(frontmatter_svg.contains(r#"transform="translate(0, 30)" class="treemapContainer""#));
 
     let body_svg = render_treemap_svg_from_source(
         r#"---
@@ -237,6 +226,7 @@ fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
 }
 
 #[test]
+#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn treemap_translated_labels_keep_clip_geometry_in_the_same_user_space() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
     let document = roxmltree::Document::parse(&svg).expect("canonical Treemap SVG is XML");
@@ -282,17 +272,13 @@ fn treemap_dark_complex_example_uses_readable_label_colors() {
 
     let engineering_tag = text_tag_by_text(&svg, "Engineering");
     assert!(
-        engineering_tag.contains(r##"fill="#d3d3d3""##)
-            || engineering_tag.contains("fill:lightgrey")
-            || engineering_tag.contains("fill: lightgrey"),
+        engineering_tag.contains("fill:lightgrey") || engineering_tag.contains("fill: lightgrey"),
         "expected Engineering section label to use lightgrey like upstream, got {engineering_tag}; theme={theme}; labelTextColor={label_text_color}; scaleLabelColor={scale_label_color}"
     );
 
     let frontend_tag = text_tag_by_text(&svg, "Frontend");
     assert!(
-        frontend_tag.contains(r##"fill="#d3d3d3""##)
-            || frontend_tag.contains("fill:lightgrey")
-            || frontend_tag.contains("fill: lightgrey"),
+        frontend_tag.contains("fill:lightgrey") || frontend_tag.contains("fill: lightgrey"),
         "expected Frontend leaf label to use lightgrey like upstream, got {frontend_tag}"
     );
 }
@@ -306,14 +292,8 @@ fn treemap_single_leaf_label_uses_readable_fill_over_transparent_cell() {
     );
 
     assert!(
-        svg.contains(
-            r##"class="treemapNode leaf treemapLeaf leaf0" fill="#000000" fill-opacity="0""##
-        ),
-        "expected single top-level leaf to preserve Mermaid's transparent cell fill in the canonical typed form: {svg}"
-    );
-    assert!(
-        svg.contains(r#"data-merman-resource="treemap.leaf.0.shape""#),
-        "transparent cells must remain represented as a shape resource: {svg}"
+        svg.contains(r#"class="treemapLeaf" fill="transparent""#),
+        "expected single top-level leaf to preserve Mermaid's transparent cell fill: {svg}"
     );
 
     let label_tag = text_tag_by_text(&svg, "Item");

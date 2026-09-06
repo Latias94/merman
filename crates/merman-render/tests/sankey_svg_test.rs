@@ -77,34 +77,29 @@ fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
         },
     );
 
-    let document = Document::parse(&svg).expect("canonical Sankey SVG");
-    assert_eq!(
-        document.root_element().attribute("id"),
-        Some("sankey-inline")
-    );
-    let gradient = document
-        .descendants()
-        .find(|node| node.has_tag_name("linearGradient"))
-        .expect("canonical Sankey gradient");
-    let gradient_id = gradient.attribute("id").expect("gradient id");
-    assert!(gradient_id.starts_with("merman-resource-"));
-    assert_eq!(
-        gradient.attribute("gradientUnits"),
-        Some("userSpaceOnUse"),
-        "canonical Sankey gradients use document-space coordinates"
-    );
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("path")
-            && node
-                .attribute("stroke")
-                .is_some_and(|stroke| stroke == format!("url(#{gradient_id})"))
-    }));
     assert!(
-        document.descendants().all(|node| {
-            node.attribute("id")
-                .is_none_or(|id| id.starts_with("sankey-inline") || id.starts_with("merman-"))
-        }),
-        "canonical SVG resource and semantic ids must be scoped and deterministic: {svg}"
+        svg.contains(r#"id="sankey-inline-node-1""#),
+        "expected scoped Sankey node id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="sankey-inline-linearGradient-3""#),
+        "expected scoped Sankey gradient id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"stroke="url(#sankey-inline-linearGradient-3)""#),
+        "expected scoped Sankey gradient reference: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="node-1""#),
+        "expected no bare Sankey node id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="linearGradient-3""#),
+        "expected no bare Sankey gradient id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"stroke="url(#linearGradient-3)""#),
+        "expected no bare Sankey gradient reference: {svg}"
     );
 }
 
@@ -112,35 +107,30 @@ fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
 fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
     let svg = render_sankey("sankey-beta\nA,B,10\n", &SvgRenderOptions::default());
 
-    let document = Document::parse(&svg).expect("canonical Sankey SVG");
-    let gradient = document
-        .descendants()
-        .find(|node| node.has_tag_name("linearGradient"))
-        .expect("canonical Sankey gradient");
-    let gradient_id = gradient.attribute("id").expect("gradient id");
-    assert!(gradient_id.starts_with("merman-resource-"));
-    assert_eq!(
-        gradient.attribute("gradientUnits"),
-        Some("userSpaceOnUse"),
-        "canonical Sankey gradients use document-space coordinates"
-    );
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("path")
-            && node
-                .attribute("stroke")
-                .is_some_and(|stroke| stroke == format!("url(#{gradient_id})"))
-    }));
     assert!(
-        document.descendants().all(|node| {
-            node.attribute("id")
-                .is_none_or(|id| id.starts_with("merman-") || id == "sankey")
-        }),
-        "canonical SVG ids must use the renderer-owned scope: {svg}"
+        svg.contains(r#"id="node-1""#),
+        "expected Mermaid-style Sankey node id without explicit diagram_id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="linearGradient-3""#),
+        "expected Mermaid-style Sankey gradient id without explicit diagram_id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"stroke="url(#linearGradient-3)""#),
+        "expected Mermaid-style Sankey gradient reference without explicit diagram_id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="sankey-node-1""#),
+        "expected default rendering to avoid implicit node id scoping: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="sankey-linearGradient-3""#),
+        "expected default rendering to avoid implicit resource id scoping: {svg}"
     );
 }
 
 #[test]
-fn canonical_resource_ids_are_scoped_for_multiple_inline_svg_documents() {
+fn resource_ids_are_scoped_for_multiple_inline_svg_documents() {
     let first_svg = render_sankey(
         "sankey-beta\nA,B,10\n",
         &SvgRenderOptions {
@@ -155,14 +145,13 @@ fn canonical_resource_ids_are_scoped_for_multiple_inline_svg_documents() {
             ..SvgRenderOptions::default()
         },
     );
-    let first = Document::parse(&first_svg).expect("first canonical Sankey SVG");
-    let second = Document::parse(&second_svg).expect("second canonical Sankey SVG");
+    let first = Document::parse(&first_svg).expect("first Sankey SVG");
+    let second = Document::parse(&second_svg).expect("second Sankey SVG");
 
     let ids = |document: &Document<'_>| {
         document
             .descendants()
             .filter_map(|node| node.attribute("id"))
-            .filter(|id| id.starts_with("merman-"))
             .map(str::to_owned)
             .collect::<BTreeSet<_>>()
     };

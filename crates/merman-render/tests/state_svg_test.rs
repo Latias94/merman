@@ -273,18 +273,20 @@ A --> B: owns
     );
 
     assert!(
-        root_false.contains(r#"class="nodeLabel""#) && root_false.contains(r#"class="edgeLabel""#),
-        "canonical State should render plain labels as typed SVG text: {root_false}"
+        root_false.contains(r#"<text y="-10.1""#)
+            && root_false.contains(r#"class="text-outer-tspan row""#)
+            && root_false.contains(r#"class="text-inner-tspan""#),
+        "root htmlLabels=false should render State labels as SVG text: {root_false}"
     );
     assert!(
         !root_false.contains("<foreignObject"),
         "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for simple State label DOM: {root_false}"
     );
     assert!(
-        root_true.contains(r#"class="nodeLabel""#)
-            && root_true.contains(r#"class="edgeLabel""#)
-            && !root_true.contains("<foreignObject"),
-        "canonical State should keep the admitted plain-label subset renderer-neutral: {root_true}"
+        root_true.contains("<foreignObject")
+            && root_true.contains(r#"class="nodeLabel markdown-node-label""#)
+            && root_true.contains(r#"class="edgeLabel""#),
+        "root htmlLabels=true should override deprecated flowchart.htmlLabels=false and keep HTML label DOM: {root_true}"
     );
 }
 
@@ -393,9 +395,9 @@ A --> B
     );
 
     assert!(
-        svg.contains(r#"class="merman-semantic semantic-edge edgePath""#)
-            && svg.contains(r#"data-merman-semantic-id="state.edge.0""#),
-        "canonical State should retain the empty-label transition semantic: {svg}"
+        svg.contains(r#"class="edgeLabel""#)
+            && svg.contains(r#"<g class="label" data-id="edge0" transform="translate(0, 0)"></g>"#),
+        "root htmlLabels=false should keep the State empty edge label container: {svg}"
     );
     assert_eq!(
         svg.matches("<foreignObject").count(),

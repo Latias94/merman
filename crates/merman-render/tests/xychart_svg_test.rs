@@ -7,7 +7,6 @@ use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use roxmltree::{Document, Node};
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -52,21 +51,11 @@ fn assert_contains(haystack: &str, needle: &str) {
     );
 }
 
-fn has_class(node: Node<'_, '_>, class: &str) -> bool {
-    node.attribute("class").is_some_and(|classes| {
-        classes
-            .split_whitespace()
-            .any(|candidate| candidate == class)
-    })
-}
-
-fn group_with_classes<'a>(document: &'a Document<'a>, classes: &[&str]) -> Node<'a, 'a> {
-    document
-        .descendants()
-        .find(|node| {
-            node.tag_name().name() == "g" && classes.iter().all(|class| has_class(*node, class))
-        })
-        .expect("expected canonical XYChart semantic group")
+fn svg_segment<'a>(svg: &'a str, start_needle: &str, end_needle: &str) -> &'a str {
+    let start = svg.find(start_needle).expect("expected segment start");
+    let rest = &svg[start..];
+    let end = rest.find(end_needle).expect("expected segment end");
+    &rest[..end]
 }
 
 #[test]
@@ -352,36 +341,27 @@ fn xychart_svg_honors_mermaid_11_15_inline_theme_config() {
     let y_axis_label = text_tag_by_text(&svg, "11000");
     assert_contains(y_axis_label, r##"fill="#ee82ee""##);
 
-    let document = Document::parse(&svg).expect("canonical XYChart SVG is XML");
-    let plot = group_with_classes(&document, &["plot", "bar-plot-0"]);
-    assert!(plot.descendants().any(|node| {
-        node.tag_name().name() == "rect"
-            && node.attribute("fill") == Some("#008000")
-            && node.attribute("stroke") == Some("#008000")
-            && node.attribute("stroke-width") == Some("0")
-    }));
-    let line_plot = group_with_classes(&document, &["plot", "line-plot-1"]);
-    assert!(line_plot.descendants().any(|node| {
-        node.tag_name().name() == "path"
-            && node.attribute("stroke") == Some("#faba63")
-            && node.attribute("stroke-width") == Some("2")
-    }));
+    let plot = svg_segment(&svg, r#"<g class="plot">"#, r#"<g class="bottom-axis">"#);
+    assert_contains(plot, r##"fill="#008000" stroke="#008000""##);
+    assert_contains(plot, r##"stroke="#faba63" stroke-width="2""##);
 
-    let bottom_axis_line = group_with_classes(&document, &["bottom-axis", "axis-line"]);
-    assert!(bottom_axis_line.descendants().any(|node| {
-        node.tag_name().name() == "path" && node.attribute("stroke") == Some("#87ceeb")
-    }));
-    let bottom_axis_ticks = group_with_classes(&document, &["bottom-axis", "ticks"]);
-    assert!(bottom_axis_ticks.descendants().any(|node| {
-        node.tag_name().name() == "path" && node.attribute("stroke") == Some("#ff6347")
-    }));
+    let bottom_axis = svg_segment(
+        &svg,
+        r#"<g class="bottom-axis">"#,
+        r#"<g class="left-axis">"#,
+    );
+    assert_contains(bottom_axis, r##"class="axis-line"><path"##);
+    assert_contains(bottom_axis, r##"stroke="#87ceeb" stroke-width="2""##);
+    assert_contains(bottom_axis, r##"class="ticks"><path"##);
+    assert_contains(bottom_axis, r##"stroke="#ff6347" stroke-width="2""##);
 
-    let left_axis_line = group_with_classes(&document, &["left-axis", "axisl-line"]);
-    assert!(left_axis_line.descendants().any(|node| {
-        node.tag_name().name() == "path" && node.attribute("stroke") == Some("#ff6347")
-    }));
-    let left_axis_ticks = group_with_classes(&document, &["left-axis", "ticks"]);
-    assert!(left_axis_ticks.descendants().any(|node| {
-        node.tag_name().name() == "path" && node.attribute("stroke") == Some("#87ceeb")
-    }));
+    let left_axis = svg_segment(
+        &svg,
+        r#"<g class="left-axis">"#,
+        r#"<g class="mermaid-tmp-group""#,
+    );
+    assert_contains(left_axis, r##"class="axisl-line"><path"##);
+    assert_contains(left_axis, r##"stroke="#ff6347" stroke-width="2""##);
+    assert_contains(left_axis, r##"class="ticks"><path"##);
+    assert_contains(left_axis, r##"stroke="#87ceeb" stroke-width="2""##);
 }

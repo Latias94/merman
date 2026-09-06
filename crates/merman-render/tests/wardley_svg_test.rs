@@ -250,7 +250,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
             .children()
             .find(|node| node.has_tag_name("circle"))
             .and_then(|node| node.attribute("fill")),
-        Some("#ffffff")
+        Some("white")
     );
     assert_eq!(
         annotation_group
@@ -272,7 +272,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
             .children()
             .find(|node| node.has_tag_name("rect"))
             .and_then(|node| node.attribute("fill")),
-        Some("#ffffff")
+        Some("white")
     );
     assert_eq!(
         box_group
@@ -283,7 +283,7 @@ fn wardley_svg_uses_upstream_direct_annotation_theme_roles() {
     );
     assert_eq!(
         box_group
-            .descendants()
+            .children()
             .find(|node| node.has_tag_name("text"))
             .and_then(|node| node.attribute("fill")),
         Some("#111213")
