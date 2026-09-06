@@ -491,6 +491,42 @@ fn image_validation_checks_payload_format_dimensions_and_alpha_contract() {
 }
 
 #[test]
+fn cumulative_image_pixel_budget_stops_before_decoding_the_next_payload() {
+    let mut document = sample_document();
+    document
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.first"),
+            image: EncodedImage::new("image/png", png_1x1()),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: false,
+        }));
+    document
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.second"),
+            image: EncodedImage::new("image/png", corrupt_png_deflate_with_valid_crc(png_1x1())),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: false,
+        }));
+
+    let limits = DrawingListLimits {
+        max_image_pixels: 1,
+        ..DrawingListLimits::default()
+    };
+    assert!(matches!(
+        document.validate_with_limits(&limits),
+        Err(DrawingListError::ResourceLimit {
+            resource: "image_pixels",
+            actual: 2,
+            maximum: 1,
+        })
+    ));
+}
+
+#[test]
 fn raster_fallback_alpha_mode_matches_the_validated_png_resource() {
     let mut document = extended_document();
     document.fallbacks.push(RasterFallback {

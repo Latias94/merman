@@ -26,7 +26,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Fixed
 
 - Hardened DrawingList decoding and canonicalization with cumulative asset and path budgets, combined LIFO nesting validation, bounded serialization, stable nested extension ordering, strict numeric/schema boundaries, and linear resource lookup instead of adversarial repeated scans.
-- Made DrawingList raster resources fail closed: v1 now admits only fully validated static PNG payloads, verifies dimensions and alpha/fallback metadata, and applies caller image/font byte budgets before materializing Base64 payloads.
+- Made DrawingList raster resources fail closed: v1 now admits only fully validated static PNG payloads, verifies dimensions and alpha/fallback metadata, applies caller image/font byte budgets before materializing Base64 payloads, and stops before decoding an image that would exceed the document-wide pixel budget.
 - Unified navigation URI policy across SVG and DrawingList, fixed duplicate authored Kanban IDs across parent sections, and preserved canonical SVG behavior for ER metadata/markers, Wardley baselines and markers, gradients, transformed clips, scoped resource IDs, and degenerate marker geometry.
 - Rejected unresolved theme CSS and non-portable visual effects instead of returning a DrawingList whose appearance silently differs from the corresponding Mermaid rendering.
 

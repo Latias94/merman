@@ -82,19 +82,35 @@ impl DrawingResource {
     pub(crate) fn validate(
         &self,
         max_path_segments: usize,
+        image_bytes_used: usize,
         max_image_bytes: usize,
+        image_pixels_used: usize,
         max_image_pixels: usize,
         max_font_bytes: usize,
-    ) -> Result<(), DrawingListError> {
+    ) -> Result<ResourceValidationUsage, DrawingListError> {
         match self {
-            Self::Path(resource) => resource.validate(max_path_segments),
-            Self::LinearGradient(resource) => resource.validate(),
-            Self::RadialGradient(resource) => resource.validate(),
-            Self::Image(resource) => resource.validate(max_image_bytes, max_image_pixels),
-            Self::Pattern(resource) => resource.validate(),
-            Self::Font(resource) => resource.validate(max_font_bytes),
+            Self::Path(resource) => resource.validate(max_path_segments)?,
+            Self::LinearGradient(resource) => resource.validate()?,
+            Self::RadialGradient(resource) => resource.validate()?,
+            Self::Image(resource) => {
+                return resource.validate(
+                    image_bytes_used,
+                    max_image_bytes,
+                    image_pixels_used,
+                    max_image_pixels,
+                );
+            }
+            Self::Pattern(resource) => resource.validate()?,
+            Self::Font(resource) => resource.validate(max_font_bytes)?,
         }
+        Ok(ResourceValidationUsage::default())
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ResourceValidationUsage {
+    pub(crate) image_bytes: usize,
+    pub(crate) image_pixels: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -427,9 +443,11 @@ fn is_font_media_type(media_type: &str) -> bool {
 impl ImageResource {
     fn validate(
         &self,
+        image_bytes_used: usize,
         max_image_bytes: usize,
+        image_pixels_used: usize,
         max_image_pixels: usize,
-    ) -> Result<(), DrawingListError> {
+    ) -> Result<ResourceValidationUsage, DrawingListError> {
         if self.id.as_str().is_empty()
             || self.image.media_type.is_empty()
             || self.image.data.is_empty()
@@ -441,10 +459,13 @@ impl ImageResource {
                 self.id.as_str()
             )));
         }
-        if self.image.data.len() > max_image_bytes {
+        let cumulative_image_bytes = image_bytes_used
+            .checked_add(self.image.data.len())
+            .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
+        if cumulative_image_bytes > max_image_bytes {
             return Err(DrawingListError::ResourceLimit {
                 resource: "image_bytes",
-                actual: self.image.data.len(),
+                actual: cumulative_image_bytes,
                 maximum: max_image_bytes,
             });
         }
@@ -476,10 +497,13 @@ impl ImageResource {
                     .and_then(|height| width.checked_mul(height))
             })
             .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
-        if header_pixels > max_image_pixels {
+        let cumulative_image_pixels = image_pixels_used
+            .checked_add(header_pixels)
+            .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
+        if cumulative_image_pixels > max_image_pixels {
             return Err(DrawingListError::ResourceLimit {
                 resource: "image_pixels",
-                actual: header_pixels,
+                actual: cumulative_image_pixels,
                 maximum: max_image_pixels,
             });
         }
@@ -540,7 +564,10 @@ impl ImageResource {
                 self.id.as_str()
             )));
         }
-        Ok(())
+        Ok(ResourceValidationUsage {
+            image_bytes: self.image.data.len(),
+            image_pixels: header_pixels,
+        })
     }
 }
 

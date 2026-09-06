@@ -528,12 +528,20 @@ impl DrawingListDocument {
                     resource.id().as_str()
                 )));
             }
-            resource.validate(
+            let usage = resource.validate(
                 limits.max_path_segments,
+                image_bytes,
                 limits.max_image_bytes,
+                image_pixels,
                 limits.max_image_pixels,
                 limits.max_font_bytes,
             )?;
+            image_bytes = image_bytes
+                .checked_add(usage.image_bytes)
+                .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
+            image_pixels = image_pixels
+                .checked_add(usage.image_pixels)
+                .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
             if let DrawingResource::Path(path) = resource {
                 path_segments =
                     path_segments
@@ -565,19 +573,9 @@ impl DrawingListDocument {
                 DrawingResource::Path(_) | DrawingResource::Image(_) => {}
             }
             if let DrawingResource::Image(image) = resource {
-                image_bytes = image_bytes
-                    .checked_add(image.image.data.len())
-                    .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
-                validate_count("image_bytes", image_bytes, limits.max_image_bytes)?;
-                image_pixels = image_pixels
-                    .checked_add(pixel_count(image.pixel_width, image.pixel_height)?)
-                    .ok_or_else(|| {
-                        DrawingListError::invalid("image pixel count overflows usize")
-                    })?;
                 image_resources.insert(image.id.clone(), image);
             }
         }
-        validate_count("image_pixels", image_pixels, limits.max_image_pixels)?;
         let image_ids = image_resources.keys().cloned().collect::<BTreeSet<_>>();
 
         for resource in &self.resources {
