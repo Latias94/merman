@@ -1,8 +1,8 @@
 # Merman for Node.js
 
-`@mermanjs/node` is Merman's experimental native package for deterministic SVG rendering in
-Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
-current host; it has no browser-WASM fallback or postinstall downloader.
+`@mermanjs/node` is Merman's experimental native package for deterministic SVG and DrawingList
+rendering in Node.js 22+ and static-site builds. A small loader selects one exact-version native
+package for the current host; it has no browser-WASM fallback or postinstall downloader.
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
@@ -57,9 +57,9 @@ provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*
 mounting.
 
 The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its shipped
-recipe includes deterministic SVG and DrawingList plus Cytoscape and ELK layouts. Math, binary export, analysis,
-ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain outside this
-surface.
+recipe includes deterministic SVG and DrawingList plus Cytoscape and ELK layouts. Math, binary
+export, analysis, ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain
+outside this surface.
 
 ## Package layout
 
