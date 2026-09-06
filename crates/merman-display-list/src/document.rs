@@ -589,14 +589,14 @@ impl DrawingListDocument {
         let image_ids = image_resources.keys().cloned().collect::<BTreeSet<_>>();
 
         for resource in &self.resources {
-            if let DrawingResource::Pattern(pattern) = resource {
-                if !image_resources.contains_key(&pattern.image) {
-                    return Err(DrawingListError::invalid(format!(
-                        "pattern {} references unknown image {}",
-                        pattern.id.as_str(),
-                        pattern.image.as_str()
-                    )));
-                }
+            if let DrawingResource::Pattern(pattern) = resource
+                && !image_resources.contains_key(&pattern.image)
+            {
+                return Err(DrawingListError::invalid(format!(
+                    "pattern {} references unknown image {}",
+                    pattern.id.as_str(),
+                    pattern.image.as_str()
+                )));
             }
         }
         let path_ids = self
@@ -813,13 +813,13 @@ impl DrawingListDocument {
                     })?;
                     validate_count("text_bytes", text_bytes, limits.max_text_bytes)?;
                     validate_paint(Some(&run.style.fill), &paint_ids)?;
-                    if let Some(font) = &run.style.font.resource {
-                        if !font_ids.contains(font) {
-                            return Err(DrawingListError::invalid(format!(
-                                "text references unknown font resource {}",
-                                font.as_str()
-                            )));
-                        }
+                    if let Some(font) = &run.style.font.resource
+                        && !font_ids.contains(font)
+                    {
+                        return Err(DrawingListError::invalid(format!(
+                            "text references unknown font resource {}",
+                            font.as_str()
+                        )));
                     }
                     match &run.obligation {
                         TextObligation::Outline { path } => {
@@ -1020,7 +1020,7 @@ impl Serialize for CanonicalJsonValue<'_> {
             }
             Self::Value(Value::Object(object)) => {
                 let mut entries = object.iter().collect::<Vec<_>>();
-                entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+                entries.sort_unstable_by_key(|(left, _)| *left);
                 let mut map = serializer.serialize_map(Some(entries.len()))?;
                 for (key, value) in entries {
                     map.serialize_entry(key, &CanonicalJsonValue::Value(value))?;
@@ -1111,13 +1111,13 @@ fn validate_paint(
     paint: Option<&crate::Paint>,
     paint_ids: &BTreeSet<ResourceId>,
 ) -> Result<(), DrawingListError> {
-    if let Some(crate::Paint::Resource { id }) = paint {
-        if !paint_ids.contains(id) {
-            return Err(DrawingListError::invalid(format!(
-                "paint references unknown paint resource {}",
-                id.as_str()
-            )));
-        }
+    if let Some(crate::Paint::Resource { id }) = paint
+        && !paint_ids.contains(id)
+    {
+        return Err(DrawingListError::invalid(format!(
+            "paint references unknown paint resource {}",
+            id.as_str()
+        )));
     }
     Ok(())
 }
