@@ -491,8 +491,8 @@ test("Event Model payload SVG survives responsive preview mount", async ({
     root.replaceChildren(preview.takeNode());
     const svg = root.querySelector("svg");
     const mounted = {
-      foreignObjectCount: svg?.querySelectorAll("foreignObject").length ?? 0,
-      lineBreakCount: svg?.querySelectorAll("foreignObject br").length ?? 0,
+      boxCount: svg?.querySelectorAll(".em-box").length ?? 0,
+      textRunCount: svg?.querySelectorAll(".em-box text").length ?? 0,
       isSvg: svg instanceof SVGSVGElement,
       text: svg?.textContent ?? null,
     };
@@ -500,12 +500,13 @@ test("Event Model payload SVG survives responsive preview mount", async ({
     return mounted;
   }, EVENT_MODEL_EXAMPLE.source);
 
-  expect(result).toEqual({
-    foreignObjectCount: 5,
-    lineBreakCount: 5,
+  expect(result).toMatchObject({
+    boxCount: 5,
+    textRunCount: 8,
     isSvg: true,
-    text: expect.stringContaining("ItemAdded"),
   });
+  expect(result?.text).toContain("ItemAdded");
+  expect(result?.text).toContain("quantity: 1");
 });
 
 test("preview binds fragment references to the actual mount document", async ({
