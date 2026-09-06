@@ -1349,7 +1349,10 @@ mod tests {
                 "merman",
                 &[
                     ("default", &["complete-svg"]),
-                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    (
+                        "complete-svg",
+                        &["svg", "drawing-list", "layout-cytoscape", "math"],
+                    ),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
@@ -1514,7 +1517,7 @@ mod tests {
         );
         assert_eq!(
             complete_svg_features().collect::<Vec<_>>(),
-            vec!["layout-cytoscape", "math", "svg"]
+            vec!["drawing-list", "layout-cytoscape", "math", "svg"]
         );
         assert_eq!(
             complete_svg_elk_features().collect::<Vec<_>>(),
