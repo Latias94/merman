@@ -1,7 +1,8 @@
 use crate::{Color, DrawingListError, Point, Rect, Transform};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use png::ColorType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt;
+use std::{fmt, io::Cursor};
 
 /// Compares a media type's type/subtype while ignoring ASCII case and optional parameters.
 ///
@@ -20,51 +21,6 @@ pub(crate) fn media_type_matches(
         return false;
     };
     kind.eq_ignore_ascii_case(expected_type) && subtype.eq_ignore_ascii_case(expected_subtype)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SupportedImageFormat {
-    Png,
-    Jpeg,
-    Webp,
-    Avif,
-}
-
-impl SupportedImageFormat {
-    fn from_media_type(media_type: &str) -> Option<Self> {
-        if media_type_matches(media_type, "image", "png") {
-            Some(Self::Png)
-        } else if media_type_matches(media_type, "image", "jpeg")
-            || media_type_matches(media_type, "image", "jpg")
-        {
-            Some(Self::Jpeg)
-        } else if media_type_matches(media_type, "image", "webp") {
-            Some(Self::Webp)
-        } else if media_type_matches(media_type, "image", "avif") {
-            Some(Self::Avif)
-        } else {
-            None
-        }
-    }
-
-    fn from_image_type(image_type: imagesize::ImageType) -> Option<Self> {
-        match image_type {
-            imagesize::ImageType::Png => Some(Self::Png),
-            imagesize::ImageType::Jpeg => Some(Self::Jpeg),
-            imagesize::ImageType::Webp => Some(Self::Webp),
-            imagesize::ImageType::Heif(imagesize::Compression::Av1) => Some(Self::Avif),
-            _ => None,
-        }
-    }
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Png => "PNG",
-            Self::Jpeg => "JPEG",
-            Self::Webp => "WebP",
-            Self::Avif => "AVIF",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -127,13 +83,14 @@ impl DrawingResource {
         &self,
         max_path_segments: usize,
         max_image_bytes: usize,
+        max_image_pixels: usize,
         max_font_bytes: usize,
     ) -> Result<(), DrawingListError> {
         match self {
             Self::Path(resource) => resource.validate(max_path_segments),
             Self::LinearGradient(resource) => resource.validate(),
             Self::RadialGradient(resource) => resource.validate(),
-            Self::Image(resource) => resource.validate(max_image_bytes),
+            Self::Image(resource) => resource.validate(max_image_bytes, max_image_pixels),
             Self::Pattern(resource) => resource.validate(),
             Self::Font(resource) => resource.validate(max_font_bytes),
         }
@@ -468,7 +425,11 @@ fn is_font_media_type(media_type: &str) -> bool {
 }
 
 impl ImageResource {
-    fn validate(&self, max_image_bytes: usize) -> Result<(), DrawingListError> {
+    fn validate(
+        &self,
+        max_image_bytes: usize,
+        max_image_pixels: usize,
+    ) -> Result<(), DrawingListError> {
         if self.id.as_str().is_empty()
             || self.image.media_type.is_empty()
             || self.image.data.is_empty()
@@ -488,56 +449,95 @@ impl ImageResource {
             });
         }
 
-        let Some(declared_format) = SupportedImageFormat::from_media_type(&self.image.media_type)
-        else {
+        if !media_type_matches(&self.image.media_type, "image", "png") {
             return Err(DrawingListError::invalid(format!(
-                "image resource {} must use PNG, JPEG, WebP, or AVIF",
-                self.id.as_str()
-            )));
-        };
-        let image_type = imagesize::image_type(&self.image.data).map_err(|error| {
-            DrawingListError::invalid(format!(
-                "image resource {} has an invalid or unsupported image payload: {error}",
-                self.id.as_str()
-            ))
-        })?;
-        let Some(actual_format) = SupportedImageFormat::from_image_type(image_type) else {
-            return Err(DrawingListError::invalid(format!(
-                "image resource {} contains an unsupported image format",
-                self.id.as_str()
-            )));
-        };
-        if actual_format != declared_format {
-            return Err(DrawingListError::invalid(format!(
-                "image resource {} declares {} but contains {}",
-                self.id.as_str(),
-                declared_format.label(),
-                actual_format.label()
-            )));
-        }
-        if matches!(actual_format, SupportedImageFormat::Jpeg) && self.has_alpha {
-            return Err(DrawingListError::invalid(format!(
-                "JPEG image resource {} cannot declare an alpha channel",
+                "image resource {} must use static PNG",
                 self.id.as_str()
             )));
         }
-
-        let actual_size = imagesize::blob_size(&self.image.data).map_err(|error| {
+        let mut cursor = Cursor::new(self.image.data.as_slice());
+        let mut decoder = png::Decoder::new(&mut cursor);
+        decoder.set_ignore_text_chunk(true);
+        decoder.set_ignore_iccp_chunk(true);
+        let (header_width, header_height) = {
+            let header = decoder.read_header_info().map_err(|error| {
+                DrawingListError::invalid(format!(
+                    "image resource {} has an invalid PNG header: {error}",
+                    self.id.as_str()
+                ))
+            })?;
+            (header.width, header.height)
+        };
+        let header_pixels = usize::try_from(header_width)
+            .ok()
+            .and_then(|width| {
+                usize::try_from(header_height)
+                    .ok()
+                    .and_then(|height| width.checked_mul(height))
+            })
+            .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
+        if header_pixels > max_image_pixels {
+            return Err(DrawingListError::ResourceLimit {
+                resource: "image_pixels",
+                actual: header_pixels,
+                maximum: max_image_pixels,
+            });
+        }
+        let mut reader = decoder.read_info().map_err(|error| {
             DrawingListError::invalid(format!(
-                "image resource {} has invalid dimensions: {error}",
+                "image resource {} has an invalid PNG payload: {error}",
                 self.id.as_str()
             ))
         })?;
-        if actual_size.width != self.pixel_width as usize
-            || actual_size.height != self.pixel_height as usize
-        {
+        if reader.info().animation_control().is_some() {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} must not contain animated PNG data",
+                self.id.as_str()
+            )));
+        }
+        let info = reader.info();
+        if info.width != self.pixel_width || info.height != self.pixel_height {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} declares {}x{} pixels but contains {}x{} pixels",
                 self.id.as_str(),
                 self.pixel_width,
                 self.pixel_height,
-                actual_size.width,
-                actual_size.height
+                info.width,
+                info.height
+            )));
+        }
+        let actual_has_alpha =
+            matches!(info.color_type, ColorType::GrayscaleAlpha | ColorType::Rgba)
+                || info.trns.is_some();
+        if actual_has_alpha != self.has_alpha {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} declares has_alpha={} but its PNG payload has_alpha={}",
+                self.id.as_str(),
+                self.has_alpha,
+                actual_has_alpha
+            )));
+        }
+        while reader
+            .next_row()
+            .map_err(|error| {
+                DrawingListError::invalid(format!(
+                    "image resource {} has invalid PNG pixel data: {error}",
+                    self.id.as_str()
+                ))
+            })?
+            .is_some()
+        {}
+        reader.finish().map_err(|error| {
+            DrawingListError::invalid(format!(
+                "image resource {} has an incomplete or corrupt PNG payload: {error}",
+                self.id.as_str()
+            ))
+        })?;
+        drop(reader);
+        if cursor.position() != self.image.data.len() as u64 {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} contains data after its PNG IEND chunk",
+                self.id.as_str()
             )));
         }
         Ok(())

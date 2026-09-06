@@ -3,7 +3,8 @@ use crate::{
     PathSegment, Point, Rect, ResourceId, TextObligation,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 
@@ -72,21 +73,12 @@ pub struct RasterFallback {
 #[serde(rename_all = "snake_case")]
 pub enum RasterFormat {
     Png,
-    Jpeg,
-    Webp,
-    Avif,
 }
 
 impl RasterFormat {
     pub(crate) fn matches_media_type(self, media_type: &str) -> bool {
         match self {
             Self::Png => crate::resources::media_type_matches(media_type, "image", "png"),
-            Self::Jpeg => {
-                crate::resources::media_type_matches(media_type, "image", "jpeg")
-                    || crate::resources::media_type_matches(media_type, "image", "jpg")
-            }
-            Self::Webp => crate::resources::media_type_matches(media_type, "image", "webp"),
-            Self::Avif => crate::resources::media_type_matches(media_type, "image", "avif"),
         }
     }
 }
@@ -96,7 +88,6 @@ impl RasterFormat {
 pub enum AlphaMode {
     Opaque,
     Straight,
-    Premultiplied,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -540,6 +531,7 @@ impl DrawingListDocument {
             resource.validate(
                 limits.max_path_segments,
                 limits.max_image_bytes,
+                limits.max_image_pixels,
                 limits.max_font_bytes,
             )?;
             if let DrawingResource::Path(path) = resource {
@@ -641,9 +633,13 @@ impl DrawingListDocument {
                 || image.pixel_width != fallback.pixel_width
                 || image.pixel_height != fallback.pixel_height
                 || !fallback.format.matches_media_type(&image.image.media_type)
+                || !matches!(
+                    (image.has_alpha, fallback.alpha),
+                    (false, AlphaMode::Opaque) | (true, AlphaMode::Straight)
+                )
             {
                 return Err(DrawingListError::invalid(format!(
-                    "fallback {} is missing valid bounds, pixels, scale, format, reason provenance, or source identity",
+                    "fallback {} is missing valid bounds, pixels, scale, format, alpha mode, reason provenance, or source identity",
                     fallback.id
                 )));
             }
@@ -940,6 +936,7 @@ impl DrawingListDocument {
         limits: &DrawingListLimits,
     ) -> Result<Self, DrawingListError> {
         validate_count("serialized_bytes", bytes.len(), limits.max_serialized_bytes)?;
+        validate_encoded_asset_budgets(bytes, limits)?;
         let document = serde_json::from_slice::<Self>(bytes)
             .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
         document.validate_with_limits(limits)?;
@@ -1045,6 +1042,120 @@ fn validate_count(
             maximum,
         })
     }
+}
+
+#[derive(Deserialize)]
+struct EncodedAssetBudgetDocument<'a> {
+    #[serde(borrow)]
+    resources: Vec<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct EncodedAssetBudgetResource<'a> {
+    #[serde(borrow)]
+    kind: Cow<'a, str>,
+    #[serde(default, borrow)]
+    image: Option<&'a RawValue>,
+    #[serde(default, borrow)]
+    font: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct EncodedAssetBudget<'a> {
+    #[serde(borrow)]
+    data: &'a RawValue,
+}
+
+/// Charges encoded assets before their Base64 payloads are materialized by the public model.
+///
+/// This is deliberately a narrow borrowed wire view rather than a second DrawingList decoder. It
+/// leaves structural validation to Serde and [`DrawingListDocument::validate_with_limits`], while
+/// making caller-selected image and font byte ceilings effective before decoded buffers allocate.
+fn validate_encoded_asset_budgets(
+    bytes: &[u8],
+    limits: &DrawingListLimits,
+) -> Result<(), DrawingListError> {
+    let document = serde_json::from_slice::<EncodedAssetBudgetDocument<'_>>(bytes)
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    validate_count("resources", document.resources.len(), limits.max_resources)?;
+
+    let mut image_bytes = 0usize;
+    let mut font_bytes = 0usize;
+    for raw in document.resources {
+        let resource = serde_json::from_str::<EncodedAssetBudgetResource<'_>>(raw.get())
+            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+        let (asset, total, maximum, label) = match resource.kind.as_ref() {
+            "image" => (
+                resource.image,
+                &mut image_bytes,
+                limits.max_image_bytes,
+                "image_bytes",
+            ),
+            "font" => (
+                resource.font,
+                &mut font_bytes,
+                limits.max_font_bytes,
+                "font_bytes",
+            ),
+            _ => continue,
+        };
+        let Some(asset) = asset else {
+            continue;
+        };
+        let asset = serde_json::from_str::<EncodedAssetBudget<'_>>(asset.get())
+            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+        let decoded = canonical_base64_decoded_len(asset.data.get())?;
+        *total = total
+            .checked_add(decoded)
+            .ok_or_else(|| DrawingListError::invalid(format!("{label} count overflows usize")))?;
+        validate_count(label, *total, maximum)?;
+    }
+    Ok(())
+}
+
+fn canonical_base64_decoded_len(json_string: &str) -> Result<usize, DrawingListError> {
+    let bytes = json_string.as_bytes();
+    let encoded = bytes
+        .strip_prefix(b"\"")
+        .and_then(|bytes| bytes.strip_suffix(b"\""))
+        .ok_or_else(|| {
+            DrawingListError::JsonDecode(
+                "encoded asset data must be a Base64 JSON string".to_string(),
+            )
+        })?;
+    if encoded.contains(&b'\\') {
+        return Err(DrawingListError::JsonDecode(
+            "encoded asset data must not use JSON escapes".to_string(),
+        ));
+    }
+    if encoded.len() % 4 != 0 {
+        return Err(DrawingListError::JsonDecode(
+            "encoded asset data must use padded Base64".to_string(),
+        ));
+    }
+    let padding = if encoded.ends_with(b"==") {
+        2
+    } else if encoded.ends_with(b"=") {
+        1
+    } else {
+        0
+    };
+    let content_len = encoded.len().saturating_sub(padding);
+    if encoded[..content_len]
+        .iter()
+        .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/'))
+        || encoded[content_len..].iter().any(|byte| *byte != b'=')
+        || (padding == 1 && content_len % 4 != 3)
+        || (padding == 2 && content_len % 4 != 2)
+    {
+        return Err(DrawingListError::JsonDecode(
+            "encoded asset data is not canonical Base64".to_string(),
+        ));
+    }
+    (encoded.len() / 4)
+        .checked_mul(3)
+        .and_then(|decoded| decoded.checked_sub(padding))
+        .ok_or_else(|| DrawingListError::invalid("encoded asset byte count overflows usize"))
 }
 
 fn validate_extensions(extensions: &BTreeMap<String, Value>) -> Result<(), DrawingListError> {

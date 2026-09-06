@@ -260,7 +260,8 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
-      "contentEncoding": "base64"
+      "contentEncoding": "base64",
+      "$comment": "The JSON wire spelling must contain the canonical padded Base64 characters directly, without JSON escape sequences, so decoders can enforce byte budgets before allocating payload strings."
     },
     "encoded_asset": {
       "type": "object",
@@ -274,7 +275,7 @@
     "image_media_type": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/(?:[Pp][Nn][Gg]|[Jj][Pp](?:[Ee][Gg]|[Gg])|[Ww][Ee][Bb][Pp]|[Aa][Vv][Ii][Ff])(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/[Pp][Nn][Gg](?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
     },
     "font_media_type": {
       "type": "string",
@@ -308,7 +309,7 @@
         "id": { "$ref": "#/$defs/resource_id" },
         "image": {
           "$ref": "#/$defs/image_asset",
-          "$comment": "The runtime also verifies that the payload format and intrinsic dimensions match this metadata."
+          "$comment": "DrawingList v1 admits complete, non-animated PNG payloads only. The runtime fully validates the PNG stream and verifies intrinsic dimensions and alpha-channel metadata."
         },
         "pixel_width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "pixel_height": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
@@ -760,8 +761,8 @@
         "pixel_width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "pixel_height": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "scale": { "type": "number", "exclusiveMinimum": 0 },
-        "format": { "enum": ["png", "jpeg", "webp", "avif"] },
-        "alpha": { "enum": ["opaque", "straight", "premultiplied"] },
+        "format": { "const": "png" },
+        "alpha": { "enum": ["opaque", "straight"] },
         "reason": {
           "enum": [
             "foreign_object",

@@ -105,7 +105,6 @@ clap = { version = "4.6", features = ["derive"] }
 clap_complete = "4.6"
 console_error_panic_hook = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
-imagesize = { version = "0.14.0", default-features = false, features = ["heif", "jpeg", "png", "webp"] }
 png = "0.18"
 proc-macro2 = "1"
 quote = "1"

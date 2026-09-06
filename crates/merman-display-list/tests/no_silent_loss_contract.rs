@@ -1,6 +1,6 @@
 mod common;
 
-use common::{png_1x1, sample_document};
+use common::{png_alpha_1x1, sample_document};
 use merman_display_list::{
     AlphaMode, DrawingCommand, DrawingListDocument, DrawingListPolicy, DrawingResource,
     EncodedImage, FallbackReason, ImageResource, RasterFallback, RasterFormat, Rect, ResourceId,
@@ -56,7 +56,7 @@ fn document_with_raster_fallback() -> DrawingListDocument {
         .resources
         .push(DrawingResource::Image(ImageResource {
             id: image.clone(),
-            image: EncodedImage::new("image/png", png_1x1()),
+            image: EncodedImage::new("image/png", png_alpha_1x1()),
             pixel_width: 1,
             pixel_height: 1,
             has_alpha: true,
