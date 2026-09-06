@@ -50,7 +50,7 @@ The Android, Apple, Python, and Flutter artifact profiles select one shared defa
 capability set:
 
 ```text
-analysis,ascii,layout-cytoscape,layout-elk,svg
+analysis,ascii,drawing-list,layout-cytoscape,layout-elk,svg
 ```
 
 Those prebuilt packages omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their generated

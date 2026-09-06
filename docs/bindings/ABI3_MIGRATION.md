@@ -44,9 +44,10 @@ loaded artifact's callable feature surface. Release-matched hosts should validat
 table they were generated against; partial historical tables may pass discovery when their
 minimum prefix remains compatible, but they must not call operations absent from that table. The
 minimum prefix deliberately remains stable through slot `6` and operation code `13`; the
-alpha.6 `drawing-list-json` operation is an additive catalog entry and does not change this
-compatibility digest. The generated operation-control and controlled-execute prefix macros
-describe the appended slot boundaries without changing that digest.
+post-alpha.6 `drawing-list-json` operation is an additive catalog entry and does not change this
+compatibility digest. It is not present in the immutable `v0.8.0-alpha.6` artifacts. The generated
+operation-control and controlled-execute prefix macros describe the appended slot boundaries
+without changing that digest.
 
 ## Record, Result, And Service Rules
 

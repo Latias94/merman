@@ -137,7 +137,8 @@ merman-analysis
 tree-sitter-mermaid
   -> merman-lsp
 
-merman-render
+merman-display-list
+  -> merman-render
   -> merman-export
   -> merman
   -> merman-bindings-core
@@ -146,10 +147,11 @@ merman-render
   -> merman-wasm
 ```
 
-This is why `merman-ffi` cannot fully package-verify until `merman-bindings-core` is published, and
-`merman-bindings-core` cannot fully package-verify until a newer `merman-render` with `math`
-is available on crates.io. `merman-wasm` comes last because it combines the browser wasm-bindgen
-transport with the released binding core, renderer, ASCII, and editor-capable crates.
+This is why `merman-render` must follow `merman-display-list`, `merman-ffi` cannot fully
+package-verify until `merman-bindings-core` is published, and `merman-bindings-core` cannot fully
+package-verify until a newer `merman-render` with `math` is available on crates.io. `merman-wasm`
+comes last because it combines the browser wasm-bindgen transport with the released binding core,
+renderer, ASCII, and editor-capable crates.
 
 ## Browser Package Group
 
