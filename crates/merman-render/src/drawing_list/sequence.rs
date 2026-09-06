@@ -174,16 +174,6 @@ impl<'a> SequenceBuilder<'a> {
                 "Sequence DrawingList v1 admits only the classic look; neo and hand-drawn effects remain SVG-specific",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Sequence DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let prepared = pair.layout();
         let layout = prepared.layout();

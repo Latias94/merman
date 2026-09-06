@@ -577,28 +577,68 @@ fn info_emits_typed_version_text_and_semantics() {
 }
 
 #[test]
-fn info_rejects_unresolved_theme_css_without_silent_visual_loss() {
-    let site_config = MermaidConfig::from_value(serde_json::json!({
-        "themeCSS": ".version { fill: red; }",
-    }));
-    let error = Renderer::new()
-        .with_engine(Engine::new().with_site_config(site_config))
-        .render(RenderRequest::drawing_list(
-            "info",
+fn drawing_list_rejects_unresolved_theme_css_at_the_shared_family_boundary() {
+    for (source, family, lenient) in [
+        ("flowchart TD\nA -->", "error", true),
+        ("flowchart TD\nA --> B\n", "flowchart", false),
+        (
+            "swimlane-beta LR\n  subgraph Customer\n    request[Request]\n  end\n",
+            "swimlane",
+            false,
+        ),
+    ] {
+        let site_config = MermaidConfig::from_value(serde_json::json!({
+            "themeCSS": ".node { opacity: 0.5; }",
+        }));
+        let mut request = RenderRequest::drawing_list(
+            source,
             OperationControl::new(),
             DrawingListRequest::default(),
-        ))
-        .expect_err("Info themeCSS must not be silently omitted from DrawingList output");
+        );
+        if lenient {
+            request = request.with_parse_options(merman::ParseOptions::lenient());
+        }
+        let error = Renderer::new()
+            .with_engine(Engine::new().with_site_config(site_config))
+            .render(request)
+            .unwrap_err();
 
-    let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
-        family,
-        reason,
-    }) = error
-    else {
-        panic!("expected a structured DrawingList-unavailable error, got {error}");
-    };
-    assert_eq!(family, "info");
-    assert!(reason.contains("themeCSS"));
+        let RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+            family: actual_family,
+            reason,
+        }) = error
+        else {
+            panic!("expected a structured DrawingList-unavailable error, got {error}");
+        };
+        assert_eq!(actual_family, family);
+        assert!(reason.contains("effect `themeCSS`"), "{reason}");
+    }
+}
+
+#[test]
+fn drawing_list_allows_empty_theme_css_at_the_shared_family_boundary() {
+    for (source, lenient) in [
+        ("flowchart TD\nA -->", true),
+        ("flowchart TD\nA --> B\n", false),
+        (
+            "swimlane-beta LR\n  subgraph Customer\n    request[Request]\n  end\n",
+            false,
+        ),
+    ] {
+        let site_config = MermaidConfig::from_value(serde_json::json!({ "themeCSS": "  \n\t" }));
+        let mut request = RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        );
+        if lenient {
+            request = request.with_parse_options(merman::ParseOptions::lenient());
+        }
+        Renderer::new()
+            .with_engine(Engine::new().with_site_config(site_config))
+            .render(request)
+            .expect("empty themeCSS must not make DrawingList unavailable");
+    }
 }
 
 #[test]

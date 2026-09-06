@@ -25,7 +25,7 @@ use merman_display_list::{
     TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
     TextStyle as DisplayTextStyle, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type TimelinePair = FamilyPair<TimelineDiagramRenderModel, TimelineDiagramLayout>;
@@ -81,16 +81,6 @@ impl<'a> TimelineBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Timeline DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let layout = pair.layout();
         validate_layout(layout)?;

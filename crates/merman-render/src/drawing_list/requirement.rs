@@ -126,16 +126,6 @@ impl<'a> RequirementBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Requirement DrawingList output",
-            ));
-        }
-
         let settings = crate::requirement::RequirementConfigView::new(config).render_settings();
         if settings.look.as_str().eq_ignore_ascii_case("handDrawn") {
             return Err(unavailable(

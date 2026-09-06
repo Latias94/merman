@@ -173,15 +173,6 @@ impl<'a> ErBuilder<'a> {
                 "ER redux color themes require per-entity palette semantics that are not yet represented by DrawingList v1",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for ER DrawingList output",
-            ));
-        }
         if config_bool(config, &["themeVariables", "useGradient"]).unwrap_or(false) {
             return Err(unavailable(
                 "ER gradients are owned by the SVG cascade and are not yet represented by the portable paint contract",

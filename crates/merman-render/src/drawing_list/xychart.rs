@@ -32,7 +32,7 @@ use merman_display_list::{
     PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
     TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type XyChartPair = FamilyPair<XyChartDiagramRenderModel, XyChartDiagramLayout>;
@@ -79,16 +79,6 @@ impl<'a> XyChartBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for XYChart DrawingList output",
-            ));
-        }
-
         let layout = pair.layout();
         validate_layout(layout)?;
         let font_family_css = config_font_family_css(config);

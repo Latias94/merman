@@ -31,7 +31,7 @@ use merman_display_list::{
     PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
     TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 type StatePair = FamilyPair<StateDiagramRenderModel, StateDiagramLayout>;
@@ -108,16 +108,6 @@ impl<'a> StateBuilder<'a> {
                 "State diagram titles require canonical root-title measurement before DrawingList v1 can preserve their viewport",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an SVG cascade input and has no resolved State DrawingList projection",
-            ));
-        }
-
         let bounds = layout
             .bounds
             .as_ref()

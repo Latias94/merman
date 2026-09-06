@@ -36,7 +36,7 @@ use merman_display_list::{
     PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
     TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type IshikawaPair = FamilyPair<IshikawaDiagramRenderModel, IshikawaDiagramLayout>;
@@ -79,15 +79,6 @@ impl<'a> IshikawaBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Ishikawa DrawingList output",
-            ));
-        }
         if config_diagram_look(config).as_str() == "handDrawn" {
             return Err(unavailable(
                 "hand-drawn Ishikawa uses RoughJS paths and has no lossless portable adapter or bounded raster subtree",

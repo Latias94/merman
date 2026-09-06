@@ -105,15 +105,6 @@ impl<'a> C4Builder<'a> {
                 "hand-drawn C4 output has no stable vector equivalent in DrawingList v1",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for C4 DrawingList output",
-            ));
-        }
         let bounds = layout
             .bounds
             .as_ref()

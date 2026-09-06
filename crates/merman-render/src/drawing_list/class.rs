@@ -110,16 +110,6 @@ impl<'a> ClassBuilder<'a> {
                 "Class Math labels require a math renderer or explicit raster fallback; DrawingList v1 will not replace them with plain text",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Class DrawingList output",
-            ));
-        }
-
         let bounds = layout
             .bounds
             .as_ref()

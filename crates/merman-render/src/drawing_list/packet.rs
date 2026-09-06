@@ -25,7 +25,7 @@ use merman_display_list::{
     PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
     TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type PacketPair = FamilyPair<PacketDiagramRenderModel, PacketDiagramLayout>;
@@ -72,16 +72,6 @@ impl<'a> PacketBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Packet DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let layout = pair.layout();
         validate_layout(layout)?;
@@ -444,12 +434,5 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
-    }
-}
-
-fn unavailable(message: impl Into<String>) -> Error {
-    Error::DrawingListUnavailable {
-        family: "packet".to_string(),
-        reason: message.into(),
     }
 }

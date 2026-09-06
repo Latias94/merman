@@ -120,16 +120,6 @@ impl<'a> ArchitectureBuilder<'a> {
                 "hand-drawn Architecture output has no stable vector equivalent in DrawingList v1",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Architecture DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let layout = pair.layout();
         let bounds = layout

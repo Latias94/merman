@@ -149,16 +149,6 @@ impl<'a> ZenUmlBuilder<'a> {
                 "hand-drawn ZenUML output has no stable vector equivalent in DrawingList v1",
             ));
         }
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for ZenUML DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let layout = pair.layout();
         validate_model_and_layout(model, layout)?;

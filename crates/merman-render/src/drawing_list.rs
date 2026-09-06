@@ -611,6 +611,23 @@ pub(crate) fn build_for_family(
     policy: DrawingListPolicy,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
+    let family_kind = family.kind();
+    if metadata
+        .effective_config
+        .as_value()
+        .get("themeCSS")
+        .and_then(Value::as_str)
+        .is_some_and(|css| !css.trim().is_empty())
+    {
+        return Err(Error::DrawingListUnavailable {
+            family: family_kind.as_str().to_string(),
+            reason: format!(
+                "visual effect `themeCSS` is an unresolved SVG cascade input for {} DrawingList output",
+                family_kind.as_str()
+            ),
+        });
+    }
+
     match family {
         BuiltinFamilyArtifact::Error(pair) => {
             build_error_document(pair.layout(), metadata, policy, session)

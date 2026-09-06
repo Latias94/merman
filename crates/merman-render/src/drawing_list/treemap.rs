@@ -30,7 +30,7 @@ use merman_display_list::{
     SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
     TextStyle, Transform, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type TreemapPair = FamilyPair<TreemapDiagramRenderModel, TreemapDiagramLayout>;
@@ -83,16 +83,6 @@ impl<'a> TreemapBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config
-            .get("themeCSS")
-            .and_then(Value::as_str)
-            .is_some_and(|css| !css.trim().is_empty())
-        {
-            return Err(unavailable(
-                "themeCSS is an unresolved SVG cascade input for Treemap DrawingList output",
-            ));
-        }
-
         let model = pair.semantic();
         let layout = pair.layout();
         validate_layout(layout)?;

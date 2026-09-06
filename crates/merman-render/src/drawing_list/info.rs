@@ -22,7 +22,7 @@ use merman_display_list::{
     FontDescriptor, FontStyle, Paint, Point, Rect, SemanticAnnotation, SemanticRole, TextAnchor,
     TextBaseline, TextDirection, TextRun, TextStyle, Viewport,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::BTreeMap;
 
 type InfoPair = FamilyPair<InfoDiagramRenderModel, InfoDiagramLayout>;
@@ -54,15 +54,6 @@ pub(crate) fn build_info_document(
     }
 
     let config = metadata.effective_config.as_value();
-    if config
-        .get("themeCSS")
-        .and_then(Value::as_str)
-        .is_some_and(|css| !css.trim().is_empty())
-    {
-        return Err(unavailable(
-            "themeCSS is an unresolved SVG cascade input for Info DrawingList output",
-        ));
-    }
     let font = FontDescriptor {
         families: parse_font_families(config_font_family_css(config)),
         weight: 400,
@@ -169,12 +160,5 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
-    }
-}
-
-fn unavailable(message: impl Into<String>) -> Error {
-    Error::DrawingListUnavailable {
-        family: "info".to_string(),
-        reason: message.into(),
     }
 }
