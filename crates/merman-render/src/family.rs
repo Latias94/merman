@@ -1229,37 +1229,7 @@ fn render_legacy_family_artifact_svg(
 /// serializer.  The list is intentionally explicit: adding a family requires a focused SVG
 /// parity fixture and a review of every effect that the public document can carry.
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
-    matches!(
-        family,
-        RenderFamilyKind::Error
-            | RenderFamilyKind::State
-            | RenderFamilyKind::Info
-            | RenderFamilyKind::Packet
-            | RenderFamilyKind::Pie
-            | RenderFamilyKind::QuadrantChart
-            | RenderFamilyKind::Radar
-            | RenderFamilyKind::Sankey
-            | RenderFamilyKind::Timeline
-            | RenderFamilyKind::Venn
-            | RenderFamilyKind::Railroad
-            | RenderFamilyKind::EventModeling
-            | RenderFamilyKind::Ishikawa
-            | RenderFamilyKind::Cynefin
-            | RenderFamilyKind::TreeView
-            | RenderFamilyKind::Journey
-            | RenderFamilyKind::Kanban
-            | RenderFamilyKind::GitGraph
-            | RenderFamilyKind::Treemap
-            | RenderFamilyKind::Requirement
-            | RenderFamilyKind::Er
-            | RenderFamilyKind::Mindmap
-            | RenderFamilyKind::Architecture
-            | RenderFamilyKind::Block
-            | RenderFamilyKind::C4
-            | RenderFamilyKind::Wardley
-            | RenderFamilyKind::XyChart
-            | RenderFamilyKind::Zenuml
-    )
+    matches!(family, RenderFamilyKind::Info)
 }
 
 #[inline(never)]

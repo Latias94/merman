@@ -14,45 +14,46 @@ inventory row fails at test time.  The current inventory is:
 
 | Family | Direct document adapter | SVG serializer |
 | --- | --- | --- |
-| Error | yes | canonical |
-| Mindmap | yes | canonical |
-| State | yes | canonical |
+| Error | yes | legacy bridge |
+| Mindmap | yes | legacy bridge |
+| State | yes | legacy bridge |
 | Sequence | yes | legacy bridge |
-| ZenUML | yes | canonical |
+| ZenUML | yes | legacy bridge |
 | Flowchart | yes | legacy bridge |
 | Swimlane | yes | legacy bridge |
-| Architecture | yes | canonical |
+| Architecture | yes | legacy bridge |
 | Class | yes | legacy bridge |
-| C4 | yes | canonical |
-| Cynefin | yes | canonical |
-| Wardley | yes | canonical |
-| Railroad | yes | canonical |
-| Kanban | yes | canonical |
+| C4 | yes | legacy bridge |
+| Cynefin | yes | legacy bridge |
+| Wardley | yes | legacy bridge |
+| Railroad | yes | legacy bridge |
+| Kanban | yes | legacy bridge |
 | Gantt | yes | legacy bridge |
-| Pie | yes | canonical |
-| Packet | yes | canonical |
-| Timeline | yes | canonical |
-| Journey | yes | canonical |
-| Requirement | yes | canonical |
-| Sankey | yes | canonical |
-| Radar | yes | canonical |
+| Pie | yes | legacy bridge |
+| Packet | yes | legacy bridge |
+| Timeline | yes | legacy bridge |
+| Journey | yes | legacy bridge |
+| Requirement | yes | legacy bridge |
+| Sankey | yes | legacy bridge |
+| Radar | yes | legacy bridge |
 | Info | yes | canonical |
-| Treemap | yes | canonical |
-| Block | yes | canonical |
-| ER | yes | canonical |
-| QuadrantChart | yes | canonical |
-| XYChart | yes | canonical |
-| GitGraph | yes | canonical |
-| TreeView | yes | canonical |
-| Ishikawa | yes | canonical |
-| EventModeling | yes | canonical |
-| Venn | yes | canonical |
+| Treemap | yes | legacy bridge |
+| Block | yes | legacy bridge |
+| ER | yes | legacy bridge |
+| QuadrantChart | yes | legacy bridge |
+| XYChart | yes | legacy bridge |
+| GitGraph | yes | legacy bridge |
+| TreeView | yes | legacy bridge |
+| Ishikawa | yes | legacy bridge |
+| EventModeling | yes | legacy bridge |
+| Venn | yes | legacy bridge |
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
-to `canonical` only after a focused SVG parity fixture proves that root geometry, style, DOM/a11y
-obligations, and effect disposition remain source-backed.  Unsupported browser-only effects must
-remain explicit DrawingList errors or bounded raster fallbacks; they must not be hidden by the
-bridge.
+to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
+root geometry, style, DOM/a11y obligations, and effect disposition remain source-backed.  ZenUML
+uses a separate external-plugin evidence lane and remains bridged until that lane is admitted.
+Unsupported browser-only effects must remain explicit DrawingList errors or bounded raster
+fallbacks; they must not be hidden by the bridge.
 
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the

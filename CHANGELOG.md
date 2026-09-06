@@ -9,7 +9,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Highlights
 
 - Added DrawingList v1, a versioned renderer-neutral output for Compose, Flutter, Canvas, Skia, ImGui-style, and other native graphics hosts that need resolved Mermaid geometry, paint, text obligations, and interaction metadata without embedding an SVG interpreter. Thanks @darriousliu for #114.
-- Moved SVG and DrawingList toward one canonical render-document boundary: every render family now has a direct DrawingList adapter, and 28 of 33 families serialize SVG from that same document instead of maintaining a second visual implementation. Gantt remains an explicit, auditable SVG bridge while its task-group DOM parity is completed.
+- Moved SVG and DrawingList toward one canonical render-document boundary: every render family now has a direct DrawingList adapter. SVG switches to that document only after the family passes the full upstream-shaped DOM, accessibility, root, and effect gate; Info is currently admitted, while all other families retain an explicit, auditable bridge during migration.
 
 ### Added
 
@@ -32,7 +32,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Known limitations
 
-- Sequence, Flowchart, Swimlane, Class, and Gantt have direct DrawingList output but still use an explicit legacy bridge for SVG while their family-specific DOM parity work continues. Native math, generic filters, rich HTML labels, authoritative root-background semantics, and ordered multi-link annotations remain explicit fallback/error or future-protocol work rather than silently degraded output.
+- Every family has direct DrawingList output, but most SVG serializers still use the explicit legacy bridge while their family-specific DOM parity work continues. Native math, generic filters, rich HTML labels, authoritative root-background semantics, and ordered multi-link annotations remain explicit fallback/error or future-protocol work rather than silently degraded output.
 
 ## [0.8.0-alpha.6] - 2026-09-02
 

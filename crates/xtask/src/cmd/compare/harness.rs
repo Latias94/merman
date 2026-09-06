@@ -7,6 +7,7 @@ use std::fs;
 use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX: &str =
@@ -375,6 +376,16 @@ impl ObservedRenderOperations {
         })
     }
 
+    pub(crate) fn observe_svg(
+        &mut self,
+        diagram: &str,
+        fixture: &str,
+        output: &merman::SvgOutput,
+    ) -> Result<ObservedRenderEvidence, String> {
+        validate_svg_serialization_route(diagram, fixture, output)?;
+        self.observe(fixture, output.evidence())
+    }
+
     pub(crate) fn write_report(&self, report: &mut String) {
         if !self.observed {
             let _ = writeln!(report, "- Render operation: `not-observed`");
@@ -411,6 +422,89 @@ impl ObservedRenderOperations {
     pub(crate) const fn has_observation(&self) -> bool {
         self.observed
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpectedSvgSerialization {
+    Canonical,
+    LegacyBridge,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SvgFamilyCoverageMatrix {
+    families: Vec<SvgFamilyCoverageRow>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SvgFamilyCoverageRow {
+    id: String,
+    svg_serializer: String,
+}
+
+fn validate_svg_serialization_route(
+    diagram: &str,
+    fixture: &str,
+    output: &merman::SvgOutput,
+) -> Result<(), String> {
+    let family_id = svg_coverage_family_id(diagram);
+    let expected = expected_svg_serialization(family_id)?;
+    match (expected, output.serialization_route()) {
+        (
+            ExpectedSvgSerialization::Canonical,
+            merman::svg::SvgSerializationRoute::CanonicalDocument,
+        ) if output.serialization_bridge_reason().is_none() => Ok(()),
+        (
+            ExpectedSvgSerialization::LegacyBridge,
+            merman::svg::SvgSerializationRoute::LegacyBridge,
+        ) if output.serialization_bridge_reason().is_some() => Ok(()),
+        (expected, actual) => Err(format!(
+            "SVG route evidence for {diagram}/{fixture} expected {expected:?}, found {actual:?} with reason {:?}",
+            output.serialization_bridge_reason()
+        )),
+    }
+}
+
+fn svg_coverage_family_id(diagram: &str) -> &str {
+    match diagram {
+        "railroadEbnf" | "railroadAbnf" | "railroadPeg" => "railroad",
+        "quadrantchart" => "quadrantChart",
+        "gitgraph" => "gitGraph",
+        other => other,
+    }
+}
+
+fn expected_svg_serialization(family_id: &str) -> Result<ExpectedSvgSerialization, String> {
+    static COVERAGE: OnceLock<Result<Vec<(String, ExpectedSvgSerialization)>, String>> =
+        OnceLock::new();
+    let coverage = COVERAGE.get_or_init(|| {
+        let matrix: SvgFamilyCoverageMatrix = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/drawing-list/v1/family-coverage.json"
+        )))
+        .map_err(|error| format!("invalid DrawingList family coverage fixture: {error}"))?;
+        matrix
+            .families
+            .into_iter()
+            .map(|row| {
+                let serialization = match row.svg_serializer.as_str() {
+                    "canonical" => ExpectedSvgSerialization::Canonical,
+                    "legacy-bridge" => ExpectedSvgSerialization::LegacyBridge,
+                    other => {
+                        return Err(format!(
+                            "unknown SVG serializer status {other:?} for {}",
+                            row.id
+                        ));
+                    }
+                };
+                Ok((row.id, serialization))
+            })
+            .collect()
+    });
+    let coverage = coverage.as_ref().map_err(Clone::clone)?;
+    coverage
+        .iter()
+        .find_map(|(id, serialization)| (id == family_id).then_some(*serialization))
+        .ok_or_else(|| format!("DrawingList family coverage has no row for {family_id}"))
 }
 
 #[derive(Debug)]
@@ -1163,9 +1257,10 @@ pub(crate) fn run_canonical_svg_compare(
                 .evidence()
                 .required_capabilities()
                 .contains(&merman::svg::RenderCapability::Math);
-            let render_evidence = state
-                .observed_operations
-                .observe(input.stem, rendered.evidence())?;
+            let render_evidence =
+                state
+                    .observed_operations
+                    .observe_svg(fact.diagram, input.stem, &rendered)?;
             let local_svg = rendered.svg().to_owned();
             let mut fixture_notes = Vec::new();
             let browser_measured_math = if let Some(evidence) = finish_math_evidence(

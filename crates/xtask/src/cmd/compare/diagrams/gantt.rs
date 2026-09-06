@@ -163,7 +163,7 @@ pub(super) fn compare_gantt_request(
                 ),
             )
             .map_err(|err| format!("render failed for {}: {err}", input.fixture_path.display()))?;
-            let render_evidence = state.observe(input.stem, rendered.evidence())?;
+            let render_evidence = state.observe_svg(fact.diagram, input.stem, &rendered)?;
             let local_svg = rendered.svg().to_owned();
 
             Ok(CompareFixtureResult::Rendered {

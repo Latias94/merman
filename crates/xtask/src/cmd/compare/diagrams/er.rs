@@ -210,9 +210,10 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     ));
                 }
             };
-            let render_evidence = state
-                .observed_operations
-                .observe(input.stem, rendered.evidence())?;
+            let render_evidence =
+                state
+                    .observed_operations
+                    .observe_svg(fact.diagram, input.stem, &rendered)?;
             let local_svg = rendered.svg().to_owned();
 
             let upstream_sig = sig_for_svg(input.upstream_svg, &re_marker_id, &re_marker_ref);
