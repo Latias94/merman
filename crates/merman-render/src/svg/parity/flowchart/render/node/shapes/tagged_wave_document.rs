@@ -5,7 +5,9 @@ use crate::svg::parity::util;
 
 use super::super::geom::{generate_full_sine_wave_points, path_from_points};
 use super::super::helpers;
-use super::super::roughjs::roughjs_paths_for_svg_path;
+use super::super::roughjs::{
+    roughjs_paths_for_hand_drawn_solid_svg_path, roughjs_paths_for_svg_path,
+};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_document(
     out: &mut impl crate::svg::parity::SvgOutput,
@@ -71,6 +73,64 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
     ));
 
     let wave_rect_path = path_from_points(&points);
+    let tag_path = path_from_points(&tag_points);
+
+    if common.look_is_hand_drawn() {
+        let wave_paths = helpers::hand_drawn_path_pair(common, details, &wave_rect_path);
+        let tag_paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_hand_drawn_solid_svg_path(
+                &tag_path,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+        .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty());
+
+        if let (Some((wave_fill_d, wave_stroke_d)), Some((tag_fill_d, tag_stroke_d))) =
+            (wave_paths, tag_paths)
+        {
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}"><g><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
+                util::fmt(-wave_amplitude / 2.0),
+                escape_attr(common.rough_group_style),
+                escape_attr(&wave_fill_d),
+                escape_attr(common.fill_color),
+                escape_attr(&wave_stroke_d),
+                escape_attr(common.stroke_color),
+                util::fmt_display(common.stroke_width as f64),
+                escape_attr(common.stroke_dasharray),
+                escape_attr(&tag_fill_d),
+                escape_attr(common.fill_color),
+                escape_attr(&tag_stroke_d),
+                escape_attr(common.stroke_color),
+                util::fmt_display(common.stroke_width as f64),
+                escape_attr(common.stroke_dasharray),
+            );
+            return;
+        }
+
+        let _ = write!(
+            out,
+            r##"<g class="basic label-container outer-path" transform="translate(0,{})"><g><path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/></g><path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/></g>"##,
+            util::fmt(-wave_amplitude / 2.0),
+            escape_attr(&wave_rect_path),
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            util::fmt_display(common.stroke_width as f64),
+            escape_attr(common.style),
+            escape_attr(&tag_path),
+            escape_attr(common.fill_color),
+            escape_attr(common.stroke_color),
+            util::fmt_display(common.stroke_width as f64),
+            escape_attr(common.style),
+        );
+        return;
+    }
+
     let (mut wave_fill_d, wave_stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
@@ -88,8 +148,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
         // but one RoughJS token lands on the opposite side of a 1e-3 rounding boundary.
         wave_fill_d = wave_fill_d.replace("88.323", "88.324");
     }
-
-    let tag_path = path_from_points(&tag_points);
     let (tag_fill_d, tag_stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(

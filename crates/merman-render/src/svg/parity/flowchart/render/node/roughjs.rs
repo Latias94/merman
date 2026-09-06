@@ -302,6 +302,58 @@ pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_svg_path(
     )
 }
 
+/// Generate a hand-drawn path whose fill remains solid.
+///
+/// Mermaid uses this variant for small decorations (for example the tag on a tagged rectangle):
+/// the outer shape is hatched, while the decoration is a rough solid fill.  Keeping the option
+/// choice here avoids making individual shape renderers emulate RoughJS configuration.
+pub(in crate::svg::parity) fn roughjs_paths_for_hand_drawn_solid_svg_path(
+    svg_path_data: &str,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    randomness: &RoughRandomness,
+) -> Option<(String, String)> {
+    let fill = parse_hex_color_to_srgba(fill)?;
+    let stroke = parse_hex_color_to_srgba(stroke)?;
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
+    let options = roughr::core::OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .roughness(HAND_DRAWN_ROUGHNESS)
+        .fill(fill)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let generator = roughr::generator::Generator::default();
+    let drawable = generator.path::<f64>(svg_path_data.to_string(), &Some(options));
+    let mut fill_d = None;
+    let mut stroke_d = None;
+
+    for set in drawable.sets {
+        let d = ops_to_svg_path_d(&set);
+        match set.op_set_type {
+            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
+                fill_d = Some(d);
+            }
+            roughr::core::OpSetType::Path => {
+                stroke_d = Some(d);
+            }
+        }
+    }
+
+    Some((fill_d?, stroke_d?))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     x: f64,

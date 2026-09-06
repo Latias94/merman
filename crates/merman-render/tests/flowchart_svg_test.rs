@@ -1108,6 +1108,34 @@ style C fill:#ff99ff,stroke:#333333,stroke-width:4px
 }
 
 #[test]
+fn flowchart_hand_drawn_icon_frame_uses_hachure_geometry() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart LR
+I@{ icon: "fa:bell", form: "rounded", label: "Icon" }
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid handDrawn icon SVG");
+    let node = document
+        .descendants()
+        .find(|element| {
+            element.has_tag_name("g")
+                && element.attribute("data-id") == Some("I")
+                && element.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn icon node");
+    assert!(
+        node.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("stroke-width") == Some("4")
+                && element.attribute("stroke-dasharray") == Some("0 0")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn icon frame must emit a non-empty hachure path: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_icon_and_image_labels_emit_the_typography_used_for_measurement() {
     let svg = render_flowchart_svg_from_text(
         r##"flowchart LR
@@ -3875,6 +3903,86 @@ style A fill:red,stroke:blue
 }
 
 #[test]
+fn flowchart_hand_drawn_extended_shapes_emit_deterministic_hachure_paths() {
+    let source = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart TB
+A@{ shape: delay, label: "delay" }
+B@{ shape: bow-rect, label: "bow" }
+C@{ shape: curv-trap, label: "curved" }
+D@{ shape: div-rect, label: "divided" }
+E@{ shape: document, label: "document" }
+F@{ shape: lined-document, label: "lined" }
+G@{ shape: manual-file, label: "manual-file" }
+H@{ shape: manual-input, label: "manual-input" }
+I@{ shape: notch-pent, label: "notched" }
+J@{ shape: odd, label: "odd" }
+K@{ shape: paper-tape, label: "paper" }
+L@{ shape: shaded-process, label: "shaded" }
+M@{ shape: docs, label: "stacked-document" }
+N@{ shape: st-rect, label: "stacked-rectangle" }
+O@{ shape: tag-doc, label: "tagged-document" }
+P@{ shape: tag-rect, label: "tagged-rectangle" }
+Q@{ shape: win-pane, label: "window" }
+R@{ shape: collate, label: "collate" }
+style A fill:#123456,stroke:#654321
+style B fill:#123456,stroke:#654321
+style C fill:#123456,stroke:#654321
+style D fill:#123456,stroke:#654321
+style E fill:#123456,stroke:#654321
+style F fill:#123456,stroke:#654321
+style G fill:#123456,stroke:#654321
+style H fill:#123456,stroke:#654321
+style I fill:#123456,stroke:#654321
+style J fill:#123456,stroke:#654321
+style K fill:#123456,stroke:#654321
+style L fill:#123456,stroke:#654321
+style M fill:#123456,stroke:#654321
+style N fill:#123456,stroke:#654321
+style O fill:#123456,stroke:#654321
+style P fill:#123456,stroke:#654321
+style Q fill:#123456,stroke:#654321
+style R fill:#123456,stroke:#654321
+"#;
+    let svg = render_flowchart_svg_from_text(source);
+    assert_eq!(
+        svg,
+        render_flowchart_svg_from_text(source),
+        "extended handDrawn shape output must be deterministic"
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid extended handDrawn SVG");
+    for id in 'A'..='R' {
+        let id = id.to_string();
+        let node = document
+            .descendants()
+            .find(|element| {
+                element.has_tag_name("g")
+                    && element.attribute("data-id") == Some(id.as_str())
+                    && element.attribute("data-et") == Some("node")
+            })
+            .unwrap_or_else(|| panic!("missing handDrawn node {id}: {svg}"));
+        assert!(
+            node.descendants().any(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("#123456")
+                    && path.attribute("stroke-width") == Some("4")
+                    && path.attribute("stroke-dasharray") == Some("0 0")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            }),
+            "handDrawn node {id} must emit a non-empty hachure fill path: {svg}"
+        );
+        assert!(
+            node.descendants().any(|path| {
+                path.has_tag_name("path")
+                    && path.attribute("stroke") == Some("#654321")
+                    && !path.attribute("d").unwrap_or_default().is_empty()
+            }),
+            "handDrawn node {id} must emit a non-empty outline path: {svg}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_collapsed_subgraph_renders_as_one_leaf_and_redirects_boundary_edges() {
     let svg = render_flowchart_svg_from_text(
         r#"flowchart TD
@@ -3931,6 +4039,35 @@ one@{ view: collapsed }
     assert!(
         edge.attribute("d").is_some_and(|path| !path.is_empty()),
         "redirected boundary edge must retain a route: {svg}"
+    );
+
+    let hand_drawn_svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
+flowchart TD
+subgraph one[My Group]
+  A --> B
+end
+one@{ view: collapsed }
+"##,
+    );
+    let hand_drawn_document =
+        roxmltree::Document::parse(&hand_drawn_svg).expect("valid handDrawn collapsed SVG");
+    let hand_drawn_collapsed = hand_drawn_document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-id") == Some("one")
+                && node.attribute("data-et") == Some("node")
+        })
+        .expect("handDrawn collapsed node");
+    assert!(
+        hand_drawn_collapsed.descendants().any(|element| {
+            element.has_tag_name("path")
+                && element.attribute("stroke-width") == Some("4")
+                && element.attribute("stroke-dasharray") == Some("0 0")
+                && !element.attribute("d").unwrap_or_default().is_empty()
+        }),
+        "handDrawn collapsed group must emit a non-empty hachure shell: {hand_drawn_svg}"
     );
 }
 

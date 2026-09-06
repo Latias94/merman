@@ -70,12 +70,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
     let outer_path = path_from_points(&outer_points);
     let inner_path = path_from_points(&inner_points);
 
-    let _ = write!(
-        out,
-        r#"<g class="basic label-container outer-path" transform="translate(0,{})">"#,
-        fmt_display(-wave_amplitude / 2.0)
-    );
-    if let Some((fill_d, stroke_d)) =
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
+            fmt_display(-wave_amplitude / 2.0),
+            escape_xml_display(common.rough_group_style),
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" transform="translate(0,{})">"#,
+            fmt_display(-wave_amplitude / 2.0)
+        );
+    }
+    let outer_paths = if common.look_is_hand_drawn() {
+        helpers::hand_drawn_path_pair(common, details, &outer_path)
+    } else {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &outer_path,
@@ -86,26 +97,48 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
                 common.hand_drawn_seed,
             )
         })
-    {
+    };
+    if let Some((fill_d, stroke_d)) = outer_paths {
+        if common.look_is_hand_drawn() {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+                escape_xml_display(&fill_d),
+                escape_xml_display(common.fill_color),
+                escape_xml_display(&stroke_d),
+                escape_xml_display(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_xml_display(common.stroke_dasharray),
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                escape_xml_display(&fill_d),
+                escape_xml_display(common.fill_color),
+                escape_xml_display(common.style),
+                escape_xml_display(&stroke_d),
+                escape_xml_display(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_xml_display(common.stroke_dasharray),
+                escape_xml_display(common.style),
+            );
+        }
+    } else if common.look_is_hand_drawn() {
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-            escape_xml_display(&fill_d),
+            r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
+            escape_xml_display(&outer_path),
             escape_xml_display(common.fill_color),
-            escape_xml_display(common.style)
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-            escape_xml_display(&stroke_d),
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
-            escape_xml_display(common.stroke_dasharray),
-            escape_xml_display(common.style)
+            escape_xml_display(common.style),
         );
     }
     out.push_str("<g>");
-    if let Some((fill_d, stroke_d)) =
+    let inner_paths = if common.look_is_hand_drawn() {
+        helpers::hand_drawn_path_pair(common, details, &inner_path)
+    } else {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &inner_path,
@@ -116,22 +149,42 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
                 common.hand_drawn_seed,
             )
         })
-    {
+    };
+    if let Some((fill_d, stroke_d)) = inner_paths {
+        if common.look_is_hand_drawn() {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+                escape_xml_display(&fill_d),
+                escape_xml_display(common.fill_color),
+                escape_xml_display(&stroke_d),
+                escape_xml_display(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_xml_display(common.stroke_dasharray),
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                escape_xml_display(&fill_d),
+                escape_xml_display(common.fill_color),
+                escape_xml_display(common.style),
+                escape_xml_display(&stroke_d),
+                escape_xml_display(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_xml_display(common.stroke_dasharray),
+                escape_xml_display(common.style),
+            );
+        }
+    } else if common.look_is_hand_drawn() {
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-            escape_xml_display(&fill_d),
+            r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
+            escape_xml_display(&inner_path),
             escape_xml_display(common.fill_color),
-            escape_xml_display(common.style)
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-            escape_xml_display(&stroke_d),
             escape_xml_display(common.stroke_color),
             fmt_display(common.stroke_width as f64),
-            escape_xml_display(common.stroke_dasharray),
-            escape_xml_display(common.style)
+            escape_xml_display(common.style),
         );
     }
     out.push_str("</g></g>");

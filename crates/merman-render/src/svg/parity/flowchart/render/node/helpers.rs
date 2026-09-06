@@ -240,6 +240,114 @@ pub(super) fn timed_node_roughjs<T>(
     }
 }
 
+/// Generate the complete RoughJS hand-drawn pair for a node path.
+///
+/// Shape renderers still own their DOM wrappers and classic fallback markup, but the admission
+/// boundary is shared: unsupported colors or empty generated paths must fall back as a whole
+/// shape instead of emitting a partial hand-drawn fragment.
+pub(super) fn hand_drawn_path_pair(
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+) -> Option<(String, String)> {
+    hand_drawn_path_pair_with_colors(
+        common.look_is_hand_drawn(),
+        common.timing,
+        details,
+        path_data,
+        common.fill_color,
+        common.stroke_color,
+        common.stroke_width,
+        common.stroke_dasharray,
+        common.hand_drawn_seed,
+    )
+}
+
+pub(super) fn hand_drawn_path_pair_with_colors(
+    hand_drawn: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
+    details: &mut FlowchartRenderDetails,
+    path_data: &str,
+    fill_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hand_drawn_seed: &roughr::core::RoughRandomness,
+) -> Option<(String, String)> {
+    if !hand_drawn {
+        return None;
+    }
+
+    timed_node_roughjs(timing, details, || {
+        super::roughjs::roughjs_paths_for_hand_drawn_svg_path(
+            path_data,
+            fill_color,
+            stroke_color,
+            stroke_width,
+            stroke_dasharray,
+            hand_drawn_seed,
+        )
+    })
+    .filter(|(fill_d, stroke_d)| !fill_d.is_empty() && !stroke_d.is_empty())
+}
+
+pub(super) fn write_hand_drawn_path_pair(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    common: &super::FlowchartNodeRenderCommon<'_>,
+    fill_d: &str,
+    stroke_d: &str,
+) {
+    write_hand_drawn_path_pair_with_colors(
+        out,
+        fill_d,
+        stroke_d,
+        common.fill_color,
+        common.stroke_color,
+        common.stroke_width,
+        common.stroke_dasharray,
+    );
+}
+
+pub(super) fn write_hand_drawn_path_pair_with_colors(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    fill_d: &str,
+    stroke_d: &str,
+    fill_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+        crate::svg::parity::flowchart::escape_attr(fill_d),
+        crate::svg::parity::flowchart::escape_attr(fill_color),
+        crate::svg::parity::flowchart::escape_attr(stroke_d),
+        crate::svg::parity::flowchart::escape_attr(stroke_color),
+        crate::svg::parity::util::fmt_display(stroke_width as f64),
+        crate::svg::parity::flowchart::escape_attr(stroke_dasharray),
+    );
+}
+
+pub(super) fn write_raw_filled_stroked_path(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    path_data: &str,
+    fill_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    style: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<path d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
+        crate::svg::parity::flowchart::escape_attr(path_data),
+        crate::svg::parity::flowchart::escape_attr(fill_color),
+        crate::svg::parity::flowchart::escape_attr(stroke_color),
+        crate::svg::parity::util::fmt_display(stroke_width as f64),
+        crate::svg::parity::flowchart::escape_attr(style),
+    );
+}
+
 pub(super) fn timed_node_label_html<T>(
     timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,

@@ -55,6 +55,40 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     points.push((-w / 2.0, (final_h / 2.0) * 1.1));
     points.push((-w / 2.0, -final_h / 2.0));
 
+    let path_data = super::super::geom::path_from_points(&points);
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
+        let _ = write!(
+            out,
+            r##"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/></g>"##,
+            util::fmt(-wave_amplitude / 2.0),
+            escape_attr(common.rough_group_style),
+            escape_attr(&fill_d),
+            escape_attr(common.fill_color),
+            escape_attr(&stroke_d),
+            escape_attr(common.stroke_color),
+            util::fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+        );
+        return;
+    }
+    if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r##"<g class="basic label-container outer-path" transform="translate(0,{})">"##,
+            util::fmt(-wave_amplitude / 2.0),
+        );
+        helpers::write_raw_filled_stroked_path(
+            out,
+            &path_data,
+            common.fill_color,
+            common.stroke_color,
+            common.stroke_width,
+            common.style,
+        );
+        out.push_str("</g>");
+        return;
+    }
+
     let (fill_d, stroke_d) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_polygon(
@@ -65,7 +99,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
                 common.hand_drawn_seed,
             )
         })
-        .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+        .unwrap_or_else(|| (path_data.clone(), path_data));
     let _ = write!(
         out,
         r##"<g class="basic label-container outer-path" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
