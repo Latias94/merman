@@ -808,6 +808,47 @@ System(queue, "Queue", "SQS", $shape="queue")
 }
 
 #[test]
+fn c4_hand_drawn_look_honors_configured_seed() {
+    fn rough_stroke_paths(svg: &str) -> Vec<String> {
+        let document = roxmltree::Document::parse(svg).expect("valid hand-drawn C4 SVG");
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "rough-stroke")
+                    })
+            })
+            .map(|node| {
+                node.attribute("d")
+                    .expect("rough stroke path data")
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    let source_for_seed = |seed| {
+        format!(
+            r#"%%{{init: {{"look": "handDrawn", "handDrawnSeed": {seed}}}}}%%
+C4Context
+System(service, "Service")
+"#
+        )
+    };
+    let environment = RenderEnvironment::deterministic();
+    let seeded_once = render_c4_svg_with_environment(&source_for_seed(7), &environment);
+    let seeded_again = render_c4_svg_with_environment(&source_for_seed(7), &environment);
+    let differently_seeded = render_c4_svg_with_environment(&source_for_seed(8), &environment);
+
+    let paths = rough_stroke_paths(&seeded_once);
+    assert!(!paths.is_empty());
+    assert_eq!(paths, rough_stroke_paths(&seeded_again));
+    assert_ne!(paths, rough_stroke_paths(&differently_seeded));
+}
+
+#[test]
 fn c4_shape_named_type_does_not_override_the_rendered_stereotype() {
     let svg = render_c4_svg_with_environment(
         r#"C4Context

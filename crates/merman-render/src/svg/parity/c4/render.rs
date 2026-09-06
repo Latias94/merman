@@ -936,7 +936,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
     let mut cluster_theme_receipt = cluster_theme.begin_terminal_receipt();
     let mut boundary_emission_ordinal = 0usize;
-    let hand_drawn_randomness = options.rough_randomness(0.0, "render.c4.roughjs");
+    let hand_drawn_randomness = options.rough_randomness(
+        effective_config
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0),
+        "render.c4.roughjs",
+    );
 
     for item in c4_paint_order(layout)? {
         options.checkpoint_emit()?;
