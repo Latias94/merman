@@ -229,6 +229,26 @@ UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offset
     assert!(calls.attribute("style").is_some_and(|style| {
         style.contains("text-anchor: middle") && style.contains("font-family:")
     }));
+    let relation_mid_x = (line
+        .attribute("x1")
+        .expect("first relationship x1")
+        .parse::<f64>()
+        .expect("numeric x1")
+        + line
+            .attribute("x2")
+            .expect("first relationship x2")
+            .parse::<f64>()
+            .expect("numeric x2"))
+        / 2.0;
+    let label_bounds_x = calls
+        .attribute("data-merman-bounds")
+        .expect("canonical relationship label bounds")
+        .split(',')
+        .next()
+        .expect("bounds x")
+        .parse::<f64>()
+        .expect("numeric bounds x");
+    assert!((label_bounds_x - (relation_mid_x + 10.0)).abs() < 1e-9);
     assert_eq!(technology.attribute("fill"), Some("#ff0000"));
     assert_eq!(technology.attribute("font-style"), Some("italic"));
     assert_eq!(line.attribute("stroke-width"), Some("1"));

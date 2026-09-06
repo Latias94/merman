@@ -814,7 +814,7 @@ impl<'a> C4Builder<'a> {
             relation.offset_x.unwrap_or(0) as f64,
             relation.offset_y.unwrap_or(0) as f64,
         );
-        let mid = Point::new(
+        let label_origin = Point::new(
             (start.x + end.x) / 2.0 + offset.x,
             (start.y + end.y) / 2.0 + offset.y,
         );
@@ -827,7 +827,7 @@ impl<'a> C4Builder<'a> {
         let label = plain_text(&relation.label.text).map_err(unavailable)?;
         self.draw_centered_lines(
             &label,
-            mid,
+            Point::new(label_origin.x + relation.label.width / 2.0, label_origin.y),
             relation.label.width,
             relation.label.height,
             text_color,
@@ -839,10 +839,14 @@ impl<'a> C4Builder<'a> {
             && !techn.text.trim().is_empty()
         {
             let text_value = format!("[{}]", plain_text(&techn.text).map_err(unavailable)?);
+            let width = relation.label.width.max(techn.width);
             self.draw_centered_lines(
                 &text_value,
-                Point::new(mid.x, mid.y + message_size + 5.0),
-                relation.label.width.max(techn.width),
+                Point::new(
+                    label_origin.x + width / 2.0,
+                    label_origin.y + message_size + 5.0,
+                ),
+                width,
                 techn.height,
                 text_color,
                 FontDescriptor {
