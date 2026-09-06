@@ -210,7 +210,7 @@ const BLOCK_NODE_SOURCE: &str = r#"block-beta
   rect["Rect"] circle(("Circle")) double((("Double"))) cylinder[("Cylinder")] polygon{{"Polygon"}}
 "#;
 const ZENUML_TITLE_SOURCE: &str = "zenuml\ntitle Cutover ZenUML title\nClient->Service: request\n";
-const VENN_TITLE_SOURCE: &str = r#"venn-beta
+const VENN_THEME_SOURCE: &str = r#"venn-beta
 title Cutover Venn title
 set A["Alpha"]:20
 set B["Beta"]:12
@@ -458,9 +458,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::ZENUML, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(ZENUML_TITLE_SOURCE)
         }
-        (DiagramFamilyId::VENN, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
-            Ok(VENN_TITLE_SOURCE)
-        }
+        (
+            DiagramFamilyId::VENN,
+            ThemeTarget::Title | ThemeTarget::Text,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(VENN_THEME_SOURCE),
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(ISHIKAWA_TEXT_SOURCE)
         }
@@ -1382,11 +1384,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_262_routes_and_290_artifact_witnesses() {
+    fn route_inventory_retains_266_routes_and_294_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 262);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 290);
+        assert_eq!(inventory.len(), 266);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 294);
     }
 
     #[test]

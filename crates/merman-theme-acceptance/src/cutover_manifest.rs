@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 45;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 46;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xde, 0x4a, 0xbc, 0x3e, 0x97, 0x15, 0xaa, 0xe2, 0xa7, 0x08, 0x27, 0x67, 0xd6, 0x3f, 0x45, 0x53,
-    0x79, 0x9b, 0x5e, 0xc5, 0xaf, 0x4b, 0x0e, 0x7e, 0x61, 0x4c, 0x6f, 0xac, 0xf1, 0xc0, 0xdb, 0x9a,
+    0x65, 0xec, 0xf2, 0xc2, 0x41, 0x7a, 0x90, 0x03, 0x20, 0xda, 0x2f, 0xe9, 0xe3, 0xd3, 0xd8, 0x23,
+    0x43, 0x1e, 0xb1, 0x6a, 0x21, 0x82, 0xbb, 0xab, 0xa5, 0x5b, 0x22, 0xe2, 0x07, 0x20, 0x17, 0x90,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -335,7 +335,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 262] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 266] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1547,6 +1547,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 262] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::VENN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::ISHIKAWA,

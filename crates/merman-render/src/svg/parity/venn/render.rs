@@ -255,13 +255,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
 
     let theme = MermaidThemeAdapter::new(effective_config).venn()?;
     let title_fill = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
+    let text_fill = typography_theme
+        .text_fill_css()
+        .unwrap_or(theme.set_text_color.as_str());
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt();
-    let css = typography_theme_receipt.stylesheet(
-        diagram_id.semantic_str(),
-        title_fill,
-        &theme.set_text_color,
-    );
+    let css = typography_theme_receipt.stylesheet(diagram_id.semantic_str(), title_fill, text_fill);
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
     }
@@ -389,7 +388,8 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
             circle_index += 1;
         } else {
             let custom_fill = style_value(styles, "fill");
-            let text_color = style_value(styles, "color").unwrap_or(theme.set_text_color.as_str());
+            let source_text_color = style_value(styles, "color");
+            let text_color = source_text_color.unwrap_or(text_fill);
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}">"#,
@@ -433,6 +433,8 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 crate::venn::VENN_INTERSECTION_CLASS,
                 crate::venn::VENN_AREA_LABEL_CLASS,
                 crate::venn::rendered_area_label(area),
+                source_text_color.is_some(),
+                text_color,
             );
             out.push_str("</g>");
             out.checkpoint()?;
@@ -510,7 +512,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                     label = escape_xml(label)
                 );
                 out.checkpoint()?;
-                typography_theme_receipt.record_text_node(crate::venn::VENN_TEXT_NODE_CLASS, label);
+                typography_theme_receipt.record_text_node(
+                    crate::venn::VENN_TEXT_NODE_CLASS,
+                    label,
+                    text_color.is_some(),
+                    text_color.unwrap_or(text_fill),
+                );
             }
             out.push_str("</g>");
             out.checkpoint()?;

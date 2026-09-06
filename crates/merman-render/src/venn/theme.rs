@@ -70,6 +70,9 @@ pub(crate) struct VennTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     occurrences: VennTypographyOccurrences,
     evidence: FamilyThemeEvidence,
+    text_fill: Option<crate::family::DirectStaticPaint>,
+    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
+    config_owns_text_fill: bool,
     terminal_receipt: OnceLock<VennTypographyThemeReceipt>,
 }
 
@@ -80,6 +83,48 @@ impl VennTypographyThemePlan {
         title: Option<&str>,
         layout: &VennDiagramLayout,
     ) -> Self {
+        let text_fill = theme.and_then(|theme| {
+            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+            resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::Text],
+                DirectStaticSelectorDomain::Default,
+            )
+        });
+        let text_fill_routes = theme
+            .map(|theme| {
+                theme
+                    .family_mechanism_routes()
+                    .iter()
+                    .copied()
+                    .filter_map(|route| match route.mechanism() {
+                        FamilyThemeMechanism::RuleFacet {
+                            rule_index,
+                            target: ThemeTarget::Text,
+                            selector:
+                                FamilyThemeSelectorShape::Static {
+                                    variant: None | Some(ThemeVariant::Default),
+                                },
+                            facet: FamilyThemeRuleFacet::Fill(_),
+                        } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
+                            Some((theme.family_mechanism_key(route), rule_index))
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice()
+            })
+            .unwrap_or_default();
+        // `vennSetTextColor` is the renderer's final Venn text-color role.  A caller may set
+        // `textColor` without owning that role: Default retains its constructor snapshot, while
+        // non-Default themes can derive `vennSetTextColor` and carry the ownership edge there.
+        // Check the resolved role rather than its possible source variables.
+        let config_owns_text_fill = theme.is_some()
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.vennSetTextColor",
+            );
         Self {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
@@ -89,6 +134,9 @@ impl VennTypographyThemePlan {
             evidence: theme.map_or_else(FamilyThemeEvidence::default, |theme| {
                 FamilyThemeEvidence::from_theme(Some(theme))
             }),
+            text_fill,
+            text_fill_routes,
+            config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
         }
     }
@@ -98,11 +146,22 @@ impl VennTypographyThemePlan {
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> VennTypographyThemeReceipt {
-        VennTypographyThemeReceipt::new(self.occurrences, self.font_family_css())
+        VennTypographyThemeReceipt::new(
+            self.occurrences,
+            self.font_family_css(),
+            self.text_fill_css(),
+        )
+    }
+
+    pub(crate) fn text_fill_css(&self) -> Option<&str> {
+        (!self.config_owns_text_fill)
+            .then_some(self.text_fill.as_ref())
+            .flatten()
+            .map(crate::family::DirectStaticPaint::css)
     }
 
     pub(crate) fn record_terminal(&self, receipt: VennTypographyThemeReceipt) -> bool {
-        receipt.proves() && self.terminal_receipt.set(receipt).is_ok()
+        receipt.proves_font_stack() && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
@@ -114,22 +173,54 @@ impl VennTypographyThemePlan {
             if self.inherited_font_stack.typed_font_stack_requested() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
+            for (key, _) in &self.text_fill_routes {
+                if self.config_owns_text_fill {
+                    evidence.mark_not_applicable(key.clone());
+                } else {
+                    evidence
+                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                }
+            }
             return evidence;
         };
         self.inherited_font_stack
             .mark_unsupported_typography_evidence(&mut evidence, self.occurrences.total() != 0);
         if self.occurrences.total() == 0 {
             evidence.mark_not_applicable(key);
+            for (key, _) in &self.text_fill_routes {
+                evidence.mark_not_applicable(key.clone());
+            }
             return evidence;
         }
-        if self.inherited_font_stack.typed_font_stack_active() && receipt.proves() {
+        if self.inherited_font_stack.typed_font_stack_active() && receipt.proves_font_stack() {
             evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
         } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned
-            && receipt.proves()
+            && receipt.proves_font_stack()
         {
             evidence.mark_not_applicable(key);
         } else if self.inherited_font_stack.typed_font_stack_requested() {
             evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+        }
+        for (key, rule_index) in &self.text_fill_routes {
+            if self.config_owns_text_fill {
+                evidence.mark_not_applicable(key.clone());
+                continue;
+            }
+            let Some(fill) = self
+                .text_fill
+                .as_ref()
+                .filter(|fill| fill.rule_index() == *rule_index)
+            else {
+                evidence.mark_not_applicable(key.clone());
+                continue;
+            };
+            if receipt.proves_text_fill(fill.css()) {
+                evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+            } else if receipt.has_text_fill_terminal() {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            } else {
+                evidence.mark_not_applicable(key.clone());
+            }
         }
         evidence
     }
@@ -142,17 +233,29 @@ pub(crate) struct VennTypographyThemeReceipt {
     emitted: VennTypographyOccurrences,
     expected_font_family_css: Box<str>,
     emitted_font_family_css: Option<Box<str>>,
+    expected_text_fill_css: Option<Box<str>>,
+    stylesheet_text_fill_css: Option<Box<str>>,
+    text_fill_terminal_count: usize,
+    text_fill_terminal_matches: bool,
     stylesheet_selector_mask: u8,
     terminal_matches: bool,
 }
 
 impl VennTypographyThemeReceipt {
-    fn new(expected: VennTypographyOccurrences, expected_font_family_css: &str) -> Self {
+    fn new(
+        expected: VennTypographyOccurrences,
+        expected_font_family_css: &str,
+        expected_text_fill_css: Option<&str>,
+    ) -> Self {
         Self {
             expected,
             emitted: VennTypographyOccurrences::default(),
             expected_font_family_css: expected_font_family_css.into(),
             emitted_font_family_css: None,
+            expected_text_fill_css: expected_text_fill_css.map(Into::into),
+            stylesheet_text_fill_css: None,
+            text_fill_terminal_count: 0,
+            text_fill_terminal_matches: true,
             stylesheet_selector_mask: 0,
             terminal_matches: true,
         }
@@ -169,6 +272,7 @@ impl VennTypographyThemeReceipt {
             self.terminal_matches = false;
         }
         self.emitted_font_family_css = Some(self.expected_font_family_css.clone());
+        self.stylesheet_text_fill_css = Some(set_text_color.into());
         self.stylesheet_selector_mask = 0b1111;
         let id = crate::svg::escape_css_identifier(diagram_id);
         let mut css = String::new();
@@ -214,6 +318,8 @@ impl VennTypographyThemeReceipt {
         emitted_parent_class: &str,
         emitted_text_class: &str,
         text: &str,
+        source_owns_fill: bool,
+        emitted_fill: &str,
     ) {
         if text.trim().is_empty() {
             return;
@@ -221,22 +327,50 @@ impl VennTypographyThemeReceipt {
         self.emitted.intersection_labels = self.emitted.intersection_labels.saturating_add(1);
         self.terminal_matches &= emitted_parent_class == super::VENN_INTERSECTION_CLASS;
         self.terminal_matches &= emitted_text_class == super::VENN_AREA_LABEL_CLASS;
+        self.record_text_fill_terminal(source_owns_fill, emitted_fill);
     }
 
-    pub(crate) fn record_text_node(&mut self, emitted_class: &str, text: &str) {
+    pub(crate) fn record_text_node(
+        &mut self,
+        emitted_class: &str,
+        text: &str,
+        source_owns_fill: bool,
+        emitted_fill: &str,
+    ) {
         if text.trim().is_empty() {
             return;
         }
         self.emitted.text_nodes = self.emitted.text_nodes.saturating_add(1);
         self.terminal_matches &= emitted_class == super::VENN_TEXT_NODE_CLASS;
+        self.record_text_fill_terminal(source_owns_fill, emitted_fill);
     }
 
-    fn proves(&self) -> bool {
+    fn record_text_fill_terminal(&mut self, source_owns_fill: bool, emitted_fill: &str) {
+        if source_owns_fill || self.expected_text_fill_css.is_none() {
+            return;
+        }
+        self.text_fill_terminal_count = self.text_fill_terminal_count.saturating_add(1);
+        self.text_fill_terminal_matches &=
+            self.expected_text_fill_css.as_deref() == Some(emitted_fill);
+    }
+
+    fn proves_font_stack(&self) -> bool {
         self.emitted == self.expected
             && self.emitted_font_family_css.as_deref()
                 == Some(self.expected_font_family_css.as_ref())
             && self.stylesheet_selector_mask == 0b1111
             && self.terminal_matches
+    }
+
+    fn has_text_fill_terminal(&self) -> bool {
+        self.text_fill_terminal_count != 0
+    }
+
+    fn proves_text_fill(&self, expected_fill: &str) -> bool {
+        self.has_text_fill_terminal()
+            && self.expected_text_fill_css.as_deref() == Some(expected_fill)
+            && self.stylesheet_text_fill_css.as_deref() == Some(expected_fill)
+            && self.text_fill_terminal_matches
     }
 }
 
@@ -571,7 +705,7 @@ mod tests {
             intersection_labels: 1,
             text_nodes: 2,
         };
-        let mut complete = VennTypographyThemeReceipt::new(expected, "VennSans");
+        let mut complete = VennTypographyThemeReceipt::new(expected, "VennSans", None);
         let stylesheet = complete.stylesheet("venn-test", "#123456", "#abcdef");
         for selector in [
             "#venn-test .venn-title{",
@@ -596,13 +730,20 @@ mod tests {
             super::super::VENN_INTERSECTION_CLASS,
             super::super::VENN_AREA_LABEL_CLASS,
             "Shared",
+            false,
+            "#abcdef",
         );
         for _ in 0..2 {
-            complete.record_text_node(super::super::VENN_TEXT_NODE_CLASS, "Nested");
+            complete.record_text_node(
+                super::super::VENN_TEXT_NODE_CLASS,
+                "Nested",
+                false,
+                "#abcdef",
+            );
         }
-        assert!(complete.proves());
+        assert!(complete.proves_font_stack());
 
-        let mut missing_role = VennTypographyThemeReceipt::new(expected, "VennSans");
+        let mut missing_role = VennTypographyThemeReceipt::new(expected, "VennSans", None);
         missing_role.stylesheet("venn-test", "#123456", "#abcdef");
         missing_role.record_title_text(super::super::VENN_TITLE_CLASS, "Title");
         missing_role.record_circle_label(
@@ -614,16 +755,23 @@ mod tests {
             super::super::VENN_INTERSECTION_CLASS,
             super::super::VENN_AREA_LABEL_CLASS,
             "Shared",
+            false,
+            "#abcdef",
         );
         for _ in 0..2 {
-            missing_role.record_text_node(super::super::VENN_TEXT_NODE_CLASS, "Nested");
+            missing_role.record_text_node(
+                super::super::VENN_TEXT_NODE_CLASS,
+                "Nested",
+                false,
+                "#abcdef",
+            );
         }
-        assert!(!missing_role.proves());
+        assert!(!missing_role.proves_font_stack());
 
-        let mut duplicate_stylesheet = VennTypographyThemeReceipt::new(expected, "VennSans");
+        let mut duplicate_stylesheet = VennTypographyThemeReceipt::new(expected, "VennSans", None);
         duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
         duplicate_stylesheet.stylesheet("venn-test", "#123456", "#abcdef");
-        assert!(!duplicate_stylesheet.proves());
+        assert!(!duplicate_stylesheet.proves_font_stack());
     }
 
     #[test]

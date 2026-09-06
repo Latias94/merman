@@ -525,7 +525,8 @@ fn legacy_bridge_projections(
             DiagramFamilyId::ARCHITECTURE
             | DiagramFamilyId::CYNEFIN
             | DiagramFamilyId::EVENT_MODELING
-            | DiagramFamilyId::ISHIKAWA,
+            | DiagramFamilyId::ISHIKAWA
+            | DiagramFamilyId::VENN,
             ThemeTarget::Text,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL),
@@ -1886,6 +1887,23 @@ pub(super) fn classify_rule_facet(
         } else {
             FamilyThemeDisposition::Unsupported
         };
+    }
+    if family == DiagramFamilyId::VENN
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::ZENUML && target == ThemeTarget::Title {
         return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
@@ -4702,12 +4720,13 @@ mod tests {
     }
 
     #[test]
-    fn final_four_family_slices_only_own_unqualified_scalar_fill() {
-        for (family, target) in [
-            (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text),
-            (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text),
-            (DiagramFamilyId::VENN, ThemeTarget::Title),
-            (DiagramFamilyId::ZENUML, ThemeTarget::Title),
+    fn final_direct_family_slices_own_only_their_supported_static_scalar_fill() {
+        for (family, target, supports_default) in [
+            (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text, false),
+            (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text, false),
+            (DiagramFamilyId::VENN, ThemeTarget::Title, false),
+            (DiagramFamilyId::VENN, ThemeTarget::Text, true),
+            (DiagramFamilyId::ZENUML, ThemeTarget::Title, false),
         ] {
             for paint_kind in [
                 FamilyThemePaintKind::Transparent,
@@ -4732,7 +4751,11 @@ mod tests {
                         },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    FamilyThemeDisposition::Unsupported,
+                    if supports_default {
+                        FamilyThemeDisposition::TypedAdapter
+                    } else {
+                        FamilyThemeDisposition::Unsupported
+                    },
                     "qualified family={family} target={target:?} paint={paint_kind:?}"
                 );
             }
@@ -4799,15 +4822,6 @@ mod tests {
                 FamilyThemeDisposition::Unsupported
             );
         }
-        assert_eq!(
-            classify_rule_facet(
-                DiagramFamilyId::VENN,
-                ThemeTarget::Text,
-                FamilyThemeSelectorShape::Static { variant: None },
-                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
-            ),
-            FamilyThemeDisposition::LegacyCompatibility
-        );
     }
 
     #[test]
@@ -5779,6 +5793,20 @@ mod tests {
                 vec!["title.fill"],
             ),
             (
+                DiagramFamilyId::VENN,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::VENN,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::ZENUML,
                 ThemeTarget::Title,
                 Fill,
@@ -5817,7 +5845,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 128);
+        assert_eq!(qualified.len(), 130);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6067,6 +6095,12 @@ mod tests {
                     ThemeTarget::Title => ThemeRouteCutoverProjection::TitleFill,
                     ThemeTarget::Text => ThemeRouteCutoverProjection::TextFill,
                     _ => panic!("unexpected Railroad qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::VENN {
+                let expected = match route.target() {
+                    ThemeTarget::Text => ThemeRouteCutoverProjection::TextFill,
+                    _ => panic!("unexpected Venn qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::TREE_VIEW

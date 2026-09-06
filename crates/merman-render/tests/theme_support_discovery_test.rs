@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 39);
+    assert_eq!(support.claim_revision(), 40);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -179,11 +179,12 @@ fn direct_only_family_slices_are_reported_as_conditional() {
 }
 
 #[test]
-fn final_four_family_owned_paint_slices_are_reported_as_conditional() {
+fn final_five_family_owned_paint_slices_are_reported_as_conditional() {
     for (family, target) in [
         (DiagramFamilyId::EVENT_MODELING, ThemeTarget::Text),
         (DiagramFamilyId::ISHIKAWA, ThemeTarget::Text),
         (DiagramFamilyId::VENN, ThemeTarget::Title),
+        (DiagramFamilyId::VENN, ThemeTarget::Text),
         (DiagramFamilyId::ZENUML, ThemeTarget::Title),
     ] {
         let query = ThemeSupportQueryV1::known(

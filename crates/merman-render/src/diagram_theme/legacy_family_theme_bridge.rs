@@ -551,9 +551,7 @@ fn legacy_family_dispatch(
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
-        DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP | DiagramFamilyId::VENN => {
-            LegacyFamilyDispatch::Text
-        }
+        DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP => LegacyFamilyDispatch::Text,
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
@@ -567,6 +565,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::CYNEFIN
         | DiagramFamilyId::RAILROAD
+        | DiagramFamilyId::VENN
         | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
@@ -1700,12 +1699,12 @@ mod tests {
     }
 
     #[test]
-    fn final_four_direct_slices_retire_only_real_legacy_paint_projections() {
-        for (family, text_projection_survives) in [
-            (DiagramFamilyId::EVENT_MODELING, false),
-            (DiagramFamilyId::ISHIKAWA, false),
-            (DiagramFamilyId::VENN, true),
-            (DiagramFamilyId::ZENUML, false),
+    fn final_direct_slices_retire_their_real_legacy_paint_projections() {
+        for family in [
+            DiagramFamilyId::EVENT_MODELING,
+            DiagramFamilyId::ISHIKAWA,
+            DiagramFamilyId::VENN,
+            DiagramFamilyId::ZENUML,
         ] {
             let spec = DiagramThemeSpec::new().with_styles(
                 ThemeRuleSet::default()
@@ -1727,11 +1726,10 @@ mod tests {
             let artifact = bridge(&spec).compile_for_family(family);
             let prefix = format!("merman.legacy-family-theme.v1.{}", family.as_str());
 
-            assert_eq!(
-                artifact
+            assert!(
+                !artifact
                     .contribution_ids
                     .contains(&format!("{prefix}.text.fill")),
-                text_projection_survives,
                 "family={family}"
             );
             assert!(
@@ -2473,6 +2471,7 @@ mod tests {
                 DiagramFamilyId::RAILROAD,
                 DiagramFamilyId::SANKEY,
                 DiagramFamilyId::ZENUML,
+                DiagramFamilyId::VENN,
             ])
         );
     }
@@ -2480,26 +2479,26 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0xf1, 0x75, 0x69, 0x7f, 0x10, 0x98, 0x3b, 0x41, 0x7d, 0x80, 0x7d, 0x7e, 0x7b, 0xe5,
-            0xad, 0xac, 0x58, 0xff, 0x0a, 0x6f, 0xaf, 0x34, 0x1e, 0x0b, 0xf6, 0x4b, 0x3a, 0xe4,
-            0xcc, 0x94, 0x60, 0x7b,
+            0x5f, 0x45, 0x68, 0x85, 0xf5, 0x78, 0x7e, 0x21, 0xe9, 0xd2, 0x99, 0x01, 0x71, 0x4a,
+            0x02, 0x21, 0xd1, 0xb2, 0xdf, 0x5e, 0xbe, 0xd2, 0x43, 0x9d, 0xf7, 0xf8, 0x9f, 0xca,
+            0x16, 0x91, 0xc3, 0x78,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-            0x17, 0x7e, 0x46, 0xa3, 0x87, 0x88, 0x4d, 0xc4, 0x52, 0x03, 0x4e, 0x26, 0xa2, 0x95,
-            0x16, 0x62, 0xb0, 0xd1, 0xf9, 0x0a, 0x29, 0x11, 0x6f, 0xfa, 0x03, 0xf9, 0x21, 0xbf,
-            0x57, 0x56, 0x88, 0x3a,
+            0xc1, 0x50, 0xaf, 0x79, 0x9c, 0x7e, 0x66, 0x23, 0x9b, 0x9f, 0x50, 0x99, 0x2b, 0x5c,
+            0x3b, 0x45, 0x69, 0x3b, 0xcf, 0xf9, 0xd8, 0xc7, 0xe9, 0x26, 0x87, 0xe0, 0xd9, 0xed,
+            0x10, 0x3a, 0x53, 0x31,
         ];
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x5c, 0x03, 0x09, 0x50, 0x99, 0xa2, 0x53, 0x7a, 0xc2, 0x89, 0x6d, 0x89, 0x0d, 0x40,
-            0x8f, 0xb2, 0x38, 0x3e, 0x65, 0xd8, 0xcd, 0xc2, 0x75, 0x38, 0x04, 0xb0, 0x90, 0xc3,
-            0x3c, 0x9b, 0xa9, 0xc7,
+            0x09, 0xba, 0xfb, 0x87, 0x42, 0x25, 0x0b, 0x93, 0x2a, 0xd7, 0xcb, 0xb3, 0x26, 0x34,
+            0xca, 0xb5, 0x3f, 0x42, 0xb9, 0x30, 0xc3, 0x8d, 0xd0, 0x14, 0xc4, 0xb6, 0xed, 0x44,
+            0x40, 0x29, 0xb0, 0xb3,
         ];
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 298);
-        assert_eq!(status.matrix_family_count(), 19);
-        assert_eq!(status.dispatched_family_count(), 19);
+        assert_eq!(status.matrix_route_count(), 294);
+        assert_eq!(status.matrix_family_count(), 18);
+        assert_eq!(status.dispatched_family_count(), 18);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
         assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
         assert_eq!(
