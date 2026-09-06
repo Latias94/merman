@@ -1596,6 +1596,7 @@ impl QuadrantChartFamilyArtifact {
 pub(crate) struct XyChartFamilyArtifact {
     pair: FamilyPair<diagrams::xychart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
     series_paint: crate::xychart::XyChartSeriesPaintPlan,
+    typography_theme: crate::xychart::XyChartTypographyThemePlan,
 }
 
 #[derive(Debug)]
@@ -1969,6 +1970,10 @@ impl XyChartFamilyArtifact {
 
     pub(crate) const fn series_paint(&self) -> &crate::xychart::XyChartSeriesPaintPlan {
         &self.series_paint
+    }
+
+    pub(crate) const fn typography_theme(&self) -> &crate::xychart::XyChartTypographyThemePlan {
+        &self.typography_theme
     }
 }
 
@@ -2456,7 +2461,11 @@ impl BuiltinFamilyArtifact {
 
     fn xychart_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::XyChart(artifact) => Some(artifact.series_paint().finish_evidence()),
+            Self::XyChart(artifact) => {
+                let mut evidence = artifact.series_paint().finish_evidence();
+                evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                Some(evidence)
+            }
             _ => None,
         }
     }

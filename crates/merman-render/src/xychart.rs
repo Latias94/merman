@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 
 mod theme;
 
-pub(crate) use theme::XyChartSeriesPaintPlan;
+pub(crate) use theme::{XyChartSeriesPaintPlan, XyChartTypographyThemePlan};
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -186,8 +186,14 @@ fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderMode
     }
 }
 
-fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasurer) -> Dimension {
+fn max_text_dimension(
+    texts: &[String],
+    font_size: f64,
+    font_family: &str,
+    measurer: &dyn TextMeasurer,
+) -> Dimension {
     let style = TextStyle {
+        font_family: Some(font_family.to_string()),
         font_size,
         ..Default::default()
     };
@@ -213,14 +219,20 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     }
 }
 
-fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -> f64 {
+fn single_text_height(
+    text: &str,
+    font_size: f64,
+    font_family: &str,
+    measurer: &dyn TextMeasurer,
+) -> f64 {
     if text.trim().is_empty() {
         return 0.0;
     }
     if text.contains('\n') || text.contains("<br") {
-        return max_text_dimension(&[text.to_string()], font_size, measurer).height;
+        return max_text_dimension(&[text.to_string()], font_size, font_family, measurer).height;
     }
     let style = TextStyle {
+        font_family: Some(font_family.to_string()),
         font_size,
         ..Default::default()
     };
@@ -235,6 +247,7 @@ fn calculate_legend_space(
     plots: &[(usize, &XyChartPlotRenderModel)],
     chart_config: &ChartConfig,
     available_space: Dimension,
+    font_family: &str,
     measurer: &dyn TextMeasurer,
 ) -> Dimension {
     if plots.is_empty() {
@@ -248,7 +261,12 @@ fn calculate_legend_space(
         .iter()
         .filter_map(|(_, plot)| plot.title.clone())
         .collect::<Vec<_>>();
-    let text_dimension = max_text_dimension(&titles, chart_config.legend_font_size, measurer);
+    let text_dimension = max_text_dimension(
+        &titles,
+        chart_config.legend_font_size,
+        font_family,
+        measurer,
+    );
     let marker_size = chart_config.legend_font_size * LEGEND_MARKER_TO_FONT_RATIO;
     let marker_spacing = chart_config.legend_font_size * LEGEND_MARKER_SPACING_TO_FONT_RATIO;
     let item_spacing = chart_config.legend_font_size * LEGEND_ITEM_SPACING_TO_FONT_RATIO;
@@ -671,7 +689,12 @@ impl Axis {
         rotation.sin() * dimension / 2.0
     }
 
-    fn calculate_space(&mut self, available: Dimension, measurer: &dyn TextMeasurer) -> Dimension {
+    fn calculate_space(
+        &mut self,
+        available: Dimension,
+        font_family: &str,
+        measurer: &dyn TextMeasurer,
+    ) -> Dimension {
         self.show_title = false;
         self.show_label = false;
         self.show_tick = false;
@@ -694,7 +717,12 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    font_family,
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.height;
                 self.outer_padding = (dim.height / 2.0).min(max_padding);
@@ -711,8 +739,12 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    font_family,
+                    measurer,
+                );
                 let width_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if width_required <= available_width {
@@ -739,7 +771,12 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(
+                    ticks,
+                    self.axis_config.label_font_size,
+                    font_family,
+                    measurer,
+                );
                 self.label_dimension = dim;
                 let max_padding = 0.2 * available.width;
                 self.outer_padding = (dim.width / 2.0).min(max_padding);
@@ -763,8 +800,12 @@ impl Axis {
             }
 
             if self.axis_config.show_title && !self.title.is_empty() {
-                let title_height =
-                    single_text_height(&self.title, self.axis_config.title_font_size, measurer);
+                let title_height = single_text_height(
+                    &self.title,
+                    self.axis_config.title_font_size,
+                    font_family,
+                    measurer,
+                );
                 let height_required = title_height + self.axis_config.title_padding * 2.0;
                 self.title_text_height = title_height;
                 if height_required <= available_height {
@@ -1103,6 +1144,7 @@ pub(crate) fn layout_xychart_diagram_typed(
     diagram_title: Option<&str>,
     effective_config: &Value,
     series_paint: &XyChartSeriesPaintPlan,
+    typography_theme: &theme::XyChartTypographyThemePlan,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
     if series_paint.plot_count() != model.plots.len() {
@@ -1137,8 +1179,12 @@ pub(crate) fn layout_xychart_diagram_typed(
         })
         .unwrap_or_default()
         .to_owned();
-    let title_height = single_text_height(&title, chart_cfg.title_font_size, text_measurer)
-        + 2.0 * chart_cfg.title_padding;
+    let title_height = single_text_height(
+        &title,
+        chart_cfg.title_font_size,
+        typography_theme.font_family_css(),
+        text_measurer,
+    ) + 2.0 * chart_cfg.title_padding;
     let show_chart_title =
         chart_cfg.show_title && !title.is_empty() && title_height <= chart_cfg.height;
 
@@ -1243,6 +1289,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_width = (available_width - space_used_x.width).max(0.0);
@@ -1254,6 +1301,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_height = (available_height - space_used_y.height).max(0.0);
@@ -1266,6 +1314,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {
@@ -1306,6 +1355,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         available_height = (available_height - space_used_x.height).max(0.0);
@@ -1316,6 +1366,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: available_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         let plot_x = space_used_y.width;
@@ -1328,6 +1379,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 width: available_width,
                 height: chart_height,
             },
+            typography_theme.font_family_css(),
             text_measurer,
         );
         if legend_space.width == 0.0 && legend_space.height == 0.0 {

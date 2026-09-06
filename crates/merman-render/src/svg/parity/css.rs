@@ -342,14 +342,14 @@ where
     })
 }
 
-pub(super) fn info_css_into<I>(out: &mut String, diagram_id: I)
+pub(super) fn info_css_into_with_font_family<I>(out: &mut String, diagram_id: I, font_family: &str)
 where
     I: SvgDiagramIdValue,
 {
     let values = InfoCssValues::new(
         &serde_json::Value::Null,
         InfoCssFontSizeSource::ThemeThenTopLevel,
-        Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS),
+        Some(font_family),
     );
     values
         .write_all(
@@ -1646,14 +1646,14 @@ where
     Ok((out, title_emission, typography_emission))
 }
 
-pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)
+pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I, resolved_font_family: &str)
 where
     I: SvgDiagramIdValue,
 {
-    // Mermaid does not ship dedicated XYChart styles at 11.12.2 (it relies on theme variables and
-    // inline attributes). Keep the shared base stylesheet for consistency with upstream SVG
-    // baselines. The compare tooling ignores `<style>` content in parity mode.
-    info_css_into(out, diagram_id);
+    // XYChart uses the shared Mermaid base stylesheet. Keep the family-owned font winner in the
+    // same CSS emission used by layout measurement so a typed FontStack cannot drift between the
+    // measured text and the final SVG cascade.
+    info_css_into_with_font_family(out, diagram_id, resolved_font_family);
 }
 
 pub(super) fn gantt_css<I>(

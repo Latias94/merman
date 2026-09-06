@@ -82,7 +82,8 @@ pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
     series_paint: &crate::xychart::XyChartSeriesPaintPlan,
-    _effective_config: &serde_json::Value,
+    typography_theme: &crate::xychart::XyChartTypographyThemePlan,
+    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     use rustc_hash::FxHashMap;
@@ -225,12 +226,13 @@ pub(crate) fn render_xychart_diagram_svg(
     let data_label_config = if layout.show_data_label {
         Some((
             layout.show_data_label_outside_bar,
-            data_label_color(_effective_config),
+            data_label_color(effective_config),
         ))
     } else {
         None
     };
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
+    let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
@@ -265,7 +267,14 @@ pub(crate) fn render_xychart_diagram_svg(
     out.push_str("<style>");
     out.checkpoint()?;
     let mut css = String::new();
-    push_xychart_css(&mut css, diagram_id.semantic_str());
+    push_xychart_css(
+        &mut css,
+        diagram_id.semantic_str(),
+        typography_theme.font_family_css(),
+    );
+    if let Some(receipt) = typography_receipt.as_mut() {
+        receipt.record_css(typography_theme.font_family_css());
+    }
     out.push_str(&css);
     drop(css);
     out.checkpoint()?;
@@ -389,6 +398,11 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
+                                if !item.label.is_empty()
+                                    && let Some(receipt) = typography_receipt.as_mut()
+                                {
+                                    receipt.record_visible_text();
+                                }
                             }
                         } else {
                             let y_offset = bar_data_label_inset_px;
@@ -435,6 +449,11 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
+                                if !item.label.is_empty()
+                                    && let Some(receipt) = typography_receipt.as_mut()
+                                {
+                                    receipt.record_visible_text();
+                                }
                             }
                         }
                     }
@@ -470,6 +489,11 @@ pub(crate) fn render_xychart_diagram_svg(
                     );
                     n.text = Some(escape_xml(&t.text));
                     let node_id = push_child(&mut arena, parent, n);
+                    if !t.text.is_empty()
+                        && let Some(receipt) = typography_receipt.as_mut()
+                    {
+                        receipt.record_visible_text();
+                    }
                     if let Some(receipt) = series_paint_receipt.as_mut()
                         && let Some(plot_index) = line_label_plot_index
                     {
@@ -521,6 +545,9 @@ pub(crate) fn render_xychart_diagram_svg(
         return Err(crate::Error::InvalidModel {
             message: "XY Chart series paint receipt did not match the terminal SVG".to_string(),
         });
+    }
+    if let Some(receipt) = typography_receipt {
+        let _ = typography_theme.record_terminal(receipt);
     }
     Ok(rooted)
 }

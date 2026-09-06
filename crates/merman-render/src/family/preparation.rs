@@ -791,17 +791,23 @@ fn prepare_xy_chart_family(
         &model,
         execution.work_meter_ref(),
     )?;
+    let typography_theme = crate::xychart::XyChartTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let layout = crate::xychart::layout_xychart_diagram_typed(
         &model,
         meta.title.as_deref(),
         meta.effective_config.as_value(),
         &series_paint,
+        &typography_theme,
         execution.text_measurer(),
     )?;
     Ok(BuiltinFamilyArtifact::XyChart(Box::new(
         XyChartFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             series_paint,
+            typography_theme,
         },
     )))
 }

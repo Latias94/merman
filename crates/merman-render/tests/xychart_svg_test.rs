@@ -1,19 +1,35 @@
 mod common;
 
+use std::sync::Arc;
+
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
-    ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget,
+    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget, ThemeTextStyle,
+    TypographySpec,
 };
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+
+fn xychart_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(DiagramFamilyId::XY_CHART, typography),
+        ))
+        .expect("compile XY Chart typography theme")
+}
 
 fn xychart_series_palette_theme(colors: &[&str]) -> DiagramTheme {
     let palette =
@@ -45,6 +61,54 @@ fn render_xychart_with_theme_and_engine(
         .expect("prepare themed XY Chart")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render themed XY Chart")
+}
+
+fn try_render_xychart_with_theme(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    environment: &RenderEnvironment,
+    diagram_id: &str,
+) -> merman_render::Result<(XyChartDiagramLayout, family::RenderedFamilySvg)> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse themed XY Chart")
+        .expect("detect themed XY Chart");
+    let session = environment
+        .begin_session_with_theme(theme)
+        .expect("begin themed XY Chart session");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)?;
+    let projection = artifact.layout_json()?;
+    let layout = serde_json::from_value(projection["layout"]["XyChartDiagram"].clone())
+        .expect("XY Chart layout projection");
+    let rendered = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    Ok((layout, rendered))
+}
+
+#[derive(Debug)]
+struct XyChartTypedFontProbeMeasurer {
+    expected_font_family: String,
+}
+
+impl TextMeasurer for XyChartTypedFontProbeMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some(self.expected_font_family.as_str()),
+            "XY Chart layout measurement must use the final font-family winner"
+        );
+        TextMetrics {
+            width: text.chars().count() as f64 * 10.0,
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
 }
 
 fn xychart_plot_group<'document, 'input>(
@@ -643,4 +707,139 @@ fn xychart_series_palette_is_not_applicable_without_plots() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn xychart_typed_font_stack_reaches_layout_css_and_terminal_evidence() {
+    let font_stack =
+        FontStack::new(["XY Chart Typed", "monospace"]).expect("valid XY Chart font stack");
+    let expected_font = font_stack.as_css();
+    let theme = xychart_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.xychart-typed-font").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(XyChartTypedFontProbeMeasurer {
+                expected_font_family: expected_font.clone(),
+            }),
+        )));
+    let (layout, rendered) = try_render_xychart_with_theme(
+        "xychart\n  title Typed chart\n  x-axis [Jan, Feb]\n  y-axis 0 --> 10\n  bar [4, 7]\n",
+        &theme,
+        Engine::new(),
+        &environment,
+        "xychart-typed-font",
+    )
+    .expect("render directly themed XY Chart");
+
+    assert!(layout.drawables.iter().any(|drawable| {
+        matches!(drawable, XyChartDrawableElem::Text { data, .. } if data.iter().any(|text| !text.text.is_empty()))
+    }));
+    let svg = rendered.svg();
+    for rule in [
+        format!("#xychart-typed-font{{font-family:{expected_font};"),
+        format!("#xychart-typed-font svg{{font-family:{expected_font};"),
+        format!("#xychart-typed-font :root{{--mermaid-font-family:{expected_font};}}"),
+    ] {
+        assert!(
+            svg.contains(&rule),
+            "missing resolved XY Chart font rule {rule:?}"
+        );
+    }
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn xychart_explicit_site_and_source_font_paths_outrank_typed_font_stack() {
+    let theme = xychart_typography_theme(ThemeTextStyle::default().with_font_stack(
+        FontStack::single("XY Chart Typed").expect("valid typed XY Chart font stack"),
+    ));
+    let cases = [
+        (
+            "xychart-site-font",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontFamily": "XYChartSite,sans-serif" }
+            }))),
+            "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n".to_string(),
+            "XYChartSite,sans-serif",
+        ),
+        (
+            "xychart-source-font",
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "secure": []
+            }))),
+            concat!(
+                "%%{init: {\"themeVariables\": {\"fontFamily\": \"XYChartSource,monospace\"}}}%%\n",
+                "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
+            )
+            .to_string(),
+            "XYChartSource,monospace",
+        ),
+    ];
+
+    for (diagram_id, engine, source, expected_font) in cases {
+        let (_, rendered) = try_render_xychart_with_theme(
+            &source,
+            &theme,
+            engine,
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            diagram_id,
+        )
+        .expect("render XY Chart with explicitly owned font family");
+
+        assert!(
+            rendered
+                .svg()
+                .contains(&format!("#{diagram_id}{{font-family:{expected_font};"))
+        );
+        assert!(!rendered.svg().contains("XY Chart Typed"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_mixed_base_typography_fails_closed() {
+    let typography = ThemeTextStyle::default()
+        .with_font_stack(
+            FontStack::single("XY Chart Mixed").expect("valid mixed XY Chart font stack"),
+        )
+        .with_font_size_px(24.0)
+        .expect("valid unsupported XY Chart font size");
+    let theme = xychart_typography_theme(typography);
+    let error = try_render_xychart_with_theme(
+        "xychart\n  x-axis [A]\n  y-axis 0 --> 10\n  bar [4]\n",
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+        "xychart-mixed-typography",
+    )
+    .err()
+    .expect("RequirePortable must reject mixed XY Chart typography");
+
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((DiagramFamilyId::XY_CHART, 1))
+    );
+    assert_eq!(error.incomplete_family_theme(), None);
 }
