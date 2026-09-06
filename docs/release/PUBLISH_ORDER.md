@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order.
-Last updated: 2026-09-04
+Last updated: 2026-09-06
 
 ## Version Decision
 
@@ -21,7 +21,7 @@ attestations; documentation must not imply either an attestation or cross-channe
 
 ## Alpha.6 Backfill Snapshot
 
-Observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`. This is a dated operator snapshot, not machine release authority; re-query each owning registry or GitHub Release immediately before any mutation.
+Initial state was observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529f858ea3d337a1bdc8fe12e44e1403ededf2e`; the Node npm group was reconciled on 2026-09-06. This is a dated operator snapshot, not machine release authority; re-query each owning registry or GitHub Release immediately before any mutation.
 
 | Surface | Observed state | Backfill action |
 | --- | --- | --- |
@@ -32,13 +32,14 @@ Observed on 2026-09-04 for immutable source tag `v0.8.0-alpha.6` at commit `d529
 | Android AAR | `merman-android-v0.8.0-alpha.6.aar` is attached to the alpha.6 GitHub Release | No action; reconciled by `release-android.yml` run `33858143487` |
 | Apple XCFramework | `Merman.xcframework-v0.8.0-alpha.6.zip` and its checksum are attached to the alpha.6 GitHub Release | No action; reconciled by `release-apple.yml` run `33858143156` |
 | Web npm group | All five public packages expose `0.8.0-alpha.6`, the `alpha` tag, the original package-group integrities, and npm provenance attestations | No action; recovered from original run `33858142954` by `release-web.yml` run `33865637706` |
-| Node npm group | The exact seven-package alpha.6 artifact from pinned-toolchain run `33869785698` (artifact `9936094987`) is verified; `@mermanjs/node-wasm` still needs its first registry publication | Maintainer 2FA bootstrap from that exact artifact, then configure Trusted Publishing for all seven names |
+| Node npm group | All seven packages expose `0.8.0-alpha.6`, the `alpha` tag, and the exact verified artifact integrities; a fresh registry install/render smoke passed on Windows. The manual bootstrap has no npm provenance. | No action; bootstrapped from original run `33869785698` artifact `9936094987`, with Trusted Publishing configured for all seven names |
 | Flutter `merman` | pub.dev exposes `0.8.0-alpha.6` from the pushed `flutter-v0.8.0-alpha.6` tag | No action; published by tag-triggered run `33862063296` |
 
-The Python wheel and Flutter package archive were built before this post-publication documentation
-reconciliation, so their immutable alpha.6 payloads may retain prepared-candidate wording in
-embedded README or changelog text. The current source guidance is corrected on `main`; the
-immutable payloads are not rewritten, and the wording correction will ship with the next version.
+The Python wheel, Flutter package archive, and Node alpha.6 loader tarball were built before this
+post-publication documentation reconciliation, so their immutable payloads may retain
+prepared-candidate wording in embedded README or changelog text. The current source guidance is
+corrected on `main`; the immutable payloads are not rewritten, and the wording correction will ship
+with the next version.
 
 VS Code currently produces GitHub Actions VSIX artifacts only, Homebrew validates stable formulae, and
 Android Maven Central and the Typst wrapper do not share the workspace crates.io publication path.
@@ -179,22 +180,27 @@ loader.
 
 The first version of each npm package cannot use npm Trusted Publishing before the package exists.
 For that one bootstrap, dispatch `release-node.yml` with `publish_to_npm=false` against the reviewed
-immutable source and record its workflow run id. For alpha.6, the approved candidate is run
-`33869785698` with artifact `9936094987`, built with Node `24.13.1`. Download the verified
-`merman-node-npm-package-group` artifact from that exact run, publish the five platform tarballs, the
-WASM tarball, and then the loader directly under the requested final tag with a maintainer's
-2FA-protected npm credential, and configure Trusted Publishing for all seven package names. Then
-record that the bootstrap version remains without npm provenance; Trusted Publishing cannot add an
-attestation to an existing tarball. From the next version onward, dispatch `release-node.yml` with
-`publish_to_npm=true`; that run builds, verifies, and publishes its own same-run package group. If
-its publish job fails, rerun that job within the same workflow run. When a new run is unavoidable,
-pass `recovery_run_id` with the exact source SHA so the workflow downloads and verifies the original
-package-group artifact instead of rebuilding it. Do not keep an npm token in GitHub Actions.
+immutable source and record its workflow run id. For alpha.6, run `33869785698` produced artifact
+`9936094987` with Node `24.13.1`; its five platform tarballs, WASM tarball, and loader were manually
+published under `alpha` after exact artifact verification. All seven registry integrities and tags
+match that artifact, a fresh registry install/render smoke passed, and Trusted Publishing is now
+configured for all seven package names. The immutable manual bootstrap has no npm provenance;
+Trusted Publishing cannot add an attestation to an existing tarball. From the next version onward,
+dispatch `release-node.yml` with `publish_to_npm=true`; that run builds, verifies, and publishes its
+own same-run package group. If its publish job fails, rerun that job within the same workflow run.
+When a new run is unavoidable, pass `recovery_run_id` with the exact source SHA so the workflow
+downloads and verifies the original package-group artifact instead of rebuilding it. Do not keep an
+npm token in GitHub Actions.
 
 The immutable `@mermanjs/node@0.8.0-alpha.5` loader tarball was packed before its package-local
 changelog heading was dated, so the registry copy contains an `Unreleased` heading. This is a
 documentation-only bootstrap defect: the source changelog is corrected, and the correction will
 first appear in a later immutable package version.
+
+The immutable `@mermanjs/node@0.8.0-alpha.6` loader tarball was packed before post-publication
+documentation reconciliation, so its embedded README and changelog retain prepared-candidate
+wording. This is also a documentation-only bootstrap defect; the source is corrected for the next
+Node package version and the accepted registry bytes remain unchanged.
 
 ## Pre-Publish Gates
 

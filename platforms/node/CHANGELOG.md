@@ -4,7 +4,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.8.0-alpha.6] - 2026-09-02
 
-This section describes the verified alpha.6 package group. The npm alpha channel remains on alpha.5 until the seven-package first-publication bootstrap, including `@mermanjs/node-wasm`, is completed.
+This section describes the published alpha.6 package group. All seven packages, including `@mermanjs/node-wasm`, were manually bootstrapped from the verified package-group artifact. The immutable alpha.6 npm tarballs have no npm provenance; later releases use Trusted Publishing.
 
 ### Added
 
