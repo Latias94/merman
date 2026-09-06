@@ -520,6 +520,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::GANTT, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(GANTT_TITLE_SOURCE)
         }
+        (DiagramFamilyId::GANTT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(GANTT_TASK_FILL_SOURCE)
+        }
         (
             DiagramFamilyId::GANTT,
             ThemeTarget::Task,
@@ -1412,11 +1415,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_278_routes_and_306_artifact_witnesses() {
+    fn route_inventory_retains_282_routes_and_310_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 278);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 306);
+        assert_eq!(inventory.len(), 282);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 310);
     }
 
     #[test]

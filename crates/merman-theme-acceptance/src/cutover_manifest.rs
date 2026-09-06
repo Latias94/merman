@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 48;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 49;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x9c, 0x6c, 0x4d, 0x28, 0x37, 0x56, 0xad, 0x7a, 0x6d, 0xc9, 0x0b, 0x21, 0xbc, 0x72, 0xa1, 0xfb,
-    0x28, 0xc2, 0x5f, 0x0b, 0x54, 0x29, 0xdc, 0xbb, 0xd8, 0x5a, 0xb0, 0xc6, 0x82, 0x09, 0xd8, 0x15,
+    0x42, 0x91, 0x00, 0xbd, 0x3b, 0x4f, 0x65, 0x08, 0xc7, 0x1b, 0xe5, 0x21, 0x27, 0xa6, 0x22, 0x08,
+    0xbf, 0x25, 0xda, 0x68, 0xce, 0xf9, 0xcc, 0xc8, 0xef, 0x28, 0x14, 0xde, 0xcd, 0xd5, 0x87, 0xff,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -291,6 +291,8 @@ const PIE_SLICE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceFill];
 const TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TextFill];
+const GANTT_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TextFill];
 const GANTT_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::GanttTaskDefaultFill,
     ThemeRouteCutoverProjection::GanttTaskActiveFill,
@@ -341,7 +343,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 278] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 282] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -2033,6 +2035,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 278] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GANTT_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GANTT,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GANTT_TEXT_FILL_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::GANTT,
@@ -2937,7 +2969,7 @@ mod tests {
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::GANTT)
             .collect::<Vec<_>>();
-        assert_eq!(gantt_routes.len(), 24);
+        assert_eq!(gantt_routes.len(), 28);
 
         let gantt_title_routes = gantt_routes
             .iter()
@@ -2946,6 +2978,20 @@ mod tests {
         assert_eq!(gantt_title_routes.len(), 4);
         assert!(gantt_title_routes.iter().all(|route| {
             route.projections == &[ThemeRouteCutoverProjection::TitleFill]
+                && matches!(
+                    route.id.selector(),
+                    ThemeRouteCutoverSelector::StaticUnqualified
+                        | ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                )
+        }));
+
+        let gantt_text_routes = gantt_routes
+            .iter()
+            .filter(|route| route.id.target() == ThemeTarget::Text)
+            .collect::<Vec<_>>();
+        assert_eq!(gantt_text_routes.len(), 4);
+        assert!(gantt_text_routes.iter().all(|route| {
+            route.projections == &[ThemeRouteCutoverProjection::TextFill]
                 && matches!(
                     route.id.selector(),
                     ThemeRouteCutoverSelector::StaticUnqualified
@@ -3155,7 +3201,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 48);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 49);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

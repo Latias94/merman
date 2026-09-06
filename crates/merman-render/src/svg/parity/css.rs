@@ -1664,7 +1664,14 @@ pub(super) fn gantt_css<I>(
 where
     I: SvgDiagramIdValue,
 {
-    gantt_css_with_overrides(diagram_id, effective_config, resolved_font_family, None)
+    gantt_css_with_overrides(
+        diagram_id,
+        effective_config,
+        resolved_font_family,
+        None,
+        None,
+        None,
+    )
 }
 
 pub(super) fn gantt_css_with_overrides<I>(
@@ -1672,6 +1679,8 @@ pub(super) fn gantt_css_with_overrides<I>(
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
     resolved_title_color: Option<&str>,
+    resolved_text_color: Option<&str>,
+    resolved_task_text_color: Option<&str>,
 ) -> String
 where
     I: SvgDiagramIdValue,
@@ -1684,7 +1693,7 @@ where
     let theme = MermaidThemeAdapter::new(effective_config).gantt();
     let mut out = parts.css_prefix;
     let font = resolved_font_family.unwrap_or(&theme.font_family);
-    let text_color = theme.text_color.as_str();
+    let text_color = resolved_text_color.unwrap_or(theme.text_color.as_str());
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;
     let section_bkg_color2 = &theme.section_bkg_color2;
@@ -1694,7 +1703,7 @@ where
     let today_line_color = &theme.today_line_color;
     let task_text_dark_color = &theme.task_text_dark_color;
     let task_text_clickable_color = &theme.task_text_clickable_color;
-    let task_text_color = &theme.task_text_color;
+    let task_text_color = resolved_task_text_color.unwrap_or(&theme.task_text_color);
     let task_bkg_color = &theme.task_bkg_color;
     let task_border_color = &theme.task_border_color;
     let task_text_outside_color = &theme.task_text_outside_color;
@@ -1705,7 +1714,11 @@ where
     let crit_border_color = &theme.crit_border_color;
     let crit_bkg_color = &theme.crit_bkg_color;
     let vert_line_color = &theme.vert_line_color;
-    let title_text_color = resolved_title_color.unwrap_or(theme.title_text_color.as_str());
+    let title_text_color = if title_color.trim().is_empty() {
+        text_color
+    } else {
+        title_color
+    };
 
     fn push_outside_done_text_rules<I>(out: &mut String, id: I, class_prefix: &str, color: &str)
     where

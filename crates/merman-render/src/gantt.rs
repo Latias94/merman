@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 mod theme;
-pub(crate) use theme::GanttTaskTheme;
+pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt};
 
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;

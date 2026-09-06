@@ -48,6 +48,7 @@ fn render_gantt_axis_ticks(
     left_padding: f64,
     tick_size: f64,
     with_dy: bool,
+    receipt: &mut Option<crate::gantt::GanttTaskThemeReceipt>,
 ) -> Result<()> {
     for t in ticks {
         let tx = (t.x - left_padding) + 0.5;
@@ -76,6 +77,9 @@ fn render_gantt_axis_ticks(
                 escape_xml(&t.label)
             );
         }
+        if let Some(receipt) = receipt.as_mut() {
+            receipt.record_grid_text(&t.label);
+        }
         out.push_str("</g>");
         out.checkpoint()?;
     }
@@ -89,6 +93,7 @@ fn render_gantt_axis_group(
     ticks: &[crate::model::GanttAxisTickLayout],
     y: f64,
     with_dy: bool,
+    receipt: &mut Option<crate::gantt::GanttTaskThemeReceipt>,
 ) -> Result<()> {
     let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
     // Mermaid renders two possible axis grids:
@@ -121,7 +126,7 @@ fn render_gantt_axis_group(
     );
     out.checkpoint()?;
 
-    render_gantt_axis_ticks(out, ticks, layout.left_padding, tick_size, with_dy)?;
+    render_gantt_axis_ticks(out, ticks, layout.left_padding, tick_size, with_dy, receipt)?;
 
     out.push_str("</g>");
     out.checkpoint()
@@ -197,6 +202,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
         effective_config,
         Some(task_theme.font_family_css()),
         task_theme.title_fill_css(),
+        task_theme.grid_text_fill_css(),
+        task_theme.task_text_fill_css(),
     );
     if let Some(receipt) = task_theme_receipt.as_mut() {
         receipt.record_global_css(
@@ -277,7 +284,14 @@ pub(crate) fn render_gantt_diagram_svg_model(
     }
 
     let bottom_axis_y = h - layout.top_padding;
-    render_gantt_axis_group(&mut out, layout, &layout.bottom_ticks, bottom_axis_y, true)?;
+    render_gantt_axis_group(
+        &mut out,
+        layout,
+        &layout.bottom_ticks,
+        bottom_axis_y,
+        true,
+        &mut task_theme_receipt,
+    )?;
 
     if layout.top_axis {
         render_gantt_axis_group(
@@ -286,6 +300,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             &layout.top_ticks,
             layout.top_padding,
             false,
+            &mut task_theme_receipt,
         )?;
     }
 
@@ -458,6 +473,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             out.checkpoint()?;
             if let Some(receipt) = task_theme_receipt.as_mut() {
                 receipt.record_typography_text(&t.label.text);
+                receipt.record_task_text(&t.label.text, &class);
             }
         }
 
@@ -642,7 +658,7 @@ mod tests {
             .collect::<Vec<_>>();
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = render_gantt_axis_ticks(&mut out, &ticks, 75.0, -115.0, true)
+        let error = render_gantt_axis_ticks(&mut out, &ticks, 75.0, -115.0, true, &mut None)
             .expect_err("the rejecting sink must stop Gantt axis rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));

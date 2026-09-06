@@ -97,6 +97,17 @@ fn gantt_title_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> D
     })
 }
 
+fn gantt_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    );
+    gantt_task_rule_theme(match variant {
+        Some(variant) => rule.with_variant(variant),
+        None => rule,
+    })
+}
+
 fn gantt_font_stack_theme(font_stack: FontStack) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_typography(
@@ -620,6 +631,190 @@ fn gantt_title_fill_reaches_section_and_diagram_title_css() {
             "typed Gantt title route must retain the visible title terminal"
         );
     }
+}
+
+#[test]
+fn gantt_text_fill_reaches_grid_and_ordinary_task_label_css() {
+    let text_fill = "#123456";
+    let svg = render_gantt_svg_from_text_with_theme(
+        GANTT_TASK_FILL_SOURCE,
+        &gantt_text_fill_theme(
+            CanvasPaint::solid(text_fill).expect("valid Gantt text fill"),
+            None,
+        ),
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid themed Gantt SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("themed Gantt SVG must include its stylesheet");
+
+    let grid_rule = stylesheet
+        .split("#gantt-config .grid .tick text{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt grid text selector");
+    assert!(grid_rule.contains(&format!("fill:{text_fill};")));
+    let task_rule = stylesheet
+        .split("#gantt-config .taskText0,#gantt-config .taskText1,#gantt-config .taskText2,#gantt-config .taskText3{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt task text selector");
+    assert!(task_rule.contains(&format!("fill:{text_fill};")));
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node.attribute("id") == Some("gantt-config-default-task-text")
+            && node.text() == Some("Default")
+    }));
+
+    let completion = prepare_gantt_family_with_theme(
+        GANTT_TASK_FILL_SOURCE,
+        &gantt_text_fill_theme(
+            CanvasPaint::solid(text_fill).expect("valid Gantt text fill"),
+            None,
+        ),
+    )
+    .render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some("gantt-config".to_string()),
+            ..SvgRenderOptions::default()
+        },
+        &SvgDebugOptions::default(),
+    )
+    .expect("render typed Gantt text fill")
+    .into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_text_fill_preserves_independent_source_ownership() {
+    let typed_fill = "#123456";
+    let theme = gantt_text_fill_theme(
+        CanvasPaint::solid(typed_fill).expect("valid mixed Gantt text fill"),
+        Some(ThemeVariant::Default),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "textColor": "#abcdef" }
+    })));
+    let rendered =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render mixed source-owned Gantt text fill");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid mixed Gantt SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("mixed Gantt SVG must include its stylesheet");
+
+    let grid_rule = stylesheet
+        .split("#gantt-config .grid .tick text{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt grid text selector");
+    assert!(grid_rule.contains("fill:#abcdef;"));
+    let task_rule = stylesheet
+        .split("#gantt-config .taskText0,#gantt-config .taskText1,#gantt-config .taskText2,#gantt-config .taskText3{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt task text selector");
+    assert!(task_rule.contains(&format!("fill:{typed_fill};")));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_text_fill_preserves_task_text_source_ownership() {
+    let typed_fill = "#123456";
+    let theme = gantt_text_fill_theme(
+        CanvasPaint::solid(typed_fill).expect("valid mixed Gantt text fill"),
+        Some(ThemeVariant::Default),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "taskTextColor": "#fedcba" }
+    })));
+    let rendered =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render task-text source-owned Gantt text fill");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Gantt SVG XML");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Gantt SVG must include its stylesheet");
+
+    let grid_rule = stylesheet
+        .split("#gantt-config .grid .tick text{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt grid text selector");
+    assert!(grid_rule.contains(&format!("fill:{typed_fill};")));
+    let task_rule = stylesheet
+        .split("#gantt-config .taskText0,#gantt-config .taskText1,#gantt-config .taskText2,#gantt-config .taskText3{")
+        .nth(1)
+        .and_then(|rule| rule.split('}').next())
+        .expect("Gantt task text selector");
+    assert!(task_rule.contains("fill:#fedcba;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_text_fill_is_not_applicable_when_both_source_tokens_own_terminals() {
+    let theme = gantt_text_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid source-owned Gantt text fill"),
+        Some(ThemeVariant::Default),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "textColor": "#abcdef",
+            "taskTextColor": "#fedcba"
+        }
+    })));
+    let rendered =
+        prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-config".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render fully source-owned Gantt text fill");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

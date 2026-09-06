@@ -455,6 +455,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GANTT, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL)
         }
+        (DiagramFamilyId::GANTT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
         }
@@ -1792,6 +1795,23 @@ pub(super) fn classify_rule_facet(
     }
     if family == DiagramFamilyId::GANTT
         && target == ThemeTarget::Title
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::GANTT
+        && target == ThemeTarget::Text
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -5167,6 +5187,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::GANTT,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::GANTT,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::GANTT,
                 ThemeTarget::Task,
                 Fill,
                 Transparent,
@@ -5952,7 +5986,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 136);
+        assert_eq!(qualified.len(), 138);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -5975,7 +6009,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GANTT)
                 .count(),
-            18
+            20
         );
         assert_eq!(
             qualified
@@ -6127,6 +6161,11 @@ mod tests {
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
                         ThemeRouteCutoverFacet::Fill,
                     ) => ThemeRouteCutoverProjection::TitleFill,
+                    (
+                        ThemeTarget::Text,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                        ThemeRouteCutoverFacet::Fill,
+                    ) => ThemeRouteCutoverProjection::TextFill,
                     (
                         ThemeTarget::Task,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),

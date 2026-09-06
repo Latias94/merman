@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 42);
+    assert_eq!(support.claim_revision(), 43);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -138,6 +138,11 @@ fn direct_only_family_slices_are_reported_as_conditional() {
         (
             DiagramFamilyId::GANTT,
             ThemeTarget::Title,
+            ThemeRuleFacetV1::Fill,
+        ),
+        (
+            DiagramFamilyId::GANTT,
+            ThemeTarget::Text,
             ThemeRuleFacetV1::Fill,
         ),
         (
