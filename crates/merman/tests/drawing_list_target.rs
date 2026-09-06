@@ -55,7 +55,7 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
         panic!("expected a DrawingList output");
     };
 
-    assert_eq!(output.document().viewport.bounds.width > 0.0, true);
+    assert!(output.document().viewport.bounds.width > 0.0);
     assert!(
         output
             .document()
