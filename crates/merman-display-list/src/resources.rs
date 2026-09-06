@@ -22,16 +22,49 @@ pub(crate) fn media_type_matches(
     kind.eq_ignore_ascii_case(expected_type) && subtype.eq_ignore_ascii_case(expected_subtype)
 }
 
-pub(crate) fn is_image_media_type(media_type: &str) -> bool {
-    let Some((kind, _subtype)) = media_type.split(';').next().and_then(|value| {
-        let (kind, subtype) = value.trim().split_once('/')?;
-        let kind = kind.trim();
-        let subtype = subtype.trim();
-        (!kind.is_empty() && !subtype.is_empty()).then_some((kind, subtype))
-    }) else {
-        return false;
-    };
-    kind.eq_ignore_ascii_case("image")
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupportedImageFormat {
+    Png,
+    Jpeg,
+    Webp,
+    Avif,
+}
+
+impl SupportedImageFormat {
+    fn from_media_type(media_type: &str) -> Option<Self> {
+        if media_type_matches(media_type, "image", "png") {
+            Some(Self::Png)
+        } else if media_type_matches(media_type, "image", "jpeg")
+            || media_type_matches(media_type, "image", "jpg")
+        {
+            Some(Self::Jpeg)
+        } else if media_type_matches(media_type, "image", "webp") {
+            Some(Self::Webp)
+        } else if media_type_matches(media_type, "image", "avif") {
+            Some(Self::Avif)
+        } else {
+            None
+        }
+    }
+
+    fn from_image_type(image_type: imagesize::ImageType) -> Option<Self> {
+        match image_type {
+            imagesize::ImageType::Png => Some(Self::Png),
+            imagesize::ImageType::Jpeg => Some(Self::Jpeg),
+            imagesize::ImageType::Webp => Some(Self::Webp),
+            imagesize::ImageType::Heif(imagesize::Compression::Av1) => Some(Self::Avif),
+            _ => None,
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+            Self::Webp => "WebP",
+            Self::Avif => "AVIF",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -447,18 +480,65 @@ impl ImageResource {
                 self.id.as_str()
             )));
         }
-        if !is_image_media_type(&self.image.media_type) {
-            return Err(DrawingListError::invalid(format!(
-                "image resource {} must use an image media type",
-                self.id.as_str()
-            )));
-        }
         if self.image.data.len() > max_image_bytes {
             return Err(DrawingListError::ResourceLimit {
                 resource: "image_bytes",
                 actual: self.image.data.len(),
                 maximum: max_image_bytes,
             });
+        }
+
+        let Some(declared_format) = SupportedImageFormat::from_media_type(&self.image.media_type)
+        else {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} must use PNG, JPEG, WebP, or AVIF",
+                self.id.as_str()
+            )));
+        };
+        let image_type = imagesize::image_type(&self.image.data).map_err(|error| {
+            DrawingListError::invalid(format!(
+                "image resource {} has an invalid or unsupported image payload: {error}",
+                self.id.as_str()
+            ))
+        })?;
+        let Some(actual_format) = SupportedImageFormat::from_image_type(image_type) else {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} contains an unsupported image format",
+                self.id.as_str()
+            )));
+        };
+        if actual_format != declared_format {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} declares {} but contains {}",
+                self.id.as_str(),
+                declared_format.label(),
+                actual_format.label()
+            )));
+        }
+        if matches!(actual_format, SupportedImageFormat::Jpeg) && self.has_alpha {
+            return Err(DrawingListError::invalid(format!(
+                "JPEG image resource {} cannot declare an alpha channel",
+                self.id.as_str()
+            )));
+        }
+
+        let actual_size = imagesize::blob_size(&self.image.data).map_err(|error| {
+            DrawingListError::invalid(format!(
+                "image resource {} has invalid dimensions: {error}",
+                self.id.as_str()
+            ))
+        })?;
+        if actual_size.width != self.pixel_width as usize
+            || actual_size.height != self.pixel_height as usize
+        {
+            return Err(DrawingListError::invalid(format!(
+                "image resource {} declares {}x{} pixels but contains {}x{} pixels",
+                self.id.as_str(),
+                self.pixel_width,
+                self.pixel_height,
+                actual_size.width,
+                actual_size.height
+            )));
         }
         Ok(())
     }

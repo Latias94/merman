@@ -56,7 +56,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
+    "cargo_lock_sha256": "c84bb3545e34e43a7b65fad3b669f4fbee0ba6bf79d32f3a2dfc68b1f11c89ff",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "114485b7a92a897b7c2ee774c7729954ce84152f7d6e626cb071e9a9a1b402af"
   },
@@ -64,13 +64,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 126,
-      "packages_sha256": "ab0c3c9b115e0a54ecff5c732f0835001d952e9ca9a91d0d26e8dada29e40152"
+      "package_count": 127,
+      "packages_sha256": "d8c372adffdbc14de4e5e0aa08f8e68c450f80d0d0505eea4745796112bb1986"
     }
   ],
   "dependency_closure": {
-    "package_count": 126,
-    "packages_sha256": "ab0c3c9b115e0a54ecff5c732f0835001d952e9ca9a91d0d26e8dada29e40152"
+    "package_count": 127,
+    "packages_sha256": "d8c372adffdbc14de4e5e0aa08f8e68c450f80d0d0505eea4745796112bb1986"
   },
   "licenses": [
     {
@@ -1062,6 +1062,24 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/zmij"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "436637bd4909fde7e14c899e9ff2cdd440b5968df12d431f1651f11db19bc2ef",
+      "text": "MIT License\r\n\r\nCopyright (c) 2017 Maiddog\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
+      "packages": [
+        {
+          "name": "imagesize",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Maid Dog <maiddogsrl@gmail.com>"
+          ],
+          "repository": "https://github.com/Roughsketch/imagesize"
         }
       ]
     },

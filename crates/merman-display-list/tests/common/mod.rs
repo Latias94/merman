@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use merman_display_list::{
     BlendMode, Color, CoordinateSystem, DrawingCommand, DrawingListDocument, DrawingListPolicy,
     DrawingResource, EncodedAsset, FillRule, FontDescriptor, FontResource, FontStyle,
@@ -8,6 +9,42 @@ use merman_display_list::{
     Viewport,
 };
 use std::collections::BTreeMap;
+
+const PNG_1X1_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADElEQVQIHWN4cPwqAAUHAn3f06laAAAAAElFTkSuQmCC";
+const PNG_64X64_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAARGVYSWZNTQAqAAAACAABh2kABAAAAAEAAAAaAAAAAAADoAEAAwAAAAEAAQAAoAIABAAAAAEAAABAoAMABAAAAAEAAABAAAAAAEZRQrAAAAHHaVRYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIiB4OnhtcHRrPSJYTVAgQ29yZSA2LjAuMCI+CiAgIDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+CiAgICAgIDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiCiAgICAgICAgICAgIHhtbG5zOmV4aWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20vZXhpZi8xLjAvIj4KICAgICAgICAgPGV4aWY6Q29sb3JTcGFjZT4xPC9leGlmOkNvbG9yU3BhY2U+CiAgICAgICAgIDxleGlmOlBpeGVsWERpbWVuc2lvbj4xPC9leGlmOlBpeGVsWERpbWVuc2lvbj4KICAgICAgICAgPGV4aWY6UGl4ZWxZRGltZW5zaW9uPjE8L2V4aWY6UGl4ZWxZRGltZW5zaW9uPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KICAgPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KyVIhLgAAALJJREFUaAXt0rENwCAUxNCQ/ffKBPQZJWKGV0RfMr1PYLPeZ1+Tzz358ufuPeDvghWoABroC6FAxivACnGgAiiQ8QqwQhyoAApkvAKsEAcqgAIZrwArxIEKoEDGK8AKcaACKJDxCrBCHKgACmS8AqwQByqAAhmvACvEgQqgQMYrwApxoAIokPEKsEIcqAAKZLwCrBAHKoACGa8AK8SBCqBAxivACnGgAiiQ8QqwQhwYX+ADIg8C/KMQOR0AAAAASUVORK5CYII=";
+const JPEG_1X1_BASE64: &str = "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9sAQwACAgICAgIDAgIDBQMDAwUGBQUFBQYIBgYGBgYICggICAgICAoKCgoKCgoKDAwMDAwMDg4ODg4PDw8PDw8PDw8P/9sAQwECAgIEBAQHBAQHEAsJCxAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ/90ABAAB/9oADAMBAAIRAxEAPwD9QKKKK7D6w//Z";
+const WEBP_1X1_BASE64: &str = "UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ3e52t/+BiOh/AAA=";
+const AVIF_2X2_BASE64: &str = "AAAAGGZ0eXBhdmlmAAAAAGF2aWZtaWYxAAABh21ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAHBpY3QAAAAAAAAAAAAAAAAAAAAAJGRpbmYAAAAcZHJlZgAAAAAAAAABAAAADHVybCAAAAABAAAADnBpdG0AAAAAAAEAAAA4aWluZgAAAAAAAgAAABVpbmZlAgAAAAABAABhdjAxAAAAABVpbmZlAgAAAQACAABFeGlmAAAAABppcmVmAAAAAAAAAA5jZHNjAAIAAQABAAAAqmlwcnAAAACIaXBjbwAAABNjb2xybmNseAACAAIABoAAAAAMY2xsaQDLAEAAAAAUaXNwZQAAAAAAAAACAAAAAgAAAChjbGFwAAAAAQAAAAEAAAABAAAAAf/AAAAAgAAA/8AAAACAAAAAAAAJaXJvdAAAAAAQcGl4aQAAAAADCAgIAAAADGF2MUOBAAwAAAAAGmlwbWEAAAAAAAAAAQABB4ECAwaHhIUAAAAsaWxvYwAAAABEAAACAAEAAAABAAAB/QAAACwAAgAAAAEAAAGvAAAATgAAAAFtZGF0AAAAAAAAAIoAAAAGRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAASAAoMAAAAAAZ//AgQEDQgMhoQAZIACCCCKAN1RUm0q/42apmxmxK3THNmpg==";
+
+fn decode_image_fixture(encoded: &str) -> Vec<u8> {
+    STANDARD
+        .decode(encoded)
+        .expect("embedded image fixture is valid base64")
+}
+
+pub fn png_1x1() -> Vec<u8> {
+    decode_image_fixture(PNG_1X1_BASE64)
+}
+
+#[allow(dead_code)]
+pub fn png_64x64() -> Vec<u8> {
+    decode_image_fixture(PNG_64X64_BASE64)
+}
+
+#[allow(dead_code)]
+pub fn jpeg_1x1() -> Vec<u8> {
+    decode_image_fixture(JPEG_1X1_BASE64)
+}
+
+#[allow(dead_code)]
+pub fn webp_1x1() -> Vec<u8> {
+    decode_image_fixture(WEBP_1X1_BASE64)
+}
+
+#[allow(dead_code)]
+pub fn avif_2x2() -> Vec<u8> {
+    decode_image_fixture(AVIF_2X2_BASE64)
+}
 
 pub fn sample_document() -> DrawingListDocument {
     let node_path = ResourceId::new("path.node-a");
@@ -144,16 +181,16 @@ pub fn extended_document() -> DrawingListDocument {
         .resources
         .push(DrawingResource::Image(ImageResource {
             id: image_id.clone(),
-            image: EncodedAsset::new("image/png", vec![0x89, b'P', b'N', b'G']),
-            pixel_width: 8,
-            pixel_height: 8,
+            image: EncodedAsset::new("image/png", png_1x1()),
+            pixel_width: 1,
+            pixel_height: 1,
             has_alpha: true,
         }));
     document.resources.push(DrawingResource::Pattern(
         merman_display_list::PatternResource {
             id: ResourceId::new("paint.pattern"),
             image: image_id,
-            tile: Rect::new(0.0, 0.0, 8.0, 8.0),
+            tile: Rect::new(0.0, 0.0, 1.0, 1.0),
             transform: Transform::IDENTITY,
             repetition: merman_display_list::PatternRepeat::Repeat,
         },

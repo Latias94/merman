@@ -416,7 +416,8 @@ pub(in crate::svg::pipeline) fn is_safe_data_image_url(value: &str) -> bool {
         || mime.matches("image", "jpeg")
         || mime.matches("image", "jpg")
         || mime.matches("image", "gif")
-        || mime.matches("image", "webp");
+        || mime.matches("image", "webp")
+        || mime.matches("image", "avif");
     approved_mime
         && has_valid_percent_encoding(decoded.as_ref())
         && url
@@ -1004,6 +1005,7 @@ mod tests {
     fn sanitize_element_attributes_requires_decodable_data_image_payloads() {
         let svg = r#"<svg>
 <image href="data:image/png;base64,AAAA"/>
+<image href="data:image/avif;base64,AAAA"/>
 <image href="data:image/png,%89PNG%0D%0A"/>
 <image href="data:image/png;base64,AA*A"/>
 <image href="data:image/png;base64,A==="/>
@@ -1016,6 +1018,10 @@ mod tests {
 
         assert!(
             out.contains(r#"href="data:image/png;base64,AAAA""#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"href="data:image/avif;base64,AAAA""#),
             "{out}"
         );
         assert!(

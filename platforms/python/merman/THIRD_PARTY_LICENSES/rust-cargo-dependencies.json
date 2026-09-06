@@ -64,7 +64,7 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "cc5853f9f7e09e7551294b5857ac70744f1a9d29e8adb9d2f10e691af3c3f7e0",
+    "cargo_lock_sha256": "c84bb3545e34e43a7b65fad3b669f4fbee0ba6bf79d32f3a2dfc68b1f11c89ff",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "280d5ccfde4594987d4924f6b911e5de68260147f7b1d335f7e08861d067cb82"
   },
@@ -72,25 +72,25 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 126,
-      "packages_sha256": "751e3d81c4bb5acc0c46b09d38ee6a3163677e25253723758fa0eec044bb2df7"
+      "package_count": 127,
+      "packages_sha256": "c1523b1a6c946a114622e50382c37050debb723299e29f7123875c5cb0ff840a"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
-      "package_count": 125,
-      "packages_sha256": "505fdb0d2525971f65b0b14b88f8456c5a6a3ab6a59818e4642c46b9eea899d5"
+      "package_count": 126,
+      "packages_sha256": "3126500e95a36f88d9a204f13cc0106de792e0795a2350965b00220c8b572a06"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 126,
-      "packages_sha256": "ab0c3c9b115e0a54ecff5c732f0835001d952e9ca9a91d0d26e8dada29e40152"
+      "package_count": 127,
+      "packages_sha256": "d8c372adffdbc14de4e5e0aa08f8e68c450f80d0d0505eea4745796112bb1986"
     }
   ],
   "dependency_closure": {
-    "package_count": 129,
-    "packages_sha256": "37d1840205ff1f7df2fdb20d878ec21ef5cf1e599c3bf67eaf0cc9bfdcdac3e1"
+    "package_count": 130,
+    "packages_sha256": "d29b57db781b4c1399479061fc0397a7a9882dd1ace5e4eb3d3e34314796ba14"
   },
   "licenses": [
     {
@@ -1117,6 +1117,24 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/zmij"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "436637bd4909fde7e14c899e9ff2cdd440b5968df12d431f1651f11db19bc2ef",
+      "text": "MIT License\r\n\r\nCopyright (c) 2017 Maiddog\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
+      "packages": [
+        {
+          "name": "imagesize",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Maid Dog <maiddogsrl@gmail.com>"
+          ],
+          "repository": "https://github.com/Roughsketch/imagesize"
         }
       ]
     },

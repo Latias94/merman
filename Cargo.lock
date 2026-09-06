@@ -2452,6 +2452,7 @@ name = "merman-display-list"
 version = "0.8.0-alpha.6"
 dependencies = [
  "base64 0.22.1",
+ "imagesize",
  "jsonschema",
  "serde",
  "serde_json",

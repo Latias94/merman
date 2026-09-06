@@ -1,6 +1,8 @@
 mod common;
 
-use common::{extended_document, sample_document};
+use common::{
+    avif_2x2, extended_document, jpeg_1x1, png_1x1, png_64x64, sample_document, webp_1x1,
+};
 use merman_display_list::{
     AlphaMode, DrawingCommand, DrawingListLimits, DrawingResource, EncodedAsset, EncodedImage,
     FallbackReason, FillRule, FontResource, ImageResource, Paint, PathSegment, Point,
@@ -161,14 +163,22 @@ fn validator_enforces_cumulative_nesting_across_scope_kinds() {
 fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
     let document = common::extended_document();
     let footprint = document.footprint().expect("fixture scopes are balanced");
+    let image = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            DrawingResource::Image(image) => Some(image),
+            _ => None,
+        })
+        .expect("extended fixture has an image");
 
     assert_eq!(footprint.commands, document.commands.len());
     assert_eq!(footprint.resources, document.resources.len());
     assert_eq!(footprint.semantics, document.semantics.len());
     assert_eq!(footprint.path_segments, 5);
     assert_eq!(footprint.gradient_stops, 4);
-    assert_eq!(footprint.image_bytes, 4);
-    assert_eq!(footprint.image_pixels, 64);
+    assert_eq!(footprint.image_bytes, image.image.data.len());
+    assert_eq!(footprint.image_pixels, 1);
     assert_eq!(footprint.font_bytes, 4);
     assert_eq!(footprint.text_bytes, "A node".len());
     assert_eq!(footprint.glyphs, 1);
@@ -261,6 +271,7 @@ fn extended_visual_vocabulary_validates_as_one_document() {
 fn fallback_validation_uses_indexed_images_for_large_resource_tables() {
     let mut document = sample_document();
     let fallback_count = 2_048;
+    let image_data = png_1x1();
     let mut fallback_commands = Vec::with_capacity(fallback_count);
     for index in 0..fallback_count {
         let image = ResourceId::new(format!("image.fallback.{index:04}"));
@@ -269,7 +280,7 @@ fn fallback_validation_uses_indexed_images_for_large_resource_tables() {
             .resources
             .push(DrawingResource::Image(ImageResource {
                 id: image.clone(),
-                image: EncodedImage::new("image/png", vec![0x89, b'P', b'N', b'G']),
+                image: EncodedImage::new("image/png", image_data.clone()),
                 pixel_width: 1,
                 pixel_height: 1,
                 has_alpha: true,
@@ -335,15 +346,95 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
 }
 
 #[test]
+fn image_validation_checks_payload_format_dimensions_and_alpha_contract() {
+    for (index, media_type, data, width, height, has_alpha) in [
+        (0, "image/png", png_1x1(), 1, 1, true),
+        (1, "image/jpeg", jpeg_1x1(), 1, 1, false),
+        (2, "image/webp", webp_1x1(), 1, 1, true),
+        (3, "image/avif", avif_2x2(), 2, 2, false),
+    ] {
+        let mut document = sample_document();
+        document
+            .resources
+            .push(DrawingResource::Image(ImageResource {
+                id: ResourceId::new(format!("image.supported.{index}")),
+                image: EncodedImage::new(media_type, data),
+                pixel_width: width,
+                pixel_height: height,
+                has_alpha,
+            }));
+        document
+            .validate()
+            .expect("supported image metadata matches its payload");
+    }
+
+    let mut unsupported = sample_document();
+    unsupported
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.svg"),
+            image: EncodedImage::new("image/svg+xml", b"<svg/>".to_vec()),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: true,
+        }));
+    assert!(unsupported.validate().is_err());
+
+    let mut mismatched_format = sample_document();
+    mismatched_format
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.mismatched-format"),
+            image: EncodedImage::new("image/jpeg", png_1x1()),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: false,
+        }));
+    assert!(mismatched_format.validate().is_err());
+
+    let mut mismatched_dimensions = sample_document();
+    mismatched_dimensions
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.mismatched-dimensions"),
+            image: EncodedImage::new("image/png", png_64x64()),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: true,
+        }));
+    let limits = DrawingListLimits {
+        max_image_pixels: 1,
+        ..DrawingListLimits::default()
+    };
+    let error = mismatched_dimensions
+        .validate_with_limits(&limits)
+        .expect_err("intrinsic dimensions cannot be hidden behind smaller declared dimensions");
+    assert!(error.to_string().contains("contains 64x64 pixels"));
+
+    let mut jpeg_with_alpha = sample_document();
+    jpeg_with_alpha
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.jpeg-alpha"),
+            image: EncodedImage::new("image/jpeg", jpeg_1x1()),
+            pixel_width: 1,
+            pixel_height: 1,
+            has_alpha: true,
+        }));
+    assert!(jpeg_with_alpha.validate().is_err());
+}
+
+#[test]
 fn validator_enforces_cumulative_encoded_asset_byte_budgets() {
     let mut document = extended_document();
+    let image_data = png_1x1();
     document
         .resources
         .push(DrawingResource::Image(ImageResource {
             id: ResourceId::new("image.pattern-tile-2"),
-            image: EncodedImage::new("image/png", vec![0x89, b'P', b'N', b'G']),
-            pixel_width: 8,
-            pixel_height: 8,
+            image: EncodedImage::new("image/png", image_data.clone()),
+            pixel_width: 1,
+            pixel_height: 1,
             has_alpha: true,
         }));
     document.resources.push(DrawingResource::Font(FontResource {
@@ -352,7 +443,7 @@ fn validator_enforces_cumulative_encoded_asset_byte_budgets() {
     }));
 
     let limits = DrawingListLimits {
-        max_image_bytes: 5,
+        max_image_bytes: image_data.len() + 1,
         max_font_bytes: 5,
         ..DrawingListLimits::default()
     };

@@ -129,6 +129,16 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
     font["font"]["media_type"] = json!("FONT/WoFf2; charset=binary");
     assert!(validator.is_valid(&uppercase_font));
 
+    let mut invalid_image = serde_json::to_value(extended_document()).expect("fixture serializes");
+    let image = invalid_image["resources"]
+        .as_array_mut()
+        .expect("resources are an array")
+        .iter_mut()
+        .find(|resource| resource["kind"] == "image")
+        .expect("extended fixture has an image");
+    image["image"]["media_type"] = json!("image/svg+xml");
+    assert!(!validator.is_valid(&invalid_image));
+
     let mut invalid_u32 = serde_json::to_value(extended_document()).expect("fixture serializes");
     let image = invalid_u32["resources"]
         .as_array_mut()

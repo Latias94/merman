@@ -274,7 +274,7 @@
     "image_media_type": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/[^;\\s]+(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/(?:[Pp][Nn][Gg]|[Jj][Pp](?:[Ee][Gg]|[Gg])|[Ww][Ee][Bb][Pp]|[Aa][Vv][Ii][Ff])(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
     },
     "font_media_type": {
       "type": "string",
@@ -308,7 +308,7 @@
         "id": { "$ref": "#/$defs/resource_id" },
         "image": {
           "$ref": "#/$defs/image_asset",
-          "$comment": "The media_type main type/subtype is validated by the runtime protocol validator; parameters and ASCII case are handled there."
+          "$comment": "The runtime also verifies that the payload format and intrinsic dimensions match this metadata."
         },
         "pixel_width": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
         "pixel_height": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
