@@ -2127,6 +2127,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
+        self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2402,6 +2403,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
+        self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2446,6 +2448,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_block_inline_path_style(path_id);
+        self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2483,6 +2486,8 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
+        let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius);
+        self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2514,6 +2519,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_zenuml_path_attrs(path_id.as_str());
         self.write_block_inline_path_style(path_id);
+        self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -2547,6 +2553,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"');
         }
         self.write_zenuml_path_attrs(path_id.as_str());
+        let inline_radius = path_id.as_str().ends_with(".shape").then_some(12.0);
+        self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs();
         self.output.push_str(" data-merman-resource=\"");
@@ -3462,6 +3470,57 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str(" style=\"");
         escape_attr_into(&mut self.output, box_style.as_str());
         self.output.push('"');
+    }
+
+    fn write_c4_shape_inline_style(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+        radius: Option<f64>,
+    ) -> Result<()> {
+        // Mermaid's unified C4 renderer compiles node cssStyles into inline `!important`
+        // declarations so per-element/config colors win over provider and host CSS.
+        if !matches!(self.svg_body, SvgStructureBody::C4(_))
+            || !path_id.as_str().starts_with("c4.shape.")
+        {
+            return Ok(());
+        }
+
+        let paint_css = |paint: &Paint| -> Result<String> {
+            match paint {
+                Paint::Solid { color } => Ok(color_css(*color)),
+                Paint::Resource { id } => {
+                    Ok(format!("url(#{})", self.svg_resource_id(id.as_str())?))
+                }
+            }
+        };
+        let fill = style
+            .fill
+            .as_ref()
+            .ok_or_else(|| invalid(format!("C4 shape {path_id:?} is missing its fill")))?;
+        let stroke = style
+            .stroke
+            .as_ref()
+            .ok_or_else(|| invalid(format!("C4 shape {path_id:?} is missing its stroke")))?;
+        let fill = paint_css(fill)?;
+        let stroke = paint_css(&stroke.paint)?;
+
+        self.output.push_str(" style=\"fill:");
+        escape_attr_into(&mut self.output, fill.as_str());
+        self.output.push_str(" !important;stroke:");
+        escape_attr_into(&mut self.output, stroke.as_str());
+        self.output.push_str(" !important");
+        if let Some(radius) = radius {
+            write!(
+                self.output,
+                ";rx:{}px !important;ry:{}px !important",
+                fmt(radius),
+                fmt(radius),
+            )
+            .map_err(|_| invalid("failed to write C4 shape radius style"))?;
+        }
+        self.output.push('"');
+        Ok(())
     }
 
     fn text_class(&self, _run: &TextRun, text_index: Option<usize>) -> Option<Cow<'_, str>> {

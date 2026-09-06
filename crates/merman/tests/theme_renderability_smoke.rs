@@ -534,32 +534,89 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         svg.contains(r#"#c4-visible-audit .person{stroke:#ec4899;fill:#0ea5e9;}"#),
         "Mermaid 11.17 still emits C4 .person provider CSS: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("C4 theme smoke should emit valid XML");
+    let person = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "c4-person")
+                })
+        })
+        .expect("C4 current output should expose the current person group DOM");
     assert!(
-        svg.contains(r#"class="node c4-shape c4-person""#),
+        person.attribute("class").is_some_and(|classes| {
+            ["node", "c4-shape", "c4-person"].iter().all(|expected| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == *expected)
+            })
+        }),
         "C4 current output should expose the current shape group DOM: {svg}"
     );
     assert!(
-        !svg.contains(r#"class="person""#),
+        !document.descendants().any(|node| {
+            node.attribute("class").is_some_and(|classes| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == "person")
+            })
+        }),
         "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
     );
+    for resource in ["c4.shape.0.body", "c4.shape.0.head"] {
+        let style = person
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(resource))
+            .and_then(|node| node.attribute("style"))
+            .unwrap_or_else(|| panic!("C4 person shape {resource} should have an inline style"));
+        assert!(
+            style.contains("fill:#334155 !important")
+                && style.contains("stroke:#f97316 !important"),
+            "UpdateElementStyle colors should reach visible C4 person shape {resource}: {svg}"
+        );
+    }
+    let person_labels = person
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect::<Vec<_>>();
+    assert!(!person_labels.is_empty());
     assert!(
-        svg.contains(r##"style="fill:#334155 !important;stroke:#f97316 !important""##),
-        "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
-    );
-    assert!(
-        svg.contains(r##"style="fill:#fde68a !important""##),
+        person_labels.iter().all(|node| {
+            node.attribute("style")
+                .is_some_and(|style| style.contains("fill: #fde68a !important;"))
+        }),
         "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
     );
+
+    let system_shape = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-resource") == Some("c4.shape.1.shape"))
+        .expect("C4 system shape should be visible");
     assert!(
-        svg.contains(r##"style="fill:#111827 !important;stroke:#facc15 !important"##),
+        system_shape.attribute("style").is_some_and(|style| {
+            style.contains("fill:#111827 !important") && style.contains("stroke:#facc15 !important")
+        }),
         "C4 config colors should reach the visible system shape: {svg}"
     );
+
+    let relation = document
+        .descendants()
+        .find(|node| node.attribute("data-merman-semantic-id") == Some("c4.relation.0"))
+        .expect("C4 relationship should be visible");
+    let relation_line = relation
+        .descendants()
+        .find(|node| node.attribute("data-merman-resource") == Some("c4.relation.0.route"))
+        .expect("C4 relationship route should be visible");
+    assert_eq!(relation_line.attribute("stroke"), Some("#facc15"));
+    assert_eq!(relation_line.attribute("stroke-width"), Some("1"));
     assert!(
-        svg.contains(r##"stroke-width="1" stroke="#facc15""##),
-        "UpdateRelStyle lineColor should reach the visible C4 relationship line: {svg}"
-    );
-    assert!(
-        svg.contains(r##"dominant-baseline="middle" fill="#a7f3d0""##),
+        relation
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .all(|node| node.attribute("fill") == Some("#a7f3d0")),
         "UpdateRelStyle textColor should reach visible C4 relationship labels: {svg}"
     );
 }
@@ -982,8 +1039,33 @@ gitGraph
         neo.contains(r#"<defs><linearGradient id="gitgraph-neo-visible-gradient""#),
         "neo GitGraph should emit the gradient defs consumed by branch label backgrounds: {neo}"
     );
+    let document =
+        roxmltree::Document::parse(&neo).expect("neo GitGraph theme smoke should emit valid XML");
+    let gradient_ids = document
+        .descendants()
+        .filter(|node| node.has_tag_name("linearGradient"))
+        .filter_map(|node| node.attribute("id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let branch_label_strokes = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "branchLabelBkg")
+                })
+        })
+        .filter_map(|node| node.attribute("stroke"))
+        .collect::<Vec<_>>();
     assert!(
-        neo.contains(r#"#gitgraph-neo-visible .label0{fill:#ffffff;stroke:url(#gitgraph-neo-visible-gradient);stroke-width:2;}"#),
+        branch_label_strokes.len() == 2
+            && branch_label_strokes.iter().all(|stroke| {
+                stroke
+                    .strip_prefix("url(#")
+                    .and_then(|value| value.strip_suffix(')'))
+                    .is_some_and(|id| gradient_ids.contains(id))
+            }),
         "neo GitGraph branch label backgrounds should consume the scoped gradient: {neo}"
     );
     assert!(
