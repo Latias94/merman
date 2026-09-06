@@ -837,10 +837,17 @@ fn prepare_gitgraph_family(
         has_title,
         execution.work_meter_ref(),
     )?;
+    let static_paint = crate::gitgraph::GitGraphStaticPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::GitGraph(Box::new(
         GitGraphFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             node_palette,
+            static_paint,
             typography_theme,
         },
     )))

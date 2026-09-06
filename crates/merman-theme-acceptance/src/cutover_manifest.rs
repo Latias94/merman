@@ -11,19 +11,19 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 47;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 48;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x98, 0xec, 0x49, 0xd3, 0x3c, 0xf2, 0x66, 0xa6, 0xaf, 0x96, 0x84, 0x83, 0x2b, 0x5e, 0x4b, 0x82,
-    0xa7, 0xf0, 0xa6, 0xf5, 0x75, 0x34, 0x1a, 0x60, 0x6f, 0xe3, 0x37, 0x75, 0x68, 0x40, 0x14, 0x5f,
+    0x9c, 0x6c, 0x4d, 0x28, 0x37, 0x56, 0xad, 0x7a, 0x6d, 0xc9, 0x0b, 0x21, 0xbc, 0x72, 0xa1, 0xfb,
+    0x28, 0xc2, 0x5f, 0x0b, 0x54, 0x29, 0xdc, 0xbb, 0xd8, 0x5a, 0xb0, 0xc6, 0x82, 0x09, 0xd8, 0x15,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 39] = [
+); 40] = [
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -180,6 +180,10 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::TreeViewMarkerPaint,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -241,6 +245,8 @@ const EDGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
 ];
 const EDGE_STROKE_ONLY_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::EdgeStroke];
+const GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill];
 const ACTOR_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ActorFill];
 const ACTOR_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -335,7 +341,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 274] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 278] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1947,6 +1953,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 274] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabelBackground,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::GANTT,
@@ -3119,7 +3155,7 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 45);
+        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 48);
 
         let journey_routes = ACTIVE_ROUTES
             .iter()

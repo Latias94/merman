@@ -1849,6 +1849,7 @@ impl SankeyFamilyArtifact {
 pub(crate) struct GitGraphFamilyArtifact {
     pair: FamilyPair<diagrams::git_graph::GitGraphRenderModel, GitGraphDiagramLayout>,
     node_palette: crate::gitgraph::GitGraphNodePalettePlan,
+    static_paint: crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
 }
 
@@ -1867,8 +1868,13 @@ impl GitGraphFamilyArtifact {
         &self.typography_theme
     }
 
+    pub(crate) const fn static_paint(&self) -> &crate::gitgraph::GitGraphStaticPaintPlan {
+        &self.static_paint
+    }
+
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.node_palette.finish_evidence();
+        evidence.merge_accounted_from(self.static_paint.finish_evidence());
         evidence.merge_accounted_from(self.typography_theme.finish_evidence());
         evidence
     }

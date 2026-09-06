@@ -435,6 +435,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
+        (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL),
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
@@ -1660,6 +1665,23 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::GIT_GRAPH
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && target == ThemeTarget::EdgeLabelBackground
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -5206,6 +5228,20 @@ mod tests {
                 vec!["edge.stroke"],
             ),
             (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Transparent,
+                vec!["commit-label-background.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::EdgeLabelBackground,
+                Fill,
+                Solid,
+                vec!["commit-label-background.fill"],
+            ),
+            (
                 DiagramFamilyId::INFO,
                 ThemeTarget::Text,
                 Fill,
@@ -5916,7 +5952,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 130);
+        assert_eq!(qualified.len(), 136);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6017,6 +6053,20 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::CLASS)
                 .count(),
             6
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
+                .count(),
+            4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::MINDMAP)
+                .count(),
+            4
         );
         assert_eq!(
             qualified
@@ -6136,6 +6186,28 @@ mod tests {
                         ThemeRouteCutoverProjection::NodeLabelFill
                     }
                     _ => panic!("unexpected Class qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::GIT_GRAPH {
+                let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+                        ThemeRouteCutoverProjection::EdgeStroke
+                    }
+                    (ThemeTarget::EdgeLabelBackground, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill
+                    }
+                    _ => panic!("unexpected GitGraph qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::MINDMAP {
+                let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::NodeFill
+                    }
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+                        ThemeRouteCutoverProjection::NodeStroke
+                    }
+                    _ => panic!("unexpected Mindmap qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::PIE {

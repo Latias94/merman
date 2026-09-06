@@ -15,8 +15,8 @@ pub(crate) use theme::{
     GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt, GitGraphCommitKind,
     GitGraphCommitPaletteRole, GitGraphNodePalettePlan, GitGraphNodePaletteReceipt,
     GitGraphPaletteSource, GitGraphPaletteSurface, GitGraphPaletteSurfaceOwnership,
-    GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
-    gitgraph_tags_in_output_order, palette_slot,
+    GitGraphStaticPaintPlan, GitGraphTypographyCssEmission, GitGraphTypographyThemePlan,
+    gitgraph_commit_label_is_visible, gitgraph_tags_in_output_order, palette_slot,
 };
 
 pub(crate) fn resolve_gitgraph_title<'a>(
@@ -47,6 +47,17 @@ pub(crate) fn gitgraph_theme_is_redux_geometry(theme: &str) -> bool {
     matches!(
         theme.trim(),
         "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+    )
+}
+
+/// Whether Mermaid's GitGraph color-generated theme branch owns the commit-label background.
+///
+/// These themes deliberately emit a transparent label rectangle even when
+/// `commitLabelBackground` has a configured value.
+pub(crate) fn gitgraph_theme_uses_color_gen(theme: &str) -> bool {
+    matches!(
+        theme.trim(),
+        "redux" | "redux-dark" | "redux-color" | "redux-dark-color" | "neo" | "neo-dark"
     )
 }
 

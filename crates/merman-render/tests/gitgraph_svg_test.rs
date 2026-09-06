@@ -953,6 +953,130 @@ gitGraph
 }
 
 #[test]
+fn gitgraph_edge_label_background_fill_is_typed_and_reaches_commit_label_rects() {
+    let solid = CanvasPaint::solid("#123456").expect("valid GitGraph label background");
+    for (variant, diagram_id) in [
+        (None, "git-edge-label-background"),
+        (
+            Some(ThemeVariant::Default),
+            "git-edge-label-background-default",
+        ),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::EdgeLabelBackground,
+            ThemeStylePatch::default().with_fill(solid.clone()),
+        )
+        .for_family(DiagramFamilyId::GIT_GRAPH);
+        if let Some(variant) = variant {
+            rule = rule.with_variant(variant);
+        }
+        let theme = gitgraph_edge_rules_theme([rule]);
+        let rendered =
+            render_gitgraph_with_theme_and_engine(TWO_BRANCHES, &theme, Engine::new(), diagram_id);
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+        let stylesheet = gitgraph_stylesheet(rendered.svg());
+        let commit_label_rule =
+            gitgraph_css_rule(&stylesheet, &format!("#{diagram_id} .commit-label-bkg"));
+
+        assert_eq!(
+            css_property_winner(&commit_label_rule, "fill"),
+            Some("#123456")
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| has_class(&node, "commit-label-bkg"))
+        );
+
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gitgraph_edge_label_background_yields_to_color_generated_theme_ownership() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid GitGraph label background")),
+    )
+    .for_family(DiagramFamilyId::GIT_GRAPH)]);
+
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({ "theme": "neo" }),
+        &theme,
+        "git-edge-label-background-neo",
+        |owner, rendered| {
+            let diagram_id = format!("git-edge-label-background-neo-{owner}");
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+            let stylesheet = gitgraph_stylesheet(rendered.svg());
+            let commit_label_rule =
+                gitgraph_css_rule(&stylesheet, &format!("#{diagram_id} .commit-label-bkg"));
+
+            assert_eq!(
+                css_property_winner(&commit_label_rule, "fill"),
+                Some("transparent"),
+                "{owner}: Mermaid's color-generated theme owns the commit label background"
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| has_class(&node, "commit-label-bkg")),
+                "{owner}: the not-applicable route must still have a real source-owned terminal"
+            );
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "owner={owner}");
+            assert_eq!(evidence.applied_count(), 0, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        },
+    );
+}
+
+#[test]
+fn gitgraph_edge_label_background_yields_to_explicit_config_ownership() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid GitGraph label background")),
+    )
+    .for_family(DiagramFamilyId::GIT_GRAPH)]);
+
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({ "themeVariables": { "commitLabelBackground": "#abcdef" } }),
+        &theme,
+        "git-edge-label-background-config",
+        |owner, rendered| {
+            let diagram_id = format!("git-edge-label-background-config-{owner}");
+            let stylesheet = gitgraph_stylesheet(rendered.svg());
+            let commit_label_rule =
+                gitgraph_css_rule(&stylesheet, &format!("#{diagram_id} .commit-label-bkg"));
+
+            assert_eq!(
+                css_property_winner(&commit_label_rule, "fill"),
+                Some("#abcdef"),
+                "{owner}: an explicit Mermaid config owns this property"
+            );
+
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "owner={owner}");
+            assert_eq!(evidence.applied_count(), 0, "owner={owner}");
+            assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
+            assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
+        },
+    );
+}
+
+#[test]
 fn gitgraph_unsupported_routes_follow_real_terminal_occurrences() {
     let source = r#"---
 title: GitGraph unsupported surfaces

@@ -368,11 +368,12 @@ pub enum ThemeRouteCutoverProjection {
     KanbanTaskStroke = 36,
     JourneyTaskStroke = 37,
     TreeViewMarkerPaint = 38,
+    GitGraphCommitLabelBackgroundFill = 39,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 39] = [
+    const ALL: [Self; 40] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -412,6 +413,7 @@ impl ThemeRouteCutoverProjection {
         Self::KanbanTaskStroke,
         Self::JourneyTaskStroke,
         Self::TreeViewMarkerPaint,
+        Self::GitGraphCommitLabelBackgroundFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -455,6 +457,7 @@ impl ThemeRouteCutoverProjection {
             Self::KanbanTaskStroke => "task.default.stroke",
             Self::JourneyTaskStroke => "task.stroke",
             Self::TreeViewMarkerPaint => "marker.paint",
+            Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
         }
     }
 
@@ -498,8 +501,9 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskErrorStroke
             | Self::KanbanTaskStroke
             | Self::JourneyTaskFill
-            | Self::JourneyTaskStroke => ThemeRouteCutoverProjectionAction::Replace,
-            Self::TreeViewMarkerPaint => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::JourneyTaskStroke
+            | Self::TreeViewMarkerPaint
+            | Self::GitGraphCommitLabelBackgroundFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -613,6 +617,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::KanbanTaskStroke);
     pub const REPLACE_TREE_VIEW_MARKER_PAINT: Self =
         Self::replacing(ThemeRouteCutoverProjection::TreeViewMarkerPaint);
+    pub const REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -1173,6 +1179,26 @@ mod tests {
         assert_eq!(ThemeRouteCutoverProjection::KanbanTaskStroke as u8, 36);
         assert_eq!(ThemeRouteCutoverProjection::JourneyTaskStroke as u8, 37);
         assert_eq!(ThemeRouteCutoverProjection::TreeViewMarkerPaint as u8, 38);
+        assert_eq!(
+            ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill as u8,
+            39
+        );
+    }
+
+    #[test]
+    fn gitgraph_commit_label_background_projection_is_an_exact_replacement() {
+        let projection = ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill;
+        let projections =
+            ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL
+                .iter()
+                .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "commit-label-background.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
     }
 
     #[test]

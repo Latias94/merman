@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 41);
+    assert_eq!(support.claim_revision(), 42);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -621,6 +621,27 @@ fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
         support.reason_ids(),
         [
             "theme-support.legacy-compatibility-only",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
+}
+
+#[test]
+fn gitgraph_edge_label_background_fill_is_a_typed_partial_surface() {
+    let query = ThemeSupportQueryV1::known(
+        DiagramFamilyId::GIT_GRAPH.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::EdgeLabelBackground.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+
+    let support = describe_theme_support(&query);
+
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
             "theme-support.public-value-domain-partial",
         ]
     );

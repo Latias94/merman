@@ -511,9 +511,12 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_PAINT_SOURCE)
         }
-        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-            Ok(GITGRAPH_EDGE_SOURCE)
-        }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke)
+        | (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::EdgeLabelBackground,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(GITGRAPH_EDGE_SOURCE),
         (DiagramFamilyId::GANTT, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(GANTT_TITLE_SOURCE)
         }
@@ -1409,11 +1412,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_274_routes_and_302_artifact_witnesses() {
+    fn route_inventory_retains_278_routes_and_306_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 274);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 302);
+        assert_eq!(inventory.len(), 278);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 306);
     }
 
     #[test]

@@ -1564,7 +1564,7 @@ mod tests {
                 .iter()
                 .map(ThemeLegacyProjectionObservation::assignment_path)
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.textColor"])
+            BTreeSet::from(["themeVariables.textColor", "themeVariables.titleColor"])
         );
     }
 
@@ -2047,7 +2047,7 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_legacy_paint_projects_only_writer_consumed_variables() {
+    fn gitgraph_legacy_paint_excludes_the_retired_commit_label_background_projection() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -2117,10 +2117,6 @@ mod tests {
             ("themeVariables.tagLabelColor", node_label),
             ("themeVariables.commitLineColor", edge),
             ("themeVariables.commitLabelColor", edge_label),
-            (
-                "themeVariables.commitLabelBackground",
-                edge_label_background,
-            ),
         ] {
             assert_eq!(
                 parsed.effective_config.get_str(path),
@@ -2128,6 +2124,13 @@ mod tests {
                 "path={path}"
             );
         }
+        assert_ne!(
+            parsed
+                .effective_config
+                .get_str("themeVariables.commitLabelBackground"),
+            Some(edge_label_background),
+            "the retired projection must not be reintroduced through the bridge"
+        );
 
         let evidence = theme_parse_evidence(&parsed);
         let mut assignments = std::collections::BTreeMap::new();
@@ -2143,10 +2146,6 @@ mod tests {
         assert_eq!(
             assignments,
             std::collections::BTreeMap::from([
-                (
-                    "themeVariables.commitLabelBackground",
-                    edge_label_background
-                ),
                 ("themeVariables.commitLabelColor", edge_label),
                 ("themeVariables.commitLineColor", edge),
                 ("themeVariables.mainBkg", node_fill),
@@ -2158,6 +2157,10 @@ mod tests {
                 ("themeVariables.tagLabelColor", node_label),
                 ("themeVariables.textColor", text),
             ])
+        );
+        assert!(
+            !assignments.contains_key("themeVariables.commitLabelBackground"),
+            "the typed route must not leave a compatibility overlay assignment"
         );
     }
 
@@ -2436,6 +2439,7 @@ mod tests {
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
+                DiagramFamilyId::MINDMAP,
                 DiagramFamilyId::TREE_VIEW,
                 DiagramFamilyId::ARCHITECTURE,
                 DiagramFamilyId::CYNEFIN,
@@ -2452,9 +2456,9 @@ mod tests {
     #[test]
     fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-            0x30, 0x11, 0xb3, 0xf5, 0x28, 0x96, 0xb2, 0xaf, 0x03, 0xac, 0x5d, 0xe4, 0xc1, 0x53,
-            0x23, 0xc3, 0x5d, 0x11, 0x05, 0x50, 0xe2, 0x84, 0xd3, 0x28, 0x94, 0x1e, 0x12, 0xa3,
-            0x08, 0xb0, 0x7c, 0xbe,
+            0xb2, 0x49, 0xae, 0x2f, 0xfa, 0xa9, 0xbc, 0xaa, 0xf0, 0xdb, 0x40, 0xb9, 0xc4, 0xc7,
+            0xad, 0x6c, 0xc5, 0x5f, 0x3d, 0xf1, 0x3a, 0x2f, 0x63, 0xc9, 0x43, 0x2c, 0x95, 0x16,
+            0xc3, 0xd0, 0xe2, 0x7d,
         ];
         const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
             0x13, 0x5b, 0xf6, 0x83, 0xa6, 0x12, 0xc3, 0xce, 0x52, 0xb5, 0xe1, 0xc2, 0xb7, 0xcc,
@@ -2469,7 +2473,7 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 286);
+        assert_eq!(status.matrix_route_count(), 282);
         assert_eq!(status.matrix_family_count(), 17);
         assert_eq!(status.dispatched_family_count(), 17);
         assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
