@@ -79,24 +79,35 @@ fn prepared_svg_reports_the_serializer_route_used_for_each_request() {
         SvgSerializationRoute::CanonicalDocument
     );
 
-    let bridged = family::prepare(
-        parse_for_render("flowchart TD\n  A --> B\n"),
-        &LayoutOptions::default(),
-        render_session(),
-    )
-    .expect("prepare Flowchart artifact")
-    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    .expect("render bridged Flowchart SVG");
-    assert_eq!(
-        bridged.serialization_route(),
-        SvgSerializationRoute::LegacyBridge
-    );
-    assert_eq!(
-        bridged.serialization_bridge_reason(),
-        Some(&SvgSerializationBridgeReason::LegacyFamily {
-            family: family::RenderFamilyKind::Flowchart,
-        })
-    );
+    for (source, expected_family) in [
+        (
+            "flowchart TD\n  A --> B\n",
+            family::RenderFamilyKind::Flowchart,
+        ),
+        (
+            "gantt\n  dateFormat YYYY-MM-DD\n  Task :a, 2026-01-01, 1d\n",
+            family::RenderFamilyKind::Gantt,
+        ),
+    ] {
+        let bridged = family::prepare(
+            parse_for_render(source),
+            &LayoutOptions::default(),
+            render_session(),
+        )
+        .expect("prepare bridged artifact")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render bridged SVG");
+        assert_eq!(
+            bridged.serialization_route(),
+            SvgSerializationRoute::LegacyBridge
+        );
+        assert_eq!(
+            bridged.serialization_bridge_reason(),
+            Some(&SvgSerializationBridgeReason::LegacyFamily {
+                family: expected_family,
+            })
+        );
+    }
 }
 
 #[cfg(not(feature = "layout-cytoscape"))]
