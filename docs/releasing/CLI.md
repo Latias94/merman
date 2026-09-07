@@ -137,11 +137,12 @@ remain workflow artifacts for external submission; they are not uploaded as prod
 
 ## cargo-binstall
 
-`crates/merman-cli/Cargo.toml` resolves the four published targets as follows:
+`crates/merman-cli/Cargo.toml` resolves the five published targets as follows:
 
 | Target | Format | Executable path inside the archive |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | `.tar.xz` | `merman-cli-aarch64-apple-darwin/merman-cli` |
+| `aarch64-unknown-linux-gnu` | `.tar.xz` | `merman-cli-aarch64-unknown-linux-gnu/merman-cli` |
 | `x86_64-apple-darwin` | `.tar.xz` | `merman-cli-x86_64-apple-darwin/merman-cli` |
 | `x86_64-unknown-linux-gnu` | `.tar.xz` | `merman-cli-x86_64-unknown-linux-gnu/merman-cli` |
 | `x86_64-pc-windows-msvc` | `.zip` | `merman-cli.exe` |
@@ -156,8 +157,8 @@ The metadata disables cargo-binstall's third-party QuickInstall strategy. If an 
 is absent, cargo-binstall falls back to `cargo install` instead of silently substituting an
 uncontrolled binary. Do not disable the `compile` strategy.
 
-The metadata does not claim Linux ARM64 until that target passes the repository's full admission
-gate. The current decision and required evidence are recorded in
+Linux ARM64 is published under the same generic `pkg-url`, `pkg-fmt`, and `bin-dir` templates as
+the other Unix targets; only Windows keeps an override. The admission record for that target is
 [`docs/release/CLI_TARGET_ADMISSION.md`](../release/CLI_TARGET_ADMISSION.md). A Homebrew ARM64 Linux
 bottle belongs to a different build and verification channel.
 
@@ -207,8 +208,8 @@ python3 scripts/test_nix_package.py
 CI injects the Flake's locked Nixpkgs into `default.nix`, evaluates all four declared systems, and
 native-builds and runs the package on x86_64 Linux. The other system outputs remain source package
 interfaces until they gain native Nix build jobs. A Nix source interface for Linux ARM64 is separate
-from admitting a precompiled Linux ARM64 release target; the latter still requires U8's native
-archive and glibc evidence.
+from the precompiled Linux ARM64 release target; the archive channel is governed by its own
+admission record and native execution gate.
 
 ## Scoop and WinGet draft candidate contract
 
