@@ -251,34 +251,17 @@ pub(in crate::svg::parity) fn canonical_error_css(
     effective_config: &Value,
     projection: &ErrorProjection<'_>,
 ) -> Result<String> {
-    let source_root = effective_config
-        .as_object()
-        .ok_or_else(|| invalid("Error effective configuration must be an object"))?;
+    if !effective_config.is_object() {
+        return Err(invalid("Error effective configuration must be an object"));
+    }
 
-    // The shared base stylesheet reads only this closed set of shallow scalar values. Projecting
-    // them avoids recursively cloning or dropping arbitrary host configuration while preserving
-    // every inert Error stylesheet token that Mermaid can actually consume here.
+    // Error's renderer-neutral document already carries every visual value used by its icon and
+    // text. Do not copy arbitrary theme tokens into the shared stylesheet: even a shallow CSS
+    // scalar such as `var(--host-color)` would introduce a second, unresolved visual source for
+    // the Error DOM. Keeping this projection closed also means deeply nested host configuration
+    // is never cloned or dropped by the canonical serializer.
     let mut root = Map::new();
-    if let Some(value) = source_root.get("fontSize").and_then(clone_css_scalar) {
-        root.insert("fontSize".to_string(), value);
-    }
-
     let mut variables = Map::new();
-    if let Some(source_variables) = source_root.get("themeVariables").and_then(Value::as_object) {
-        for key in [
-            "fontSize",
-            "strokeWidth",
-            "textColor",
-            "lineColor",
-            "nodeBorder",
-            "useGradient",
-            "dropShadow",
-        ] {
-            if let Some(value) = source_variables.get(key).and_then(clone_css_scalar) {
-                variables.insert(key.to_string(), value);
-            }
-        }
-    }
     variables.insert(
         "errorBkgColor".to_string(),
         Value::String(error_color_css(projection.icon_color)),
@@ -302,15 +285,6 @@ pub(in crate::svg::parity) fn canonical_error_css(
     root.insert("themeVariables".to_string(), Value::Object(variables));
     let css_config = Value::Object(root);
     Ok(super::super::info_css_with_config(diagram_id, &css_config))
-}
-
-fn clone_css_scalar(value: &Value) -> Option<Value> {
-    match value {
-        Value::Bool(value) => Some(Value::Bool(*value)),
-        Value::Number(value) => Some(Value::Number(value.clone())),
-        Value::String(value) => Some(Value::String(value.clone())),
-        Value::Null | Value::Array(_) | Value::Object(_) => None,
-    }
 }
 
 fn error_color_css(color: Color) -> String {
@@ -450,6 +424,30 @@ mod tests {
             .expect("deep unrelated host config must not enter Error CSS projection");
 
         assert!(css.contains("#error-deep-config .error-icon{fill:#552222;}"));
+    }
+
+    #[test]
+    fn error_css_does_not_reintroduce_unresolved_host_tokens() {
+        let document = canonical_error_document();
+        let projection = validate_error_projection_contract(&document, &ErrorSvgBody::new())
+            .expect("the actual Error builder must produce a valid projection");
+        let config = serde_json::json!({
+            "fontSize": "var(--host-size)",
+            "themeVariables": {
+                "textColor": "var(--host-text)",
+                "lineColor": "currentColor",
+                "nodeBorder": "var(--host-border)",
+                "dropShadow": "var(--host-shadow)"
+            }
+        });
+
+        let css = canonical_error_css("error-closed-projection", &config, &projection)
+            .expect("unrelated host CSS must not affect Error canonical CSS");
+
+        assert!(!css.contains("var(--host-"));
+        assert!(!css.contains("currentColor"));
+        assert!(css.contains("#error-closed-projection{font-family:"));
+        assert!(css.contains("#error-closed-projection .error-icon{fill:#552222;}"));
     }
 
     #[test]
