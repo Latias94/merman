@@ -1241,6 +1241,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Railroad
             | RenderFamilyKind::Venn
             | RenderFamilyKind::EventModeling
+            | RenderFamilyKind::Ishikawa
     )
 }
 

@@ -1160,7 +1160,6 @@ fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
     let svg = render_svg(
         "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n    User\n        Shaky hands\n",
