@@ -181,7 +181,7 @@ pub mod __theme_acceptance {
         .map(|inner| ThemeRoutePngCutoverPairView { inner })
     }
 
-    /// Returns the renderer-owned readiness facts for removing the legacy family bridge.
+    /// Returns the renderer-owned route and dispatch inventory for the legacy family bridge.
     #[cfg(feature = "internal-theme-acceptance")]
     pub fn legacy_family_theme_bridge_retirement_status()
     -> merman_render::__private::LegacyFamilyThemeBridgeRetirementStatus {

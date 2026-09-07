@@ -156,11 +156,10 @@ pub mod __private {
         crate::diagram_theme::legacy_projection_retirement_receipts()
     }
 
-    /// Returns matrix-derived readiness facts for removing the legacy family bridge.
+    /// Returns renderer-owned route and dispatch inventory for the legacy family bridge.
     ///
-    /// This gate is intentionally independent of C6 visual qualification and route artifact
-    /// witnesses. It becomes true only after every executable legacy route and bridge dispatch
-    /// entry has been retired.
+    /// These facts do not authorize bridge deletion. The acceptance layer must independently
+    /// reconcile provider removal, migration ledgers, support claims, and release gates.
     #[cfg(feature = "internal-theme-acceptance")]
     pub fn legacy_family_theme_bridge_retirement_status()
     -> crate::diagram_theme::LegacyFamilyThemeBridgeRetirementStatus {

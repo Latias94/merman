@@ -50,6 +50,5 @@ fn bridge_retirement_gate_reports_live_legacy_routes_without_visual_proof() {
     );
     assert_eq!(status.matrix_only_family_count(), 0);
     assert_eq!(status.dispatch_only_family_count(), 0);
-    assert!(!status.can_delete_bridge(true));
-    assert!(!status.can_delete_bridge(false));
+    assert!(!status.route_dispatch_is_empty());
 }

@@ -314,13 +314,12 @@ impl LegacyFamilyThemeBridgeRetirementStatus {
         self.dispatched_family_digest
     }
 
-    /// Returns whether the bridge can be removed after checking every known deletion condition.
+    /// Returns whether the production route and dispatch inventories are both empty.
     ///
-    /// The compiler owns provider installation, so this module cannot inspect that registration
-    /// without creating a dependency back into the compiler. Callers must pass that independently
-    /// observed fact explicitly. Passing `true` means the provider is still installed and always
-    /// keeps the deletion gate closed.
-    pub fn can_delete_bridge(self, provider_registered: bool) -> bool {
+    /// This is deliberately narrower than bridge-deletion authorization. The compiler provider,
+    /// cutover and retirement ledgers, support claims, and release gates live outside this module
+    /// and must be reconciled by the acceptance layer before the bridge can be removed.
+    pub fn route_dispatch_is_empty(self) -> bool {
         self.matrix_route_count == 0
             && self.matrix_family_count == 0
             && self.dispatched_family_count == 0
@@ -330,15 +329,14 @@ impl LegacyFamilyThemeBridgeRetirementStatus {
             && self.matrix_route_digest != [0; 32]
             && self.matrix_family_digest != [0; 32]
             && self.dispatched_family_digest != [0; 32]
-            && !provider_registered
     }
 }
 
-/// Returns the single, matrix-driven predicate used to decide when the bridge can be removed.
+/// Returns the production-owned route and dispatch inventory for the compatibility bridge.
 ///
-/// This is deliberately independent of a concrete recipe and of C6/KTD17 output witnesses. A
-/// bridge deletion decision must be about executable route ownership, not about whether a
-/// particular fixture happened to produce an empty overlay.
+/// This inventory proves only executable route ownership and dispatch consistency. It does not
+/// authorize deleting the bridge; the acceptance layer must also reconcile provider removal and
+/// the independent migration, support, and release ledgers.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 pub fn legacy_family_theme_bridge_retirement_status() -> LegacyFamilyThemeBridgeRetirementStatus {
     let matrix_routes = legacy_compatibility_route_inventory();
@@ -2473,12 +2471,11 @@ mod tests {
         );
         assert_eq!(status.matrix_only_family_count(), 0);
         assert_eq!(status.dispatch_only_family_count(), 0);
-        assert!(!status.can_delete_bridge(true));
-        assert!(!status.can_delete_bridge(false));
+        assert!(!status.route_dispatch_is_empty());
     }
 
     #[test]
-    fn bridge_deletion_gate_requires_provider_registration_to_be_absent() {
+    fn bridge_route_dispatch_inventory_can_be_empty() {
         let empty_routes = digest_legacy_routes(&[]);
         let empty_families = BTreeSet::new();
         let status = LegacyFamilyThemeBridgeRetirementStatus {
@@ -2493,8 +2490,7 @@ mod tests {
             dispatched_family_digest: digest_family_set("dispatch", &empty_families),
         };
 
-        assert!(status.can_delete_bridge(false));
-        assert!(!status.can_delete_bridge(true));
+        assert!(status.route_dispatch_is_empty());
     }
 
     #[test]
@@ -2523,7 +2519,7 @@ mod tests {
             dispatched_family_digest: [1; 32],
         };
 
-        assert!(!status.can_delete_bridge(false));
+        assert!(!status.route_dispatch_is_empty());
     }
 
     #[test]
