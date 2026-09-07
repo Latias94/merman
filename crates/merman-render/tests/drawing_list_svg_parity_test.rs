@@ -1347,7 +1347,6 @@ fn gantt_svg_bridge_keeps_axes_tasks_states_ids_and_semantics() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
     let svg = render_svg(
         "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob\n    Review: 1: Alice\n",

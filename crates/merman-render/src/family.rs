@@ -1244,6 +1244,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Ishikawa
             | RenderFamilyKind::Radar
             | RenderFamilyKind::XyChart
+            | RenderFamilyKind::Journey
     )
 }
 
