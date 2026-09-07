@@ -1243,7 +1243,6 @@ fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
     let svg = render_svg(
         "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
