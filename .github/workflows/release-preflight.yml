@@ -302,6 +302,12 @@ jobs:
             playground/package-lock.json
             tools/mermaid-cli/package-lock.json
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b # v2.9.2
+
       - name: Materialize locked Mermaid source checkouts
         shell: bash
         run: |
