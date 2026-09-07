@@ -459,7 +459,8 @@ mod tests {
         validate_error_projection_contract(&document, &body)
             .expect("the actual Error builder must satisfy its SVG projection contract");
 
-        let mutations: [(&str, fn(&mut DrawingListDocument)); 8] = [
+        type DocumentMutation = fn(&mut DrawingListDocument);
+        let mutations: [(&str, DocumentMutation); 8] = [
             ("resource order", |document| document.resources.swap(0, 1)),
             ("extra resource", |document| {
                 let mut extra = document.resources[0].clone();
