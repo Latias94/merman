@@ -446,7 +446,7 @@ fn validate_svg_serialization_route(
     fixture: &str,
     output: &merman::SvgOutput,
 ) -> Result<(), String> {
-    let family_id = svg_coverage_family_id(diagram);
+    let family_id = output.family_kind().as_str();
     let expected = expected_svg_serialization(family_id)?;
     match (expected, output.serialization_route()) {
         (
@@ -458,18 +458,9 @@ fn validate_svg_serialization_route(
             merman::svg::SvgSerializationRoute::LegacyBridge,
         ) if output.serialization_bridge_reason().is_some() => Ok(()),
         (expected, actual) => Err(format!(
-            "SVG route evidence for {diagram}/{fixture} expected {expected:?}, found {actual:?} with reason {:?}",
+            "SVG route evidence for {diagram}/{fixture} rendered as {family_id} expected {expected:?}, found {actual:?} with reason {:?}",
             output.serialization_bridge_reason()
         )),
-    }
-}
-
-fn svg_coverage_family_id(diagram: &str) -> &str {
-    match diagram {
-        "railroadEbnf" | "railroadAbnf" | "railroadPeg" => "railroad",
-        "quadrantchart" => "quadrantChart",
-        "gitgraph" => "gitGraph",
-        other => other,
     }
 }
 
@@ -2874,6 +2865,27 @@ mod tests {
             ),
         )
         .expect("Info render should succeed")
+    }
+
+    #[test]
+    fn svg_route_evidence_uses_rendered_family_instead_of_fixture_suite() {
+        let renderer = merman::Renderer::new()
+            .with_engine(super::super::svg_compare_engine())
+            .with_parse_options(ParsePolicy::Lenient.options());
+        let output = render_source_svg(
+            &renderer,
+            "packet\nstart: \"Block name\"",
+            svg_request(
+                merman::SvgEnvironment::deterministic(),
+                super::super::svg_compare_layout_opts(),
+                Some("packet-error-route".to_string()),
+            ),
+        )
+        .expect("invalid Packet syntax should render the Error family");
+
+        assert_eq!(output.family_kind(), merman::svg::RenderFamilyKind::Error);
+        validate_svg_serialization_route("packet", "invalid-packet", &output)
+            .expect("route evidence should follow the rendered Error family");
     }
 
     #[test]

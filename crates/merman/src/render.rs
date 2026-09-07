@@ -219,6 +219,7 @@ impl RenderEvidence {
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
+    family_kind: merman_render::family::RenderFamilyKind,
     serialization_route: merman_render::family::SvgSerializationRoute,
     serialization_bridge_reason: Option<merman_render::family::SvgSerializationBridgeReason>,
 }
@@ -274,12 +275,14 @@ impl SvgOutput {
         svg: String,
         session: merman_render::environment::RenderSession,
         required_capabilities: Vec<RenderCapability>,
+        family_kind: merman_render::family::RenderFamilyKind,
         serialization_route: merman_render::family::SvgSerializationRoute,
         serialization_bridge_reason: Option<merman_render::family::SvgSerializationBridgeReason>,
     ) -> Self {
         Self {
             svg,
             evidence: RenderEvidence::from_session(session, required_capabilities),
+            family_kind,
             serialization_route,
             serialization_bridge_reason,
         }
@@ -291,6 +294,11 @@ impl SvgOutput {
 
     pub fn evidence(&self) -> &RenderEvidence {
         &self.evidence
+    }
+
+    /// Returns the typed render family that produced this SVG.
+    pub const fn family_kind(&self) -> merman_render::family::RenderFamilyKind {
+        self.family_kind
     }
 
     /// Returns the actual SVG serializer route used for this result.
@@ -1048,11 +1056,12 @@ fn render_svg_target(
     let required_capabilities = rendered.required_capabilities().to_vec();
     let serialization_route = rendered.serialization_route();
     let serialization_bridge_reason = rendered.serialization_bridge_reason().cloned();
-    let (svg, _, _, session) = rendered.into_parts();
+    let (svg, family_kind, _, session) = rendered.into_parts();
     Ok(Some(SvgOutput::new(
         svg,
         session,
         required_capabilities,
+        family_kind,
         serialization_route,
         serialization_bridge_reason,
     )))
