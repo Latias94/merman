@@ -319,7 +319,6 @@ pub(crate) struct KanbanSvgBody {
 pub(crate) struct PieSvgBody {
     pub(crate) diagram_type: String,
     pub(crate) use_max_width: bool,
-    pub(crate) max_width_px: Option<f64>,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,
     pub(crate) text_classes: BTreeMap<String, String>,

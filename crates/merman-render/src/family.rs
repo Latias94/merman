@@ -1233,7 +1233,10 @@ fn render_legacy_family_artifact_svg(
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
-        RenderFamilyKind::Error | RenderFamilyKind::Info | RenderFamilyKind::Packet
+        RenderFamilyKind::Error
+            | RenderFamilyKind::Info
+            | RenderFamilyKind::Packet
+            | RenderFamilyKind::Pie
     )
 }
 
@@ -1989,6 +1992,186 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn pie_svg_uses_public_paint_text_and_background_not_external_config() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "pie\n  title Releases\n  \"A\" : 3\n  \"B\" : 1\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let options = SvgRenderOptions {
+            diagram_id: Some("pie-public-source".to_string()),
+            ..Default::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
+            crate::svg::render_document_svg(document, &options, &debug, config, &artifact.session)
+                .unwrap()
+        };
+        let config = artifact.metadata.effective_config.as_value();
+        let conflicting = json!({"themeCSS": ".pieCircle {opacity:0;}", "themeVariables": {"pieTitleTextColor": "red", "fontFamily": "monospace"}});
+        let baseline = render(&document, config);
+        assert_eq!(baseline, render(&document, &conflicting));
+        let mut changed = 0;
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } if run.text == "Releases" => {
+                    run.text = "Public title".to_string();
+                    run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+                    changed += 1;
+                }
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "pie.slice.0.shape"
+                        || path.as_str() == "pie.background" =>
+                {
+                    style.fill = Some(Paint::solid(Color::rgba(171, 205, 239, 255)));
+                    changed += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(changed, 3);
+        let edited = render(&document, config);
+        assert_ne!(baseline, edited);
+        assert_eq!(edited, render(&document, &conflicting));
+        assert!(edited.contains("Public title"));
+        assert!(edited.contains("fill:#123456;fill-opacity:0.5019607843137255"));
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert!(
+            !xml.root_element()
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("background-color")
+        );
+        let background = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some("pie.background"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("#abcdef"));
+        let slice = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("pieCircle"))
+            .unwrap();
+        assert_eq!(slice.attribute("fill"), Some("#abcdef"));
+        assert!(
+            slice
+                .attribute("style")
+                .unwrap()
+                .contains("fill:rgba(171,205,239,1);")
+        );
+
+        // A legal command edit must not depend on the builder's optional local save scopes.
+        let plot = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "pie.plot")
+            })
+            .unwrap();
+        assert!(matches!(
+            document.public.commands[plot - 1],
+            DrawingCommand::Save
+        ));
+        document.public.commands[plot - 1] = DrawingCommand::ConcatTransform {
+            transform: merman_display_list::Transform {
+                e: 5.0,
+                f: 7.0,
+                ..merman_display_list::Transform::IDENTITY
+            },
+        };
+        let title = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "pie.title")
+            })
+            .unwrap();
+        assert!(matches!(
+            document.public.commands[title - 1],
+            DrawingCommand::Restore
+        ));
+        document.public.commands.remove(title - 1);
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawText { run } = command
+                && run.text == "Public title"
+            {
+                run.style.stroke = Some(merman_display_list::StrokeStyle {
+                    paint: Paint::solid(Color::rgba(255, 0, 0, 255)),
+                    width: 2.0,
+                    dash_array: Vec::new(),
+                    dash_offset: 0.0,
+                    line_cap: merman_display_list::LineCap::Butt,
+                    line_join: merman_display_list::LineJoin::Miter,
+                    miter_limit: 4.0,
+                });
+                run.style.paint_order = merman_display_list::TextPaintOrder::StrokeThenFill;
+            }
+        }
+        let title_text = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::DrawText { run } if run.text == "Public title")
+            })
+            .unwrap();
+        document.public.commands.insert(
+            title_text,
+            DrawingCommand::SetBlendMode {
+                blend_mode: merman_display_list::BlendMode::Multiply,
+            },
+        );
+        let transformed = render(&document, config);
+        let xml = roxmltree::Document::parse(&transformed)
+            .expect("blend and text anchor must not duplicate style attributes");
+        let title = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("pieTitleText")
+            })
+            .unwrap();
+        assert_eq!(
+            title.attribute("transform"),
+            Some("translate(5, 7) rotate(0)")
+        );
+        assert_eq!(title.attribute("stroke"), Some("#ff0000"));
+        assert_eq!(title.attribute("stroke-width"), Some("2"));
+        assert_eq!(title.attribute("paint-order"), Some("stroke fill"));
+        assert!(
+            title
+                .attribute("style")
+                .unwrap()
+                .contains("mix-blend-mode: multiply;")
+        );
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawText { run } = command
+                && run.text == "Public title"
+            {
+                run.style.stroke = None;
+            }
+        }
+        let blend_only = render(&document, config);
+        roxmltree::Document::parse(&blend_only)
+            .expect("compact-eligible text with blend must remain valid XML");
     }
 
     #[test]

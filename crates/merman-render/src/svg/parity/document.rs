@@ -27,6 +27,8 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
+mod pie;
+
 /// Serializes one validated canonical document to SVG.
 pub(crate) fn render_document_svg(
     document: &RenderDocument,
@@ -37,8 +39,11 @@ pub(crate) fn render_document_svg(
 ) -> Result<String> {
     let svg =
         DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
-    if matches!(document.svg.body, SvgStructureBody::Packet(_)) {
-        // Packet style is fully resolved in the command stream. Theme CSS is rejected by the
+    if matches!(
+        document.svg.body,
+        SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+    ) {
+        // Packet and Pie styles are fully resolved in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
         Ok(svg)
     } else {
@@ -64,6 +69,7 @@ struct DocumentSvgEncoder<'a> {
     fallbacks: BTreeMap<String, &'a merman_display_list::RasterFallback>,
     error_projection: Option<super::error::ErrorProjection<'a>>,
     packet_styles: Option<super::packet::PacketSvgStyles<'a>>,
+    pie_styles: Option<super::pie::PieSvgStyles<'a>>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -100,6 +106,7 @@ enum GroupKind {
         linked: bool,
         emitted: bool,
         semantic_id: String,
+        projected_transform: Transform,
     },
     Layer,
     Clip,
@@ -179,6 +186,15 @@ impl<'a> DocumentSvgEncoder<'a> {
             packet_styles: if matches!(document.svg.body, SvgStructureBody::Packet(_)) {
                 Some(super::packet::PacketSvgStyles::new(
                     &document.public,
+                    session,
+                )?)
+            } else {
+                None
+            },
+            pie_styles: if let SvgStructureBody::Pie(body) = &document.svg.body {
+                Some(super::pie::PieSvgStyles::new(
+                    &document.public,
+                    body,
                     session,
                 )?)
             } else {
@@ -342,7 +358,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(
             self.svg_body,
-            SvgStructureBody::Error(_) | SvgStructureBody::Packet(_)
+            SvgStructureBody::Error(_) | SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
         ) {
             chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
         }
@@ -351,7 +367,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
 
-        if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+        if matches!(
+            self.svg_body,
+            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+        ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
                 description.as_deref(),
@@ -370,7 +389,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("<g/>");
         }
         self.write_defs()?;
-        if !matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+        if !matches!(
+            self.svg_body,
+            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+        ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
                 description.as_deref(),
@@ -378,10 +400,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 description_id.as_deref(),
             );
         }
-        let packet_root_background = self.packet_background_is_root_paint();
+        let root_background = self.document_background_is_root_paint();
         for (index, command) in self.document.commands.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            if packet_root_background && index == 2 {
+            if root_background && index == 2 {
                 continue;
             }
             self.emit_command(command)?;
@@ -429,7 +451,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 let spec = root_svg::RootViewportSpec::responsive(viewport_bounds).with_max_width(
                     root_svg::RootMaxWidth::CssSixSignificant(viewport_bounds.width),
                 );
-                Ok(if self.packet_background_is_root_paint() {
+                Ok(if self.document_background_is_root_paint() {
                     spec
                 } else {
                     spec.without_background()
@@ -447,14 +469,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 body.use_max_width,
             )),
             SvgStructureBody::Pie(body) => {
-                let max_width = body.max_width_px.map_or_else(
-                    || root_svg::RootMaxWidth::CssSixSignificant(viewport_bounds.width),
-                    root_svg::RootMaxWidth::SvgNumber,
-                );
-                Ok(
-                    root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
-                        .with_max_width(max_width),
-                )
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
+                    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                        viewport_bounds.width,
+                    ));
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
             }
             SvgStructureBody::Timeline(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
@@ -591,10 +614,12 @@ impl<'a> DocumentSvgEncoder<'a> {
     /// Project the first full-viewport white path into Mermaid's root background CSS. Only an
     /// exact, untransformed paint can take this DOM-preserving form; edited documents retain the
     /// ordinary path and a transparent root instead.
-    fn packet_background_is_root_paint(&self) -> bool {
-        if !matches!(self.svg_body, SvgStructureBody::Packet(_)) {
-            return false;
-        }
+    fn document_background_is_root_paint(&self) -> bool {
+        let (document_id, background_id) = match self.svg_body {
+            SvgStructureBody::Packet(_) => ("packet.document", "packet.background"),
+            SvgStructureBody::Pie(_) => ("pie.document", "pie.background"),
+            _ => return false,
+        };
         let [
             DrawingCommand::Save,
             DrawingCommand::BeginSemanticGroup { semantic_id },
@@ -604,8 +629,8 @@ impl<'a> DocumentSvgEncoder<'a> {
         else {
             return false;
         };
-        if semantic_id != "packet.document"
-            || path.as_str() != "packet.background"
+        if semantic_id != document_id
+            || path.as_str() != background_id
             || style.stroke.is_some()
             || style.fill != Some(Paint::solid(Color::rgba(255, 255, 255, 255)))
         {
@@ -649,13 +674,13 @@ impl<'a> DocumentSvgEncoder<'a> {
                 false,
                 super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
             )),
-            SvgStructureBody::Pie(_) => {
-                let mut css = String::new();
-                super::PieCss::new(self.effective_config)
-                    .write_for_canonical_id(&mut css, self.diagram_id.as_str())
-                    .map_err(|_| invalid("failed to write Pie stylesheet"))?;
-                Some((false, css))
-            }
+            SvgStructureBody::Pie(_) => Some((
+                false,
+                self.pie_styles
+                    .as_ref()
+                    .ok_or_else(|| invalid("missing Pie styles"))?
+                    .css(&self.diagram_id)?,
+            )),
             SvgStructureBody::Timeline(_) => Some((
                 false,
                 super::timeline::canonical_timeline_css(
@@ -1345,6 +1370,55 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.begin_mindmap_semantic_group(semantic_id);
         }
+        if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
+            let emitted = semantic_id == "pie.content"
+                || semantic_id == "pie.plot"
+                || semantic_id.starts_with("pie.legend.");
+            let projected_transform = if emitted {
+                self.state.transform
+            } else {
+                Transform::IDENTITY
+            };
+            if emitted {
+                self.output.push_str("<g");
+                if let Some(class) = self.semantic_extra_class(semantic_id).map(str::to_owned) {
+                    write!(self.output, " class=\"{}\"", escaped_attr(&class))
+                        .map_err(|_| invalid("Pie group class"))?;
+                }
+                if self.state.transform != Transform::IDENTITY {
+                    let transform = self.state.transform;
+                    if transform.a == 1.0
+                        && transform.d == 1.0
+                        && transform.b == 0.0
+                        && transform.c == 0.0
+                    {
+                        write!(
+                            self.output,
+                            " transform=\"translate({},{})\"",
+                            fmt(transform.e),
+                            fmt(transform.f)
+                        )
+                        .map_err(|_| invalid("Pie group transform"))?;
+                    } else {
+                        write!(
+                            self.output,
+                            " transform=\"matrix({})\"",
+                            matrix_attr(transform)
+                        )
+                        .map_err(|_| invalid("Pie group transform"))?;
+                    }
+                    self.state.transform = Transform::IDENTITY;
+                }
+                self.output.push('>');
+            }
+            self.groups.push(GroupKind::Semantic {
+                linked: false,
+                emitted,
+                semantic_id: semantic_id.to_owned(),
+                projected_transform,
+            });
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
             let emitted = semantic_id.starts_with("packet.word.");
             if emitted {
@@ -1354,6 +1428,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 linked: false,
                 emitted,
                 semantic_id: semantic_id.to_owned(),
+                projected_transform: Transform::IDENTITY,
             });
             return Ok(());
         }
@@ -1370,6 +1445,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 linked: false,
                 emitted,
                 semantic_id: semantic_id.to_owned(),
+                projected_transform: Transform::IDENTITY,
             });
             return Ok(());
         }
@@ -1387,6 +1463,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 linked: false,
                 emitted: true,
                 semantic_id: semantic_id.to_owned(),
+                projected_transform: Transform::IDENTITY,
             });
             return Ok(());
         }
@@ -1446,6 +1523,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 linked,
                 emitted: true,
                 semantic_id: semantic_id.to_owned(),
+                projected_transform: Transform::IDENTITY,
             });
             return Ok(());
         }
@@ -1588,6 +1666,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             linked,
             emitted: true,
             semantic_id: semantic_id.to_owned(),
+            projected_transform: Transform::IDENTITY,
         });
         Ok(())
     }
@@ -1678,6 +1757,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             linked: false,
             emitted,
             semantic_id: semantic_id.to_string(),
+            projected_transform: Transform::IDENTITY,
         });
         Ok(())
     }
@@ -1805,7 +1885,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 linked,
                 emitted,
                 semantic_id,
+                projected_transform,
             }) => {
+                if projected_transform != Transform::IDENTITY {
+                    self.state.transform =
+                        multiply_transform(projected_transform, self.state.transform);
+                }
                 if emitted {
                     self.output.push_str("</g>");
                     if linked {
@@ -1918,6 +2003,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
+            if self.emit_pie_path(path_id, style)? {
+                return Ok(());
+            }
             let raw_id = path_id.as_str();
             if raw_id == "pie.outer" {
                 let path = self.path_resource(path_id)?;
@@ -2252,7 +2340,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let path_data = {
             let path = self.path_resource(path_id)?;
-            path_d(&path.segments)
+            if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
+                super::curve::drawing_path_segments_d_unrounded(&path.segments)
+            } else {
+                path_d(&path.segments)
+            }
         };
         self.output.push_str("<path d=\"");
         escape_attr_into(&mut self.output, path_data.as_str());
@@ -2917,6 +3009,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if self.emit_compact_pie_text(run, semantic_id.as_deref(), text_index)? {
+            return Ok(());
+        }
         if let Some(styles) = &self.packet_styles
             && let Some(class) =
                 super::packet::packet_text_class(semantic_id.as_deref(), text_index)
@@ -3078,6 +3173,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .map_err(|_| invalid("failed to write Gantt task text height"))?;
         }
         self.write_paint("fill", &run.style.fill)?;
+        if let Some(stroke) = &run.style.stroke {
+            self.write_stroke_style(Some(stroke))?;
+            let order = match run.style.paint_order {
+                merman_display_list::TextPaintOrder::FillThenStroke => "fill stroke",
+                merman_display_list::TextPaintOrder::StrokeThenFill => "stroke fill",
+            };
+            write!(self.output, " paint-order=\"{order}\"")
+                .map_err(|_| invalid("text paint order"))?;
+        }
         self.write_state_attrs();
         self.output.push('>');
 
@@ -4034,7 +4138,14 @@ impl<'a> DocumentSvgEncoder<'a> {
         } else {
             self.output.push_str(" fill=\"none\"");
         }
-        if let Some(stroke) = style.stroke.as_ref() {
+        self.write_stroke_style(style.stroke.as_ref())
+    }
+
+    fn write_stroke_style(
+        &mut self,
+        stroke: Option<&merman_display_list::StrokeStyle>,
+    ) -> Result<()> {
+        if let Some(stroke) = stroke {
             self.write_paint("stroke", &stroke.paint)?;
             write!(
                 self.output,

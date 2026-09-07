@@ -187,17 +187,38 @@ fn pie_chart_content_is_grouped_before_title_and_legend_like_mermaid_11_16() {
 "#,
     );
 
-    assert!(
-        svg.contains(
-            r#"<g transform="translate(225,225)"><g><circle cx="0" cy="0" r="186" class="pieOuterCircle"/>"#
-        ),
-        "pie geometry should start in its own attribute-free group: {svg}"
+    let xml = roxmltree::Document::parse(&svg).unwrap();
+    let content = xml
+        .root_element()
+        .children()
+        .find(|node| node.attribute("transform") == Some("translate(225,225)"))
+        .unwrap();
+    let children: Vec<_> = content
+        .children()
+        .filter(|node| node.is_element())
+        .collect();
+    assert_eq!(children.len(), 4);
+    let plot = children[0];
+    assert!(plot.has_tag_name("g"));
+    assert_eq!(plot.attributes().len(), 0);
+    let plot_children: Vec<_> = plot.children().filter(|node| node.is_element()).collect();
+    assert_eq!(
+        plot_children
+            .iter()
+            .map(|node| node.tag_name().name())
+            .collect::<Vec<_>>(),
+        ["circle", "path", "path", "text", "text"]
     );
+    assert_eq!(plot_children[0].attribute("class"), Some("pieOuterCircle"));
+    assert_eq!(plot_children[0].attribute("r"), Some("186"));
+    assert_eq!(plot_children[4].text(), Some("40%"));
+    assert_eq!(children[1].attribute("class"), Some("pieTitleText"));
+    assert_eq!(children[1].attribute("y"), Some("-200"));
+    assert_eq!(children[1].text(), None);
     assert!(
-        svg.contains(
-            r#">40%</text></g><text x="0" y="-200" class="pieTitleText"/><g class="legend""#
-        ),
-        "the pie group should close before the sibling title and legend nodes: {svg}"
+        children[2..]
+            .iter()
+            .all(|node| node.attribute("class") == Some("legend"))
     );
 }
 
@@ -453,26 +474,39 @@ fn empty_pie_with_title_keeps_title_widened_root_viewport() {
 }
 
 #[test]
-fn pie_highlight_slice_config_marks_matching_slice_and_emits_css() {
+fn pie_highlight_slice_config_resolves_scale_and_opacity_once() {
     let svg = render_pie_from_text(
-        r#"%%{init: {"pie": {"highlightSlice": "A"}}}%%
+        r#"%%{init: {"pie": {"highlightSlice": "A"}, "themeVariables": {"pieOpacity": 0.3}}}%%
 pie
   "A" : 1
   "B" : 1
 "#,
     );
 
+    let xml = roxmltree::Document::parse(&svg).unwrap();
+    let highlighted = xml
+        .descendants()
+        .find(|node| node.attribute("class") == Some("pieCircle highlighted"))
+        .unwrap();
+    let ordinary = xml
+        .descendants()
+        .find(|node| node.attribute("class") == Some("pieCircle"))
+        .unwrap();
+    let highlighted_style = highlighted.attribute("style").unwrap();
+    let ordinary_style = ordinary.attribute("style").unwrap();
+    assert!(highlighted_style.contains("transform:matrix(1.05,0,0,1.05,0,0);"));
+    assert!(highlighted_style.contains("opacity:1;"));
+    assert!(ordinary_style.contains("opacity:0.3;"));
+    assert!(!ordinary_style.contains("transform:"));
+    let css = xml
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap_or_default();
     assert!(
-        svg.contains(r#".pieCircle.highlighted{scale:1.05;opacity:1;}"#),
-        "Mermaid 11.16 pie CSS should include highlighted slice styling: {svg}"
-    );
-    assert!(
-        svg.contains(r#"class="pieCircle highlighted""#),
-        "Mermaid 11.16 should mark the configured highlighted slice: {svg}"
-    );
-    assert!(
-        svg.contains(r#"class="pieCircle"/>"#),
-        "non-matching slices should keep the ordinary pieCircle class: {svg}"
+        !css.contains(".pieCircle"),
+        "CSS must not reinterpret slice opacity or scale"
     );
 }
 

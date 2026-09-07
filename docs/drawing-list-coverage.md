@@ -29,7 +29,7 @@ inventory row fails at test time.  The current inventory is:
 | Railroad | yes | legacy bridge |
 | Kanban | yes | legacy bridge |
 | Gantt | yes | legacy bridge |
-| Pie | yes | legacy bridge |
+| Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | legacy bridge |
 | Journey | yes | legacy bridge |

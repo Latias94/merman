@@ -10,9 +10,7 @@ use super::{
 };
 use crate::config::config_string;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
-use crate::drawing_list::support::{
-    PortableStyleResolver, stroke, svg_plain_text, text_obligation,
-};
+use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, PieDiagramLayout};
@@ -152,16 +150,42 @@ impl<'a> PieBuilder<'a> {
                 DrawingCommand::BeginSemanticGroup {
                     semantic_id: "pie.document".to_string(),
                 },
-                DrawingCommand::Save,
-                DrawingCommand::ConcatTransform {
-                    transform: translate(layout.center_x, layout.center_y),
-                },
             ],
             semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        let bounds = document_viewport_bounds(self.layout, self.model);
+        // The SVG root background is a projection of this paint, not an independent default.
+        self.add_path(
+            "pie.background".to_string(),
+            polygon_path(&[
+                Point::new(bounds.x, bounds.y),
+                Point::new(bounds.x + bounds.width, bounds.y),
+                Point::new(bounds.x + bounds.width, bounds.y + bounds.height),
+                Point::new(bounds.x, bounds.y + bounds.height),
+            ]),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(Color::rgba(255, 255, 255, 255))),
+                stroke: None,
+            },
+        )?;
+        self.commands.push(DrawingCommand::Save);
+        self.commands.push(DrawingCommand::ConcatTransform {
+            transform: translate(self.layout.center_x, self.layout.center_y),
+        });
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "pie.content".to_string(),
+        });
+        self.semantics.push(SemanticAnnotation {
+            id: "pie.content".to_string(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        });
         self.semantics.push(SemanticAnnotation {
             id: "pie.document".to_string(),
             role: SemanticRole::Document,
@@ -174,10 +198,10 @@ impl<'a> PieBuilder<'a> {
         self.emit_title()?;
         self.emit_legend()?;
 
+        self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.commands.push(DrawingCommand::Restore);
-        let bounds = document_viewport_bounds(self.layout, self.model);
         let document = DrawingListDocument {
             version: DRAWING_LIST_VERSION,
             coordinate_system: CoordinateSystem::LogicalPixelsYDown,
@@ -208,12 +232,6 @@ impl<'a> PieBuilder<'a> {
                 body: SvgStructureBody::Pie(PieSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
                     use_max_width: self.use_max_width,
-                    max_width_px: self
-                        .layout
-                        .bounds
-                        .as_ref()
-                        .filter(|bounds| !bounds_is_finite(bounds))
-                        .map(|_| 225.0),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
@@ -224,9 +242,6 @@ impl<'a> PieBuilder<'a> {
 
     fn emit_plot(&mut self) -> Result<()> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "pie.plot".to_string(),
-        });
         self.semantics.push(SemanticAnnotation {
             id: "pie.plot".to_string(),
             role: SemanticRole::Group,
@@ -241,6 +256,9 @@ impl<'a> PieBuilder<'a> {
                 transform: translate(offset_x, offset_y),
             });
         }
+        self.commands.push(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "pie.plot".to_string(),
+        });
 
         self.path_classes
             .insert("pie.outer".to_string(), "pieOuterCircle".to_string());
@@ -266,7 +284,7 @@ impl<'a> PieBuilder<'a> {
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
-            if fill.is_some() || stroke.is_some() {
+            {
                 let highlighted = self.highlight_slice.as_deref() == Some(slice.label.as_str());
                 let class = if highlighted {
                     "pieCircle highlighted"
@@ -344,21 +362,16 @@ impl<'a> PieBuilder<'a> {
             });
         }
 
-        self.commands.push(DrawingCommand::Restore);
         self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.commands.push(DrawingCommand::Restore);
         Ok(())
     }
 
     fn emit_title(&mut self) -> Result<()> {
-        let Some(raw_title) = self.layout.title.as_deref() else {
-            return Ok(());
-        };
+        let raw_title = self.layout.title.as_deref().unwrap_or("");
         // Mermaid keeps the title text node's boundary whitespace. Do not run it through the
         // label-only whitespace normalizer used for legend content.
         let title = raw_title.to_string();
-        if title.is_empty() {
-            return Ok(());
-        }
         self.session.checkpoint(OperationPhase::Emit)?;
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: "pie.title".to_string(),
@@ -389,20 +402,16 @@ impl<'a> PieBuilder<'a> {
             let semantic_id = format!("pie.legend.{index}");
             self.semantic_classes
                 .insert(semantic_id.clone(), "legend".to_string());
-            let text = svg_plain_text(&pie_legend_text(
-                &item.label,
-                item.value,
-                self.model.show_data,
-            ));
+            let text = pie_legend_text(&item.label, item.value, self.model.show_data);
             let color = self.styles.optional_color("pie legend fill", &item.fill)?;
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
             self.commands.push(DrawingCommand::Save);
             self.commands.push(DrawingCommand::ConcatTransform {
                 transform: translate(self.layout.legend_x, item.y),
             });
-            if let Some(color) = color {
+            self.commands.push(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            });
+            {
                 self.add_path(
                     format!("{semantic_id}.swatch"),
                     polygon_path(&[
@@ -413,12 +422,12 @@ impl<'a> PieBuilder<'a> {
                     ]),
                     PathStyle {
                         fill_rule: FillRule::NonZero,
-                        fill: Some(Paint::solid(color)),
-                        stroke: Some(stroke(color, 1.0)),
+                        fill: color.map(Paint::solid),
+                        stroke: color.map(|color| stroke(color, 1.0)),
                     },
                 )?;
             }
-            if !text.is_empty() {
+            {
                 self.commands.push(DrawingCommand::draw_text(self.text_run(
                     text.clone(),
                     Point::new(
@@ -430,8 +439,8 @@ impl<'a> PieBuilder<'a> {
                     TextAnchor::Start,
                 )?));
             }
-            self.commands.push(DrawingCommand::Restore);
             self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.commands.push(DrawingCommand::Restore);
             self.semantics.push(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
@@ -597,7 +606,7 @@ fn document_viewport_bounds(layout: &PieDiagramLayout, model: &PieDiagramRenderM
         // Mermaid's empty right-legend layout can expose -Infinity as the computed width. The
         // SVG renderer repairs that root to its finite empty-chart viewport; keep the same
         // bounded result in the canonical document instead of leaking non-finite JSON.
-        Rect::new(0.0, 0.0, 450.0, 450.0)
+        Rect::new(0.0, 0.0, 225.0, 450.0)
     } else {
         // Construction has already rejected non-finite bounds for non-empty charts.
         Rect::new(0.0, 0.0, 1.0, 1.0)

@@ -856,7 +856,6 @@ fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn pie_canonical_svg_keeps_root_profile_and_chart_roles() {
     let svg = render_svg(
         "pie\n  accTitle: Pie parity\n  title Releases\n  \"Stable\" : 3\n  \"Alpha\" : 1\n",
@@ -894,8 +893,49 @@ fn pie_canonical_svg_keeps_root_profile_and_chart_roles() {
     assert!(document.descendants().any(|node| {
         node.has_tag_name("text") && node.attribute("class") == Some("pieTitleText")
     }));
-    assert!(svg.contains("data-merman-resource=\"pie.slice.0.shape\""));
+    assert_eq!(document.descendants().filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")).count(), 2);
     assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
+}
+
+#[test]
+fn pie_canonical_svg_retains_unpainted_geometry_and_authored_legend_text() {
+    let output = render_family_svg_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"pie1": "none", "pieStrokeColor": "none"}
+        }))),
+        "pie\n  \"  A   B  \" : 1\n",
+        "pie-unpainted",
+    );
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+    let xml = roxmltree::Document::parse(output.svg()).unwrap();
+    let slice = xml
+        .descendants()
+        .find(|node| node.has_tag_name("path") && node.attribute("class") == Some("pieCircle"))
+        .unwrap();
+    assert_eq!(slice.attribute("fill"), Some("none"));
+    assert!(slice.attribute("style").unwrap().contains("stroke:none;"));
+    let legend = xml
+        .descendants()
+        .find(|node| node.attribute("class") == Some("legend"))
+        .unwrap();
+    let children: Vec<_> = legend.children().filter(|node| node.is_element()).collect();
+    assert_eq!(children.len(), 2);
+    assert!(children[0].has_tag_name("rect"));
+    assert!(
+        children[0]
+            .attribute("style")
+            .unwrap()
+            .contains("fill:none;")
+    );
+    assert_eq!(children[1].text(), Some("  A   B  "));
+    let title = xml
+        .descendants()
+        .find(|node| node.attribute("class") == Some("pieTitleText"))
+        .unwrap();
+    assert_eq!(title.text(), None);
 }
 
 #[test]

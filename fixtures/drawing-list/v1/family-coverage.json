@@ -16,7 +16,7 @@
     { "id": "railroad", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "kanban", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "gantt", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "pie", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "pie", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "packet", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "timeline", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "journey", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
