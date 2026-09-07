@@ -307,6 +307,11 @@ jobs:
     def test_release_preflight_keeps_prerelease_and_surface_contract_gates(self) -> None:
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         crates = read(WORKFLOW_ROOT / "release-crates.yml")
+        self.assertIn("mermaid-reference-materialized:", preflight)
+        self.assertIn("verify-mermaid-reference --materialized", preflight)
+        self.assertIn("MERMAID_REFERENCE_BUNDLE.json", preflight)
+        self.assertIn("--filter=blob:none", preflight)
+        self.assertIn("npm ci --ignore-scripts --prefix playground", preflight)
         for workflow_name, text in (
             ("release-preflight.yml", preflight),
             ("release-crates.yml", crates),
