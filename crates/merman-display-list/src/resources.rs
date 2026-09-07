@@ -666,7 +666,7 @@ impl fmt::Display for CanonicalBase64Error {
 /// wire representation for the same byte sequence.
 pub(crate) fn canonical_base64_decoded_len(encoded: &str) -> Result<usize, CanonicalBase64Error> {
     let bytes = encoded.as_bytes();
-    if bytes.len() % 4 != 0 {
+    if !bytes.len().is_multiple_of(4) {
         return Err(CanonicalBase64Error::InvalidLength);
     }
     let padding = if bytes.ends_with(b"==") {
