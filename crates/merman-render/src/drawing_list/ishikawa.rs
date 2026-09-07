@@ -9,6 +9,7 @@ use super::{
     parse_font_families_for, parse_svg_path,
 };
 use crate::config::config_diagram_look;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -31,10 +32,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::ishikawa::IshikawaDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -45,15 +46,16 @@ pub(crate) fn build_ishikawa_document(
     pair: &IshikawaPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    IshikawaBuilder::new(pair, metadata, policy, session)?.build()
+    IshikawaBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct IshikawaBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a IshikawaDiagramRenderModel,
     layout: &'a IshikawaDiagramLayout,
     font_family_css: String,
@@ -65,9 +67,6 @@ struct IshikawaBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> IshikawaBuilder<'a> {
@@ -75,6 +74,7 @@ impl<'a> IshikawaBuilder<'a> {
         pair: &'a IshikawaPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -91,11 +91,16 @@ impl<'a> IshikawaBuilder<'a> {
         let theme = PresentationTheme::new(config).ishikawa();
         let styles = PortableStyleResolver::new("ishikawa");
         let font_family_css = theme.font_family;
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "ishikawa.document".to_string(),
+        })?;
 
         Ok(Self {
             metadata,
             session,
-            policy,
+            output,
             model,
             layout,
             font: FontDescriptor {
@@ -116,14 +121,6 @@ impl<'a> IshikawaBuilder<'a> {
             )]),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "ishikawa.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
@@ -141,13 +138,13 @@ impl<'a> IshikawaBuilder<'a> {
                     .and_then(|root| visible_text(&root.text))
             })
             .or_else(|| Some(self.metadata.diagram_type.clone()));
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "ishikawa.document".to_string(),
             role: SemanticRole::Document,
             title: document_title,
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         if let Some(spine) = self.layout.spine.clone() {
@@ -170,23 +167,16 @@ impl<'a> IshikawaBuilder<'a> {
             }
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 self.layout.viewbox_x,
                 self.layout.viewbox_y,
                 self.layout.total_width,
                 self.layout.total_height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-ishikawa".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -195,8 +185,7 @@ impl<'a> IshikawaBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -249,9 +238,10 @@ impl<'a> IshikawaBuilder<'a> {
             .insert(semantic_id.clone(), "ishikawa-head-group".to_string());
         self.text_classes
             .insert(semantic_id.clone(), "ishikawa-head-label".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let segments = parse_svg_path(&head.path_d)?;
         let fill = self.main_background.map(Paint::solid);
@@ -259,10 +249,10 @@ impl<'a> IshikawaBuilder<'a> {
             .line_color
             .map(|color| stroke(color, ISHIKAWA_LINE_STROKE_WIDTH));
         if fill.is_some() || stroke.is_some() {
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::ConcatTransform {
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output.push_control(DrawingCommand::ConcatTransform {
                 transform: translate(head.x, head.y),
-            });
+            })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
                 segments,
@@ -272,18 +262,18 @@ impl<'a> IshikawaBuilder<'a> {
                     stroke,
                 },
             )?;
-            self.commands.push(DrawingCommand::Restore);
+            self.output.push_control(DrawingCommand::Restore)?;
         }
         self.emit_text(&head.label)?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: visible_text(&head.label.text),
             description: Some("Ishikawa effect".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -301,9 +291,10 @@ impl<'a> IshikawaBuilder<'a> {
             semantic_id.clone(),
             branch.label_group.label.class_name.clone(),
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         self.emit_line(
             &format!("{semantic_id}.line"),
@@ -325,14 +316,14 @@ impl<'a> IshikawaBuilder<'a> {
             )?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title,
             description: Some(format!("Ishikawa {side} cause")),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -348,9 +339,10 @@ impl<'a> IshikawaBuilder<'a> {
             .insert(semantic_id.clone(), "ishikawa-sub-group".to_string());
         self.text_classes
             .insert(semantic_id.clone(), subgroup.label.class_name.clone());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_line(
             &format!("{semantic_id}.line"),
             &subgroup.line,
@@ -358,14 +350,14 @@ impl<'a> IshikawaBuilder<'a> {
             Some("Contributing cause connection".to_string()),
         )?;
         self.emit_text(&subgroup.label)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title,
             description: Some("Ishikawa contributing cause".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -386,9 +378,10 @@ impl<'a> IshikawaBuilder<'a> {
                 "ishikawa-arrow".to_string(),
             );
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         if let Some(color) = self.line_color {
             let stroke_width = ishikawa_line_stroke_width(&line.class_name);
             self.add_path(
@@ -421,14 +414,14 @@ impl<'a> IshikawaBuilder<'a> {
                 )?;
             }
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Edge,
             title,
             description,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -481,25 +474,29 @@ impl<'a> IshikawaBuilder<'a> {
             let bounds = self.measure_text_bounds(&line, origin, presentation)?;
             let mut font = self.font.clone();
             font.weight = presentation.font_weight;
-            self.commands.push(DrawingCommand::draw_text(TextRun {
-                text: line,
+            let line_height = text.line_height;
+            let anchor = text_anchor(presentation.anchor);
+            let baseline = text_baseline(presentation.baseline);
+            let obligation = self.text_obligation.clone();
+            self.output.draw_host_text(&line, move |owned| TextRun {
+                text: owned,
                 origin,
                 bounds,
                 style: TextStyle {
                     font,
                     font_size: presentation.font_size,
                     letter_spacing: 0.0,
-                    line_height: text.line_height,
+                    line_height,
                     fill: Paint::solid(fill),
                     stroke: None,
                     paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-                anchor: text_anchor(presentation.anchor),
-                baseline: text_baseline(presentation.baseline),
+                anchor,
+                baseline,
                 direction: TextDirection::Auto,
                 language: None,
-                obligation: self.text_obligation.clone(),
-            }));
+                obligation,
+            })?;
         }
         Ok(())
     }
@@ -544,13 +541,7 @@ impl<'a> IshikawaBuilder<'a> {
             return Err(invalid(format!("Ishikawa path `{id}` has no geometry")));
         }
         let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(id, segments, style)
     }
 }
 

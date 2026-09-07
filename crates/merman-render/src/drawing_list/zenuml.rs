@@ -10,6 +10,7 @@ use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for, parse_svg_path,
 };
 use crate::config::{config_diagram_look, config_string};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -26,11 +27,10 @@ use merman_core::diagrams::zenuml::{
     ZenumlDiagramRenderModel, ZenumlStatement, ZenumlStatementKind,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, LineCap, LineJoin,
-    Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
+    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle, Viewport,
 };
 use roxmltree::{Document as XmlDocument, Node};
 use serde_json::{Value, json};
@@ -73,9 +73,10 @@ pub(crate) fn build_zenuml_document(
     pair: &ZenumlPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    ZenUmlBuilder::new(pair, metadata, policy, session)?.build()
+    ZenUmlBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -108,7 +109,7 @@ struct TextSpec {
 struct ZenUmlBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    list: DrawingListBuilder<'a>,
     model: &'a ZenumlDiagramRenderModel,
     layout: &'a ZenumlDiagramLayout,
     content_left: f64,
@@ -119,9 +120,6 @@ struct ZenUmlBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     palette: TextPalette,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     participant_by_name: HashMap<&'a str, &'a ZenumlParticipantLayout>,
     semantic_stack: Vec<String>,
     semantic_text_counts: BTreeMap<String, usize>,
@@ -137,6 +135,7 @@ impl<'a> ZenUmlBuilder<'a> {
         pair: &'a ZenumlPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -203,10 +202,23 @@ impl<'a> ZenUmlBuilder<'a> {
         validate_positive_finite(view_width, "ZenUML viewport width")?;
         validate_positive_finite(view_height, "ZenUML viewport height")?;
 
+        let mut list = DrawingListBuilder::new(policy, limits, session);
+        list.push_control(DrawingCommand::Save)?;
+        list.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "zenuml.document".to_string(),
+        })?;
+        list.push_semantic(SemanticAnnotation {
+            id: "zenuml.document".to_string(),
+            role: SemanticRole::Document,
+            title: model.title.clone().or_else(|| metadata.title.clone()),
+            description: Some("ZenUML sequence diagram".to_string()),
+            link: None,
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            list,
             model,
             layout,
             content_left,
@@ -217,20 +229,6 @@ impl<'a> ZenUmlBuilder<'a> {
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             palette,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "zenuml.document".to_string(),
-                },
-            ],
-            semantics: vec![SemanticAnnotation {
-                id: "zenuml.document".to_string(),
-                role: SemanticRole::Document,
-                title: model.title.clone().or_else(|| metadata.title.clone()),
-                description: Some("ZenUML sequence diagram".to_string()),
-                link: None,
-            }],
             participant_by_name,
             semantic_stack: vec!["zenuml.document".to_string()],
             semantic_text_counts: BTreeMap::new(),
@@ -257,23 +255,16 @@ impl<'a> ZenUmlBuilder<'a> {
         self.emit_dividers()?;
         self.emit_comments()?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.list.push_control(DrawingCommand::EndSemanticGroup)?;
         debug_assert_eq!(
             self.semantic_stack.pop().as_deref(),
             Some("zenuml.document")
         );
-        self.commands.push(DrawingCommand::Restore);
+        self.list.push_control(DrawingCommand::Restore)?;
         let viewport = Viewport::new(Rect::new(0.0, 0.0, self.view_width, self.view_height));
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
+        let document = self.list.finish(
             viewport,
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-zenuml".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -282,8 +273,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     "markup": "plain_host_text_with_explicit_breaks",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -373,7 +363,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Group,
                 Some(group.name.clone()),
                 "participant group",
-            );
+            )?;
             let x = self.x(group.x - 0.5);
             let y = self.y(group.y - 2.0);
             self.add_path(
@@ -419,7 +409,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     None,
                 )?;
             }
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -434,7 +424,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Node,
                 Some(lifeline.participant_name.clone()),
                 "ZenUML lifeline",
-            );
+            )?;
             self.add_path(
                 format!("{id}.line"),
                 line_path(
@@ -447,7 +437,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     stroke: Some(dashed_stroke(self.palette.frame, 1.0, vec![5.0, 5.0])),
                 },
             )?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -477,9 +467,9 @@ impl<'a> ZenUmlBuilder<'a> {
                 if creations_only { "creation" } else { "base" }
             );
             let title = (!participant.label.is_empty()).then(|| participant.label.clone());
-            self.begin_semantic(&id, SemanticRole::Node, title, "ZenUML participant");
+            self.begin_semantic(&id, SemanticRole::Node, title, "ZenUML participant")?;
             self.emit_participant_shape(&id, participant)?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -663,7 +653,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Node,
                 Some(occurrence.statement_id.clone()),
                 "ZenUML occurrence",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), occurrence.statement_id.clone());
             self.add_path(
@@ -681,7 +671,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     stroke: Some(stroke(self.palette.occurrence_stroke, 2.0)),
                 },
             )?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -711,7 +701,7 @@ impl<'a> ZenUmlBuilder<'a> {
             SemanticRole::Edge,
             Some(portable_text(&message.label, "ZenUML message label")?),
             "ZenUML message",
-        );
+        )?;
         self.svg_semantic_data_statements
             .insert(id.clone(), message.statement_id.clone());
         let left_to_right = message.from_x < message.to_x;
@@ -779,7 +769,7 @@ impl<'a> ZenUmlBuilder<'a> {
             TextBaseline::Middle,
             None,
         )?;
-        self.end_semantic();
+        self.end_semantic()?;
         Ok(())
     }
 
@@ -793,7 +783,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Edge,
                 Some(portable_text(&call.label, "ZenUML self-call label")?),
                 "ZenUML self-call",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), call.statement_id.clone());
             let asynchronous = call.arrow_style == ZenumlArrowStyle::Open;
@@ -867,7 +857,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 TextBaseline::Middle,
                 None,
             )?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -885,11 +875,11 @@ impl<'a> ZenUmlBuilder<'a> {
                     "ZenUML creation label",
                 )?),
                 "ZenUML creation",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), creation.statement_id.clone());
             self.emit_creation_geometry(&id, creation)?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -970,7 +960,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Edge,
                 Some(portable_text(&returned.label, "ZenUML return label")?),
                 "ZenUML return",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), returned.statement_id.clone());
             self.svg_semantic_classes.insert(
@@ -1082,7 +1072,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     None,
                 )?;
             }
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -1096,7 +1086,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Group,
                 Some(portable_text(&fragment.label, "ZenUML fragment label")?),
                 "ZenUML fragment",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), fragment.statement_id.clone());
             self.svg_semantic_classes.insert(
@@ -1107,7 +1097,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 ),
             );
             self.emit_fragment_geometry(&id, fragment)?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -1359,7 +1349,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Group,
                 Some(portable_text(&divider.label, "ZenUML divider label")?),
                 "ZenUML divider",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), divider.statement_id.clone());
             let label = divider
@@ -1420,7 +1410,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 TextBaseline::Middle,
                 None,
             )?;
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -1434,7 +1424,7 @@ impl<'a> ZenUmlBuilder<'a> {
                 SemanticRole::Label,
                 Some(portable_text(&comment.text, "ZenUML comment")?),
                 "ZenUML comment",
-            );
+            )?;
             self.svg_semantic_data_statements
                 .insert(id.clone(), comment.statement_id.clone());
             let style = comment_text_spec(&comment.style, self.palette.comment, self.session)?;
@@ -1458,7 +1448,7 @@ impl<'a> ZenUmlBuilder<'a> {
                     None,
                 )?;
             }
-            self.end_semantic();
+            self.end_semantic()?;
         }
         Ok(())
     }
@@ -1469,27 +1459,29 @@ impl<'a> ZenUmlBuilder<'a> {
         role: SemanticRole,
         title: Option<String>,
         description: &str,
-    ) {
+    ) -> Result<()> {
         if let Some(class) = zenuml_semantic_class(id) {
             self.svg_semantic_classes
                 .insert(id.to_string(), class.to_string());
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.list.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: id.to_string(),
-        });
-        self.semantics.push(SemanticAnnotation {
+        })?;
+        self.list.push_semantic(SemanticAnnotation {
             id: id.to_string(),
             role,
             title,
             description: Some(description.to_string()),
             link: None,
-        });
+        })?;
         self.semantic_stack.push(id.to_string());
+        Ok(())
     }
 
-    fn end_semantic(&mut self) {
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+    fn end_semantic(&mut self) -> Result<()> {
+        self.list.push_control(DrawingCommand::EndSemanticGroup)?;
         debug_assert!(self.semantic_stack.pop().is_some());
+        Ok(())
     }
 
     fn x(&self, value: f64) -> f64 {
@@ -1593,15 +1585,17 @@ impl<'a> ZenUmlBuilder<'a> {
             TextBaseline::Hanging => origin.y,
             _ => origin.y - spec.size,
         };
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+        let font = self.font.clone();
+        let text_obligation = self.text_obligation.clone();
+        self.list.draw_host_text(text, |owned| TextRun {
+            text: owned,
             origin,
             bounds: Rect::new(bounds_x, bounds_y, width, line_height),
             style: TextStyle {
                 font: FontDescriptor {
                     weight: spec.weight.max(1),
                     style: spec.style,
-                    ..self.font.clone()
+                    ..font
                 },
                 font_size: spec.size,
                 letter_spacing: letter_spacing.unwrap_or(0.0),
@@ -1614,15 +1608,15 @@ impl<'a> ZenUmlBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.semantics.push(SemanticAnnotation {
+            obligation: text_obligation,
+        })?;
+        self.list.push_semantic(SemanticAnnotation {
             id,
             role: SemanticRole::Label,
             title: Some(text.to_string()),
             description: Some("ZenUML text".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -1713,13 +1707,7 @@ impl<'a> ZenUmlBuilder<'a> {
             self.svg_path_classes
                 .insert(id.as_str().to_string(), class.to_string());
         }
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.list.draw_path(id, segments, style)
     }
 }
 

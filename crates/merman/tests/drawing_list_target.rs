@@ -221,6 +221,12 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "railroad-beta\nexpr = terminal(\"A\") ;\n",
         "sankey\nSource,Target,10\nTarget,Done,4\n",
         "xychart-beta\n  x-axis [Jan, Feb]\n  line [1, 2]\n",
+        "block-beta\n  A\n",
+        "ishikawa-beta\n  Effect\n  Cause\n",
+        "wardley-beta\ncomponent A [0.8, 0.2]\n",
+        "zenuml\n@Starter(Client)\nClient->Service: call\n",
+        "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
+        "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01 { sku: \"SKU-1\" }\n",
         "kanban\n  Todo\n    task[Task]\n",
         concat!(
             "C4Context\ntitle Context\n",
@@ -336,6 +342,12 @@ fn newly_bounded_families_reject_before_the_first_output_command() {
         "railroad-beta\nexpr = terminal(\"A\") ;\n",
         "sankey\nSource,Target,10\n",
         "xychart-beta\n  x-axis [Jan, Feb]\n  line [1, 2]\n",
+        "block-beta\n  A\n",
+        "ishikawa-beta\n  Effect\n  Cause\n",
+        "wardley-beta\ncomponent A [0.8, 0.2]\n",
+        "zenuml\n@Starter(Client)\nClient->Service: call\n",
+        "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
+        "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01 { sku: \"SKU-1\" }\n",
     ] {
         let error = Renderer::new()
             .render(RenderRequest::drawing_list(
@@ -2215,13 +2227,23 @@ style A,B fill:#00ffcc, color:#003333
         2,
         "Venn fill and stroke opacity must remain independently painted"
     );
-    for opacity in [0.42, 0.95] {
-        assert!(document.commands.iter().any(|command| matches!(
-            command,
-            merman_display_list::DrawingCommand::SetOpacity { opacity: actual }
-                if (*actual - opacity).abs() <= f64::EPSILON
-        )));
-    }
+    let fill_alphas = document
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { style, .. } => {
+                match style.fill.as_ref() {
+                    Some(merman_display_list::Paint::Solid { color }) => Some(color.alpha),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        fill_alphas.contains(&107),
+        "Venn fill opacity 0.42 must be encoded in paint alpha"
+    );
     assert!(document.commands.iter().any(|command| matches!(
         command,
         merman_display_list::DrawingCommand::ConcatTransform { transform }

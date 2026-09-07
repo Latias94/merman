@@ -9,6 +9,7 @@ use super::{
     parse_svg_path,
 };
 use crate::config::config_diagram_look;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -26,11 +27,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -43,15 +43,16 @@ pub(crate) fn build_venn_document(
     pair: &VennPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    VennBuilder::new(pair, metadata, policy, session)?.build()
+    VennBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct VennBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a VennDiagramRenderModel,
     layout: &'a VennDiagramLayout,
     font_family_css: String,
@@ -61,9 +62,6 @@ struct VennBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     semantic_data_sets: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> VennBuilder<'a> {
@@ -71,6 +69,7 @@ impl<'a> VennBuilder<'a> {
         pair: &'a VennPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -103,10 +102,16 @@ impl<'a> VennBuilder<'a> {
             resource: None,
         };
 
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "venn.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            output,
             model,
             layout,
             font_family_css,
@@ -116,34 +121,26 @@ impl<'a> VennBuilder<'a> {
             semantic_classes: BTreeMap::new(),
             semantic_data_sets: BTreeMap::new(),
             text_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "venn.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
         let title = venn_title(self.model, self.metadata.title.as_deref());
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "venn.document".to_string(),
             role: SemanticRole::Document,
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         self.emit_title(title)?;
 
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(0.0, self.layout.title_height),
-        });
+        })?;
 
         let style_by_key = venn_style_by_key(self.model);
         let mut circle_index = 0usize;
@@ -164,20 +161,13 @@ impl<'a> VennBuilder<'a> {
             }
         }
 
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::Restore)?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.output.finish(
+            Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
+            BTreeMap::from([(
                 "x-merman-venn".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -186,8 +176,7 @@ impl<'a> VennBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -230,9 +219,10 @@ impl<'a> VennBuilder<'a> {
         let semantic_id = "venn.title".to_string();
         self.text_classes
             .insert(semantic_id.clone(), "venn-title".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if let Some(fill) = styles.optional_color("title color", &self.theme.title_color)? {
             // The `.venn-title` author rule wins over the scaled SVG presentation attribute, so
             // the browser-visible font size is always 32px even though its y position still scales.
@@ -245,14 +235,14 @@ impl<'a> VennBuilder<'a> {
                 TextBaseline::Middle,
             )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(title),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -275,9 +265,10 @@ impl<'a> VennBuilder<'a> {
             .insert(semantic_id.clone(), area.sets.join("_"));
         self.text_classes
             .insert(semantic_id.clone(), "label".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let styles = PortableStyleResolver::new("venn");
         let fill_opacity = styles.opacity("fill-opacity", &presentation.fill_opacity)?;
@@ -310,8 +301,8 @@ impl<'a> VennBuilder<'a> {
             )?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: visible_area_title(area),
@@ -321,7 +312,7 @@ impl<'a> VennBuilder<'a> {
                 area.size
             )),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -369,48 +360,29 @@ impl<'a> VennBuilder<'a> {
         }
 
         let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
+        let mut styles = Vec::with_capacity(2);
         if let Some((color, opacity)) = fill.filter(|(_, opacity)| *opacity > 0.0) {
-            self.with_opacity(opacity, |commands| {
-                commands.push(DrawingCommand::DrawPath {
-                    path: id.clone(),
-                    style: PathStyle {
-                        fill_rule: FillRule::NonZero,
-                        fill: Some(Paint::solid(color)),
-                        stroke: None,
-                    },
-                });
+            styles.push(PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(with_alpha(color, opacity))),
+                stroke: None,
             });
         }
         if let Some((area_stroke, opacity)) =
             area_stroke.filter(|(stroke, opacity)| stroke.width > 0.0 && *opacity > 0.0)
         {
-            self.with_opacity(opacity, |commands| {
-                commands.push(DrawingCommand::DrawPath {
-                    path: id,
-                    style: PathStyle {
-                        fill_rule: FillRule::NonZero,
-                        fill: None,
-                        stroke: Some(area_stroke),
-                    },
-                });
+            let mut area_stroke = area_stroke;
+            if let Paint::Solid { color } = &area_stroke.paint {
+                area_stroke.paint = Paint::solid(with_alpha(*color, opacity));
+            }
+            styles.push(PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(area_stroke),
             });
         }
+        self.output.draw_path_layers(id, segments, styles)?;
         Ok(true)
-    }
-
-    fn with_opacity(&mut self, opacity: f64, emit: impl FnOnce(&mut Vec<DrawingCommand>)) {
-        if opacity < 1.0 {
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::SetOpacity { opacity });
-        }
-        emit(&mut self.commands);
-        if opacity < 1.0 {
-            self.commands.push(DrawingCommand::Restore);
-        }
     }
 
     fn emit_text(
@@ -425,65 +397,57 @@ impl<'a> VennBuilder<'a> {
         if font_size == 0.0 {
             return Ok(());
         }
-        let bounds = self.measure_text_bounds(value, origin, font_size, anchor, baseline)?;
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: value.to_string(),
-            origin,
-            bounds,
-            style: TextStyle {
-                font: self.font.clone(),
+        let session = self.session;
+        let font_family_css = &self.font_family_css;
+        let font = &self.font;
+        let obligation = &self.text_obligation;
+        self.output.draw_host_text_parts(&[value], |text| {
+            let measurement_style = MeasurementTextStyle {
+                font_family: Some(font_family_css.clone()),
                 font_size,
-                letter_spacing: 0.0,
-                line_height: font_size,
-                fill: Paint::solid(fill),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
-    }
-
-    fn measure_text_bounds(
-        &self,
-        text: &str,
-        origin: Point,
-        font_size: f64,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<Rect> {
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(self.font_family_css.clone()),
-            font_size,
-            font_weight: None,
-            font_style: None,
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
-        let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
-        self.session.checkpoint(OperationPhase::Emit)?;
-        if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
-            return Err(invalid("Venn text measurement returned invalid bounds"));
-        }
-        let x = match anchor {
-            TextAnchor::Start => origin.x,
-            TextAnchor::Middle => origin.x - width / 2.0,
-            TextAnchor::End => origin.x - width,
-        };
-        let y = match baseline {
-            TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
-            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
-            TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
-                origin.y - height
+                font_weight: None,
+                font_style: None,
+            };
+            let measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let width = measurer.measure_svg_simple_text_bbox_width_px(&text, &measurement_style);
+            let height = measurer.measure_svg_simple_text_bbox_height_px(&text, &measurement_style);
+            session.checkpoint(OperationPhase::Emit)?;
+            if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                return Err(invalid("Venn text measurement returned invalid bounds"));
             }
-        };
-        Ok(Rect::new(x, y, width, height))
+            let x = match anchor {
+                TextAnchor::Start => origin.x,
+                TextAnchor::Middle => origin.x - width / 2.0,
+                TextAnchor::End => origin.x - width,
+            };
+            let y = match baseline {
+                TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
+                TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
+                TextBaseline::Alphabetic
+                | TextBaseline::Ideographic
+                | TextBaseline::TextAfterEdge => origin.y - height,
+            };
+            Ok(TextRun {
+                text,
+                origin,
+                bounds: Rect::new(x, y, width, height),
+                style: TextStyle {
+                    font: font.clone(),
+                    font_size,
+                    letter_spacing: 0.0,
+                    line_height: font_size,
+                    fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: obligation.clone(),
+            })
+        })
     }
 }
 
@@ -554,6 +518,16 @@ fn translate(x: f64, y: f64) -> Transform {
         e: x,
         f: y,
     }
+}
+
+fn with_alpha(color: Color, opacity: f64) -> Color {
+    let opacity = opacity.clamp(0.0, 1.0);
+    Color::rgba(
+        color.red,
+        color.green,
+        color.blue,
+        (f64::from(color.alpha) * opacity).round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 fn invalid(message: impl Into<String>) -> Error {

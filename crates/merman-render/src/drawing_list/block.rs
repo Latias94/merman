@@ -4,6 +4,7 @@
 //! adapter keeps that geometry typed, expands edge markers into ordinary paths, and accepts only
 //! labels and styles that the v1 contract can represent without dropping visible information.
 
+use super::builder::DrawingListBuilder;
 use super::{
     BlockEdgeSvgMetadata, BlockInlinePathProperty, BlockSvgBody, RenderDocument, SvgStructureBody,
     SvgStructureSidecar, parse_font_families_for, theme_color,
@@ -31,11 +32,10 @@ use merman_core::diagrams::block::{
     BlockDiagramRenderModel, BlockEdgeRenderModel, BlockNodeRenderModel,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, LineCap, LineJoin,
-    Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
+    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -92,7 +92,7 @@ enum StyleTarget {
 struct BlockBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a BlockDiagramRenderModel,
     layout: &'a BlockDiagramLayout,
     sources: HashMap<String, BlockSource>,
@@ -111,9 +111,6 @@ struct BlockBuilder<'a> {
     edge_label_background: Color,
     stroke_width: f64,
     text_obligation: TextObligation,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -129,9 +126,10 @@ pub(crate) fn build_block_document(
     pair: &BlockPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    BlockBuilder::new(pair, metadata, policy, session)?.build()
+    BlockBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 impl<'a> BlockBuilder<'a> {
@@ -139,6 +137,7 @@ impl<'a> BlockBuilder<'a> {
         pair: &'a BlockPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -201,10 +200,16 @@ impl<'a> BlockBuilder<'a> {
         let edge_label_background =
             theme_color(config, "edgeLabelBackground", DEFAULT_EDGE_LABEL_BACKGROUND)?;
 
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "block.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             sources,
@@ -223,14 +228,6 @@ impl<'a> BlockBuilder<'a> {
             edge_label_background,
             stroke_width,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "block.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -245,7 +242,7 @@ impl<'a> BlockBuilder<'a> {
 
     fn build(mut self) -> Result<RenderDocument> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "block.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -255,7 +252,7 @@ impl<'a> BlockBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: None,
             link: None,
-        });
+        })?;
         self.semantic_classes
             .insert("block.document".to_string(), "block".to_string());
 
@@ -272,20 +269,14 @@ impl<'a> BlockBuilder<'a> {
             self.emit_edge_label(index, edge)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let viewport = self.viewport()?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(viewport),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.document.finish(
+            Viewport::new(viewport),
+            BTreeMap::from([(
                 "x-merman-block".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -297,8 +288,7 @@ impl<'a> BlockBuilder<'a> {
                     "style_mode": "resolved_common_css",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -352,19 +342,20 @@ impl<'a> BlockBuilder<'a> {
                 .insert(semantic_id.clone(), source.styles.clone());
         }
         if !style.visible {
-            self.semantics.push(SemanticAnnotation {
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(source.label.clone()),
                 description: Some(format!("{} ({})", node.id, source.block_type)),
                 link: None,
-            });
+            })?;
             return Ok(());
         }
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_shape(&format!("{semantic_id}.shape"), node, geometry, &style)?;
         let lines = plain_lines(&source.label, &format!("Block node `{}` label", node.id))?;
         self.emit_label_lines(
@@ -375,8 +366,9 @@ impl<'a> BlockBuilder<'a> {
             node.label_width.unwrap_or_default().max(0.0),
             node.label_height.unwrap_or_default().max(0.0),
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(if lines.iter().all(|line| line.trim().is_empty()) {
@@ -386,7 +378,7 @@ impl<'a> BlockBuilder<'a> {
             }),
             description: Some(format!("{} ({})", node.id, source.block_type)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -424,10 +416,10 @@ impl<'a> BlockBuilder<'a> {
         };
         let scoped_opacity = style.opacity != 1.0;
         if scoped_opacity {
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::SetOpacity {
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document.push_control(DrawingCommand::SetOpacity {
                 opacity: style.opacity,
-            });
+            })?;
         }
 
         match &geometry.boundary {
@@ -490,7 +482,7 @@ impl<'a> BlockBuilder<'a> {
             }
         }
         if scoped_opacity {
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
         Ok(())
     }
@@ -534,10 +526,10 @@ impl<'a> BlockBuilder<'a> {
         let label_left = label_center.x - label_width / 2.0;
         let scoped_opacity = style.label_opacity != 1.0;
         if scoped_opacity {
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::SetOpacity {
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document.push_control(DrawingCommand::SetOpacity {
                 opacity: style.label_opacity,
-            });
+            })?;
         }
         for (line_index, line) in lines.iter().enumerate() {
             if line.is_empty() {
@@ -554,7 +546,7 @@ impl<'a> BlockBuilder<'a> {
                 label_center.y - total_height / 2.0
                     + bounds_line_height * (line_index as f64 + 0.5),
             );
-            self.commands.push(DrawingCommand::draw_text(TextRun {
+            let text_run = TextRun {
                 text: line.clone(),
                 origin,
                 bounds: Rect::new(
@@ -577,10 +569,12 @@ impl<'a> BlockBuilder<'a> {
                 direction: TextDirection::Auto,
                 language: None,
                 obligation: self.text_obligation.clone(),
-            }));
+            };
+            self.document
+                .draw_host_text(line, move |text| TextRun { text, ..text_run })?;
         }
         if scoped_opacity {
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
         Ok(())
     }
@@ -593,9 +587,10 @@ impl<'a> BlockBuilder<'a> {
         let semantic_id = format!("block.edge.{index}");
         self.semantic_classes
             .insert(semantic_id.clone(), "edgePath".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let mut points = self.edge_points(edge, layout_edge)?;
         let data_points = points.clone();
         if points.len() >= 2 {
@@ -654,8 +649,9 @@ impl<'a> BlockBuilder<'a> {
             false,
             &style,
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: (!edge.label.trim().is_empty())
@@ -663,7 +659,7 @@ impl<'a> BlockBuilder<'a> {
                 .transpose()?,
             description: Some(format!("{} → {}", edge.start, edge.end)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -798,9 +794,10 @@ impl<'a> BlockBuilder<'a> {
         self.label_max_widths.insert(semantic_id.clone(), 200.0);
         self.label_data_ids
             .insert(semantic_id.clone(), edge.id.clone());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.background"),
             rounded_rect_path(
@@ -849,14 +846,15 @@ impl<'a> BlockBuilder<'a> {
             label.width,
             label.height,
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(lines.join(" ")),
             description: Some(format!("{} → {}", edge.start, edge.end)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -1020,14 +1018,8 @@ impl<'a> BlockBuilder<'a> {
         if segments.is_empty() {
             return Err(invalid(format!("Block path `{id}` has no geometry")));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document
+            .draw_path(ResourceId::new(id), segments, style)
     }
 }
 

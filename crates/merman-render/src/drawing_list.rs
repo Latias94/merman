@@ -677,7 +677,7 @@ pub(crate) fn build_for_family(
             info::build_info_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Ishikawa(pair) => {
-            ishikawa::build_ishikawa_document(pair, metadata, policy, session)
+            ishikawa::build_ishikawa_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Journey(pair) => {
             journey::build_journey_document(pair, metadata, policy, limits, session)
@@ -722,13 +722,13 @@ pub(crate) fn build_for_family(
             tree_view::build_tree_view_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Venn(pair) => {
-            venn::build_venn_document(pair, metadata, policy, session)
+            venn::build_venn_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::XyChart(pair) => {
             xychart::build_xychart_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::EventModeling(pair) => {
-            eventmodeling::build_eventmodeling_document(pair, metadata, policy, session)
+            eventmodeling::build_eventmodeling_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Cynefin(pair) => {
             cynefin::build_cynefin_document(pair, metadata, policy, limits, session)
@@ -743,17 +743,17 @@ pub(crate) fn build_for_family(
             timeline::build_timeline_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Wardley(pair) => {
-            wardley::build_wardley_document(pair, metadata, policy, session)
+            wardley::build_wardley_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Block(pair) => {
-            block::build_block_document(pair, metadata, policy, session)
+            block::build_block_document(pair, metadata, policy, limits, session)
         }
         #[cfg(feature = "layout-cytoscape")]
         BuiltinFamilyArtifact::Architecture(pair) => {
             architecture::build_architecture_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Zenuml(pair) => {
-            zenuml::build_zenuml_document(pair, metadata, policy, session)
+            zenuml::build_zenuml_document(pair, metadata, policy, limits, session)
         }
     }
 }

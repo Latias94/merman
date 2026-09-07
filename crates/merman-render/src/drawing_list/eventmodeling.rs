@@ -9,6 +9,7 @@ use super::{
     parse_font_families_for,
 };
 use crate::config::config_font_family_css_root_first_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -20,10 +21,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -35,19 +36,29 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
 const LABEL_LINE_HEIGHT: f64 = 19.0;
 
+struct EventModelingTextSpec {
+    origin: Point,
+    bounds: Rect,
+    font: FontDescriptor,
+    color: Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+}
+
 pub(crate) fn build_eventmodeling_document(
     pair: &EventModelingPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    EventModelingBuilder::new(pair, metadata, policy, session)?.build()
+    EventModelingBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct EventModelingBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a EventModelingDiagramRenderModel,
     layout: &'a EventModelingDiagramLayout,
     font: FontDescriptor,
@@ -61,9 +72,6 @@ struct EventModelingBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> EventModelingBuilder<'a> {
@@ -71,6 +79,7 @@ impl<'a> EventModelingBuilder<'a> {
         pair: &'a EventModelingPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -102,7 +111,14 @@ impl<'a> EventModelingBuilder<'a> {
         Ok(Self {
             metadata,
             session,
-            policy,
+            output: {
+                let mut output = DrawingListBuilder::new(policy, limits, session);
+                output.push_control(DrawingCommand::Save)?;
+                output.push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: "eventmodeling.document".to_string(),
+                })?;
+                output
+            },
             model,
             layout,
             swimlane_fill: styles.color("emSwimlaneBackground", &theme.swimlane_background_fill)?,
@@ -119,19 +135,11 @@ impl<'a> EventModelingBuilder<'a> {
             font,
             code_font,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "eventmodeling.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "eventmodeling.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -143,7 +151,7 @@ impl<'a> EventModelingBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         for index in 0..self.layout.swimlanes.len() {
@@ -159,23 +167,16 @@ impl<'a> EventModelingBuilder<'a> {
             self.emit_relation(index)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 self.layout.viewbox_x,
                 self.layout.viewbox_y,
                 self.layout.total_width,
                 self.layout.total_height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-eventmodeling".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -184,8 +185,7 @@ impl<'a> EventModelingBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -230,9 +230,10 @@ impl<'a> EventModelingBuilder<'a> {
             .insert(semantic_id.clone(), "em-swimlane".to_string());
         self.text_classes
             .insert(semantic_id.clone(), "em-swimlane-label".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.shape"),
             rounded_rect_path(
@@ -255,42 +256,51 @@ impl<'a> EventModelingBuilder<'a> {
             font_weight: Some("700".to_string()),
             ..Default::default()
         };
-        let (label_width, label_height) = self.measure_text(&swimlane.label, &label_style);
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: swimlane.label.clone(),
-            origin: label_origin,
-            bounds: Rect::new(
-                label_origin.x,
-                label_origin.y - label_height,
-                label_width.max(1.0),
-                label_height.max(1.0),
-            ),
-            style: TextStyle {
-                font: FontDescriptor {
-                    weight: 700,
-                    ..self.font.clone()
+        let font = FontDescriptor {
+            weight: 700,
+            ..self.font.clone()
+        };
+        let text_color = self.text_color;
+        let obligation = self.text_obligation.clone();
+        let measurer = self
+            .session
+            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+        self.output.draw_host_text(&swimlane.label, |text| {
+            let label_width = measurer.measure_svg_simple_text_bbox_width_px(&text, &label_style);
+            let label_height = measurer.measure_svg_simple_text_bbox_height_px(&text, &label_style);
+            TextRun {
+                text,
+                origin: label_origin,
+                bounds: Rect::new(
+                    label_origin.x,
+                    label_origin.y - label_height,
+                    label_width.max(1.0),
+                    label_height.max(1.0),
+                ),
+                style: TextStyle {
+                    font,
+                    font_size: TEXT_FONT_SIZE,
+                    letter_spacing: 0.0,
+                    line_height: LABEL_LINE_HEIGHT,
+                    fill: Paint::solid(text_color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-                font_size: TEXT_FONT_SIZE,
-                letter_spacing: 0.0,
-                line_height: LABEL_LINE_HEIGHT,
-                fill: Paint::solid(self.text_color),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor: TextAnchor::Start,
-            baseline: TextBaseline::Alphabetic,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation,
+            }
+        })?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(swimlane.label.clone()),
             description: swimlane.namespace.clone(),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -310,9 +320,10 @@ impl<'a> EventModelingBuilder<'a> {
         let stroke_color =
             PortableStyleResolver::new("eventmodeling").color("box.stroke", &box_layout.stroke)?;
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.shape"),
             rounded_rect_path(
@@ -329,15 +340,15 @@ impl<'a> EventModelingBuilder<'a> {
             },
         )?;
         self.emit_box_text(box_layout, &semantic_id)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         let (title, data) = box_text_parts(&box_layout.text);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(title),
             description: (!data.is_empty()).then(|| data.join("\n")),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -379,33 +390,25 @@ impl<'a> EventModelingBuilder<'a> {
         let content_top = box_layout.y + box_layout.height / 2.0 - content_height / 2.0;
         let center_x = box_layout.x + box_layout.width / 2.0;
         let title_y = content_top + LABEL_LINE_HEIGHT / 2.0;
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: title,
-            origin: Point::new(center_x, title_y),
-            bounds: Rect::new(
-                box_layout.x + BOX_TEXT_PADDING,
-                title_y - title_metrics.1 / 2.0,
-                (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
-                title_metrics.1.max(1.0),
-            ),
-            style: TextStyle {
+        self.emit_text(
+            &title,
+            EventModelingTextSpec {
+                origin: Point::new(center_x, title_y),
+                bounds: Rect::new(
+                    box_layout.x + BOX_TEXT_PADDING,
+                    title_y - title_metrics.1 / 2.0,
+                    (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
+                    title_metrics.1.max(1.0),
+                ),
                 font: FontDescriptor {
                     weight: 700,
                     ..self.font.clone()
                 },
-                font_size: TEXT_FONT_SIZE,
-                letter_spacing: 0.0,
-                line_height: LABEL_LINE_HEIGHT,
-                fill: Paint::solid(self.text_color),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                color: self.text_color,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
             },
-            anchor: TextAnchor::Middle,
-            baseline: TextBaseline::Middle,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+        )?;
 
         if has_data {
             let data_x = box_layout.x + BOX_TEXT_PADDING;
@@ -414,30 +417,22 @@ impl<'a> EventModelingBuilder<'a> {
             {
                 let y = content_top + (3 + line_index) as f64 * LABEL_LINE_HEIGHT
                     - LABEL_LINE_HEIGHT / 2.0;
-                self.commands.push(DrawingCommand::draw_text(TextRun {
-                    text: line.clone(),
-                    origin: Point::new(data_x, y),
-                    bounds: Rect::new(
-                        data_x,
-                        y - *line_height / 2.0,
-                        (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
-                        (*line_height).max(1.0),
-                    ),
-                    style: TextStyle {
+                self.emit_text(
+                    line,
+                    EventModelingTextSpec {
+                        origin: Point::new(data_x, y),
+                        bounds: Rect::new(
+                            data_x,
+                            y - *line_height / 2.0,
+                            (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
+                            (*line_height).max(1.0),
+                        ),
                         font: self.code_font.clone(),
-                        font_size: TEXT_FONT_SIZE,
-                        letter_spacing: 0.0,
-                        line_height: LABEL_LINE_HEIGHT,
-                        fill: Paint::solid(self.text_color),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                        color: self.text_color,
+                        anchor: TextAnchor::Start,
+                        baseline: TextBaseline::Middle,
                     },
-                    anchor: TextAnchor::Start,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
-                }));
+                )?;
             }
         }
         Ok(())
@@ -458,9 +453,10 @@ impl<'a> EventModelingBuilder<'a> {
             format!("{semantic_id}.arrowhead"),
             "em-arrowhead".to_string(),
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.line"),
             vec![
@@ -486,8 +482,8 @@ impl<'a> EventModelingBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: None,
@@ -496,7 +492,7 @@ impl<'a> EventModelingBuilder<'a> {
                 relation.source_frame, relation.target_frame
             )),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -510,13 +506,7 @@ impl<'a> EventModelingBuilder<'a> {
             return Err(invalid("EventModeling path has no geometry"));
         }
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(id, segments, style)
     }
 
     fn measure_text(&self, text: &str, style: &MeasurementTextStyle) -> (f64, f64) {
@@ -531,6 +521,29 @@ impl<'a> EventModelingBuilder<'a> {
                 .measure_svg_simple_text_bbox_height_px(text, style)
                 .max(1.0),
         )
+    }
+
+    fn emit_text(&mut self, text: &str, spec: EventModelingTextSpec) -> Result<()> {
+        let obligation = self.text_obligation.clone();
+        self.output.draw_host_text(text, |text| TextRun {
+            text,
+            origin: spec.origin,
+            bounds: spec.bounds,
+            style: TextStyle {
+                font: spec.font,
+                font_size: TEXT_FONT_SIZE,
+                letter_spacing: 0.0,
+                line_height: LABEL_LINE_HEIGHT,
+                fill: Paint::solid(spec.color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+            },
+            anchor: spec.anchor,
+            baseline: spec.baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation,
+        })
     }
 }
 
