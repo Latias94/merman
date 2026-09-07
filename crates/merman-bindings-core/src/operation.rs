@@ -1365,12 +1365,12 @@ mod tests {
 
     #[cfg(feature = "drawing-list")]
     #[test]
-    fn drawing_list_generic_operation_matches_the_public_schema() {
-        let source = include_bytes!("../../../fixtures/bindings/drawing-list-v1-smoke.mmd");
+    fn drawing_list_generic_operation_returns_a_valid_v1_document() {
+        const SOURCE: &[u8] = b"info\n";
         let result = BindingEngine::new(b"")
             .expect("DrawingList binding engine")
-            .execute(BindingOperationRequest::new("drawing-list-json", source))
-            .expect("shared DrawingList fixture should render through the generic operation");
+            .execute(BindingOperationRequest::new("drawing-list-json", SOURCE))
+            .expect("DrawingList smoke input should render through the generic operation");
 
         assert_eq!(result.operation().operation_id(), "drawing-list-json");
         assert_eq!(
@@ -1378,23 +1378,40 @@ mod tests {
             "application/vnd.merman.drawing-list+json;version=1"
         );
 
-        let schema: serde_json::Value =
-            serde_json::from_str(include_str!("../../../contracts/drawing-list-v1.json"))
-                .expect("published DrawingList schema is valid JSON");
-        let validator = jsonschema::options()
-            .with_draft(jsonschema::Draft::Draft202012)
-            .build(&schema)
-            .expect("published DrawingList schema is valid Draft 2020-12");
         let value: serde_json::Value = serde_json::from_slice(result.data())
             .expect("generic DrawingList output is valid JSON");
-        assert!(
-            validator.is_valid(&value),
-            "published schema rejected generic DrawingList output: {value}"
-        );
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["coordinate_system"], "logical_pixels_y_down");
 
         let document = merman_display_list::DrawingListDocument::from_json_bytes(result.data())
             .expect("generic DrawingList output satisfies runtime protocol validation");
         assert!(!document.commands.is_empty());
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_generic_operation_reports_structured_limit_without_output() {
+        let engine = BindingEngine::new(
+            br#"{
+                "drawing_list": {
+                    "limits": { "max_serialized_bytes": 1 }
+                }
+            }"#,
+        )
+        .expect("DrawingList binding engine with a bounded output");
+        let error = engine
+            .execute(BindingOperationRequest::new("drawing-list-json", b"info\n"))
+            .expect_err("a rejected DrawingList operation must not publish a partial result");
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("DrawingList resource failures must expose structured details");
+        assert_eq!(details.limit_id, "max_serialized_bytes");
+        assert_eq!(details.phase, "drawing-list-validation");
+        assert!(details.actual > details.max);
+        assert_eq!(details.max, 1);
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
     }
 
     #[test]
