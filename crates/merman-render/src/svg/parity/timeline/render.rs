@@ -7,6 +7,7 @@ fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
+    is_neo: bool,
     resolved_font_family_css: &str,
     resolved_font_size_css: &str,
 ) -> TimelineCss {
@@ -117,6 +118,32 @@ fn timeline_css(
                 theme.disabled_fill,
                 diagram_id,
                 theme.disabled_text_fill,
+            );
+        }
+    }
+
+    let use_neo_gradient = is_neo
+        && crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
+            .unwrap_or(false)
+        && crate::config::config_string(effective_config, &["theme"]).as_deref() != Some("neutral");
+    if use_neo_gradient {
+        let gradient = scoped_svg_url(diagram_id, "gradient");
+        for (i, _) in theme.sections.iter().enumerate() {
+            let section = i as i64 - 1;
+            let _ = write!(
+                &mut out,
+                r#"#{} .section-{}[data-look="neo"] rect,#{} .section-{}[data-look="neo"] path,#{} .section-{}[data-look="neo"] circle{{fill:{};stroke:{};stroke-width:2;}}#{} .section-{}[data-look="neo"] line{{stroke:{};stroke-width:2;}}"#,
+                diagram_id,
+                section,
+                diagram_id,
+                section,
+                diagram_id,
+                section,
+                theme.main_bkg,
+                gradient,
+                diagram_id,
+                section,
+                gradient,
             );
         }
     }
@@ -504,6 +531,11 @@ fn render_timeline_diagram_svg_inner(
     let diagram_id = options.diagram_id_or("merman");
     let theme = MermaidThemeAdapter::new(effective_config).timeline();
     let is_redux_theme = theme.is_redux_theme;
+    let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
+    let use_neo_gradient = is_neo
+        && crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
+            .unwrap_or(false)
+        && crate::config::config_string(effective_config, &["theme"]).as_deref() != Some("neutral");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -525,6 +557,7 @@ fn render_timeline_diagram_svg_inner(
         node_count: &mut usize,
         n: &crate::model::TimelineNodeLayout,
         is_redux_theme: bool,
+        is_neo: bool,
         is_event: bool,
         event_index: Option<usize>,
         event_radius: Option<(&str, f64)>,
@@ -588,11 +621,13 @@ fn render_timeline_diagram_svg_inner(
             .as_deref()
             .map(|fill| format!(r#" style="fill:{};""#, escape_attr(fill)))
             .unwrap_or_default();
+        let look_attr = if is_neo { r#" data-look="neo""# } else { "" };
 
         let _ = write!(
             out,
-            r#"<g class="timeline-node {section_class}">"#,
-            section_class = escape_attr(&n.section_class)
+            r#"<g class="timeline-node {section_class}"{look_attr}>"#,
+            section_class = escape_attr(&n.section_class),
+            look_attr = look_attr,
         );
         out.checkpoint()?;
         out.push_str("<g>");
@@ -675,6 +710,7 @@ fn render_timeline_diagram_svg_inner(
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
+        is_neo: bool,
         event_index: usize,
         expected_effective_fill: Option<&str>,
         event_radius: Option<(&'a str, f64)>,
@@ -689,6 +725,7 @@ fn render_timeline_diagram_svg_inner(
             node_count,
             event,
             is_redux_theme,
+            is_neo,
             true,
             Some(event_index),
             event_radius,
@@ -713,6 +750,7 @@ fn render_timeline_diagram_svg_inner(
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
+        is_neo: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
@@ -736,6 +774,7 @@ fn render_timeline_diagram_svg_inner(
                 node_count,
                 event,
                 is_redux_theme,
+                is_neo,
                 event_index,
                 effective_fill.as_deref(),
                 event_radius,
@@ -764,6 +803,7 @@ fn render_timeline_diagram_svg_inner(
         task: &TimelineTaskLayout,
         direction: merman_core::diagrams::timeline::TimelineDirection,
         is_redux_theme: bool,
+        is_neo: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
@@ -782,6 +822,7 @@ fn render_timeline_diagram_svg_inner(
             node_count,
             node,
             is_redux_theme,
+            is_neo,
             false,
             None,
             None,
@@ -805,6 +846,7 @@ fn render_timeline_diagram_svg_inner(
                         node_count,
                         event,
                         is_redux_theme,
+                        is_neo,
                         event_emission,
                         typography_emission,
                         options,
@@ -819,6 +861,7 @@ fn render_timeline_diagram_svg_inner(
                         node_count,
                         event,
                         is_redux_theme,
+                        is_neo,
                         event_emission,
                         typography_emission,
                         options,
@@ -891,6 +934,7 @@ fn render_timeline_diagram_svg_inner(
         diagram_id,
         effective_config,
         &theme,
+        is_neo,
         typography_theme.font_family_css(),
         typography_theme.font_size_css(),
     );
@@ -910,6 +954,42 @@ fn render_timeline_diagram_svg_inner(
         escape_attr(&arrowhead_id)
     );
     out.checkpoint()?;
+    if is_redux_theme {
+        let flood_opacity = if is_neo && theme.is_dark_theme {
+            "0.2"
+        } else {
+            "0.06"
+        };
+        let flood_color = if theme.is_dark_theme {
+            "#FFFFFF"
+        } else {
+            "#000000"
+        };
+        let _ = write!(
+            &mut out,
+            r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="{}" flood-color="{}"/></filter></defs>"#,
+            escape_attr_display(diagram_id),
+            flood_opacity,
+            flood_color,
+        );
+        out.checkpoint()?;
+    }
+    if use_neo_gradient {
+        let gradient_start =
+            crate::config::config_string(effective_config, &["themeVariables", "gradientStart"])
+                .unwrap_or_else(|| theme.node_border.clone());
+        let gradient_stop =
+            crate::config::config_string(effective_config, &["themeVariables", "gradientStop"])
+                .unwrap_or_else(|| gradient_start.clone());
+        let _ = write!(
+            &mut out,
+            r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+            escape_attr_display(diagram_id),
+            escape_attr(&gradient_start),
+            escape_attr(&gradient_stop),
+        );
+        out.checkpoint()?;
+    }
 
     for section in &layout.sections {
         options.checkpoint_emit()?;
@@ -927,6 +1007,7 @@ fn render_timeline_diagram_svg_inner(
             &mut node_count,
             node,
             is_redux_theme,
+            is_neo,
             false,
             None,
             None,
@@ -946,6 +1027,7 @@ fn render_timeline_diagram_svg_inner(
                 task,
                 layout.direction,
                 is_redux_theme,
+                is_neo,
                 &mut event_emission,
                 &mut typography_emission,
                 options,
@@ -962,6 +1044,7 @@ fn render_timeline_diagram_svg_inner(
             task,
             layout.direction,
             is_redux_theme,
+            is_neo,
             &mut event_emission,
             &mut typography_emission,
             options,
@@ -1006,8 +1089,8 @@ fn render_timeline_diagram_svg_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout};
     use crate::DiagramFamilyId;
+    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout};
     use std::fmt;
     use std::ops::Range;
 

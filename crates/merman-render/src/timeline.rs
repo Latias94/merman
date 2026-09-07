@@ -399,6 +399,7 @@ fn layout_timeline_horizontal(
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
     let theme_color_limit = cfg.theme_color_limit;
+    let is_neo = cfg.is_neo;
 
     let left_margin = cfg.left_margin;
     let disable_multicolor = cfg.disable_multicolor;
@@ -664,7 +665,11 @@ fn layout_timeline_horizontal(
         .as_deref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let title_x = pre_title_box_width / 2.0 - left_margin;
+    let title_x = if is_neo {
+        pre_min_x * 2.0 + left_margin
+    } else {
+        pre_title_box_width / 2.0 - left_margin
+    };
 
     let depth_y = if has_sections {
         max_section_height + max_task_height + 150.0

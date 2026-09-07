@@ -360,6 +360,76 @@ timeline
 }
 
 #[test]
+fn timeline_neo_emits_look_scoped_nodes_and_gradient_paint() {
+    let svg = render_timeline_svg_from_text(
+        r##"%%{init: {"look": "neo", "theme": "default", "themeVariables": {"useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
+timeline
+    title Neo timeline
+    section Release
+        Plan : Build
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("data-look") == Some("neo")),
+        "Neo Timeline nodes must carry the look discriminator: {svg}"
+    );
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("linearGradient") && node.attribute("id") == Some("merman-gradient")
+        }),
+        "Neo Timeline with useGradient must emit a scoped gradient definition: {svg}"
+    );
+    assert!(
+        svg.contains(r#".section--1[data-look="neo"] rect"#)
+            && svg.contains("stroke:url(#merman-gradient);stroke-width:2"),
+        "Neo Timeline CSS must target look-scoped section terminals: {svg}"
+    );
+}
+
+#[test]
+fn timeline_neo_uses_neo_title_positioning() {
+    let source = "timeline\n    title Neo title\n    section Release\n        Plan : Build\n";
+    let classic = render_timeline_svg_from_text(source);
+    let neo =
+        render_timeline_svg_from_text(&format!("%%{{init: {{\"look\": \"neo\"}}}}%%\n{source}"));
+    let title_x = |svg: &str| {
+        roxmltree::Document::parse(svg)
+            .expect("valid Timeline SVG")
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Neo title"))
+            .and_then(|node| node.attribute("x"))
+            .expect("Timeline title x")
+            .parse::<f64>()
+            .expect("numeric Timeline title x")
+    };
+
+    assert_ne!(title_x(&classic), title_x(&neo));
+}
+
+#[test]
+fn timeline_neo_redux_emits_scoped_drop_shadow_filter() {
+    let svg = render_timeline_svg_from_text(
+        r##"%%{init: {"look": "neo", "theme": "redux"}}%%
+timeline
+    section Release
+        Plan : Build
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+
+    assert!(
+        document.descendants().any(|node| {
+            node.has_tag_name("filter") && node.attribute("id") == Some("merman-drop-shadow")
+        }),
+        "Neo Redux Timeline must define the filter referenced by its section CSS: {svg}"
+    );
+}
+
+#[test]
 fn timeline_static_event_fill_reaches_only_event_terminals() {
     let theme = timeline_event_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Timeline event fill"),

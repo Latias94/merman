@@ -47,6 +47,7 @@ impl<'a> TimelineConfigView<'a> {
                 .unwrap_or(text_style.font_size)
                 .max(1.0),
             theme_color_limit: timeline_theme_color_limit(self.effective_config),
+            is_neo: crate::config::config_diagram_look(self.effective_config).is_neo(),
             left_margin: config_f64(self.timeline_config, &["leftMargin"])
                 .unwrap_or(DEFAULT_LEFT_MARGIN)
                 .max(0.0),
@@ -98,6 +99,7 @@ pub(crate) struct TimelineLayoutSettings {
     pub(crate) text_style: TextStyle,
     pub(crate) layout_font_size: f64,
     pub(crate) theme_color_limit: usize,
+    pub(crate) is_neo: bool,
     pub(crate) left_margin: f64,
     pub(crate) disable_multicolor: bool,
     pub(crate) viewbox_padding: f64,
@@ -116,6 +118,7 @@ mod tests {
 
         assert_eq!(settings.left_margin, DEFAULT_LEFT_MARGIN);
         assert_eq!(settings.theme_color_limit, DEFAULT_THEME_COLOR_LIMIT);
+        assert!(!settings.is_neo);
         assert_eq!(settings.viewbox_padding, DEFAULT_VIEWBOX_PADDING);
         assert!(!settings.disable_multicolor);
         assert!(!settings.use_max_width);
@@ -143,6 +146,7 @@ mod tests {
 
         assert_eq!(settings.left_margin, 180.0);
         assert_eq!(settings.theme_color_limit, DEFAULT_THEME_COLOR_LIMIT);
+        assert!(!settings.is_neo);
         assert_eq!(settings.viewbox_padding, 12.0);
         assert!(settings.disable_multicolor);
         assert!(settings.use_max_width);
