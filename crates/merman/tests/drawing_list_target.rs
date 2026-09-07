@@ -188,6 +188,8 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "swimlane-beta LR\nsubgraph Lane\nA -->|next| B\nend\n",
         "pie showData title Releases\n\"Stable\" : 3\n\"Alpha\" : 1\n",
         "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n",
+        "timeline\ntitle Releases\nsection Planning\nPlan : Build\nShip : Done\n",
+        "timeline TD\nsection Planning\nPlan : Build\nShip : Done\n",
     ] {
         let renderer = Renderer::new();
         let RenderOutput::DrawingList(Some(output)) = renderer
@@ -636,6 +638,39 @@ fn c4_emits_typed_boundaries_shapes_relations_and_arrows() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("uses")
     }));
+}
+
+#[test]
+fn c4_limits_stop_at_the_first_over_budget_command() {
+    let source = r#"C4Context
+        Person(user, "User")
+        System(api, "API", "Service")
+        Rel(user, api, "uses")
+    "#;
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("C4 must reject its first command before constructing the document");
+    assert!(
+        matches!(
+            &error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "expected first C4 command to hit max_commands, got {error}"
+    );
 }
 
 #[test]
@@ -2908,6 +2943,65 @@ fn timeline_neo_effects_are_not_silently_dropped() {
                 if family == "timeline" && reason.contains("neo")),
                 "{error}"
             );
+        }
+    }
+}
+
+#[test]
+fn timeline_limits_stop_at_the_first_over_budget_item() {
+    for direction in ["", " TD"] {
+        let source = format!(
+            "timeline{direction}\ntitle Releases\nsection Planning\nPlan : Build\nShip : Done\n"
+        );
+        for (id, actual, maximum, limits) in [
+            (
+                "max_commands",
+                6,
+                5,
+                DrawingListLimits {
+                    max_commands: 5,
+                    ..Default::default()
+                },
+            ),
+            (
+                "max_text_bytes",
+                8,
+                3,
+                DrawingListLimits {
+                    max_text_bytes: 3,
+                    ..Default::default()
+                },
+            ),
+            (
+                "max_stroke_dash_entries",
+                2,
+                1,
+                DrawingListLimits {
+                    max_stroke_dash_entries: 1,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let error = Renderer::new()
+                .render(RenderRequest::drawing_list(
+                    &source,
+                    OperationControl::new(),
+                    DrawingListRequest {
+                        limits,
+                        ..Default::default()
+                    },
+                ))
+                .expect_err("Timeline must reject the first over-budget item without output");
+            let RenderError::ResourceLimitExceeded(limit) = error else {
+                panic!("expected resource limit {id}, got {error}");
+            };
+            assert_eq!(limit.id, id);
+            assert_eq!(limit.phase, "drawing-list-validation");
+            assert_eq!(
+                limit.actual, actual,
+                "{direction}: first over-budget item for {id}"
+            );
+            assert_eq!(limit.maximum, maximum);
         }
     }
 }

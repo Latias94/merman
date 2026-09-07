@@ -8,6 +8,7 @@ use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, TimelineSvgBody, parse_font_families_for,
 };
 use crate::config::{config_bool, config_diagram_look, config_font_family_css_raw};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -19,10 +20,9 @@ use crate::{Error, Result};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineDirection};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
     TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::json;
@@ -37,9 +37,10 @@ pub(crate) fn build_timeline_document(
     pair: &TimelinePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    TimelineBuilder::new(pair, metadata, policy, session)?.build()
+    TimelineBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +55,7 @@ struct NodeVisualStyle {
 struct TimelineBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a TimelineDiagramRenderModel,
     layout: &'a TimelineDiagramLayout,
     theme: TimelineTheme,
@@ -67,9 +68,6 @@ struct TimelineBuilder<'a> {
     connector_width: f64,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> TimelineBuilder<'a> {
@@ -77,6 +75,7 @@ impl<'a> TimelineBuilder<'a> {
         pair: &'a TimelinePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -122,10 +121,16 @@ impl<'a> TimelineBuilder<'a> {
         };
         let font_size = theme.font_size_px.max(1.0);
 
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "timeline.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             theme,
@@ -138,26 +143,19 @@ impl<'a> TimelineBuilder<'a> {
             connector_width,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "timeline.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        let title = self.layout.title.clone();
-        self.semantics.push(SemanticAnnotation {
+        let layout = self.layout;
+        let title = layout.title.as_deref();
+        self.document.push_semantic(SemanticAnnotation {
             id: "timeline.document".to_string(),
             role: SemanticRole::Document,
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         if self.layout.direction == TimelineDirection::TopDown {
             self.emit_activity_line(true)?;
@@ -171,22 +169,24 @@ impl<'a> TimelineBuilder<'a> {
                 semantic_id.clone(),
                 format!("timeline-node {}", section.node.section_class),
             );
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.emit_node_visual(&format!("{semantic_id}.node"), &section.node, false)?;
             for task in &section.tasks {
                 self.emit_task(task_index, task)?;
                 task_index += 1;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: non_empty(&section.node.label),
                 description: Some("Timeline section".to_string()),
                 link: None,
-            });
+            })?;
         }
 
         for task in &self.layout.orphan_tasks {
@@ -194,36 +194,30 @@ impl<'a> TimelineBuilder<'a> {
             task_index += 1;
         }
 
-        if let Some(title) = title.as_deref().filter(|title| !title.trim().is_empty()) {
+        if let Some(title) = title.filter(|title| !title.trim().is_empty()) {
             self.emit_title(title)?;
         }
         if self.layout.direction == TimelineDirection::LeftToRight {
             self.emit_activity_line(true)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let bounds = self
             .layout
             .bounds
             .as_ref()
             .ok_or_else(|| invalid("Timeline layout did not provide root bounds"))?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(
                 bounds.min_x,
                 bounds.min_y,
                 bounds.max_x - bounds.min_x,
                 bounds.max_y - bounds.min_y,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-timeline".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -233,8 +227,7 @@ impl<'a> TimelineBuilder<'a> {
                     "theme": if self.theme.is_redux_theme { "redux" } else { "classic" },
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -254,9 +247,10 @@ impl<'a> TimelineBuilder<'a> {
         let semantic_id = format!("timeline.task.{index}");
         self.semantic_classes
             .insert(semantic_id.clone(), "taskWrapper".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_node_visual(&format!("{semantic_id}.node"), &task.node, false)?;
 
         match self.layout.direction {
@@ -292,14 +286,15 @@ impl<'a> TimelineBuilder<'a> {
             }
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: non_empty(&task.node.label),
             description: Some("Timeline task".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -312,18 +307,20 @@ impl<'a> TimelineBuilder<'a> {
         let semantic_id = format!("{task_id}.event.{index}");
         self.semantic_classes
             .insert(semantic_id.clone(), "eventWrapper".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_node_visual(&format!("{semantic_id}.node"), event, true)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: non_empty(&event.label),
             description: Some("Timeline event".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -333,6 +330,8 @@ impl<'a> TimelineBuilder<'a> {
         node: &TimelineNodeLayout,
         is_event: bool,
     ) -> Result<()> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        validate_node(node)?;
         let style = self.node_style(node, is_event)?;
         self.path_classes.insert(
             format!("{prefix}.background"),
@@ -376,20 +375,19 @@ impl<'a> TimelineBuilder<'a> {
             )?;
         }
 
-        self.emit_node_text(prefix, node, style.label, style.weight)
+        self.emit_node_text(node, style.label, style.weight)
     }
 
     fn emit_node_text(
         &mut self,
-        prefix: &str,
         node: &TimelineNodeLayout,
         color: Color,
         weight: u16,
     ) -> Result<()> {
         let lines = if node.label_lines.is_empty() {
-            std::slice::from_ref(&node.label).to_vec()
+            std::slice::from_ref(&node.label)
         } else {
-            node.label_lines.clone()
+            node.label_lines.as_slice()
         };
         let ty = if self.theme.is_redux_theme {
             if node.kind == "event" {
@@ -400,55 +398,67 @@ impl<'a> TimelineBuilder<'a> {
         } else {
             node.padding / 2.0
         };
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(self.theme.font_family.clone()),
-            font_size: self.font_size,
-            font_weight: Some(weight.to_string()),
-            font_style: None,
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
         let x = node.x + node.width / 2.0;
+        let session = self.session;
+        let font_family = self.theme.font_family.clone();
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
         for (line_index, line) in lines.iter().enumerate() {
+            session.checkpoint(OperationPhase::Emit)?;
             if line.trim().is_empty() {
                 continue;
             }
-            let width = measurer
-                .measure_svg_tspan_text_bbox_width_px(line, &measurement_style)
-                .max(1.0);
-            let height = measurer
-                .measure_svg_tspan_text_bbox_height_px(line, &measurement_style)
-                .max(1.0);
             let y = node.y + ty + self.font_size + line_index as f64 * self.font_size * 1.1;
-            self.commands.push(DrawingCommand::draw_text(TextRun {
-                text: line.clone(),
-                origin: Point::new(x, y),
-                bounds: Rect::new(x - width / 2.0, y - height / 2.0, width, height),
-                style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..self.font.clone()
+            let font_size = self.font_size;
+            self.document.draw_host_text_parts(&[line], |text| {
+                let measurement_style = MeasurementTextStyle {
+                    font_family: Some(font_family.clone()),
+                    font_size,
+                    font_weight: Some(weight.to_string()),
+                    font_style: None,
+                };
+                let measurer = session
+                    .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+                let width =
+                    measurer.measure_svg_tspan_text_bbox_width_px(&text, &measurement_style);
+                let height =
+                    measurer.measure_svg_tspan_text_bbox_height_px(&text, &measurement_style);
+                session.checkpoint(OperationPhase::Emit)?;
+                if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                    return Err(invalid("Timeline text measurement returned invalid bounds"));
+                }
+                let width = width.max(1.0);
+                let height = height.max(1.0);
+                Ok(TextRun {
+                    text,
+                    origin: Point::new(x, y),
+                    bounds: Rect::new(x - width / 2.0, y - height / 2.0, width, height),
+                    style: DisplayTextStyle {
+                        font: FontDescriptor {
+                            weight,
+                            ..font.clone()
+                        },
+                        font_size,
+                        letter_spacing: 0.0,
+                        line_height: font_size * 1.1,
+                        fill: Paint::solid(color),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
-                    font_size: self.font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.font_size * 1.1,
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
-            }));
-            let _ = prefix;
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Middle,
+                    direction: TextDirection::Auto,
+                    language: None,
+                    obligation: obligation.clone(),
+                })
+            })?;
         }
         Ok(())
     }
 
     fn emit_connector(&mut self, prefix: &str, line: &TimelineLineLayout) -> Result<()> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        validate_line(line)?;
         let width = if self.theme.is_redux_theme {
             self.connector_width
         } else {
@@ -468,18 +478,20 @@ impl<'a> TimelineBuilder<'a> {
             },
         )?;
         self.emit_arrowhead(&format!("{prefix}.arrowhead"), line, width)?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: prefix.to_string(),
             role: SemanticRole::Edge,
             title: None,
             description: Some("Timeline task-event connector".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
     fn emit_activity_line(&mut self, with_arrow: bool) -> Result<()> {
+        self.session.checkpoint(OperationPhase::Emit)?;
         let line = &self.layout.activity_line;
+        validate_line(line)?;
         let width = if self.theme.is_redux_theme {
             self.connector_width
         } else {
@@ -492,9 +504,10 @@ impl<'a> TimelineBuilder<'a> {
             .insert(semantic_id.to_string(), "lineWrapper".to_string());
         self.path_classes
             .insert("timeline.activity.line".to_string(), "line".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         self.add_path(
             "timeline.activity.line",
             line_path(Point::new(line.x1, line.y1), Point::new(line.x2, line.y2)),
@@ -507,14 +520,15 @@ impl<'a> TimelineBuilder<'a> {
         if with_arrow {
             self.emit_arrowhead("timeline.activity.arrowhead", line, width)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Edge,
             title: None,
             description: Some("Timeline activity axis".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -544,54 +558,61 @@ impl<'a> TimelineBuilder<'a> {
             font_weight: Some("700".to_string()),
             font_style: None,
         };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer
-            .measure_svg_raw_text_bbox_width_px(title, &style)
-            .max(1.0);
-        let height = measurer
-            .measure_svg_raw_text_bbox_height_px(title, &style)
-            .max(1.0);
         let semantic_id = "timeline.title";
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: title.to_string(),
-            origin: Point::new(self.layout.title_x, self.layout.title_y),
-            bounds: Rect::new(
-                self.layout.title_x,
-                self.layout.title_y - height,
-                width,
-                height,
-            ),
-            style: DisplayTextStyle {
-                font: FontDescriptor {
-                    weight: 700,
-                    ..self.font.clone()
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
+        let session = self.session;
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
+        let title_x = self.layout.title_x;
+        let title_y = self.layout.title_y;
+        let title_font_size = self.title_font_size;
+        let text_color = self.text_color;
+        self.document.draw_host_text_parts(&[title], |text| {
+            let measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let width = measurer.measure_svg_raw_text_bbox_width_px(&text, &style);
+            let height = measurer.measure_svg_raw_text_bbox_height_px(&text, &style);
+            session.checkpoint(OperationPhase::Emit)?;
+            if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                return Err(invalid("Timeline text measurement returned invalid bounds"));
+            }
+            let width = width.max(1.0);
+            let height = height.max(1.0);
+            Ok(TextRun {
+                text,
+                origin: Point::new(title_x, title_y),
+                bounds: Rect::new(title_x, title_y - height, width, height),
+                style: DisplayTextStyle {
+                    font: FontDescriptor {
+                        weight: 700,
+                        ..font
+                    },
+                    font_size: title_font_size,
+                    letter_spacing: 0.0,
+                    line_height: title_font_size,
+                    fill: Paint::solid(text_color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-                font_size: self.title_font_size,
-                letter_spacing: 0.0,
-                line_height: self.title_font_size,
-                fill: Paint::solid(self.text_color),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor: TextAnchor::Start,
-            baseline: TextBaseline::Alphabetic,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation,
+            })
+        })?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -707,13 +728,7 @@ impl<'a> TimelineBuilder<'a> {
             return Err(invalid("Timeline path has no geometry"));
         }
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document.draw_path(id, segments, style)
     }
 }
 
@@ -852,27 +867,6 @@ fn validate_layout(layout: &TimelineDiagramLayout) -> Result<()> {
         || layout.pre_title_box_width < 0.0
     {
         return Err(invalid("Timeline root metrics are invalid"));
-    }
-    for section in &layout.sections {
-        validate_node(&section.node)?;
-        for task in &section.tasks {
-            validate_task(task)?;
-        }
-    }
-    for task in &layout.orphan_tasks {
-        validate_task(task)?;
-    }
-    validate_line(&layout.activity_line)?;
-    Ok(())
-}
-
-fn validate_task(task: &crate::model::TimelineTaskLayout) -> Result<()> {
-    validate_node(&task.node)?;
-    for event in &task.events {
-        validate_node(event)?;
-    }
-    for line in &task.connectors {
-        validate_line(line)?;
     }
     Ok(())
 }

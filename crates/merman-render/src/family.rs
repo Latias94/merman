@@ -2440,6 +2440,14 @@ mod tests {
                 "pie showData title Releases\n\"Stable\" : 3\n\"Alpha\" : 1\n",
                 20,
             ),
+            (
+                "timeline\nsection Planning\nPlan : Build\nShip : Done\n",
+                20,
+            ),
+            (
+                "C4Context\nPerson(user, \"User\")\nSystem(api, \"API\", \"Service\")\nRel(user, api, \"uses\")\n",
+                20,
+            ),
         ] {
             let parsed = Engine::new()
                 .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -2456,8 +2464,8 @@ mod tests {
                 assert!(flowchart.pair().layout().edges.len() >= 2);
             }
 
-            // Arm only after layout: Flowchart stops during its first cluster, Pie after admitting
-            // its root background and entering the plot. Neither candidate can escape on failure.
+            // Arm only after layout. Each input has more emission checkpoints than the armed
+            // count, so cancellation stops a partially built candidate, never parsing or layout.
             control.cancel_after_checkpoints(checkpoints);
             let result = artifact.render_drawing_list(
                 DrawingListPolicy::AllowRasterSubtree,

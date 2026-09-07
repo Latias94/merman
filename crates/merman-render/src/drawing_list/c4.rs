@@ -13,6 +13,7 @@ use crate::c4::{
     C4ConfigView, C4NodeShape, C4PaintItem, c4_node_shape, c4_paint_order, c4_visible_text,
 };
 use crate::config::{config_f64_explicit_css_px, config_string};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::support::{
     navigation_security, portable_navigation_uri, stroke, text_obligation,
 };
@@ -26,10 +27,10 @@ use merman_core::ParseMetadata;
 use merman_core::diagrams::c4::{C4DiagramRenderModel, C4ShapeRenderModel};
 use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -40,16 +41,16 @@ pub(crate) fn build_c4_document(
     pair: &C4Pair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = C4Builder::new(pair, metadata, policy, session)?;
+    let builder = C4Builder::new(pair, metadata, policy, limits, session)?;
     builder.build()
 }
 
 struct C4Builder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a C4DiagramRenderModel,
     layout: &'a C4DiagramLayout,
     shape_layouts: HashMap<&'a str, &'a C4ShapeLayout>,
@@ -60,9 +61,7 @@ struct C4Builder<'a> {
     text_obligation: TextObligation,
     navigation_security: MermaidNavigationSecurity,
     boundary_text: Color,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    document: DrawingListBuilder<'a>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -92,9 +91,15 @@ impl<'a> C4Builder<'a> {
         pair: &'a C4Pair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "c4.document".to_string(),
+        })?;
         let model = pair.semantic();
         let layout = pair.layout();
         let config = metadata.effective_config.as_value();
@@ -125,8 +130,8 @@ impl<'a> C4Builder<'a> {
             resource: None,
         };
         let boundary_text = theme_color(config, "textColor", "#444444")?;
-        let shape_layouts = unique_shape_layouts(layout)?;
-        let boundary_layouts = unique_boundary_layouts(layout)?;
+        let shape_layouts = unique_shape_layouts(layout, session)?;
+        let boundary_layouts = unique_boundary_layouts(layout, session)?;
         if layout.rels.len() != model.rels.len() {
             return Err(invalid(format!(
                 "C4 layout has {} relationships for {} semantic relationships",
@@ -134,15 +139,26 @@ impl<'a> C4Builder<'a> {
                 model.rels.len()
             )));
         }
-        let shapes_by_alias = model
-            .shapes
-            .iter()
-            .map(|shape| (shape.alias.as_str(), shape))
-            .collect::<HashMap<_, _>>();
+        let mut shapes_by_alias = HashMap::new();
+        for shape in &model.shapes {
+            session.checkpoint(OperationPhase::Emit)?;
+            shapes_by_alias.insert(shape.alias.as_str(), shape);
+        }
+        document.push_semantic(SemanticAnnotation {
+            id: "c4.document".to_string(),
+            role: SemanticRole::Document,
+            title: model
+                .acc_title
+                .clone()
+                .or_else(|| model.title.clone())
+                .or_else(|| metadata.title.clone())
+                .or_else(|| Some(metadata.diagram_type.clone())),
+            description: model.acc_descr.clone(),
+            link: None,
+        })?;
         let builder = Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             shape_layouts,
@@ -153,25 +169,7 @@ impl<'a> C4Builder<'a> {
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             navigation_security,
             boundary_text,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "c4.document".to_string(),
-                },
-            ],
-            semantics: vec![SemanticAnnotation {
-                id: "c4.document".to_string(),
-                role: SemanticRole::Document,
-                title: model
-                    .acc_title
-                    .clone()
-                    .or_else(|| model.title.clone())
-                    .or_else(|| metadata.title.clone())
-                    .or_else(|| Some(metadata.diagram_type.clone())),
-                description: model.acc_descr.clone(),
-                link: None,
-            }],
+            document,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -181,7 +179,7 @@ impl<'a> C4Builder<'a> {
         Ok(builder)
     }
 
-    fn build(&mut self) -> Result<RenderDocument> {
+    fn build(mut self) -> Result<RenderDocument> {
         for item in c4_paint_order(self.layout)? {
             self.session.checkpoint(OperationPhase::Emit)?;
             match item {
@@ -200,8 +198,9 @@ impl<'a> C4Builder<'a> {
             self.emit_title(&title)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
         let bounds = self
             .layout
             .bounds
@@ -216,21 +215,15 @@ impl<'a> C4Builder<'a> {
         } else {
             0.0
         };
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x - padding_x,
-                -(padding_y + title_extra),
-                bounds.max_x - bounds.min_x + 2.0 * padding_x,
-                bounds.max_y - bounds.min_y + 2.0 * padding_y + title_extra,
-            )),
-            policy: self.policy,
-            resources: std::mem::take(&mut self.resources),
-            commands: std::mem::take(&mut self.commands),
-            semantics: std::mem::take(&mut self.semantics),
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let viewport = Viewport::new(Rect::new(
+            bounds.min_x - padding_x,
+            -(padding_y + title_extra),
+            bounds.max_x - bounds.min_x + 2.0 * padding_x,
+            bounds.max_y - bounds.min_y + 2.0 * padding_y + title_extra,
+        ));
+        let document = self.document.finish(
+            viewport,
+            BTreeMap::from([(
                 "x-merman-c4".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -239,8 +232,7 @@ impl<'a> C4Builder<'a> {
                     "label_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -328,7 +320,7 @@ impl<'a> C4Builder<'a> {
                 anchor: TextAnchor::Start,
                 baseline: TextBaseline::Alphabetic,
             },
-        );
+        )?;
         Ok(())
     }
 
@@ -337,6 +329,7 @@ impl<'a> C4Builder<'a> {
             return Err(invalid("C4 diagram has no shapes or boundaries"));
         }
         for shape in &self.model.shapes {
+            self.session.checkpoint(OperationPhase::Emit)?;
             validate_c4_metadata(
                 shape.alias.as_str(),
                 C4MetadataInputs {
@@ -374,6 +367,7 @@ impl<'a> C4Builder<'a> {
             }
         }
         for boundary in &self.model.boundaries {
+            self.session.checkpoint(OperationPhase::Emit)?;
             validate_c4_metadata(
                 boundary.alias.as_str(),
                 C4MetadataInputs {
@@ -410,6 +404,7 @@ impl<'a> C4Builder<'a> {
             }
         }
         for (index, relation) in self.model.rels.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             validate_text(
                 relation.label.as_str(),
                 &format!("C4 relationship {index} label"),
@@ -433,6 +428,7 @@ impl<'a> C4Builder<'a> {
             }
         }
         for shape in self.layout.shapes.iter() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             validate_box(
                 shape.x,
                 shape.y,
@@ -442,6 +438,7 @@ impl<'a> C4Builder<'a> {
             )?;
         }
         for boundary in self.layout.boundaries.iter() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             validate_box(
                 boundary.x,
                 boundary.y,
@@ -451,6 +448,7 @@ impl<'a> C4Builder<'a> {
             )?;
         }
         for (index, relation) in self.layout.rels.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             if !relation.start_point.x.is_finite()
                 || !relation.start_point.y.is_finite()
                 || !relation.end_point.x.is_finite()
@@ -477,9 +475,10 @@ impl<'a> C4Builder<'a> {
                 ))
             })?;
         let semantic_id = format!("c4.boundary.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let bounds = Rect::new(boundary.x, boundary.y, boundary.width, boundary.height);
         let fill = match meta
             .bg_color
@@ -524,7 +523,7 @@ impl<'a> C4Builder<'a> {
                 title_font,
                 (boundary_style.font_size + 2.0).max(1.0),
                 (boundary_style.font_size + 2.0).max(1.0),
-            );
+            )?;
         }
         if let Some(block) = boundary
             .ty
@@ -541,7 +540,7 @@ impl<'a> C4Builder<'a> {
                 font_descriptor(&boundary_style, 400, FontStyle::Normal)?,
                 boundary_style.font_size.max(1.0),
                 boundary_style.font_size.max(1.0),
-            );
+            )?;
         }
         if let Some(block) = boundary
             .descr
@@ -559,10 +558,11 @@ impl<'a> C4Builder<'a> {
                 font_descriptor(&boundary_style, 400, FontStyle::Normal)?,
                 font_size,
                 font_size,
-            );
+            )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(title),
@@ -574,7 +574,7 @@ impl<'a> C4Builder<'a> {
                 .map(ToOwned::to_owned)
                 .or_else(|| Some(format!("C4 boundary {}", boundary.alias))),
             link: value_link(meta.link.as_ref(), self.navigation_security)?,
-        });
+        })?;
         Ok(())
     }
 
@@ -589,9 +589,10 @@ impl<'a> C4Builder<'a> {
             .insert(semantic_id.clone(), c4_shape_classes(meta));
         self.dom_ids
             .insert(semantic_id.clone(), shape.alias.clone());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let node_shape = c4_node_shape(meta);
         let (default_fill, default_stroke) = if shape.type_c4_shape.starts_with("external_") {
             ("#999999", "#8A8A8A")
@@ -664,22 +665,23 @@ impl<'a> C4Builder<'a> {
         let label_id = format!("{semantic_id}.label");
         self.semantic_classes
             .insert(label_id.clone(), "label".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: label_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: label_id.clone(),
+            })?;
         let mut label_text = Vec::with_capacity(blocks.len());
         let mut section_y = 0.0;
         for (name, class, block, weight, font_size) in blocks {
             let text_value = c4_block_text(block)?;
-            label_text.push(text_value.clone());
             let section_id = format!("{semantic_id}.{name}");
             self.semantic_classes
                 .insert(section_id.clone(), class.to_string());
             self.text_classes
                 .insert(section_id.clone(), class.to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: section_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: section_id.clone(),
+                })?;
             self.draw_centered_lines(
                 &text_value,
                 Point::new(
@@ -704,27 +706,31 @@ impl<'a> C4Builder<'a> {
                 },
                 font_size.max(1.0),
                 (font_size * 1.1).max(1.0),
-            );
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            )?;
+            label_text.push(text_value);
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: section_id,
                 role: SemanticRole::Label,
                 title: None,
                 description: None,
                 link: None,
-            });
+            })?;
             section_y += block.height + 3.0;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: label_id,
             role: SemanticRole::Label,
             title: Some(label_text.join("\n")),
             description: None,
             link: None,
-        });
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        })?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(plain_text(meta.label.as_str()).map_err(unavailable)?),
@@ -736,7 +742,7 @@ impl<'a> C4Builder<'a> {
                 .map(ToOwned::to_owned)
                 .or_else(|| Some(format!("C4 {}", shape.alias))),
             link: value_link(meta.link.as_ref(), self.navigation_security)?,
-        });
+        })?;
         Ok(())
     }
 
@@ -751,9 +757,10 @@ impl<'a> C4Builder<'a> {
             )));
         }
         let semantic_id = format!("c4.relation.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let start = Point::new(relation.start_point.x, relation.start_point.y);
         let end = Point::new(relation.end_point.x, relation.end_point.y);
         let (segments, start_tangent, end_tangent) = if index == 0 {
@@ -837,7 +844,7 @@ impl<'a> C4Builder<'a> {
             message_font.clone(),
             message_size,
             message_size,
-        );
+        )?;
         if let Some(techn) = relation.techn.as_ref()
             && !techn.text.trim().is_empty()
         {
@@ -858,10 +865,11 @@ impl<'a> C4Builder<'a> {
                 },
                 message_size,
                 message_size,
-            );
+            )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: Some(plain_text(meta.label.as_str()).map_err(unavailable)?),
@@ -873,7 +881,7 @@ impl<'a> C4Builder<'a> {
                 .map(|description| format!("{} → {}: {description}", relation.from, relation.to))
                 .or_else(|| Some(format!("{} → {}", relation.from, relation.to))),
             link: value_link(meta.link.as_ref(), self.navigation_security)?,
-        });
+        })?;
         Ok(())
     }
 
@@ -956,11 +964,16 @@ impl<'a> C4Builder<'a> {
         font: FontDescriptor,
         font_size: f64,
         line_height: f64,
-    ) {
-        let lines = text.split('\n').collect::<Vec<_>>();
-        let line_count = lines.len().max(1) as f64;
+    ) -> Result<()> {
+        let mut line_count = 0_usize;
+        for _ in text.split('\n') {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            line_count += 1;
+        }
+        let line_count = line_count.max(1) as f64;
         let row_height = (height / line_count).max(font_size).max(1.0);
-        for (index, line) in lines.into_iter().enumerate() {
+        for (index, line) in text.split('\n').enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             if line.is_empty() {
                 continue;
             }
@@ -987,13 +1000,14 @@ impl<'a> C4Builder<'a> {
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,
                 },
-            );
+            )?;
         }
+        Ok(())
     }
 
-    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) -> Result<()> {
+        self.document.draw_host_text(text, |text| TextRun {
+            text,
             origin: spec.origin,
             bounds: spec.bounds,
             style: spec.style,
@@ -1002,19 +1016,12 @@ impl<'a> C4Builder<'a> {
             direction: TextDirection::Auto,
             language: None,
             obligation: self.text_obligation.clone(),
-        }));
+        })
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: ResourceId::new(id.clone()),
-            segments,
-        }));
-        self.commands.push(DrawingCommand::DrawPath {
-            path: ResourceId::new(id),
-            style,
-        });
-        Ok(())
+        self.document
+            .draw_path(ResourceId::new(id), segments, style)
     }
 }
 
@@ -1479,9 +1486,13 @@ fn validate_box(x: f64, y: f64, width: f64, height: f64, label: &str) -> Result<
     Ok(())
 }
 
-fn unique_shape_layouts(layout: &C4DiagramLayout) -> Result<HashMap<&str, &C4ShapeLayout>> {
+fn unique_shape_layouts<'a>(
+    layout: &'a C4DiagramLayout,
+    session: &RenderSession,
+) -> Result<HashMap<&'a str, &'a C4ShapeLayout>> {
     let mut map = HashMap::with_capacity(layout.shapes.len());
     for shape in &layout.shapes {
+        session.checkpoint(OperationPhase::Emit)?;
         if map.insert(shape.alias.as_str(), shape).is_some() {
             return Err(invalid(format!(
                 "duplicate C4 shape layout `{}`",
@@ -1492,9 +1503,13 @@ fn unique_shape_layouts(layout: &C4DiagramLayout) -> Result<HashMap<&str, &C4Sha
     Ok(map)
 }
 
-fn unique_boundary_layouts(layout: &C4DiagramLayout) -> Result<HashMap<&str, &C4BoundaryLayout>> {
+fn unique_boundary_layouts<'a>(
+    layout: &'a C4DiagramLayout,
+    session: &RenderSession,
+) -> Result<HashMap<&'a str, &'a C4BoundaryLayout>> {
     let mut map = HashMap::with_capacity(layout.boundaries.len());
     for boundary in &layout.boundaries {
+        session.checkpoint(OperationPhase::Emit)?;
         if map.insert(boundary.alias.as_str(), boundary).is_some() {
             return Err(invalid(format!(
                 "duplicate C4 boundary layout `{}`",

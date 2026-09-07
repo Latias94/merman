@@ -667,7 +667,9 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::Class(pair) => {
             class::build_class_document(pair, metadata, policy, limits, session)
         }
-        BuiltinFamilyArtifact::C4(pair) => c4::build_c4_document(pair, metadata, policy, session),
+        BuiltinFamilyArtifact::C4(pair) => {
+            c4::build_c4_document(pair, metadata, policy, limits, session)
+        }
         BuiltinFamilyArtifact::Er(pair) => er::build_er_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Info(pair) => {
             info::build_info_document(pair, metadata, policy, limits, session)
@@ -736,7 +738,7 @@ pub(crate) fn build_for_family(
             gitgraph::build_gitgraph_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Timeline(pair) => {
-            timeline::build_timeline_document(pair, metadata, policy, session)
+            timeline::build_timeline_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Wardley(pair) => {
             wardley::build_wardley_document(pair, metadata, policy, session)
