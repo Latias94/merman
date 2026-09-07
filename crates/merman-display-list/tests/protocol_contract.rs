@@ -145,7 +145,13 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
     image["image"]["media_type"] = json!("image/svg+xml");
     assert!(!validator.is_valid(&invalid_image));
 
-    for media_type in ["image /png", "image/ png"] {
+    for media_type in [
+        "image /png",
+        "image/ png",
+        "\u{a0}image/png",
+        "image/png\u{a0}",
+        "image/png\u{a0}; charset=binary",
+    ] {
         let mut invalid_image = extended.clone();
         let image = invalid_image["resources"]
             .as_array_mut()

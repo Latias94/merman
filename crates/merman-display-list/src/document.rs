@@ -1074,6 +1074,8 @@ struct EncodedCommandBudget<'a> {
 
 #[derive(Deserialize)]
 struct EncodedTextRunBudget<'a> {
+    #[serde(borrow)]
+    text: Cow<'a, str>,
     #[serde(default, borrow)]
     obligation: Option<&'a RawValue>,
 }
@@ -1104,6 +1106,7 @@ struct WireBudgetState<'a> {
     glyphs: usize,
     image_bytes: usize,
     font_bytes: usize,
+    text_bytes: usize,
     failure: Option<DrawingListError>,
 }
 
@@ -1118,6 +1121,7 @@ impl<'a> WireBudgetState<'a> {
             glyphs: 0,
             image_bytes: 0,
             font_bytes: 0,
+            text_bytes: 0,
             failure: None,
         }
     }
@@ -1391,6 +1395,12 @@ fn inspect_command_budget(
     };
     let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    checked_accumulate(
+        "text_bytes",
+        &mut state.text_bytes,
+        run.text.len(),
+        state.limits.max_text_bytes,
+    )?;
     let Some(obligation) = run.obligation else {
         return Ok(());
     };

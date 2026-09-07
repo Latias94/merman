@@ -48,6 +48,16 @@ fn corrupt_png_deflate_with_valid_crc(mut data: Vec<u8>) -> Vec<u8> {
     panic!("PNG fixture has an IDAT chunk");
 }
 
+fn png_with_ihdr_dimensions(width: u32, height: u32) -> Vec<u8> {
+    let mut data = png_1x1();
+    assert_eq!(&data[12..16], b"IHDR", "PNG fixture begins with IHDR");
+    data[16..20].copy_from_slice(&width.to_be_bytes());
+    data[20..24].copy_from_slice(&height.to_be_bytes());
+    let crc = png_crc32(&data[12..29]);
+    data[29..33].copy_from_slice(&crc.to_be_bytes());
+    data
+}
+
 #[test]
 fn validator_rejects_unbalanced_state_and_wrong_resource_kind() {
     let mut document = sample_document();
@@ -366,7 +376,7 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
         })
         .expect("extended fixture has an image")
         .image
-        .media_type = "IMAGE/PNG; charset=binary".into();
+        .media_type = "\t IMAGE/PNG \t; charset=binary\r\n".into();
     document
         .validate()
         .expect("image media type comparison should ignore case and parameters");
@@ -383,7 +393,13 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
         .media_type = "text/plain".into();
     assert!(document.validate().is_err());
 
-    for media_type in ["IMAGE /PNG", "IMAGE/ PNG"] {
+    for media_type in [
+        "IMAGE /PNG",
+        "IMAGE/ PNG",
+        "\u{a0}IMAGE/PNG",
+        "IMAGE/PNG\u{a0}",
+        "IMAGE/PNG\u{a0}; charset=binary",
+    ] {
         let mut document = extended_document();
         document
             .resources
@@ -400,6 +416,37 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
             "media type whitespace adjacent to '/' must be rejected: {media_type}"
         );
     }
+}
+
+#[test]
+fn image_pixel_budget_uses_u64_before_pointer_width_conversion() {
+    const DIMENSION: u32 = 65_536;
+
+    let mut document = sample_document();
+    document
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("image.pointer-width-boundary"),
+            image: EncodedImage::new("image/png", png_with_ihdr_dimensions(DIMENSION, DIMENSION)),
+            pixel_width: DIMENSION,
+            pixel_height: DIMENSION,
+            has_alpha: false,
+        }));
+    let limits = DrawingListLimits {
+        max_image_pixels: 1,
+        ..DrawingListLimits::default()
+    };
+    let expected_actual =
+        usize::try_from(u64::from(DIMENSION) * u64::from(DIMENSION)).unwrap_or(usize::MAX);
+
+    assert!(matches!(
+        document.validate_with_limits(&limits),
+        Err(DrawingListError::ResourceLimit {
+            resource: "image_pixels",
+            actual,
+            maximum: 1,
+        }) if actual == expected_actual
+    ));
 }
 
 #[test]
@@ -701,10 +748,19 @@ fn decoder_stops_at_wire_collection_and_nested_sequence_limits() {
         ),
         (
             "glyphs",
-            br#"{"commands":[{"kind":"draw_text","run":{"obligation":{"kind":"glyph_run","glyphs":[{},{}]}}}]}"#
+            br#"{"commands":[{"kind":"draw_text","run":{"text":"","obligation":{"kind":"glyph_run","glyphs":[{},{}]}}}]}"#
                 .as_slice(),
             DrawingListLimits {
                 max_glyphs: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "text_bytes",
+            br#"{"commands":[{"kind":"draw_text","run":{"text":"a"}},{"kind":"draw_text","run":{"text":"b"}},{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_text_bytes: 1,
                 ..DrawingListLimits::default()
             },
         ),

@@ -15,17 +15,32 @@ pub(crate) fn media_type_matches(
     expected_type: &str,
     expected_subtype: &str,
 ) -> bool {
-    let Some((kind, subtype)) = media_type.split(';').next().and_then(|value| {
-        let (kind, subtype) = value.trim().split_once('/')?;
-        (!kind.is_empty()
-            && !subtype.is_empty()
-            && kind.trim() == kind
-            && subtype.trim() == subtype)
-            .then_some((kind, subtype))
-    }) else {
+    let value = trim_ascii_mime_whitespace(media_type);
+    let type_and_subtype = match value.split_once(';') {
+        Some((value, _parameters)) => trim_ascii_horizontal_whitespace(value),
+        None => value,
+    };
+    let Some((kind, subtype)) = type_and_subtype
+        .split_once('/')
+        .and_then(|(kind, subtype)| {
+            (!kind.is_empty()
+                && !subtype.is_empty()
+                && trim_ascii_mime_whitespace(kind) == kind
+                && trim_ascii_mime_whitespace(subtype) == subtype)
+                .then_some((kind, subtype))
+        })
+    else {
         return false;
     };
     kind.eq_ignore_ascii_case(expected_type) && subtype.eq_ignore_ascii_case(expected_subtype)
+}
+
+fn trim_ascii_mime_whitespace(value: &str) -> &str {
+    value.trim_matches(|character| matches!(character, '\t' | '\n' | '\r' | ' '))
+}
+
+fn trim_ascii_horizontal_whitespace(value: &str) -> &str {
+    value.trim_matches(|character| matches!(character, '\t' | ' '))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -494,24 +509,20 @@ impl ImageResource {
             })?;
             (header.width, header.height)
         };
-        let header_pixels = usize::try_from(header_width)
-            .ok()
-            .and_then(|width| {
-                usize::try_from(header_height)
-                    .ok()
-                    .and_then(|height| width.checked_mul(height))
-            })
-            .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
-        let cumulative_image_pixels = image_pixels_used
-            .checked_add(header_pixels)
-            .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
-        if cumulative_image_pixels > max_image_pixels {
+        let header_pixels = u64::from(header_width) * u64::from(header_height);
+        let cumulative_image_pixels = (image_pixels_used as u64).checked_add(header_pixels);
+        if cumulative_image_pixels.is_none_or(|actual| actual > max_image_pixels as u64) {
             return Err(DrawingListError::ResourceLimit {
                 resource: "image_pixels",
-                actual: cumulative_image_pixels,
+                actual: cumulative_image_pixels
+                    .and_then(|actual| usize::try_from(actual).ok())
+                    .unwrap_or(usize::MAX),
                 maximum: max_image_pixels,
             });
         }
+        let header_pixels = usize::try_from(header_pixels).map_err(|_| {
+            DrawingListError::invalid("accepted image pixel count does not fit usize")
+        })?;
         let mut reader = decoder.read_info().map_err(|error| {
             DrawingListError::invalid(format!(
                 "image resource {} has an invalid PNG payload: {error}",
