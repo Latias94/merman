@@ -75,6 +75,18 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         "published schema rejected runtime document: {value}"
     );
 
+    let mut unpainted = sample_document();
+    for command in &mut unpainted.commands {
+        if let DrawingCommand::DrawPath { style, .. } = command {
+            style.fill = None;
+            style.stroke = None;
+        }
+    }
+    unpainted
+        .validate()
+        .expect("retained unpainted paths are valid");
+    assert!(validator.is_valid(&serde_json::to_value(unpainted).unwrap()));
+
     let mut stroked_text = sample_document();
     let DrawingCommand::DrawText { run } = &mut stroked_text.commands[5] else {
         panic!("sample document command 5 is text");

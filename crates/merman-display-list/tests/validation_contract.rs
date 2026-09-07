@@ -59,6 +59,27 @@ fn png_with_ihdr_dimensions(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[test]
+fn unpainted_paths_preserve_geometry_and_round_trip() {
+    let mut document = sample_document();
+    let style = document
+        .commands
+        .iter_mut()
+        .find_map(|command| match command {
+            DrawingCommand::DrawPath { style, .. } => Some(style),
+            _ => None,
+        })
+        .unwrap();
+    style.fill = None;
+    style.stroke = None;
+    document
+        .validate()
+        .expect("explicitly disabled paint is a valid retained path");
+    let encoded = document.canonical_json_bytes().unwrap();
+    let decoded = merman_display_list::DrawingListDocument::from_json_bytes(&encoded).unwrap();
+    assert_eq!(decoded.canonical_json_bytes().unwrap(), encoded);
+}
+
+#[test]
 fn validator_rejects_unbalanced_state_and_wrong_resource_kind() {
     let mut document = sample_document();
     document.commands = vec![DrawingCommand::Restore];

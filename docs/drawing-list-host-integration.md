@@ -22,6 +22,10 @@ The intended host flow is:
 4. use semantic groups for hit-testing, tooltips, accessibility, and navigation metadata;
 5. reject an unmet text/effect obligation instead of substituting a different visual silently.
 
+A `DrawPath` with both `fill: null` and `stroke: null` retains its geometry and semantic
+ownership but produces no paint. Hosts must not substitute a default fill or stroke. Empty
+`DrawText` commands likewise preserve their semantic position without painting glyphs.
+
 Before bytes are exposed, the renderer computes a document-wide footprint (commands, resources,
 path segments, stroke dash entries, text/glyph work, inline assets, pixels, and maximum state
 nesting) and charges it to the existing operation work budget. Protocol limits still validate the

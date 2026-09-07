@@ -403,11 +403,7 @@
         "fill_rule": { "$ref": "#/$defs/fill_rule" },
         "fill": { "anyOf": [{ "$ref": "#/$defs/paint" }, { "type": "null" }] },
         "stroke": { "anyOf": [{ "$ref": "#/$defs/stroke_style" }, { "type": "null" }] }
-      },
-      "anyOf": [
-        { "properties": { "fill": { "$ref": "#/$defs/paint" } } },
-        { "properties": { "stroke": { "$ref": "#/$defs/stroke_style" } } }
-      ]
+      }
     },
     "fill_rule": {
       "enum": ["non_zero", "even_odd"]

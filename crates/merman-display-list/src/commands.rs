@@ -84,17 +84,14 @@ impl StrokeStyle {
 #[serde(deny_unknown_fields)]
 pub struct PathStyle {
     pub fill_rule: FillRule,
+    /// `None` disables filling. With no stroke either, geometry and semantics remain present
+    /// but the command produces no paint (for example an unpainted SVG interaction shape).
     pub fill: Option<crate::Paint>,
     pub stroke: Option<StrokeStyle>,
 }
 
 impl PathStyle {
     pub(crate) fn validate(&self) -> Result<(), DrawingListError> {
-        if self.fill.is_none() && self.stroke.is_none() {
-            return Err(DrawingListError::invalid(
-                "path style must provide fill or stroke",
-            ));
-        }
         if let Some(stroke) = &self.stroke {
             stroke.validate()?;
         }
