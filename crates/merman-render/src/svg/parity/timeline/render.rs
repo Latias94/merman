@@ -153,6 +153,12 @@ struct TimelineCss {
     root_typography_emitted: bool,
 }
 
+/// Exact inline paint supplied to the node-background writer after output admission.
+#[derive(Debug)]
+struct TimelineNodeEmission {
+    inline_fill: Option<Box<str>>,
+}
+
 fn write_timeline_connector(
     out: &mut impl SvgOutput,
     connector: &TimelineLineLayout,
@@ -318,33 +324,6 @@ fn observe_timeline_event_radius<'a>(
             matches.then_some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
             matches,
         ),
-    }
-}
-
-fn observe_timeline_event_fill(output: &str, expected_fill: Option<&str>) -> bool {
-    let Some(path_opening) = output
-        .split_once("<path ")
-        .and_then(|(_, rest)| rest.split_once("/>").map(|(opening, _)| opening))
-        .filter(|opening| opening.contains("class=\"node-bkg node-undefined\""))
-    else {
-        return false;
-    };
-
-    let actual_style = path_opening
-        .split_once(" style=\"")
-        .and_then(|(_, rest)| rest.split_once('"').map(|(style, _)| style));
-    let actual_fill = actual_style.and_then(|style| {
-        style.split(';').find_map(|declaration| {
-            let (property, value) = declaration.split_once(':')?;
-            property
-                .trim()
-                .eq_ignore_ascii_case("fill")
-                .then_some(value.trim())
-        })
-    });
-    match expected_fill {
-        Some(fill) => actual_fill == Some(escape_attr(fill).as_ref()),
-        None => actual_fill.is_none(),
     }
 }
 
@@ -552,7 +531,7 @@ fn render_timeline_diagram_svg_inner(
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
-    ) -> Result<()> {
+    ) -> Result<TimelineNodeEmission> {
         let node_local_id = format!("node-{node_count}");
         let node_id = scoped_svg_id(diagram_id, &node_local_id);
         *node_count += 1;
@@ -591,14 +570,14 @@ fn render_timeline_diagram_svg_inner(
         let node_palette_slot = event_emission.palette_slot_for_node(n);
         let palette_fill = node_palette_slot
             .and_then(|slot| event_emission.palette_fill_for_slot(slot))
-            .map(str::to_owned);
+            .map(Box::<str>::from);
         let palette_line_stroke = node_palette_slot
             .and_then(|slot| event_emission.palette_line_stroke_for_slot(slot))
             .map(str::to_owned);
         let emitted_palette_slot = palette_fill.as_ref().and(node_palette_slot);
         let direct_fill = event_index
             .and_then(|event_index| event_emission.fill_for_event(event_index))
-            .map(str::to_owned);
+            .map(Box::<str>::from);
         let effective_fill = direct_fill.as_deref().or(palette_fill.as_deref());
         let emitted_palette_fill = if direct_fill.is_none() {
             palette_fill.as_deref()
@@ -684,7 +663,10 @@ fn render_timeline_diagram_svg_inner(
             emitted_palette_fill,
             emitted_line_stroke,
         );
-        options.checkpoint_emit()
+        options.checkpoint_emit()?;
+        Ok(TimelineNodeEmission {
+            inline_fill: is_event.then(|| direct_fill.or(palette_fill)).flatten(),
+        })
     }
 
     fn render_event_node<'a>(
@@ -701,7 +683,7 @@ fn render_timeline_diagram_svg_inner(
         options: &SvgExecution<'_>,
     ) -> Result<(Option<&'a str>, bool, bool)> {
         let output_start = out.len();
-        render_node(
+        let emission = render_node(
             out,
             diagram_id,
             node_count,
@@ -717,10 +699,11 @@ fn render_timeline_diagram_svg_inner(
         let output = out.as_str().get(output_start..).unwrap_or_default();
         let radius_observation =
             observe_timeline_event_radius(output, event, event_radius, is_redux_theme);
+        let emitted_fill_matches = emission.inline_fill.as_deref() == expected_effective_fill;
         Ok((
             radius_observation.0,
             radius_observation.1,
-            observe_timeline_event_fill(output, expected_effective_fill),
+            emitted_fill_matches,
         ))
     }
 
@@ -793,7 +776,7 @@ fn render_timeline_diagram_svg_inner(
             y = fmt(node.y)
         );
         out.checkpoint()?;
-        render_node(
+        let _ = render_node(
             out,
             diagram_id,
             node_count,
@@ -938,7 +921,7 @@ fn render_timeline_diagram_svg_inner(
             y = fmt(node.y)
         );
         out.checkpoint()?;
-        render_node(
+        let _ = render_node(
             &mut out,
             diagram_id,
             &mut node_count,
@@ -1023,8 +1006,8 @@ fn render_timeline_diagram_svg_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
     use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout};
+    use crate::DiagramFamilyId;
     use std::fmt;
     use std::ops::Range;
 
