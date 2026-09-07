@@ -2013,19 +2013,20 @@ fn normalize_font_family_list(value: &str) -> String {
         }
     }
     families.push(normalize_font_family_name(&value[start..]));
-    families.join(",")
+    serde_json::to_string(&families)
+        .expect("normalized font-family list must serialize as a JSON array")
 }
 
 fn normalize_font_family_name(value: &str) -> String {
     let value = value.trim();
-    let value = if value.len() >= 2
+    if value.len() >= 2
         && ((value.starts_with('"') && value.ends_with('"'))
             || (value.starts_with('\'') && value.ends_with('\'')))
     {
-        &value[1..value.len() - 1]
-    } else {
-        value
-    };
+        // CSS quoted family names are strings: whitespace inside the quotes is significant.
+        // Unquoted family names are identifier sequences whose separating whitespace is not.
+        return value[1..value.len() - 1].to_string();
+    }
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -4569,7 +4570,16 @@ mod tests {
             "alignment-baseline=\"mathematical\"",
             "alignment-baseline=\"hanging\"",
         );
+        let font_tag = opening_tag_before(&local, "2: Calls isAuthenticated() on", &["text"]);
+        let original_font_tag = &local[font_tag.clone()];
+        let changed_font_tag = original_font_tag.replace(
+            r#"font-family: &quot;Open Sans&quot;, sans-serif;"#,
+            r#"font-family: &quot;Open Sans,sans-serif&quot;;"#,
+        );
+        let mut changed_font_family = local.clone();
+        changed_font_family.replace_range(font_tag, &changed_font_tag);
         assert_ne!(changed_style, local);
+        assert_ne!(changed_font_family, local);
 
         let text_outcome = compare_registered_semantic_labels(
             "c4",
@@ -4601,6 +4611,16 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+        let font_family_outcome = compare_registered_semantic_labels(
+            "c4",
+            C4_DYNAMIC_LABEL_FIXTURE,
+            &source,
+            &upstream,
+            &changed_font_family,
+            3,
+        )
+        .unwrap()
+        .unwrap();
 
         assert!(
             text_outcome
@@ -4616,6 +4636,12 @@ mod tests {
         );
         assert!(
             child_style_outcome
+                .issues
+                .iter()
+                .any(|issue| issue.contains("explicit label presentation differs"))
+        );
+        assert!(
+            font_family_outcome
                 .issues
                 .iter()
                 .any(|issue| issue.contains("explicit label presentation differs"))
@@ -4814,6 +4840,26 @@ mod tests {
         assert!(
             parse_inline_style_declarations("undefined;;;other", "ER edge").is_err(),
             "only the exact pinned Mermaid sentinel may bypass CSS declaration parsing"
+        );
+    }
+
+    #[test]
+    fn c4_font_family_normalization_preserves_family_boundaries() {
+        assert_eq!(
+            normalize_font_family_list(r#""Open Sans", sans-serif"#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""Open  Sans", sans-serif"#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""Open Sans,sans-serif""#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""A,B", serif"#),
+            normalize_font_family_list("A, B, serif")
         );
     }
 
