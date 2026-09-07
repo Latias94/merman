@@ -920,6 +920,31 @@ fn build_node(
             let key = a.name().to_string();
             let mut val = a.value().to_string();
 
+            // Pie's canonical document stores static colors as RGBA rather than preserving
+            // their HSL/hex spelling. Compare only successfully parsed static fills here;
+            // dynamic/invalid paints remain byte-sensitive, and Strict mode is unchanged.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "fill"
+                && n.has_tag_name("path")
+                && has_class_token(n, "pieCircle")
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("pie")
+                })
+                && let Ok(color) = val.parse::<svgtypes::Color>()
+            {
+                attrs.insert(
+                    key,
+                    format!(
+                        "#{:02x}{:02x}{:02x}{:02x}",
+                        color.red, color.green, color.blue, color.alpha
+                    ),
+                );
+                continue;
+            }
+
             if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && n.tag_name().name() == "foreignObject"
                 && key == "overflow"
@@ -2581,6 +2606,25 @@ mod tests {
             path.attrs.get("label-offset-y").map(|s| s.as_str()),
             Some("9.193")
         );
+    }
+
+    #[test]
+    fn pie_static_fill_spellings_compare_by_color_without_hiding_differences() {
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            let signature = |fill: &str| {
+                dom_signature(&format!(r#"<svg aria-roledescription="pie"><path class="pieCircle" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+            };
+            assert_eq!(
+                signature("hsl(80, 100%, 56.2745098039%)"),
+                signature("#b5ff20")
+            );
+            assert_eq!(signature("#ECECFF"), signature("#ececff"));
+            assert_ne!(signature("#000"), signature("#001"));
+            assert_ne!(signature("#00000080"), signature("#000000ff"));
+            assert_ne!(signature("hsl(80, 100%, NaN%)"), signature("#000"));
+            assert_ne!(signature("currentColor"), signature("#000"));
+            assert_ne!(signature("var(--fill)"), signature("#000"));
+        }
     }
 
     #[test]
