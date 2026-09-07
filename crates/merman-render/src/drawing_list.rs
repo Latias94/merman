@@ -7,6 +7,7 @@
 #[cfg(feature = "layout-cytoscape")]
 mod architecture;
 mod block;
+mod builder;
 mod c4;
 mod class;
 mod cynefin;
@@ -46,11 +47,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, MeasurementProvenance,
-    Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    Color, DrawingCommand, DrawingListDocument, DrawingListLimits, DrawingListPolicy, FillRule,
+    FontDescriptor, FontStyle, MeasurementProvenance, Paint, PathSegment, PathStyle, Point, Rect,
+    ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,6 +61,8 @@ use svgtypes::{PathParser, PathSegment as SvgPathSegment};
 use architecture::ArchitectureSvgBody;
 use flowchart::{FlowchartSvgBody, build_flowchart_document, build_swimlane_document};
 use zenuml::ZenumlSvgBody;
+
+use self::builder::DrawingListBuilder;
 
 /// The private SVG projection kept beside the public renderer-neutral document.
 #[derive(Debug, Clone)]
@@ -631,6 +633,7 @@ pub(crate) fn build_for_family(
     family: &BuiltinFamilyArtifact,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let family_kind = family.kind();
@@ -652,7 +655,7 @@ pub(crate) fn build_for_family(
 
     match family {
         BuiltinFamilyArtifact::Error(pair) => {
-            build_error_document(pair.layout(), metadata, policy, session)
+            build_error_document(pair.layout(), metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Flowchart(artifact) => {
             build_flowchart_document(artifact, metadata, policy, session)
@@ -666,7 +669,7 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::C4(pair) => c4::build_c4_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Er(pair) => er::build_er_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Info(pair) => {
-            info::build_info_document(pair, metadata, policy, session)
+            info::build_info_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Ishikawa(pair) => {
             ishikawa::build_ishikawa_document(pair, metadata, policy, session)
@@ -754,6 +757,7 @@ fn build_error_document(
     layout: &ErrorDiagramLayout,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     session.checkpoint(OperationPhase::Emit)?;
@@ -778,72 +782,64 @@ fn build_error_document(
     };
     let body = ErrorSvgBody::new().with_max_width(layout.max_width_px);
 
-    let mut resources = Vec::with_capacity(ERROR_ICON_PATHS.len());
-    let mut commands = vec![
-        DrawingCommand::Save,
-        DrawingCommand::BeginSemanticGroup {
-            semantic_id: "error.document".to_string(),
-        },
-    ];
+    let mut builder = DrawingListBuilder::new(policy, limits, session);
+    builder.push_semantic(SemanticAnnotation {
+        id: "error.document".to_string(),
+        role: SemanticRole::Document,
+        title: Some("Syntax error in text".to_string()),
+        description: Some(body.version_text.clone()),
+        link: None,
+    })?;
+    builder.push_control(DrawingCommand::Save)?;
+    builder.push_control(DrawingCommand::BeginSemanticGroup {
+        semantic_id: "error.document".to_string(),
+    })?;
     for (index, path_data) in ERROR_ICON_PATHS.iter().enumerate() {
         session.checkpoint(OperationPhase::Emit)?;
         let id = ResourceId::new(format!("error.icon.{index}"));
-        resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments: parse_svg_path(path_data)?,
-        }));
-        commands.push(DrawingCommand::DrawPath {
-            path: id,
-            style: PathStyle {
+        builder.draw_path(
+            id,
+            parse_svg_path(path_data)?,
+            PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: Some(Paint::solid(background)),
                 stroke: None,
             },
-        });
+        )?;
     }
-    commands.push(error_text_command(
-        "Syntax error in text",
-        Point::new(1440.0, 250.0),
-        Rect::new(0.0, 100.0, layout.viewbox_width, 180.0),
-        150.0,
-        &font,
-        text_color,
-    ));
-    commands.push(error_text_command(
-        &body.version_text,
-        Point::new(1250.0, 400.0),
-        Rect::new(0.0, 300.0, layout.viewbox_width, 130.0),
-        100.0,
-        &font,
-        text_color,
-    ));
-    commands.push(DrawingCommand::EndSemanticGroup);
-    commands.push(DrawingCommand::Restore);
+    builder.draw_host_text("Syntax error in text", |text| {
+        error_text_run(
+            text,
+            Point::new(1440.0, 250.0),
+            Rect::new(0.0, 100.0, layout.viewbox_width, 180.0),
+            150.0,
+            &font,
+            text_color,
+        )
+    })?;
+    builder.draw_host_text(&body.version_text, |text| {
+        error_text_run(
+            text,
+            Point::new(1250.0, 400.0),
+            Rect::new(0.0, 300.0, layout.viewbox_width, 130.0),
+            100.0,
+            &font,
+            text_color,
+        )
+    })?;
+    builder.push_control(DrawingCommand::EndSemanticGroup)?;
+    builder.push_control(DrawingCommand::Restore)?;
 
-    let document = DrawingListDocument {
-        version: DRAWING_LIST_VERSION,
-        coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-        viewport: Viewport::new(Rect::new(
+    let document = builder.finish(
+        Viewport::new(Rect::new(
             0.0,
             0.0,
             layout.viewbox_width,
             layout.viewbox_height,
         )),
-        policy,
-        resources,
-        commands,
-        semantics: vec![SemanticAnnotation {
-            id: "error.document".to_string(),
-            role: SemanticRole::Document,
-            title: Some("Syntax error in text".to_string()),
-            description: Some(body.version_text.clone()),
-            link: None,
-        }],
-        fallbacks: Vec::new(),
-        extensions: BTreeMap::new(),
-    };
+        BTreeMap::new(),
+    )?;
 
-    document.validate().map_err(Error::DrawingListContract)?;
     Ok(RenderDocument {
         public: document,
         svg: SvgStructureSidecar {
@@ -853,34 +849,32 @@ fn build_error_document(
     })
 }
 
-fn error_text_command(
-    text: &str,
+fn error_text_run(
+    text: String,
     origin: Point,
     bounds: Rect,
     font_size: f64,
     font: &FontDescriptor,
     fill: Color,
-) -> DrawingCommand {
-    DrawingCommand::DrawText {
-        run: TextRun {
-            text: text.to_string(),
-            origin,
-            bounds,
-            style: TextStyle {
-                font: font.clone(),
-                font_size,
-                letter_spacing: 0.0,
-                line_height: font_size,
-                fill: Paint::solid(fill),
-            },
-            anchor: TextAnchor::Middle,
-            baseline: TextBaseline::Alphabetic,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: TextObligation::HostText {
-                measurement: MeasurementProvenance::DeterministicFallback {
-                    profile: "error-fixed-text".to_string(),
-                },
+) -> TextRun {
+    TextRun {
+        text,
+        origin,
+        bounds,
+        style: TextStyle {
+            font: font.clone(),
+            font_size,
+            letter_spacing: 0.0,
+            line_height: font_size,
+            fill: Paint::solid(fill),
+        },
+        anchor: TextAnchor::Middle,
+        baseline: TextBaseline::Alphabetic,
+        direction: TextDirection::Auto,
+        language: None,
+        obligation: TextObligation::HostText {
+            measurement: MeasurementProvenance::DeterministicFallback {
+                profile: "error-fixed-text".to_string(),
             },
         },
     }

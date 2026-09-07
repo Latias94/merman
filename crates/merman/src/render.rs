@@ -429,6 +429,7 @@ impl From<merman_render::Error> for RenderError {
             }),
             #[cfg(feature = "drawing-list")]
             error @ (merman_render::Error::DrawingListUnavailable { .. }
+            | merman_render::Error::DrawingListAllocationFailed { .. }
             | merman_render::Error::DrawingListContract(_)) => Self::DrawingList(error),
             other => Self::Svg(other),
         }

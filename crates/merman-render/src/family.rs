@@ -979,6 +979,7 @@ impl FamilyRenderArtifact {
             &self.family,
             &self.metadata,
             policy,
+            limits,
             &self.session,
         )?;
         self.session.checkpoint(OperationPhase::Emit)?;
@@ -1173,6 +1174,7 @@ fn render_family_artifact_svg(
         &artifact.family,
         &artifact.metadata,
         DrawingListPolicy::AllowRasterSubtree,
+        DrawingListLimits::default(),
         &artifact.session,
     ) {
         Ok(document) => crate::svg::render_document_svg(

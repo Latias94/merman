@@ -189,6 +189,8 @@ pub enum Error {
     InvalidModel { message: String },
     #[error("DrawingList is unavailable for render family `{family}`: {reason}")]
     DrawingListUnavailable { family: String, reason: String },
+    #[error("DrawingList construction could not allocate bounded `{collection}` storage")]
+    DrawingListAllocationFailed { collection: &'static str },
     #[error(transparent)]
     DrawingListContract(#[from] merman_display_list::DrawingListError),
     #[error(

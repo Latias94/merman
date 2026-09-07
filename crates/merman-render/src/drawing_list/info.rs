@@ -9,6 +9,7 @@ use super::{
     theme_color,
 };
 use crate::config::config_font_family_css;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::support::text_obligation;
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
@@ -18,9 +19,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
 use merman_display_list::{
-    CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListPolicy,
-    FontDescriptor, FontStyle, Paint, Point, Rect, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextRun, TextStyle, Viewport,
+    DrawingCommand, DrawingListLimits, DrawingListPolicy, FontDescriptor, FontStyle, Paint, Point,
+    Rect, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline, TextDirection, TextRun,
+    TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -40,6 +41,7 @@ pub(crate) fn build_info_document(
     pair: &InfoPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     session.checkpoint(OperationPhase::Emit)?;
@@ -64,76 +66,64 @@ pub(crate) fn build_info_document(
     let text_color = theme_color(config, "textColor", "#333")?;
     let text_obligation = text_obligation(session, TextMeasurementPhase::Layout);
 
-    let mut commands = vec![
-        DrawingCommand::Save,
-        DrawingCommand::BeginSemanticGroup {
-            semantic_id: "info.document".to_string(),
+    let mut builder = DrawingListBuilder::new(policy, limits, session);
+    builder.push_semantic(SemanticAnnotation {
+        id: "info.document".to_string(),
+        role: SemanticRole::Document,
+        title: Some(metadata.diagram_type.clone()),
+        description: None,
+        link: None,
+    })?;
+    builder.push_semantic(SemanticAnnotation {
+        id: "info.version".to_string(),
+        role: SemanticRole::Label,
+        title: Some(layout.version.clone()),
+        description: None,
+        link: None,
+    })?;
+    builder.push_control(DrawingCommand::Save)?;
+    builder.push_control(DrawingCommand::BeginSemanticGroup {
+        semantic_id: "info.document".to_string(),
+    })?;
+    builder.push_control(DrawingCommand::BeginSemanticGroup {
+        semantic_id: "info.version".to_string(),
+    })?;
+    builder.draw_host_text(&layout.version, |text| TextRun {
+        text,
+        origin: VERSION_ORIGIN,
+        bounds: VERSION_BOUNDS,
+        style: TextStyle {
+            font,
+            font_size: VERSION_FONT_SIZE,
+            letter_spacing: 0.0,
+            line_height: VERSION_FONT_SIZE,
+            fill: Paint::solid(text_color),
         },
-        DrawingCommand::BeginSemanticGroup {
-            semantic_id: "info.version".to_string(),
-        },
-        DrawingCommand::DrawText {
-            run: TextRun {
-                text: layout.version.clone(),
-                origin: VERSION_ORIGIN,
-                bounds: VERSION_BOUNDS,
-                style: TextStyle {
-                    font,
-                    font_size: VERSION_FONT_SIZE,
-                    letter_spacing: 0.0,
-                    line_height: VERSION_FONT_SIZE,
-                    fill: Paint::solid(text_color),
-                },
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Alphabetic,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: text_obligation,
-            },
-        },
-        DrawingCommand::EndSemanticGroup,
-        DrawingCommand::EndSemanticGroup,
-        DrawingCommand::Restore,
-    ];
+        anchor: TextAnchor::Middle,
+        baseline: TextBaseline::Alphabetic,
+        direction: TextDirection::Auto,
+        language: None,
+        obligation: text_obligation,
+    })?;
+    builder.push_control(DrawingCommand::EndSemanticGroup)?;
+    builder.push_control(DrawingCommand::EndSemanticGroup)?;
+    builder.push_control(DrawingCommand::Restore)?;
 
-    let document = DrawingListDocument {
-        version: DRAWING_LIST_VERSION,
-        coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-        viewport: Viewport::new(Rect::new(
+    let document = builder.finish(
+        Viewport::new(Rect::new(
             bounds.min_x,
             bounds.min_y,
             bounds.max_x - bounds.min_x,
             bounds.max_y - bounds.min_y,
         )),
-        policy,
-        resources: Vec::new(),
-        commands: std::mem::take(&mut commands),
-        semantics: vec![
-            SemanticAnnotation {
-                id: "info.document".to_string(),
-                role: SemanticRole::Document,
-                title: Some(metadata.diagram_type.clone()),
-                description: None,
-                link: None,
-            },
-            SemanticAnnotation {
-                id: "info.version".to_string(),
-                role: SemanticRole::Label,
-                title: Some(layout.version.clone()),
-                description: None,
-                link: None,
-            },
-        ],
-        fallbacks: Vec::new(),
-        extensions: BTreeMap::from([(
+        BTreeMap::from([(
             "x-merman-info".to_string(),
             json!({
                 "diagram_type": metadata.diagram_type,
                 "label_mode": "plain_host_text",
             }),
         )]),
-    };
-    document.validate().map_err(Error::DrawingListContract)?;
+    )?;
 
     Ok(RenderDocument {
         public: document,

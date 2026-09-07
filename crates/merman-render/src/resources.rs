@@ -708,7 +708,19 @@ impl OperationWorkMeter {
     }
 
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), OperationWorkError> {
-        let phase = OperationPhase::Layout;
+        self.preflight_at(additional, OperationPhase::Layout)
+    }
+
+    /// Checks a prospective work charge at an explicit operation phase without consuming it.
+    ///
+    /// Post-layout builders use this while materializing a bounded candidate. The completed
+    /// candidate remains responsible for the single authoritative charge, so an early preflight
+    /// cannot double-count work during an incremental migration.
+    pub(crate) fn preflight_at(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(phase)?;
         if additional == 0 {
             return Ok(());

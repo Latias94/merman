@@ -110,6 +110,33 @@ fn drawing_list_footprint_limit_is_reported_as_a_resource_limit() {
 }
 
 #[test]
+fn info_command_limit_reaches_the_bounded_document_builder() {
+    let request = DrawingListRequest {
+        limits: DrawingListLimits {
+            max_commands: 0,
+            ..DrawingListLimits::default()
+        },
+        ..DrawingListRequest::default()
+    };
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "info",
+            OperationControl::new(),
+            request,
+        ))
+        .expect_err("the Info builder must reject its first command before returning output");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
+}
+
+#[test]
 fn block_degenerate_marker_is_a_structured_unavailable_result() {
     let error = Renderer::new()
         .render(RenderRequest::drawing_list(
