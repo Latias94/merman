@@ -5,10 +5,10 @@
 //! text color without introducing an SVG parsing dependency.
 
 use super::{
-    InfoSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    InfoSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     theme_color,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::support::text_obligation;
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -57,13 +57,16 @@ pub(crate) fn build_info_document(
 
     let config = metadata.effective_config.as_value();
     let font = FontDescriptor {
-        families: parse_font_families(config_font_family_css(config)),
+        families: parse_font_families_for(
+            config_font_family_css_raw(config),
+            RenderFamilyKind::Info,
+        )?,
         weight: 400,
         style: FontStyle::Normal,
         postscript_name: None,
         resource: None,
     };
-    let text_color = theme_color(config, "textColor", "#333")?;
+    let text_color = info_theme_color(config, "textColor", "#333")?;
     let text_obligation = text_obligation(session, TextMeasurementPhase::Layout);
 
     let mut builder = DrawingListBuilder::new(policy, limits, session);
@@ -147,6 +150,22 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
         return Err(invalid("Info layout bounds are invalid"));
     }
     Ok(())
+}
+
+fn info_theme_color(
+    config: &serde_json::Value,
+    key: &str,
+    fallback: &str,
+) -> Result<merman_display_list::Color> {
+    theme_color(config, key, fallback).map_err(|error| match error {
+        Error::InvalidModel { message } => Error::DrawingListUnavailable {
+            family: RenderFamilyKind::Info.as_str().to_string(),
+            reason: format!(
+                "visual effect `{key}` requires CSS color resolution that DrawingList cannot preserve: {message}"
+            ),
+        },
+        other => other,
+    })
 }
 
 fn invalid(message: impl Into<String>) -> Error {

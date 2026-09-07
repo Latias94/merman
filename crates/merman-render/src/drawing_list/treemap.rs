@@ -5,9 +5,9 @@
 //! typed paths and host text. Arbitrary CSS remains an explicit capability boundary.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, TreemapSvgBody, parse_font_families,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, TreemapSvgBody, parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -94,7 +94,7 @@ impl<'a> TreemapBuilder<'a> {
         }
 
         let theme = PresentationTheme::new(config).treemap()?;
-        let font_family_css = config_font_family_css(config);
+        let font_family_css = config_font_family_css_raw(config);
         let bbox_measurer =
             session.controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
         let computed_length_measurer = session
@@ -132,7 +132,7 @@ impl<'a> TreemapBuilder<'a> {
             layout,
             presentation,
             base_font: FontDescriptor {
-                families: parse_font_families(font_family_css.clone()),
+                families: parse_font_families_for(&font_family_css, RenderFamilyKind::Treemap)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,
@@ -898,7 +898,8 @@ impl ResolvedTextStyle {
                     if family.is_empty() {
                         return Err(unavailable("font-family resolves to an empty family list"));
                     }
-                    style.font.families = parse_font_families(family.clone());
+                    style.font.families =
+                        parse_font_families_for(&family, RenderFamilyKind::Treemap)?;
                     style.measurement_font_family = family;
                 }
                 "font-size" => {

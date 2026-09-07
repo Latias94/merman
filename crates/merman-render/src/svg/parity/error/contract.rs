@@ -1,5 +1,6 @@
 use super::super::util::{escape_attr_into, escape_xml_into, fmt};
 use crate::drawing_list::{ERROR_ICON_PATHS, ErrorSvgBody};
+use crate::portable_font::PortableFontFamilies;
 use crate::{Error, Result};
 use merman_display_list::{
     Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
@@ -145,7 +146,11 @@ pub(in crate::svg::parity) fn validate_error_projection_contract<'a>(
         Some(&title_run.style.fill),
         "Error text fill must be a resolved solid paint",
     )?;
-    portable_font_family_css(&title_run.style.font.families)?;
+    PortableFontFamilies::from_resolved(&title_run.style.font.families).map_err(|error| {
+        invalid(format!(
+            "Error host text has invalid font families: {error}"
+        ))
+    })?;
     validate_error_text_run(
         title_run,
         ERROR_TITLE,
@@ -246,19 +251,34 @@ pub(in crate::svg::parity) fn canonical_error_css(
     effective_config: &Value,
     projection: &ErrorProjection<'_>,
 ) -> Result<String> {
-    let mut css_config = effective_config.clone();
-    let root = css_config
-        .as_object_mut()
+    let source_root = effective_config
+        .as_object()
         .ok_or_else(|| invalid("Error effective configuration must be an object"))?;
-    let theme_variables = root
-        .entry("themeVariables".to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
-    if !theme_variables.is_object() {
-        *theme_variables = Value::Object(Map::new());
+
+    // The shared base stylesheet reads only this closed set of shallow scalar values. Projecting
+    // them avoids recursively cloning or dropping arbitrary host configuration while preserving
+    // every inert Error stylesheet token that Mermaid can actually consume here.
+    let mut root = Map::new();
+    if let Some(value) = source_root.get("fontSize").and_then(clone_css_scalar) {
+        root.insert("fontSize".to_string(), value);
     }
-    let variables = theme_variables
-        .as_object_mut()
-        .expect("themeVariables was normalized to an object");
+
+    let mut variables = Map::new();
+    if let Some(source_variables) = source_root.get("themeVariables").and_then(Value::as_object) {
+        for key in [
+            "fontSize",
+            "strokeWidth",
+            "textColor",
+            "lineColor",
+            "nodeBorder",
+            "useGradient",
+            "dropShadow",
+        ] {
+            if let Some(value) = source_variables.get(key).and_then(clone_css_scalar) {
+                variables.insert(key.to_string(), value);
+            }
+        }
+    }
     variables.insert(
         "errorBkgColor".to_string(),
         Value::String(error_color_css(projection.icon_color)),
@@ -269,62 +289,28 @@ pub(in crate::svg::parity) fn canonical_error_css(
     );
     variables.insert(
         "fontFamily".to_string(),
-        Value::String(portable_font_family_css(projection.font_families)?),
+        Value::String(
+            PortableFontFamilies::from_resolved(projection.font_families)
+                .map_err(|error| {
+                    invalid(format!(
+                        "Error host text has invalid font families: {error}"
+                    ))
+                })?
+                .to_css(),
+        ),
     );
+    root.insert("themeVariables".to_string(), Value::Object(variables));
+    let css_config = Value::Object(root);
     Ok(super::super::info_css_with_config(diagram_id, &css_config))
 }
 
-fn portable_font_family_css(families: &[String]) -> Result<String> {
-    if families.is_empty() {
-        return Err(invalid(
-            "Error host text must contain a portable font family",
-        ));
+fn clone_css_scalar(value: &Value) -> Option<Value> {
+    match value {
+        Value::Bool(value) => Some(Value::Bool(*value)),
+        Value::Number(value) => Some(Value::Number(value.clone())),
+        Value::String(value) => Some(Value::String(value.clone())),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
     }
-    let mut output = String::new();
-    for (index, family) in families.iter().enumerate() {
-        let trimmed = family.trim();
-        let lowercase = trimmed.to_ascii_lowercase();
-        if trimmed.is_empty()
-            || lowercase.contains("var(")
-            || lowercase.contains("env(")
-            || lowercase.contains("!important")
-            || trimmed.contains('\\')
-            || trimmed.contains("/*")
-            || trimmed.contains("*/")
-            || trimmed
-                .chars()
-                .any(|character| matches!(character, '\'' | '"'))
-            || trimmed.chars().any(char::is_control)
-        {
-            return Err(invalid(format!(
-                "Error host text contains non-portable font family {trimmed:?}"
-            )));
-        }
-        if index > 0 {
-            output.push(',');
-        }
-        let mut characters = trimmed.chars();
-        let first = characters.next().expect("trimmed family is non-empty");
-        let portable_identifier = !is_css_wide_font_keyword(trimmed)
-            && (first.is_ascii_alphabetic() || first == '_')
-            && characters.all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
-            });
-        if portable_identifier {
-            output.push_str(trimmed);
-        } else {
-            output.push('"');
-            output.push_str(trimmed);
-            output.push('"');
-        }
-    }
-    Ok(output)
-}
-
-fn is_css_wide_font_keyword(value: &str) -> bool {
-    ["inherit", "initial", "revert", "revert-layer", "unset"]
-        .into_iter()
-        .any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
 fn error_color_css(color: Color) -> String {
@@ -443,6 +429,27 @@ mod tests {
         assert!(!css.contains("Conflict"));
         assert!(!css.contains("#010203"));
         assert!(!css.contains("#040506"));
+    }
+
+    #[test]
+    fn error_css_does_not_clone_unrelated_deep_host_config() {
+        let document = canonical_error_document();
+        let projection = validate_error_projection_contract(&document, &ErrorSvgBody::new())
+            .expect("the actual Error builder must produce a valid projection");
+        let mut nested = Value::Null;
+        for _ in 0..8_192 {
+            nested = Value::Array(vec![nested]);
+        }
+        let mut variables = Map::new();
+        variables.insert("unrelated".to_string(), nested);
+        let mut root = Map::new();
+        root.insert("themeVariables".to_string(), Value::Object(variables));
+        let config = merman_core::MermaidConfig::from_value(Value::Object(root));
+
+        let css = canonical_error_css("error-deep-config", config.as_value(), &projection)
+            .expect("deep unrelated host config must not enter Error CSS projection");
+
+        assert!(css.contains("#error-deep-config .error-icon{fill:#552222;}"));
     }
 
     #[test]

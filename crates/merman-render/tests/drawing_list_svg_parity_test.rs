@@ -89,6 +89,50 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
 }
 
 #[test]
+fn info_nonportable_css_values_use_an_explicit_effect_bridge() {
+    let cases = [
+        (
+            "current-color",
+            serde_json::json!({"themeVariables": {"textColor": "currentColor"}}),
+            "textColor",
+        ),
+        (
+            "variable-color",
+            serde_json::json!({"themeVariables": {"textColor": "var(--host-text)"}}),
+            "textColor",
+        ),
+        (
+            "variable-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "var(--host-font), sans-serif"}}),
+            "fontFamily",
+        ),
+    ];
+
+    for (name, config, expected_effect) in cases {
+        let output = render_family_svg_with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            "info",
+            &format!("info-{name}"),
+        );
+        assert_eq!(
+            output.serialization_route(),
+            SvgSerializationRoute::LegacyBridge,
+            "{name} must use an explicit bridge"
+        );
+        let Some(SvgSerializationBridgeReason::DrawingListUnavailable { family, reason }) =
+            output.serialization_bridge_reason()
+        else {
+            panic!("expected an effect-specific DrawingList bridge reason for {name}");
+        };
+        assert_eq!(family, "info");
+        assert!(
+            reason.contains(expected_effect),
+            "{name} bridge reason must name {expected_effect}: {reason}"
+        );
+    }
+}
+
+#[test]
 fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
     let svg = render_svg("flowchart TD\nA -->\n", "error-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Error SVG is XML");

@@ -7,8 +7,8 @@
 //! rewrites, and SVG-only effects fail closed instead of being silently flattened.
 
 use super::{
-    RenderDocument, SequenceSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    theme_color,
+    RenderDocument, SequenceSvgBody, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families_for, theme_color,
 };
 use crate::config::{config_diagram_look, config_f64, config_string};
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
@@ -188,7 +188,7 @@ impl<'a> SequenceBuilder<'a> {
             .filter(|family| !family.trim().is_empty())
             .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif;".to_string());
         let actor_font = FontDescriptor {
-            families: parse_font_families(font_family.clone()),
+            families: parse_font_families_for(&font_family, RenderFamilyKind::Sequence)?,
             weight: settings.font_weight,
             style: FontStyle::Normal,
             postscript_name: None,
@@ -912,9 +912,25 @@ impl<'a> SequenceBuilder<'a> {
                     )?;
                 }
             }
+            let route_segments =
+                message_route_segments(&message, &edge, self.settings.right_angles)?;
+            let start_marker = marker_endpoint_for(
+                semantics.source_marker,
+                &edge.points,
+                &route_segments,
+                MarkerPosition::Start,
+                &message.id,
+            )?;
+            let end_marker = marker_endpoint_for(
+                semantics.target_marker,
+                &edge.points,
+                &route_segments,
+                MarkerPosition::End,
+                &message.id,
+            )?;
             self.add_path(
                 format!("{semantic_id}.route"),
-                message_route_segments(&message, &edge, self.settings.right_angles)?,
+                route_segments,
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: None,
@@ -929,7 +945,7 @@ impl<'a> SequenceBuilder<'a> {
                     )),
                 },
             )?;
-            self.emit_message_markers(&semantic_id, &edge, semantics)?;
+            self.emit_message_markers(&semantic_id, semantics, start_marker, end_marker)?;
             self.emit_central_connection(&semantic_id, &message, from, to, edge.points[0].y)?;
             if autonumber_visible {
                 self.emit_sequence_number(&semantic_id, &edge, &message, autonumber)?;
@@ -970,34 +986,23 @@ impl<'a> SequenceBuilder<'a> {
     fn emit_message_markers(
         &mut self,
         semantic_id: &str,
-        edge: &LayoutEdge,
         semantics: merman_core::diagrams::sequence::SequenceSignalSemantics,
+        start_marker: Option<SequenceMarkerEndpoint>,
+        end_marker: Option<SequenceMarkerEndpoint>,
     ) -> Result<()> {
-        let start = Point::new(edge.points[0].x, edge.points[0].y);
-        let next = Point::new(edge.points[1].x, edge.points[1].y);
-        let end = Point::new(
-            edge.points[edge.points.len() - 1].x,
-            edge.points[edge.points.len() - 1].y,
-        );
-        let previous = Point::new(
-            edge.points[edge.points.len() - 2].x,
-            edge.points[edge.points.len() - 2].y,
-        );
-        let start_direction = normalize(start.x - next.x, start.y - next.y);
-        let end_direction = normalize(end.x - previous.x, end.y - previous.y);
-        if semantics.source_marker != SequenceMessageMarker::None {
+        if let Some(endpoint) = start_marker {
             self.emit_marker(
                 format!("{semantic_id}.marker.start"),
-                start,
-                start_direction,
+                endpoint.point,
+                endpoint.direction,
                 semantics.source_marker,
             )?;
         }
-        if semantics.target_marker != SequenceMessageMarker::None {
+        if let Some(endpoint) = end_marker {
             self.emit_marker(
                 format!("{semantic_id}.marker.end"),
-                end,
-                end_direction,
+                endpoint.point,
+                endpoint.direction,
                 semantics.target_marker,
             )?;
         }
@@ -1969,12 +1974,149 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
     Ok(())
 }
 
-fn normalize(x: f64, y: f64) -> Point {
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SequenceMarkerEndpoint {
+    point: Point,
+    direction: Point,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MarkerPosition {
+    Start,
+    End,
+}
+
+fn required_marker_endpoint(
+    layout_points: &[crate::model::LayoutPoint],
+    route_segments: &[PathSegment],
+    position: MarkerPosition,
+    message_id: &str,
+) -> Result<SequenceMarkerEndpoint> {
+    layout_marker_endpoint(layout_points, position)
+        .or_else(|| route_marker_endpoint(route_segments, position))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "Sequence message `{message_id}` {position:?} marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation"
+            ))
+        })
+}
+
+fn marker_endpoint_for(
+    marker: SequenceMessageMarker,
+    layout_points: &[crate::model::LayoutPoint],
+    route_segments: &[PathSegment],
+    position: MarkerPosition,
+    message_id: &str,
+) -> Result<Option<SequenceMarkerEndpoint>> {
+    if marker == SequenceMessageMarker::None {
+        return Ok(None);
+    }
+    required_marker_endpoint(layout_points, route_segments, position, message_id).map(Some)
+}
+
+fn layout_marker_endpoint(
+    points: &[crate::model::LayoutPoint],
+    position: MarkerPosition,
+) -> Option<SequenceMarkerEndpoint> {
+    let (point, direction) = match position {
+        MarkerPosition::Start => {
+            let start = points.first()?;
+            let point = Point::new(start.x, start.y);
+            let direction = points.iter().skip(1).find_map(|candidate| {
+                unit_direction(point.x - candidate.x, point.y - candidate.y)
+            })?;
+            (point, direction)
+        }
+        MarkerPosition::End => {
+            let end = points.last()?;
+            let point = Point::new(end.x, end.y);
+            let direction = points.iter().rev().skip(1).find_map(|candidate| {
+                unit_direction(point.x - candidate.x, point.y - candidate.y)
+            })?;
+            (point, direction)
+        }
+    };
+    Some(SequenceMarkerEndpoint { point, direction })
+}
+
+fn route_marker_endpoint(
+    segments: &[PathSegment],
+    position: MarkerPosition,
+) -> Option<SequenceMarkerEndpoint> {
+    let PathSegment::MoveTo { to: start } = segments.first()? else {
+        return None;
+    };
+    let mut current = *start;
+    let mut last_endpoint = None;
+
+    for segment in &segments[1..] {
+        let to = route_segment_endpoint(segment)?;
+        if let Some(direction) = route_segment_direction(segment, current, to, position) {
+            let endpoint = SequenceMarkerEndpoint {
+                point: if matches!(position, MarkerPosition::Start) {
+                    *start
+                } else {
+                    to
+                },
+                direction,
+            };
+            if matches!(position, MarkerPosition::Start) {
+                return Some(endpoint);
+            }
+            last_endpoint = Some(endpoint);
+        }
+        current = to;
+    }
+
+    last_endpoint
+}
+
+fn route_segment_endpoint(segment: &PathSegment) -> Option<Point> {
+    match segment {
+        PathSegment::LineTo { to } | PathSegment::CubicTo { to, .. } => Some(*to),
+        _ => None,
+    }
+}
+
+fn route_segment_direction(
+    segment: &PathSegment,
+    from: Point,
+    to: Point,
+    position: MarkerPosition,
+) -> Option<Point> {
+    match (segment, position) {
+        (PathSegment::LineTo { .. }, MarkerPosition::Start) => {
+            unit_direction(from.x - to.x, from.y - to.y)
+        }
+        (PathSegment::LineTo { .. }, MarkerPosition::End) => {
+            unit_direction(to.x - from.x, to.y - from.y)
+        }
+        (
+            PathSegment::CubicTo {
+                control1, control2, ..
+            },
+            MarkerPosition::Start,
+        ) => [*control1, *control2, to]
+            .into_iter()
+            .find_map(|candidate| unit_direction(from.x - candidate.x, from.y - candidate.y)),
+        (
+            PathSegment::CubicTo {
+                control1, control2, ..
+            },
+            MarkerPosition::End,
+        ) => [*control2, *control1, from]
+            .into_iter()
+            .find_map(|candidate| unit_direction(to.x - candidate.x, to.y - candidate.y)),
+        _ => None,
+    }
+}
+
+fn unit_direction(x: f64, y: f64) -> Option<Point> {
     let length = x.hypot(y);
     if !length.is_finite() || length <= f64::EPSILON {
-        Point::new(1.0, 0.0)
+        None
     } else {
-        Point::new(x / length, y / length)
+        Some(Point::new(x / length, y / length))
     }
 }
 
@@ -2038,10 +2180,19 @@ fn invalid(message: impl Into<String>) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::portable_actor_link;
+    use super::{
+        MarkerPosition, layout_marker_endpoint, marker_endpoint_for, portable_actor_link,
+        required_marker_endpoint,
+    };
+    use crate::{Error, model::LayoutPoint};
     use merman_core::diagrams::sequence::SequenceActor;
     use merman_core::svg_security::MermaidNavigationSecurity;
+    use merman_display_list::{PathSegment, Point};
     use serde_json::{Value, json, map::Map};
+
+    fn point(x: f64, y: f64) -> LayoutPoint {
+        LayoutPoint { x, y }
+    }
 
     fn actor(links: Map<String, Value>) -> SequenceActor {
         SequenceActor {
@@ -2088,5 +2239,94 @@ mod tests {
         let mut links = Map::new();
         links.insert("Docs".into(), json!(42));
         assert!(portable_actor_link(&actor(links), MermaidNavigationSecurity::Sanitized).is_err());
+    }
+
+    #[test]
+    fn message_marker_endpoints_skip_coincident_layout_points() {
+        let start_points = [point(1.0, 2.0), point(1.0, 2.0), point(4.0, 6.0)];
+        let end_points = [point(1.0, 2.0), point(4.0, 6.0), point(4.0, 6.0)];
+
+        assert_eq!(
+            layout_marker_endpoint(&start_points, MarkerPosition::Start)
+                .expect("start marker endpoint")
+                .direction,
+            Point::new(-0.6, -0.8)
+        );
+        assert_eq!(
+            layout_marker_endpoint(&end_points, MarkerPosition::End)
+                .expect("end marker endpoint")
+                .direction,
+            Point::new(0.6, 0.8)
+        );
+    }
+
+    #[test]
+    fn self_message_markers_use_the_non_degenerate_render_route() {
+        let layout_points = [point(5.0, 10.0), point(5.0, 10.0)];
+        let route = [
+            PathSegment::MoveTo {
+                to: Point::new(5.0, 10.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(35.0, 10.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(35.0, 35.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(5.0, 35.0),
+            },
+        ];
+
+        assert_eq!(
+            required_marker_endpoint(&layout_points, &route, MarkerPosition::Start, "self")
+                .expect("self-message start marker endpoint"),
+            super::SequenceMarkerEndpoint {
+                point: Point::new(5.0, 10.0),
+                direction: Point::new(-1.0, 0.0),
+            }
+        );
+        assert_eq!(
+            required_marker_endpoint(&layout_points, &route, MarkerPosition::End, "self")
+                .expect("self-message end marker endpoint"),
+            super::SequenceMarkerEndpoint {
+                point: Point::new(5.0, 35.0),
+                direction: Point::new(-1.0, 0.0),
+            }
+        );
+    }
+
+    #[test]
+    fn message_markers_reject_a_fully_degenerate_route() {
+        let layout_points = [point(1.0, 2.0), point(1.0, 2.0)];
+        let route = [
+            PathSegment::MoveTo {
+                to: Point::new(1.0, 2.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(1.0, 2.0),
+            },
+        ];
+
+        assert!(
+            marker_endpoint_for(
+                merman_core::diagrams::sequence::SequenceMessageMarker::None,
+                &layout_points,
+                &route,
+                MarkerPosition::End,
+                "7",
+            )
+            .expect("a marker-free message does not need a tangent")
+            .is_none()
+        );
+        for position in [MarkerPosition::Start, MarkerPosition::End] {
+            let error = required_marker_endpoint(&layout_points, &route, position, "7")
+                .expect_err("a fully degenerate Sequence marker must fail closed");
+            assert!(matches!(
+                error,
+                Error::DrawingListUnavailable { ref family, .. } if family == "sequence"
+            ));
+            assert!(error.to_string().contains("no non-zero tangent"));
+        }
     }
 }

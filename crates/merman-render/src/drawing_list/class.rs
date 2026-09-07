@@ -6,7 +6,7 @@
 //! it never reparses or imports the SVG DOM.
 
 use super::{
-    ClassSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    ClassSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     theme_color,
 };
 use crate::class::class_member_create_text_input;
@@ -135,7 +135,7 @@ impl<'a> ClassBuilder<'a> {
             .or_else(|| config_string(config, &["themeVariables", "fontFamily"]))
             .unwrap_or_else(|| DEFAULT_FONT_FAMILY.to_string());
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Class)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

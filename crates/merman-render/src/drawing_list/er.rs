@@ -6,7 +6,7 @@
 
 use super::{
     ErEdgeSvgMetadata, ErSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
-    parse_font_families, theme_color,
+    parse_font_families_for, theme_color,
 };
 use crate::config::{config_bool, config_f64_explicit_css_px, config_string};
 use crate::drawing_list::support::{stroke, text_obligation};
@@ -194,7 +194,7 @@ impl<'a> ErBuilder<'a> {
             .or_else(|| config_string(config, &["themeVariables", "fontFamily"]))
             .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Er)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

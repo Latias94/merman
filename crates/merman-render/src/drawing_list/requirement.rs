@@ -7,8 +7,8 @@
 //! declarations remain explicit failures instead of becoming silent omissions.
 
 use super::{
-    RenderDocument, RequirementSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    theme_color,
+    RenderDocument, RequirementSvgBody, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families_for, theme_color,
 };
 use crate::config::config_string_vec;
 use crate::drawing_list::flowchart::{ellipse_path, rounded_rect_path};
@@ -143,7 +143,7 @@ impl<'a> RequirementBuilder<'a> {
 
         let font_family = settings.font_family.clone();
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Requirement)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

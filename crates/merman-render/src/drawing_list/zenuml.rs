@@ -7,7 +7,7 @@
 //! represented without changing pixels fail closed before a document is returned.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families, parse_svg_path,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for, parse_svg_path,
 };
 use crate::config::{config_diagram_look, config_string};
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
@@ -166,7 +166,7 @@ impl<'a> ZenUmlBuilder<'a> {
             .filter(|family| !family.trim().is_empty())
             .unwrap_or_else(|| "Helvetica, Verdana, serif".to_string());
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Zenuml)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

@@ -5,9 +5,9 @@
 //! renderer can draw the same visible chart without evaluating CSS selectors.
 
 use super::{
-    GanttSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    GanttSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::rounded_rect_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, navigation_security, portable_navigation_uri, stroke, text_obligation,
@@ -112,13 +112,9 @@ impl<'a> GanttBuilder<'a> {
         let theme = presentation.gantt();
         let styles = PortableStyleResolver::new("gantt");
         let color = |property: &str, value: &str| styles.color(property, value);
-        let font_css = if theme.font_family.trim().is_empty() {
-            config_font_family_css(config)
-        } else {
-            theme.font_family.clone()
-        };
+        let font_css = config_font_family_css_raw(config);
         let font = FontDescriptor {
-            families: parse_font_families(font_css),
+            families: parse_font_families_for(font_css, RenderFamilyKind::Gantt)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

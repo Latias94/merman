@@ -2911,7 +2911,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             )
             .map_err(|_| invalid("failed to write text style"))?;
         }
-        let families = self.font_families(&run.style.font);
+        let families = self.font_families(&run.style.font)?;
         self.output.push_str(" font-family=\"");
         escape_attr_into(&mut self.output, families.as_str());
         self.output.push('"');
@@ -2993,6 +2993,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         text_index: Option<usize>,
     ) -> Result<()> {
         self.output.push_str("<text");
+        let families = self.font_families(&run.style.font)?;
         write!(
             self.output,
             " x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\" font-family=\"{}\" font-weight=\"{}\" font-style=\"{}\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"",
@@ -3003,7 +3004,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             text_direction(run.direction),
             fmt(run.style.font_size),
             fmt(run.style.letter_spacing),
-            escaped_attr(self.font_families(&run.style.font).as_str()),
+            escaped_attr(families.as_str()),
             run.style.font.weight,
             font_style(run.style.font.style),
             fmt(run.bounds.x),
@@ -3151,7 +3152,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             escape_attr_into(&mut self.output, language);
             self.output.push('"');
         }
-        let families = self.font_families(&run.style.font);
+        let families = self.font_families(&run.style.font)?;
         self.output.push_str(" style=\"");
         write!(
             self.output,
@@ -4015,7 +4016,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         write_blend_style(&mut self.output, self.state.blend_mode);
     }
 
-    fn font_families(&self, font: &merman_display_list::FontDescriptor) -> String {
+    fn font_families(&self, font: &merman_display_list::FontDescriptor) -> Result<String> {
         let mut families = String::new();
         if let Some(resource) = font.resource.as_ref()
             && let Some(svg_id) = self.resource_svg_ids.get(resource.as_str())
@@ -4024,16 +4025,18 @@ impl<'a> DocumentSvgEncoder<'a> {
             families.push_str(svg_id);
             families.push_str("\",");
         }
-        for (index, family) in font.families.iter().enumerate() {
-            if (index > 0 || !families.is_empty()) && !families.ends_with(',') {
-                families.push(',');
-            }
-            families.push_str(family);
+        let family_css = crate::portable_font::PortableFontFamilies::from_resolved(&font.families)
+            .map_err(|error| {
+                invalid(format!(
+                    "text font family is not portable to the SVG projection: {error}"
+                ))
+            })?
+            .to_css();
+        if !families.is_empty() && !families.ends_with(',') {
+            families.push(',');
         }
-        if families.is_empty() {
-            families.push_str("sans-serif");
-        }
-        families
+        families.push_str(&family_css);
+        Ok(families)
     }
 
     fn debug_visibility(&self, role: SemanticRole) -> bool {

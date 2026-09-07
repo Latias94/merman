@@ -5,9 +5,9 @@
 //! source family, node, link, and annotation semantics.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, WardleySvgBody, parse_font_families,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, WardleySvgBody, parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -91,7 +91,10 @@ impl<'a> WardleyBuilder<'a> {
         let theme = WardleyTheme::from_config(config);
         let styles = PortableStyleResolver::new("wardley");
         let font = FontDescriptor {
-            families: parse_font_families(config_font_family_css(config)),
+            families: parse_font_families_for(
+                config_font_family_css_raw(config),
+                RenderFamilyKind::Wardley,
+            )?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

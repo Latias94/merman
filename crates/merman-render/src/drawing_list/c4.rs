@@ -6,7 +6,7 @@
 //! capability errors rather than being silently dropped.
 
 use super::{
-    C4SvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    C4SvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     theme_color,
 };
 use crate::c4::{
@@ -118,7 +118,7 @@ impl<'a> C4Builder<'a> {
             .or_else(|| config_string(config, &["themeVariables", "fontFamily"]))
             .unwrap_or_else(|| crate::c4::C4_DEFAULT_FONT_FAMILY.to_string());
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::C4)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,
@@ -510,7 +510,7 @@ impl<'a> C4Builder<'a> {
         let boundary_color = parse_color("#444444")?;
         let title = plain_text(&boundary.label.text).map_err(unavailable)?;
         if !title.trim().is_empty() {
-            let mut title_font = font_descriptor(&boundary_style, 700, FontStyle::Normal);
+            let mut title_font = font_descriptor(&boundary_style, 700, FontStyle::Normal)?;
             title_font.weight = 700;
             self.draw_centered_lines(
                 &title,
@@ -538,7 +538,7 @@ impl<'a> C4Builder<'a> {
                 block.width,
                 block.height,
                 boundary_color,
-                font_descriptor(&boundary_style, 400, FontStyle::Normal),
+                font_descriptor(&boundary_style, 400, FontStyle::Normal)?,
                 boundary_style.font_size.max(1.0),
                 boundary_style.font_size.max(1.0),
             );
@@ -556,7 +556,7 @@ impl<'a> C4Builder<'a> {
                 block.width,
                 block.height,
                 boundary_color,
-                font_descriptor(&boundary_style, 400, FontStyle::Normal),
+                font_descriptor(&boundary_style, 400, FontStyle::Normal)?,
                 font_size,
                 font_size,
             );
@@ -690,12 +690,13 @@ impl<'a> C4Builder<'a> {
                 block.height,
                 text,
                 FontDescriptor {
-                    families: parse_font_families(
+                    families: parse_font_families_for(
                         shape_style
                             .font_family
                             .clone()
                             .unwrap_or_else(|| crate::c4::C4_DEFAULT_FONT_FAMILY.to_string()),
-                    ),
+                        RenderFamilyKind::C4,
+                    )?,
                     weight,
                     style: FontStyle::Normal,
                     postscript_name: None,
@@ -823,7 +824,7 @@ impl<'a> C4Builder<'a> {
         let config = C4ConfigView::new(self.metadata.effective_config.as_value());
         let message_style = config.message_font();
         let message_size = message_style.font_size.max(1.0);
-        let message_font = font_descriptor(&message_style, 400, FontStyle::Normal);
+        let message_font = font_descriptor(&message_style, 400, FontStyle::Normal)?;
         let text_color =
             parse_optional_color(meta.text_color.as_deref())?.unwrap_or(parse_color("#444444")?);
         let label = plain_text(&relation.label.text).map_err(unavailable)?;
@@ -1271,19 +1272,20 @@ fn font_descriptor(
     style: &MeasurementTextStyle,
     fallback_weight: u16,
     font_style: FontStyle,
-) -> FontDescriptor {
-    FontDescriptor {
-        families: parse_font_families(
+) -> Result<FontDescriptor> {
+    Ok(FontDescriptor {
+        families: parse_font_families_for(
             style
                 .font_family
                 .clone()
                 .unwrap_or_else(|| crate::c4::C4_DEFAULT_FONT_FAMILY.to_string()),
-        ),
+            RenderFamilyKind::C4,
+        )?,
         weight: parse_font_weight(style.font_weight.as_deref(), fallback_weight),
         style: font_style,
         postscript_name: None,
         resource: None,
-    }
+    })
 }
 
 fn parse_font_weight(value: Option<&str>, fallback: u16) -> u16 {

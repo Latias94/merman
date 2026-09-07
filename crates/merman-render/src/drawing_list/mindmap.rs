@@ -7,10 +7,10 @@
 
 use super::{
     MindmapSvgBody, MindmapSvgEdge, MindmapSvgNode, RenderDocument, SvgStructureBody,
-    SvgStructureSidecar, parse_font_families, parse_svg_path, theme_color,
+    SvgStructureSidecar, parse_font_families_for, parse_svg_path, theme_color,
 };
 use crate::config::{
-    config_bool, config_diagram_look, config_f64, config_font_family_css, config_string,
+    config_bool, config_diagram_look, config_f64, config_font_family_css_raw, config_string,
 };
 use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
 use crate::family::{FamilyPair, RenderFamilyKind};
@@ -251,9 +251,10 @@ impl<'a> MindmapBuilder<'a> {
         };
 
         let font = FontDescriptor {
-            families: parse_font_families(config_font_family_css(
-                metadata.effective_config.as_value(),
-            )),
+            families: parse_font_families_for(
+                config_font_family_css_raw(metadata.effective_config.as_value()),
+                RenderFamilyKind::Mindmap,
+            )?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

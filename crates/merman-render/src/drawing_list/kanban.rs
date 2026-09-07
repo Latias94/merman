@@ -6,7 +6,7 @@
 //! different card.
 
 use super::{
-    KanbanSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    KanbanSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::drawing_list::flowchart::rounded_rect_path;
 use crate::drawing_list::support::{
@@ -139,7 +139,7 @@ impl<'a> KanbanBuilder<'a> {
             font_style: settings.text_style.font_style.clone(),
         };
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Kanban)?,
             weight: parse_font_weight(label_style.font_weight.as_deref()),
             style: parse_font_style(label_style.font_style.as_deref()),
             postscript_name: None,

@@ -140,17 +140,35 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
 }
 
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {
-    let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
+    font_family_css(config_font_family_css_raw(cfg))
+}
+
+/// Returns the configured font-family spelling without applying the SVG-only sanitizer or its
+/// default fallback. Renderer-neutral adapters use this accessor so an unsupported CSS value can
+/// become an explicit capability error instead of silently turning into the default font.
+pub(crate) fn config_font_family_css_raw(cfg: &Value) -> String {
+    config_string(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-    font_family_css(font_family)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
+}
+
+/// Returns the unsanitized root-first font-family value used by families whose Mermaid renderer
+/// gives the legacy top-level option precedence over `themeVariables.fontFamily`.
+pub(crate) fn config_font_family_css_root_first_raw(cfg: &Value) -> String {
+    config_string(cfg, &["fontFamily"])
+        .or_else(|| config_string(cfg, &["themeVariables", "fontFamily"]))
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
 }
 
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
-    let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
+    font_family_css(config_font_family_or_first_array_css_raw(cfg))
+}
+
+/// Array-aware counterpart to [`config_font_family_css_raw`].
+pub(crate) fn config_font_family_or_first_array_css_raw(cfg: &Value) -> String {
+    config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-    font_family_css(font_family)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
 }
 
 fn font_family_css(font_family: String) -> String {

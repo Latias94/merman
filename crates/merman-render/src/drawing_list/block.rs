@@ -6,11 +6,12 @@
 
 use super::{
     BlockEdgeSvgMetadata, BlockInlinePathProperty, BlockSvgBody, RenderDocument, SvgStructureBody,
-    SvgStructureSidecar, parse_font_families, theme_color,
+    SvgStructureSidecar, parse_font_families_for, theme_color,
 };
 use crate::block::{BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry};
 use crate::config::{
-    config_diagram_look, config_font_family_or_first_array_css, config_theme_or_root_font_size_px,
+    config_diagram_look, config_font_family_or_first_array_css_raw,
+    config_theme_or_root_font_size_px,
 };
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
@@ -176,11 +177,11 @@ impl<'a> BlockBuilder<'a> {
             &edge_by_id,
         )?;
 
-        let base_font_family_css = config_font_family_or_first_array_css(config);
+        let base_font_family_css = config_font_family_or_first_array_css_raw(config);
         let base_font_size =
             config_theme_or_root_font_size_px(config, DEFAULT_BLOCK_FONT_SIZE).max(1.0);
         let base_font = FontDescriptor {
-            families: parse_font_families(base_font_family_css.clone()),
+            families: parse_font_families_for(&base_font_family_css, RenderFamilyKind::Block)?,
             weight: theme_font_weight(config)?,
             style: FontStyle::Normal,
             postscript_name: None,
@@ -1507,7 +1508,7 @@ fn apply_declaration(style: &mut BlockStyle, raw: &str, target: StyleTarget) -> 
                 ));
             }
             style.font_family_css = family.clone();
-            style.font.families = parse_font_families(family);
+            style.font.families = parse_font_families_for(&family, RenderFamilyKind::Block)?;
         }
         "font-size" => style.font_size = parse_font_size(value, style.font_size)?,
         "font-weight" => style.font.weight = parse_font_weight(value)?,

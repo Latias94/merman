@@ -7,7 +7,7 @@
 //! DrawingList owns the exact node geometry and paint, while host rasterization stays backend-local.
 
 use super::{
-    RenderDocument, SankeySvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    RenderDocument, SankeySvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, svg_plain_text, text_obligation};
@@ -75,8 +75,9 @@ impl<'a> SankeyBuilder<'a> {
         }
         let styles = PortableStyleResolver::new("sankey");
         let text_color = styles.color("themeVariables.textColor", &plan.theme.text_color)?;
+        let font_family_css = crate::config::config_font_family_css_raw(config);
         let font = FontDescriptor {
-            families: parse_font_families(plan.theme.font_family_css.clone()),
+            families: parse_font_families_for(&font_family_css, RenderFamilyKind::Sankey)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

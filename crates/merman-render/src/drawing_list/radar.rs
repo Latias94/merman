@@ -5,7 +5,7 @@
 //! theme paint and emits portable paths/text without reconstructing an SVG group tree.
 
 use super::{
-    RadarSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    RadarSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     parse_svg_path,
 };
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
@@ -92,7 +92,9 @@ impl<'a> RadarBuilder<'a> {
         validate_layout(layout, model)?;
         let theme = PresentationTheme::new(config).radar();
         let render_settings = RadarConfigView::new(config).render_settings();
-        let font_family_css = theme.font_family_css.clone();
+        let font_family_css =
+            crate::config::config_string(config, &["themeVariables", "fontFamily"])
+                .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
 
         Ok(Self {
             metadata,
@@ -102,7 +104,7 @@ impl<'a> RadarBuilder<'a> {
             layout,
             use_max_width: render_settings.use_max_width,
             font: FontDescriptor {
-                families: parse_font_families(font_family_css.clone()),
+                families: parse_font_families_for(&font_family_css, RenderFamilyKind::Radar)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,

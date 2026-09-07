@@ -5,7 +5,7 @@
 //! no SVG DOM reconstruction or raster fallback is required.
 
 use super::{
-    PacketSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    PacketSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
@@ -94,7 +94,10 @@ impl<'a> PacketBuilder<'a> {
             layout,
             title,
             font: FontDescriptor {
-                families: parse_font_families(PACKET_FONT_FAMILY_CSS.to_string()),
+                families: parse_font_families_for(
+                    PACKET_FONT_FAMILY_CSS,
+                    RenderFamilyKind::Packet,
+                )?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,

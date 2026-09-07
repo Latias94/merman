@@ -6,9 +6,9 @@
 
 use super::{
     EventModelingSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
-    parse_font_families,
+    parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_root_first_raw;
 use crate::drawing_list::flowchart::{polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -80,7 +80,10 @@ impl<'a> EventModelingBuilder<'a> {
         validate_layout(layout, model)?;
         let theme = PresentationTheme::new(config).eventmodeling();
         let styles = PortableStyleResolver::new("eventmodeling");
-        let font_families = parse_font_families(config_font_family_css(config));
+        let font_families = parse_font_families_for(
+            config_font_family_css_root_first_raw(config),
+            RenderFamilyKind::EventModeling,
+        )?;
         let font = FontDescriptor {
             families: font_families,
             weight: 400,

@@ -5,8 +5,8 @@
 //! the family theme without importing SVG or exposing DOM concepts to native hosts.
 
 use super::{
-    IshikawaSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    parse_svg_path,
+    IshikawaSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families_for, parse_svg_path,
 };
 use crate::config::config_diagram_look;
 use crate::drawing_list::flowchart::polygon_path;
@@ -99,7 +99,7 @@ impl<'a> IshikawaBuilder<'a> {
             model,
             layout,
             font: FontDescriptor {
-                families: parse_font_families(font_family_css.clone()),
+                families: parse_font_families_for(&font_family_css, RenderFamilyKind::Ishikawa)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,

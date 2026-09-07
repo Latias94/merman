@@ -5,10 +5,10 @@
 //! ordinary vector resources while retaining opacity, dash, text, and accessibility semantics.
 
 use super::{
-    CynefinSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    CynefinSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     parse_svg_path,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::cynefin::{
     CynefinTheme, domain_fill, domain_model_and_practice, domain_title, generate_cliff_path,
     generate_confusion_path, generate_fold_path, generate_horizontal_boundary, quadrant_domains,
@@ -101,7 +101,10 @@ impl<'a> CynefinBuilder<'a> {
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
         let font = FontDescriptor {
-            families: parse_font_families(config_font_family_css(config)),
+            families: parse_font_families_for(
+                config_font_family_css_raw(config),
+                RenderFamilyKind::Cynefin,
+            )?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

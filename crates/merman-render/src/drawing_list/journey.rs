@@ -5,9 +5,9 @@
 //! replay Mermaid's HTML/SVG wrapper tree or CSS selectors.
 
 use super::{
-    JourneySvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    JourneySvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
-use crate::config::{config_font_family_css, config_theme_font_size_css_or_root_number_px};
+use crate::config::{config_font_family_css_raw, config_theme_font_size_css_or_root_number_px};
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -118,10 +118,11 @@ impl<'a> JourneyBuilder<'a> {
             .font_family
             .clone()
             .filter(|family| !family.trim().is_empty())
-            .unwrap_or_else(|| config_font_family_css(config));
+            .unwrap_or_else(|| config_font_family_css_raw(config));
         let task_font_size = settings.task_text_style.font_size.max(1.0);
+        let raw_default_font_family = config_font_family_css_raw(config);
         let title_font_family = if settings.title_font_family.trim().is_empty() {
-            theme.font_family_css.clone()
+            raw_default_font_family.clone()
         } else {
             settings.title_font_family.clone()
         };
@@ -146,7 +147,7 @@ impl<'a> JourneyBuilder<'a> {
                     .transpose()
             })
             .collect::<Result<Vec<_>>>()?;
-        let legend_font_family = theme.font_family_css.clone();
+        let legend_font_family = raw_default_font_family;
 
         Ok(Self {
             metadata,
@@ -155,7 +156,7 @@ impl<'a> JourneyBuilder<'a> {
             model,
             layout,
             task_font: FontDescriptor {
-                families: parse_font_families(task_font_family),
+                families: parse_font_families_for(task_font_family, RenderFamilyKind::Journey)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,
@@ -163,7 +164,7 @@ impl<'a> JourneyBuilder<'a> {
             },
             task_font_size,
             legend_font: FontDescriptor {
-                families: parse_font_families(legend_font_family),
+                families: parse_font_families_for(legend_font_family, RenderFamilyKind::Journey)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,
@@ -171,7 +172,7 @@ impl<'a> JourneyBuilder<'a> {
             },
             legend_font_size,
             title_font: FontDescriptor {
-                families: parse_font_families(title_font_family),
+                families: parse_font_families_for(title_font_family, RenderFamilyKind::Journey)?,
                 weight: 700,
                 style: FontStyle::Normal,
                 postscript_name: None,

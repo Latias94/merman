@@ -6,9 +6,9 @@
 //! source semantics and SVG-only structure.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families, theme_color,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for, theme_color,
 };
-use crate::config::config_diagram_look;
+use crate::config::{config_bool, config_css_number_or_string, config_diagram_look};
 use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
 use crate::family::{FlowchartFamilyArtifact, RenderFamilyKind};
 use crate::flowchart::{
@@ -197,6 +197,9 @@ impl<'a> FlowchartBuilder<'a> {
                 "Math labels require a math renderer or an explicit raster fallback; DrawingList v1 will not replace them with plain text",
             ));
         }
+        if look.is_neo() {
+            reject_unportable_neo_effects(metadata.effective_config.as_value(), family_kind)?;
+        }
 
         let bounds = layout
             .bounds
@@ -204,12 +207,12 @@ impl<'a> FlowchartBuilder<'a> {
             .ok_or_else(|| invalid("Flowchart layout did not provide root bounds"))?;
         validate_bounds(bounds)?;
 
-        let font_family = config.font_family();
+        let font_family = config.raw_font_family();
         let font_size = config.render_font_size();
         let node_style = config.render_text_style(&font_family, font_size);
         let html_text_style = config.html_label_measurement_base_style(&node_style);
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(&font_family, family_kind)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,
@@ -899,14 +902,16 @@ impl<'a> FlowchartBuilder<'a> {
             self.emit_marker(
                 &format!("{semantic_id}.start-marker"),
                 edge.start_marker,
-                marker_point(&layout_edge.points, MarkerPosition::Start),
+                &layout_edge.points,
+                MarkerPosition::Start,
                 stroke_color,
                 self.line_color,
             )?;
             self.emit_marker(
                 &format!("{semantic_id}.end-marker"),
                 edge.end_marker,
-                marker_point(&layout_edge.points, MarkerPosition::End),
+                &layout_edge.points,
+                MarkerPosition::End,
                 stroke_color,
                 self.line_color,
             )?;
@@ -1096,7 +1101,7 @@ impl<'a> FlowchartBuilder<'a> {
     ) -> Result<TextRun> {
         let text = flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
         let render_style = &style.text_style;
-        let font = font_descriptor_from_style(&self.font, render_style)?;
+        let font = font_descriptor_from_style(&self.font, render_style, self.family_kind)?;
         Ok(TextRun {
             text,
             origin,
@@ -1173,11 +1178,13 @@ impl<'a> FlowchartBuilder<'a> {
         &mut self,
         id: &str,
         marker: FlowEdgeMarker,
-        endpoint: Option<MarkerEndpoint>,
+        points: &[crate::model::LayoutPoint],
+        position: MarkerPosition,
         stroke_color: Color,
         base_fill_color: Color,
     ) -> Result<()> {
-        let Some(endpoint) = endpoint else {
+        let Some(endpoint) = marker_point_for(marker, points, position, self.family_prefix(), id)?
+        else {
             return Ok(());
         };
         let Some((segments, fill, stroke)) =
@@ -2066,14 +2073,38 @@ fn ensure_curve_supported(curve: &str) -> Result<()> {
     }
 }
 
-#[derive(Clone, Copy)]
+fn reject_unportable_neo_effects(config: &Value, family: RenderFamilyKind) -> Result<()> {
+    if config_bool(config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return Err(Error::DrawingListUnavailable {
+            family: family.as_str().to_string(),
+            reason: "neo Flowchart output uses a CSS gradient that DrawingList v1 cannot preserve"
+                .to_string(),
+        });
+    }
+
+    let drop_shadow = config_css_number_or_string(config, &["themeVariables", "dropShadow"])
+        .unwrap_or_else(|| "none".to_string());
+    let normalized = drop_shadow.trim().trim_end_matches(';').trim();
+    if normalized.is_empty() || normalized.eq_ignore_ascii_case("none") {
+        return Ok(());
+    }
+
+    Err(Error::DrawingListUnavailable {
+        family: family.as_str().to_string(),
+        reason:
+            "neo Flowchart output uses a CSS drop-shadow filter that DrawingList v1 cannot preserve"
+                .to_string(),
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
 struct MarkerEndpoint {
     point: Point,
     direction: Point,
     position: MarkerPosition,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum MarkerPosition {
     Start,
     End,
@@ -2083,25 +2114,46 @@ fn marker_point(
     points: &[crate::model::LayoutPoint],
     position: MarkerPosition,
 ) -> Option<MarkerEndpoint> {
-    if points.len() < 2 {
-        return None;
-    }
     let (point, direction) = match position {
         MarkerPosition::Start => {
-            let point = Point::new(points[0].x, points[0].y);
-            let next = Point::new(points[1].x, points[1].y);
-            (point, normalize(next.x - point.x, next.y - point.y))
+            let start = points.first()?;
+            let point = Point::new(start.x, start.y);
+            let direction = points.iter().skip(1).find_map(|candidate| {
+                unit_direction(candidate.x - point.x, candidate.y - point.y)
+            })?;
+            (point, direction)
         }
         MarkerPosition::End => {
-            let point = Point::new(points[points.len() - 1].x, points[points.len() - 1].y);
-            let previous = Point::new(points[points.len() - 2].x, points[points.len() - 2].y);
-            (point, normalize(point.x - previous.x, point.y - previous.y))
+            let end = points.last()?;
+            let point = Point::new(end.x, end.y);
+            let direction = points.iter().rev().skip(1).find_map(|candidate| {
+                unit_direction(point.x - candidate.x, point.y - candidate.y)
+            })?;
+            (point, direction)
         }
     };
     Some(MarkerEndpoint {
         point,
         direction,
         position,
+    })
+}
+
+fn marker_point_for(
+    marker: FlowEdgeMarker,
+    points: &[crate::model::LayoutPoint],
+    position: MarkerPosition,
+    family: &str,
+    marker_id: &str,
+) -> Result<Option<MarkerEndpoint>> {
+    if marker == FlowEdgeMarker::None {
+        return Ok(None);
+    }
+    marker_point(points, position).map(Some).ok_or_else(|| Error::DrawingListUnavailable {
+        family: family.to_string(),
+        reason: format!(
+            "{marker_id} has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation"
+        ),
     })
 }
 
@@ -2192,12 +2244,12 @@ fn marker_stroke(color: Color, width: f64) -> StrokeStyle {
     }
 }
 
-fn normalize(x: f64, y: f64) -> Point {
+fn unit_direction(x: f64, y: f64) -> Option<Point> {
     let length = x.hypot(y);
-    if length < 1e-9 {
-        Point::new(0.0, 1.0)
+    if !length.is_finite() || length < 1e-9 {
+        None
     } else {
-        Point::new(x / length, y / length)
+        Some(Point::new(x / length, y / length))
     }
 }
 
@@ -2404,10 +2456,11 @@ fn parse_font_style(value: &str) -> Result<FontStyle> {
 fn font_descriptor_from_style(
     base: &FontDescriptor,
     style: &RenderTextStyle,
+    family_kind: RenderFamilyKind,
 ) -> Result<FontDescriptor> {
     let mut font = base.clone();
-    if let Some(family) = style.font_family.as_deref() {
-        font.families = parse_font_families(family.to_string());
+    if let Some(font_family) = style.font_family.as_deref() {
+        font.families = parse_font_families_for(font_family, family_kind)?;
     }
     if let Some(weight) = style.font_weight.as_deref() {
         font.weight = parse_font_weight(weight)?;
@@ -2492,6 +2545,7 @@ fn unavailable(message: impl Display) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
         crate::model::LayoutPoint { x, y }
@@ -2519,10 +2573,107 @@ mod tests {
     }
 
     #[test]
+    fn marker_points_skip_coincident_endpoint_points() {
+        let start_points = [point(1.0, 2.0), point(1.0, 2.0), point(4.0, 6.0)];
+        let end_points = [point(1.0, 2.0), point(4.0, 6.0), point(4.0, 6.0)];
+
+        assert_eq!(
+            marker_point(&start_points, MarkerPosition::Start)
+                .expect("start marker tangent")
+                .direction,
+            Point::new(0.6, 0.8)
+        );
+        assert_eq!(
+            marker_point(&end_points, MarkerPosition::End)
+                .expect("end marker tangent")
+                .direction,
+            Point::new(0.6, 0.8)
+        );
+    }
+
+    #[test]
+    fn marker_points_reject_a_fully_degenerate_route() {
+        let points = [point(1.0, 2.0), point(1.0, 2.0), point(1.0, 2.0)];
+
+        assert!(
+            marker_point_for(
+                FlowEdgeMarker::None,
+                &points,
+                MarkerPosition::End,
+                "flowchart",
+                "flowchart.edge.test.marker",
+            )
+            .expect("a marker-free edge does not need a tangent")
+            .is_none()
+        );
+        for position in [MarkerPosition::Start, MarkerPosition::End] {
+            let error = marker_point_for(
+                FlowEdgeMarker::Point,
+                &points,
+                position,
+                "swimlane",
+                "swimlane.edge.test.marker",
+            )
+            .expect_err("a fully degenerate Flowchart-family marker must fail closed");
+            assert!(matches!(
+                error,
+                Error::DrawingListUnavailable { ref family, .. } if family == "swimlane"
+            ));
+            assert!(error.to_string().contains("no non-zero tangent"));
+        }
+    }
+
+    #[test]
     fn portable_css_units_and_font_values_fail_or_convert_explicitly() {
         assert_eq!(parse_css_number("3pt", "stroke-width").unwrap(), 4.0);
         assert_eq!(parse_font_weight("600").unwrap(), 600);
         assert!(parse_font_weight("heavy").is_err());
         assert!(parse_font_style("oblique 12deg").is_err());
+    }
+
+    #[test]
+    fn neo_gradient_and_drop_shadow_fail_closed_for_the_actual_family() {
+        let gradient_error = reject_unportable_neo_effects(
+            &json!({
+                "themeVariables": {
+                    "useGradient": true,
+                    "dropShadow": "none"
+                }
+            }),
+            RenderFamilyKind::Flowchart,
+        )
+        .expect_err("a neo gradient needs an explicit fallback");
+        assert!(matches!(
+            gradient_error,
+            Error::DrawingListUnavailable { ref family, ref reason }
+                if family == "flowchart" && reason.contains("gradient")
+        ));
+
+        let shadow_error = reject_unportable_neo_effects(
+            &json!({
+                "themeVariables": {
+                    "useGradient": false,
+                    "dropShadow": "drop-shadow(1px 2px 2px #000)"
+                }
+            }),
+            RenderFamilyKind::Swimlane,
+        )
+        .expect_err("a neo shadow needs an explicit fallback");
+        assert!(matches!(
+            shadow_error,
+            Error::DrawingListUnavailable { ref family, ref reason }
+                if family == "swimlane" && reason.contains("drop-shadow")
+        ));
+
+        reject_unportable_neo_effects(
+            &json!({
+                "themeVariables": {
+                    "useGradient": false,
+                    "dropShadow": "none;"
+                }
+            }),
+            RenderFamilyKind::Flowchart,
+        )
+        .expect("an explicitly disabled neo effect is renderer-neutral");
     }
 }

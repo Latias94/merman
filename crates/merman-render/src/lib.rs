@@ -39,6 +39,7 @@ pub mod mindmap;
 pub mod model;
 pub mod packet;
 pub mod pie;
+mod portable_font;
 pub mod presentation;
 pub mod quadrantchart;
 pub mod radar;

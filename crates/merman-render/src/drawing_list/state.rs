@@ -6,11 +6,9 @@
 //! randomness and generated paths move behind the canonical document seam.
 
 use super::{
-    RenderDocument, StateSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    RenderDocument, StateSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
-use crate::config::{
-    MERMAID_DEFAULT_FONT_FAMILY_CSS, config_diagram_look, normalize_css_font_family,
-};
+use crate::config::{MERMAID_DEFAULT_FONT_FAMILY_CSS, config_diagram_look};
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -123,14 +121,8 @@ impl<'a> StateBuilder<'a> {
             .font_family
             .as_deref()
             .unwrap_or(MERMAID_DEFAULT_FONT_FAMILY_CSS);
-        let normalized_family = normalize_css_font_family(raw_family);
-        let font_family = if normalized_family.is_empty() {
-            MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
-        } else {
-            normalized_family
-        };
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(raw_family, RenderFamilyKind::State)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,
@@ -549,12 +541,12 @@ impl<'a> StateBuilder<'a> {
         index: usize,
         points: &[crate::model::LayoutPoint],
     ) -> Result<()> {
-        let [.., previous, end] = points else {
+        let Some(end) = points.last() else {
             return Err(invalid(format!(
                 "State edge {index} has no terminal marker tangent"
             )));
         };
-        let direction = normalize(end.x - previous.x, end.y - previous.y);
+        let direction = terminal_marker_direction(points, index)?;
         let normal = Point::new(-direction.y, direction.x);
         let point = |x: f64, y: f64| {
             let dx = x - 19.0;
@@ -842,13 +834,34 @@ fn validate_label_bounds(label: &crate::model::LayoutLabel, edge_id: &str) -> Re
     Ok(())
 }
 
-fn normalize(x: f64, y: f64) -> Point {
+fn unit_direction(x: f64, y: f64) -> Option<Point> {
     let length = x.hypot(y);
-    if length < 1e-9 {
-        Point::new(0.0, 1.0)
+    if !length.is_finite() || length < 1e-9 {
+        None
     } else {
-        Point::new(x / length, y / length)
+        Some(Point::new(x / length, y / length))
     }
+}
+
+fn terminal_marker_direction(
+    points: &[crate::model::LayoutPoint],
+    edge_index: usize,
+) -> Result<Point> {
+    let end = points.last().ok_or_else(|| {
+        invalid(format!(
+            "State edge {edge_index} has no terminal marker point"
+        ))
+    })?;
+    points
+        .iter()
+        .rev()
+        .skip(1)
+        .find_map(|candidate| unit_direction(end.x - candidate.x, end.y - candidate.y))
+        .ok_or_else(|| {
+            unavailable(format!(
+                "State edge {edge_index} marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation"
+            ))
+        })
 }
 
 fn with_alpha(color: Color, opacity: f64) -> Color {
@@ -872,5 +885,37 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "state".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
+        crate::model::LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn terminal_marker_direction_skips_coincident_endpoint_points() {
+        let points = [point(1.0, 2.0), point(4.0, 6.0), point(4.0, 6.0)];
+
+        assert_eq!(
+            terminal_marker_direction(&points, 7).expect("terminal marker direction"),
+            Point::new(0.6, 0.8)
+        );
+    }
+
+    #[test]
+    fn terminal_marker_direction_rejects_a_fully_degenerate_route() {
+        let points = [point(1.0, 2.0), point(1.0, 2.0), point(1.0, 2.0)];
+
+        let error = terminal_marker_direction(&points, 7)
+            .expect_err("a fully degenerate State edge must fail closed");
+        assert!(matches!(
+            error,
+            Error::DrawingListUnavailable { ref family, .. } if family == "state"
+        ));
+        assert!(error.to_string().contains("no non-zero tangent"));
     }
 }

@@ -5,9 +5,9 @@
 //! rows as separate host-text runs so a non-SVG renderer never has to interpret the SVG DOM.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, TimelineSvgBody, parse_font_families,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, TimelineSvgBody, parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -100,13 +100,9 @@ impl<'a> TimelineBuilder<'a> {
                 .transpose()?
                 .unwrap_or(line_color)
         };
-        let font_css = if theme.font_family.trim().is_empty() {
-            config_font_family_css(config)
-        } else {
-            theme.font_family.clone()
-        };
+        let font_css = config_font_family_css_raw(config);
         let font = FontDescriptor {
-            families: parse_font_families(font_css),
+            families: parse_font_families_for(font_css, RenderFamilyKind::Timeline)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

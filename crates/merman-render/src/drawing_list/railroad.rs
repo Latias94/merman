@@ -5,8 +5,8 @@
 //! group structure out of the public document.
 
 use super::{
-    RailroadSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    parse_svg_path,
+    RailroadSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families_for, parse_svg_path,
 };
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
@@ -87,7 +87,7 @@ impl<'a> RailroadBuilder<'a> {
         validate_style(&style)?;
         let styles = PortableStyleResolver::new("railroad");
         let font = FontDescriptor {
-            families: parse_font_families(style.font_family.clone()),
+            families: parse_font_families_for(&style.font_family, RenderFamilyKind::Railroad)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

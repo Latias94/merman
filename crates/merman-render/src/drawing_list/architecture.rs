@@ -6,7 +6,7 @@
 //! renderer-neutral representation in DrawingList v1.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families, theme_color,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for, theme_color,
 };
 use crate::architecture_metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
@@ -149,7 +149,7 @@ impl<'a> ArchitectureBuilder<'a> {
             .or_else(|| config_string(config, &["fontFamily"]))
             .unwrap_or_else(|| "Arial, sans-serif".to_string());
         let font = FontDescriptor {
-            families: parse_font_families(font_family),
+            families: parse_font_families_for(font_family, RenderFamilyKind::Architecture)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

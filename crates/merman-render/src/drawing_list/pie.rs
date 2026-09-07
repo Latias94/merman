@@ -6,7 +6,7 @@
 //! DrawingList v1 contract intentionally has no host interaction state machine.
 
 use super::{
-    PieSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
+    PieSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::config::config_string;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
@@ -106,9 +106,9 @@ impl<'a> PieBuilder<'a> {
         let settings = PieConfigView::new(config).render_settings();
         let theme = PresentationTheme::new(config).pie_drawing();
         let styles = PortableStyleResolver::new("pie");
-        let font_family_css = theme.font_family_css.clone();
+        let font_family_css = crate::config::config_font_family_css_raw(config);
         let font = FontDescriptor {
-            families: parse_font_families(theme.font_family_css),
+            families: parse_font_families_for(&font_family_css, RenderFamilyKind::Pie)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

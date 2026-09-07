@@ -6,9 +6,9 @@
 
 use super::{
     QuadrantChartSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
-    parse_font_families,
+    parse_font_families_for,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -78,7 +78,7 @@ impl<'a> QuadrantChartBuilder<'a> {
         let config = metadata.effective_config.as_value();
         let layout = pair.layout();
         validate_layout(layout)?;
-        let font_family_css = config_font_family_css(config);
+        let font_family_css = config_font_family_css_raw(config);
         let use_max_width = QuadrantChartConfigView::new(config)
             .render_settings()
             .use_max_width;
@@ -91,7 +91,10 @@ impl<'a> QuadrantChartBuilder<'a> {
             root_width: layout.width.max(1.0),
             root_height: layout.height.max(1.0),
             font: FontDescriptor {
-                families: parse_font_families(font_family_css.clone()),
+                families: parse_font_families_for(
+                    &font_family_css,
+                    RenderFamilyKind::QuadrantChart,
+                )?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,

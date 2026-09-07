@@ -6,12 +6,12 @@
 //! resources and commands. Unsupported CSS effects fail closed instead of disappearing.
 
 use super::{
-    GitGraphSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
-    parse_svg_path,
+    GitGraphSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
+    parse_font_families_for, parse_svg_path,
 };
 use crate::config::{
     config_bool, config_css_number_or_string, config_diagram_look, config_f64, config_f64_css_px,
-    config_font_family_css, config_string, config_string_vec,
+    config_font_family_css_raw, config_string, config_string_vec,
 };
 use crate::drawing_list::flowchart::{polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
@@ -376,7 +376,10 @@ impl<'a> GitGraphBuilder<'a> {
         validate_layout(layout)?;
         let theme = GitGraphTheme::from_config(config)?;
         let font = FontDescriptor {
-            families: parse_font_families(config_font_family_css(config)),
+            families: parse_font_families_for(
+                config_font_family_css_raw(config),
+                RenderFamilyKind::GitGraph,
+            )?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

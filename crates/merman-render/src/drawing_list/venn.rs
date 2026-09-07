@@ -5,7 +5,7 @@
 //! capability boundaries until the canonical document can describe them without SVG semantics.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, VennSvgBody, parse_font_families,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, VennSvgBody, parse_font_families_for,
     parse_svg_path,
 };
 use crate::config::config_diagram_look;
@@ -94,9 +94,9 @@ impl<'a> VennBuilder<'a> {
         validate_layout(layout)?;
 
         let theme = PresentationTheme::new(config).venn()?;
-        let font_family_css = theme.font_family_css.clone();
+        let font_family_css = crate::config::config_font_family_css_root_first_raw(config);
         let font = FontDescriptor {
-            families: parse_font_families(font_family_css.clone()),
+            families: parse_font_families_for(&font_family_css, RenderFamilyKind::Venn)?,
             weight: 400,
             style: FontStyle::Normal,
             postscript_name: None,

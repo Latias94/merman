@@ -5,10 +5,10 @@
 //! visual plan without rebuilding chart geometry or relying on the SVG DOM group tree.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, XyChartSvgBody, parse_font_families,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, XyChartSvgBody, parse_font_families_for,
     parse_svg_path,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -81,7 +81,7 @@ impl<'a> XyChartBuilder<'a> {
         let config = metadata.effective_config.as_value();
         let layout = pair.layout();
         validate_layout(layout)?;
-        let font_family_css = config_font_family_css(config);
+        let font_family_css = config_font_family_css_raw(config);
         Ok(Self {
             metadata,
             session,
@@ -89,7 +89,7 @@ impl<'a> XyChartBuilder<'a> {
             model: pair.semantic(),
             layout,
             font: FontDescriptor {
-                families: parse_font_families(font_family_css.clone()),
+                families: parse_font_families_for(&font_family_css, RenderFamilyKind::XyChart)?,
                 weight: 400,
                 style: FontStyle::Normal,
                 postscript_name: None,

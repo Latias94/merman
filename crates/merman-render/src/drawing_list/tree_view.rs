@@ -5,10 +5,10 @@
 //! rejects arbitrary registry SVG rather than hiding or approximating it.
 
 use super::{
-    RenderDocument, SvgStructureBody, SvgStructureSidecar, TreeViewSvgBody, parse_font_families,
-    parse_svg_path,
+    RenderDocument, SvgStructureBody, SvgStructureSidecar, TreeViewSvgBody,
+    parse_font_families_for, parse_svg_path,
 };
-use crate::config::config_font_family_css;
+use crate::config::config_font_family_css_raw;
 use crate::drawing_list::flowchart::{polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -106,7 +106,10 @@ impl<'a> TreeViewBuilder<'a> {
             .nodes
             .iter()
             .any(|node| crate::tree_view::is_tree_view_highlight_class(node.css_class.as_deref()));
-        let font_families = parse_font_families(config_font_family_css(config));
+        let font_families = parse_font_families_for(
+            config_font_family_css_raw(config),
+            RenderFamilyKind::TreeView,
+        )?;
         let normal_font = font(font_families.clone(), 400, FontStyle::Normal);
         let directory_font = font(font_families.clone(), 700, FontStyle::Normal);
         let description_font = font(font_families, 400, FontStyle::Italic);
