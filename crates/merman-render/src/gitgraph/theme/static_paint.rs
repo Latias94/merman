@@ -70,10 +70,10 @@ impl GitGraphStaticPaintPlan {
         let mermaid_owns_commit_label_background = effective_config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
-        let has_visible_commit_label = layout.commits.iter().any(|commit| {
-            crate::gitgraph::gitgraph_commit_label_is_visible(layout, commit)
-                && !commit.id.trim().is_empty()
-        });
+        let has_visible_commit_label = layout
+            .commits
+            .iter()
+            .any(|commit| crate::gitgraph::gitgraph_commit_label_is_visible(layout, commit));
         let assignment = (has_visible_commit_label
             && !mermaid_owns_commit_label_background
             && !merman_core::__private::config_path_overrides_typed_default(

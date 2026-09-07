@@ -284,7 +284,8 @@ pub(crate) fn gitgraph_commit_label_is_visible(
     layout: &GitGraphDiagramLayout,
     commit: &GitGraphCommitLayout,
 ) -> bool {
-    (commit.commit_type != 3 || commit.custom_id.unwrap_or(false))
+    !commit.id.trim().is_empty()
+        && (commit.commit_type != 3 || commit.custom_id.unwrap_or(false))
         && commit.commit_type != 4
         && layout.show_commit_label
 }
