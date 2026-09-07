@@ -4,7 +4,7 @@ use merman_core::OperationPhase;
 use merman_display_list::{
     CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListError,
     DrawingListFootprint, DrawingListLimits, DrawingListPolicy, DrawingResource, PathResource,
-    PathSegment, ResourceId, SemanticAnnotation, TextObligation, TextRun, Viewport,
+    PathSegment, PathStyle, ResourceId, SemanticAnnotation, TextObligation, TextRun, Viewport,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -41,6 +41,10 @@ impl<'a> DrawingListBuilder<'a> {
             commands: Vec::new(),
             semantics: Vec::new(),
         }
+    }
+
+    pub(crate) fn command_count(&self) -> usize {
+        self.commands.len()
     }
 
     /// Adds a command that does not own variable-sized drawing payload.
@@ -101,8 +105,7 @@ impl<'a> DrawingListBuilder<'a> {
 
     /// Adds an already-materialized path without cloning its segment storage.
     ///
-    /// The current Error and Packet paths have fixed, small segment counts. Families whose input
-    /// can amplify into large paths need an incremental admission method before they migrate.
+    /// Use `draw_path_with` when input can amplify into a variable-sized path.
     pub(crate) fn draw_path(
         &mut self,
         id: ResourceId,
@@ -135,6 +138,73 @@ impl<'a> DrawingListBuilder<'a> {
         self.commands
             .try_reserve(1)
             .map_err(|_| allocation_failed("commands"))?;
+        self.resources.push(DrawingResource::Path(PathResource {
+            id: id.clone(),
+            segments,
+        }));
+        self.commands
+            .push(DrawingCommand::DrawPath { path: id, style });
+        self.usage = next;
+        Ok(())
+    }
+
+    /// Admits each generated segment before growing the path's backing storage.
+    ///
+    /// Resource and command budgets are checked before invoking the producer. A rejected path
+    /// leaves the committed footprint, resources, and commands unchanged.
+    pub(crate) fn draw_path_with(
+        &mut self,
+        id: ResourceId,
+        style: PathStyle,
+        emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<()>,
+    ) -> Result<()> {
+        let mut next = self.usage;
+        checked_increment(&mut next.resources, 1, "resource count")?;
+        checked_increment(&mut next.commands, 1, "command count")?;
+        if let Some(stroke) = &style.stroke {
+            checked_increment(
+                &mut next.stroke_dash_entries,
+                stroke.dash_array.len(),
+                "stroke dash entry count",
+            )?;
+        }
+        self.preflight(next)?;
+        self.resources
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("resources"))?;
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("commands"))?;
+
+        let mut segments = Vec::new();
+        let mut rejected = false;
+        emit(&mut |segment| {
+            if rejected {
+                return Err(contract_error(
+                    "DrawingList path producer ignored a rejected segment",
+                ));
+            }
+            let result = (|| {
+                checked_increment(&mut next.path_segments, 1, "path segment count")?;
+                self.preflight(next)?;
+                segments
+                    .try_reserve(1)
+                    .map_err(|_| allocation_failed("path segments"))?;
+                segments.push(segment);
+                Ok(())
+            })();
+            rejected = result.is_err();
+            result
+        })?;
+        if rejected {
+            return Err(contract_error(
+                "DrawingList path producer ignored a rejected segment",
+            ));
+        }
+        if segments.is_empty() {
+            return Err(contract_error("DrawingList path has no geometry"));
+        }
+        self.session.checkpoint(OperationPhase::Emit)?;
         self.resources.push(DrawingResource::Path(PathResource {
             id: id.clone(),
             segments,
@@ -394,6 +464,108 @@ mod tests {
         ));
         assert!(builder.resources.is_empty());
         assert!(builder.commands.is_empty());
+    }
+
+    #[test]
+    fn incremental_path_checks_command_and_resource_limits_before_emission() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        for limits in [
+            DrawingListLimits {
+                max_commands: 0,
+                ..DrawingListLimits::default()
+            },
+            DrawingListLimits {
+                max_resources: 0,
+                ..DrawingListLimits::default()
+            },
+        ] {
+            let mut builder =
+                DrawingListBuilder::new(DrawingListPolicy::AllowRasterSubtree, limits, &session);
+            let mut called = false;
+            let error = builder
+                .draw_path_with(ResourceId::new("path"), path_style(), |_| {
+                    called = true;
+                    Ok(())
+                })
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                Error::DrawingListContract(DrawingListError::ResourceLimit { .. })
+            ));
+            assert!(!called);
+            assert!(builder.resources.is_empty());
+            assert_eq!(builder.command_count(), 0);
+            assert_eq!(builder.usage, DrawingListFootprint::default());
+        }
+    }
+
+    #[test]
+    fn incremental_path_limit_stops_emission_without_committing_partial_geometry() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::AllowRasterSubtree,
+            DrawingListLimits {
+                max_path_segments: 2,
+                ..DrawingListLimits::default()
+            },
+            &session,
+        );
+        let mut attempted = 0;
+        let error = builder
+            .draw_path_with(ResourceId::new("path"), path_style(), |emit| {
+                for _ in 0..100 {
+                    attempted += 1;
+                    emit(PathSegment::MoveTo {
+                        to: Point::new(0.0, 0.0),
+                    })?;
+                }
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::DrawingListContract(DrawingListError::ResourceLimit {
+                resource: "path_segments",
+                actual: 3,
+                maximum: 2,
+            })
+        ));
+        assert_eq!(attempted, 3);
+        assert!(builder.resources.is_empty());
+        assert_eq!(builder.command_count(), 0);
+        assert_eq!(builder.usage, DrawingListFootprint::default());
+    }
+
+    #[test]
+    fn incremental_path_cancellation_discards_admitted_segments() {
+        let environment = RenderEnvironment::deterministic();
+        let control = OperationControl::new();
+        let session = make_session(&environment, control.clone());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::AllowRasterSubtree,
+            DrawingListLimits::default(),
+            &session,
+        );
+        let mut attempted = 0;
+        let error = builder
+            .draw_path_with(ResourceId::new("path"), path_style(), |emit| {
+                for _ in 0..100 {
+                    attempted += 1;
+                    emit(PathSegment::MoveTo {
+                        to: Point::new(0.0, 0.0),
+                    })?;
+                    control.cancel();
+                }
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(error, Error::Cancelled(_)));
+        assert_eq!(attempted, 2);
+        assert!(builder.resources.is_empty());
+        assert_eq!(builder.command_count(), 0);
+        assert_eq!(builder.usage, DrawingListFootprint::default());
     }
 
     #[test]

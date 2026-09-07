@@ -665,7 +665,7 @@ pub(crate) fn build_for_family(
             build_swimlane_document(artifact, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Class(pair) => {
-            class::build_class_document(pair, metadata, policy, session)
+            class::build_class_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::C4(pair) => c4::build_c4_document(pair, metadata, policy, session),
         BuiltinFamilyArtifact::Er(pair) => er::build_er_document(pair, metadata, policy, session),

@@ -5,6 +5,7 @@
 //! come from the typed Class model/layout pair.  This adapter consumes those artifacts directly;
 //! it never reparses or imports the SVG DOM.
 
+use super::builder::DrawingListBuilder;
 use super::{
     ClassSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     theme_color,
@@ -17,17 +18,17 @@ use crate::drawing_list::support::{
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, ClassDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode};
-use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
+use crate::render_geometry::emit_basis_segments;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
 use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -42,16 +43,16 @@ pub(crate) fn build_class_document(
     pair: &ClassPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = ClassBuilder::new(pair, metadata, policy, session)?;
+    let builder = ClassBuilder::new(pair, metadata, policy, limits, session)?;
     builder.build()
 }
 
 struct ClassBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a ClassDiagram,
     layout: &'a ClassDiagramLayout,
     nodes_by_id: HashMap<&'a str, &'a LayoutNode>,
@@ -73,9 +74,7 @@ struct ClassBuilder<'a> {
     namespace_text: Color,
     note_fill: Color,
     note_stroke: Color,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
 }
 
 struct TextEmitSpec {
@@ -92,9 +91,15 @@ impl<'a> ClassBuilder<'a> {
         pair: &'a ClassPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "class.document".to_string(),
+        })?;
         let model = pair.semantic();
         let layout = pair.layout();
         let config = metadata.effective_config.as_value();
@@ -170,10 +175,20 @@ impl<'a> ClassBuilder<'a> {
             .map(|interface| (interface.id.as_str(), interface))
             .collect::<HashMap<_, _>>();
 
+        output.push_semantic(SemanticAnnotation {
+            id: "class.document".to_string(),
+            role: SemanticRole::Document,
+            title: model
+                .acc_title
+                .clone()
+                .or_else(|| metadata.title.clone())
+                .or_else(|| Some(metadata.diagram_type.clone())),
+            description: model.acc_descr.clone(),
+            link: None,
+        })?;
         let builder = Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             nodes_by_id,
@@ -195,30 +210,13 @@ impl<'a> ClassBuilder<'a> {
             namespace_text,
             note_fill,
             note_stroke,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "class.document".to_string(),
-                },
-            ],
-            semantics: vec![SemanticAnnotation {
-                id: "class.document".to_string(),
-                role: SemanticRole::Document,
-                title: model
-                    .acc_title
-                    .clone()
-                    .or_else(|| metadata.title.clone())
-                    .or_else(|| Some(metadata.diagram_type.clone())),
-                description: model.acc_descr.clone(),
-                link: None,
-            }],
+            output,
         };
         builder.preflight()?;
         Ok(builder)
     }
 
-    fn build(&mut self) -> Result<RenderDocument> {
+    fn build(mut self) -> Result<RenderDocument> {
         self.session.checkpoint(OperationPhase::Emit)?;
 
         // Mermaid paints namespace clusters first, then relation geometry/labels, then nodes.
@@ -238,8 +236,8 @@ impl<'a> ClassBuilder<'a> {
             self.emit_node(index, node)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
         let bounds = self
             .layout
             .bounds
@@ -261,21 +259,14 @@ impl<'a> ClassBuilder<'a> {
             })
             .unwrap_or(8.0)
             .max(0.0);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 bounds.min_x - padding,
                 bounds.min_y - padding,
                 (bounds.max_x - bounds.min_x) + 2.0 * padding,
                 (bounds.max_y - bounds.min_y) + 2.0 * padding,
             )),
-            policy: self.policy,
-            resources: std::mem::take(&mut self.resources),
-            commands: std::mem::take(&mut self.commands),
-            semantics: std::mem::take(&mut self.semantics),
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-class".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -284,8 +275,7 @@ impl<'a> ClassBuilder<'a> {
                     "label_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -305,6 +295,7 @@ impl<'a> ClassBuilder<'a> {
             return Err(invalid("Class diagram has no layout or semantic nodes"));
         }
         for node in self.model.classes.values() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             if !node.styles.is_empty() {
                 return Err(unavailable(format!(
                     "Class node `{}` carries unresolved style class references",
@@ -318,25 +309,30 @@ impl<'a> ClassBuilder<'a> {
                 )));
             }
             for text in class_node_texts(node) {
+                self.session.checkpoint(OperationPhase::Emit)?;
                 plain_text(text)
                     .map_err(|error| unavailable(format!("Class node `{}`: {error}", node.id)))?;
             }
         }
         for note in &self.model.notes {
+            self.session.checkpoint(OperationPhase::Emit)?;
             plain_text(&note.text)
                 .map_err(|error| unavailable(format!("Class note `{}`: {error}", note.id)))?;
         }
         for interface in &self.model.interfaces {
+            self.session.checkpoint(OperationPhase::Emit)?;
             plain_text(&interface.label).map_err(|error| {
                 unavailable(format!("Class interface `{}`: {error}", interface.id))
             })?;
         }
         for namespace in self.model.namespaces.values() {
+            self.session.checkpoint(OperationPhase::Emit)?;
             plain_text(&namespace.label).map_err(|error| {
                 unavailable(format!("Class namespace `{}`: {error}", namespace.id))
             })?;
         }
         for relation in &self.model.relations {
+            self.session.checkpoint(OperationPhase::Emit)?;
             for text in [
                 relation.title.as_str(),
                 relation.relation_title_1.as_deref().unwrap_or(""),
@@ -356,27 +352,28 @@ impl<'a> ClassBuilder<'a> {
             }
         }
         for node in &self.layout.nodes {
+            self.session.checkpoint(OperationPhase::Emit)?;
             if !node.is_cluster && !self.nodes_by_id.contains_key(node.id.as_str()) {
                 return Err(invalid(format!("Class node `{}` is not unique", node.id)));
             }
             validate_layout_node(node)?;
         }
         for edge in &self.layout.edges {
+            self.session.checkpoint(OperationPhase::Emit)?;
             if edge.points.len() < 2 {
                 return Err(invalid(format!(
                     "Class edge `{}` has fewer than two route points",
                     edge.id
                 )));
             }
-            if edge
-                .points
-                .iter()
-                .any(|point| !point.x.is_finite() || !point.y.is_finite())
-            {
-                return Err(invalid(format!(
-                    "Class edge `{}` has non-finite route points",
-                    edge.id
-                )));
+            for point in &edge.points {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                if !point.x.is_finite() || !point.y.is_finite() {
+                    return Err(invalid(format!(
+                        "Class edge `{}` has non-finite route points",
+                        edge.id
+                    )));
+                }
             }
             for label in edge_labels(edge).into_iter().flatten() {
                 validate_label(label, &edge.id)?;
@@ -388,9 +385,10 @@ impl<'a> ClassBuilder<'a> {
     fn emit_cluster(&mut self, index: usize, cluster: &crate::model::LayoutCluster) -> Result<()> {
         let bounds = centered_rect(cluster.x, cluster.y, cluster.width, cluster.height);
         let semantic_id = format!("class.namespace.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.box"),
             rectangle_path(bounds),
@@ -413,57 +411,56 @@ impl<'a> ClassBuilder<'a> {
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,
                 },
-            );
+            )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(title),
             description: Some(format!("Namespace {}", cluster.id)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
     fn emit_edge(&mut self, index: usize, edge: &LayoutEdge) -> Result<()> {
         let relation = self.relations_by_id.get(edge.id.as_str()).copied();
         let semantic_id = format!("class.edge.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
-        let segments =
-            flowchart_curve_segments(&edge.points, FlowchartCurveKind::Basis, 0.0, false, None);
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let mut style = stroke(self.line_color, 1.0);
         if relation.is_some_and(|relation| relation.relation.line_type != 0) {
             style.dash_array = vec![5.0, 5.0];
         }
-        self.add_path(
-            format!("{semantic_id}.route"),
-            segments,
+        self.output.draw_path_with(
+            ResourceId::new(format!("{semantic_id}.route")),
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: None,
                 stroke: Some(style),
             },
+            |emit| emit_basis_segments(&edge.points, emit),
         )?;
         if let Some(relation) = relation {
             self.emit_relation_marker(&semantic_id, edge, relation, true)?;
             self.emit_relation_marker(&semantic_id, edge, relation, false)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         let title = relation
             .and_then(|relation| {
                 (!relation.title.trim().is_empty()).then(|| plain_text(&relation.title).ok())
             })
             .flatten();
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.clone(),
             role: SemanticRole::Edge,
             title,
             description: Some(format!("{} → {}", edge.from, edge.to)),
             link: None,
-        });
+        })?;
 
         if let Some(relation) = relation {
             if let Some(label) = edge.label.as_ref()
@@ -565,7 +562,7 @@ impl<'a> ClassBuilder<'a> {
             )));
         };
         self.emit_label(
-            &format!("{semantic_id}.terminal.{}", self.commands.len()),
+            &format!("{semantic_id}.terminal.{}", self.output.command_count()),
             text,
             label,
             description,
@@ -583,9 +580,10 @@ impl<'a> ClassBuilder<'a> {
         if text.trim().is_empty() {
             return Ok(());
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         let bounds = label_rect(label);
         self.add_path(
             format!("{semantic_id}.background"),
@@ -613,23 +611,24 @@ impl<'a> ClassBuilder<'a> {
                 anchor: TextAnchor::Middle,
                 baseline: TextBaseline::Middle,
             },
-        );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        )?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Label,
             title: Some(text),
             description: Some(description),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
     fn emit_node(&mut self, index: usize, layout_node: &LayoutNode) -> Result<()> {
         let semantic_id = format!("class.node.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if let Some(note) = self.notes_by_id.get(layout_node.id.as_str()).copied() {
             let text = plain_text(&note.text).map_err(unavailable)?;
             self.add_path(
@@ -661,14 +660,14 @@ impl<'a> ClassBuilder<'a> {
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,
                 },
-            );
-            self.semantics.push(SemanticAnnotation {
+            )?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id.clone(),
                 role: SemanticRole::Node,
                 title: Some(text),
                 description: Some(format!("Note {}", note.id)),
                 link: None,
-            });
+            })?;
         } else if let Some(interface) = self.interfaces_by_id.get(layout_node.id.as_str()).copied()
         {
             let text = plain_text(&interface.label).map_err(unavailable)?;
@@ -697,14 +696,14 @@ impl<'a> ClassBuilder<'a> {
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,
                 },
-            );
-            self.semantics.push(SemanticAnnotation {
+            )?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id.clone(),
                 role: SemanticRole::Node,
                 title: Some(text),
                 description: Some(format!("Interface {}", interface.id)),
                 link: None,
-            });
+            })?;
         } else {
             let node = self
                 .model
@@ -718,7 +717,7 @@ impl<'a> ClassBuilder<'a> {
                 })?;
             self.emit_class_node(&semantic_id, node, layout_node)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         Ok(())
     }
 
@@ -744,39 +743,43 @@ impl<'a> ClassBuilder<'a> {
             },
         )?;
 
-        let mut lines = Vec::new();
         let title = format!("{}{}", node.text.trim(), node.type_param.trim());
-        if !title.trim().is_empty() {
-            lines.push((
-                plain_text(&title).map_err(unavailable)?,
-                FontStyle::Normal,
-                700_u16,
-            ));
-        }
-        for annotation in &node.annotations {
-            let annotation = format!("«{}»", plain_text(annotation).map_err(unavailable)?);
-            lines.push((annotation, FontStyle::Italic, 400));
-        }
-        let members_start = lines.len();
-        for member in &node.members {
-            lines.push((plain_member_text(member)?, FontStyle::Normal, 400));
-        }
-        let methods_start = lines.len();
-        for method in &node.methods {
-            lines.push((plain_member_text(method)?, FontStyle::Normal, 400));
-        }
-        if lines.is_empty() {
-            lines.push((node.id.clone(), FontStyle::Normal, 400));
-        }
+        let has_title = !title.trim().is_empty();
+        let members_start = usize::from(has_title) + node.annotations.len();
+        let methods_start = members_start + node.members.len();
+        let body_lines = methods_start + node.methods.len();
+        let line_count = body_lines.max(1);
+        // Normalize and admit one line at a time rather than retaining a second copy of every
+        // member and method before the caller's text budget can stop the build.
+        let lines =
+            has_title
+                .then_some(title.as_str())
+                .into_iter()
+                .map(|text| {
+                    plain_text(text)
+                        .map(|text| (text, FontStyle::Normal, 700_u16))
+                        .map_err(unavailable)
+                })
+                .chain(node.annotations.iter().map(|annotation| {
+                    plain_text(annotation)
+                        .map(|text| (format!("«{text}»"), FontStyle::Italic, 400))
+                        .map_err(unavailable)
+                }))
+                .chain(node.members.iter().chain(&node.methods).map(|member| {
+                    plain_member_text(member).map(|text| (text, FontStyle::Normal, 400))
+                }))
+                .chain((body_lines == 0).then(|| Ok((node.id.clone(), FontStyle::Normal, 400))));
 
         let line_height = self.line_height.max(1.0);
-        let total_height = line_height * lines.len() as f64;
+        let total_height = line_height * line_count as f64;
         let first_y = layout_node.y - total_height / 2.0 + line_height / 2.0;
-        for (line_index, (text, style, weight)) in lines.iter().enumerate() {
+        for (line_index, line) in lines.enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let (text, style, weight) = line?;
             let x = layout_node.x;
             let y = first_y + line_index as f64 * line_height;
             self.draw_text(
-                text,
+                &text,
                 TextEmitSpec {
                     origin: Point::new(x, y),
                     bounds: Rect::new(
@@ -787,22 +790,22 @@ impl<'a> ClassBuilder<'a> {
                     ),
                     fill: self.node_text,
                     font: FontDescriptor {
-                        weight: *weight,
-                        style: *style,
+                        weight,
+                        style,
                         ..self.font.clone()
                     },
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,
                 },
-            );
+            )?;
         }
 
-        let first_divider = if members_start > 0 && members_start < lines.len() {
+        let first_divider = if members_start > 0 && members_start < line_count {
             Some(first_y + (members_start as f64 - 0.5) * line_height)
         } else {
             None
         };
-        let second_divider = if methods_start > members_start && methods_start < lines.len() {
+        let second_divider = if methods_start > members_start && methods_start < line_count {
             Some(first_y + (methods_start as f64 - 0.5) * line_height)
         } else {
             None
@@ -825,19 +828,19 @@ impl<'a> ClassBuilder<'a> {
                 },
             )?;
         }
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Node,
             title: Some(svg_plain_text(&title)),
             description: Some(format!("Class {}", node.id)),
             link: portable_navigation_uri(node.link.as_deref(), self.navigation_security),
-        });
+        })?;
         Ok(())
     }
 
-    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) -> Result<()> {
+        self.output.draw_host_text(text, |text| TextRun {
+            text,
             origin: spec.origin,
             bounds: spec.bounds,
             style: TextStyle {
@@ -854,19 +857,11 @@ impl<'a> ClassBuilder<'a> {
             direction: TextDirection::Auto,
             language: None,
             obligation: self.text_obligation.clone(),
-        }));
+        })
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: ResourceId::new(id.clone()),
-            segments,
-        }));
-        self.commands.push(DrawingCommand::DrawPath {
-            path: ResourceId::new(id),
-            style,
-        });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
 }
 

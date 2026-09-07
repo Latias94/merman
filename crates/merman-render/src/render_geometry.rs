@@ -384,25 +384,48 @@ fn linear_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
 }
 
 fn basis_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
-    if points.is_empty() {
-        return Vec::new();
+    let mut out = Vec::new();
+    let result: std::result::Result<(), std::convert::Infallible> =
+        emit_basis_segments(points, |segment| {
+            out.push(segment);
+            Ok(())
+        });
+    match result {
+        Ok(()) => out,
+        Err(never) => match never {},
     }
+}
+
+pub(crate) fn emit_basis_segments<E>(
+    points: &[LayoutPoint],
+    mut emit: impl FnMut(PathSegment) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
+    let Some(first) = points.first() else {
+        return Ok(());
+    };
+    emit(PathSegment::MoveTo {
+        to: Point::new(first.x, first.y),
+    })?;
     if points.len() < 3 {
-        return linear_segments(points);
+        for point in points.iter().skip(1) {
+            emit(PathSegment::LineTo {
+                to: Point::new(point.x, point.y),
+            })?;
+        }
+        return Ok(());
     }
     let point = |index: usize| Point::new(points[index].x, points[index].y);
-    let mut out = vec![PathSegment::MoveTo { to: point(0) }];
-    out.push(PathSegment::LineTo {
+    emit(PathSegment::LineTo {
         to: Point::new(
             (5.0 * points[0].x + points[1].x) / 6.0,
             (5.0 * points[0].y + points[1].y) / 6.0,
         ),
-    });
+    })?;
     for index in 1..points.len() - 1 {
         let previous = point(index - 1);
         let current = point(index);
         let next = point(index + 1);
-        out.push(PathSegment::CubicTo {
+        emit(PathSegment::CubicTo {
             control1: Point::new(
                 (2.0 * previous.x + current.x) / 3.0,
                 (2.0 * previous.y + current.y) / 3.0,
@@ -415,11 +438,11 @@ fn basis_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
                 (previous.x + 4.0 * current.x + next.x) / 6.0,
                 (previous.y + 4.0 * current.y + next.y) / 6.0,
             ),
-        });
+        })?;
     }
     let previous = point(points.len() - 2);
     let current = point(points.len() - 1);
-    out.push(PathSegment::CubicTo {
+    emit(PathSegment::CubicTo {
         control1: Point::new(
             (2.0 * previous.x + current.x) / 3.0,
             (2.0 * previous.y + current.y) / 3.0,
@@ -432,9 +455,8 @@ fn basis_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
             (previous.x + 5.0 * current.x) / 6.0,
             (previous.y + 5.0 * current.y) / 6.0,
         ),
-    });
-    out.push(PathSegment::LineTo { to: current });
-    out
+    })?;
+    emit(PathSegment::LineTo { to: current })
 }
 
 fn rounded_segments(
@@ -502,6 +524,48 @@ mod tests {
 
     fn point(x: f64, y: f64) -> LayoutPoint {
         LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn basis_emission_preserves_geometry_and_propagates_rejection() {
+        let points = [point(0.0, 0.0), point(6.0, 12.0), point(12.0, 0.0)];
+        assert_eq!(
+            basis_segments(&points),
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(1.0, 2.0),
+                },
+                PathSegment::CubicTo {
+                    control1: Point::new(2.0, 4.0),
+                    control2: Point::new(4.0, 8.0),
+                    to: Point::new(6.0, 8.0),
+                },
+                PathSegment::CubicTo {
+                    control1: Point::new(8.0, 8.0),
+                    control2: Point::new(10.0, 4.0),
+                    to: Point::new(11.0, 2.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(12.0, 0.0),
+                },
+            ]
+        );
+        for length in 0..3 {
+            assert_eq!(
+                basis_segments(&points[..length]),
+                linear_segments(&points[..length])
+            );
+        }
+        let mut attempted = 0;
+        let result = emit_basis_segments(&points, |_| {
+            attempted += 1;
+            if attempted == 3 { Err("stop") } else { Ok(()) }
+        });
+        assert_eq!(result, Err("stop"));
+        assert_eq!(attempted, 3);
     }
 
     #[test]

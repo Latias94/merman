@@ -287,6 +287,98 @@ fn class_emits_typed_compartments_relations_namespaces_and_notes() {
                 description.contains("Animal") && description.contains("Dog")
             })
     }));
+
+    let footprint = document
+        .footprint()
+        .expect("the Class document should have a valid footprint");
+    let request = DrawingListRequest {
+        limits: DrawingListLimits {
+            max_serialized_bytes: output.json().len(),
+            max_commands: footprint.commands,
+            max_resources: footprint.resources,
+            max_path_segments: footprint.path_segments,
+            max_stroke_dash_entries: footprint.stroke_dash_entries,
+            max_image_bytes: footprint.image_bytes,
+            max_image_pixels: footprint.image_pixels,
+            max_fallback_pixels: footprint.fallback_pixels,
+            max_font_bytes: footprint.font_bytes,
+            max_nesting_depth: footprint.max_nesting_depth,
+            max_fallbacks: footprint.fallbacks,
+            max_text_bytes: footprint.text_bytes,
+            max_glyphs: footprint.glyphs,
+        },
+        ..DrawingListRequest::default()
+    };
+    let bounded = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            request,
+        ))
+        .expect("the Class document must fit its exact footprint and serialized size");
+    let RenderOutput::DrawingList(Some(bounded)) = bounded else {
+        panic!("expected a DrawingList output");
+    };
+    assert_eq!(bounded.json(), output.json());
+}
+
+#[test]
+fn class_limits_reject_the_first_over_budget_builder_item() {
+    let source = r#"classDiagram
+        class A {
+            +value: String
+            +run()
+        }
+        class B
+        A <|-- B
+    "#;
+    for (id, actual, maximum, limits) in [
+        (
+            "max_commands",
+            1,
+            0,
+            DrawingListLimits {
+                max_commands: 0,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_resources",
+            2,
+            1,
+            DrawingListLimits {
+                max_resources: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_text_bytes",
+            1,
+            0,
+            DrawingListLimits {
+                max_text_bytes: 0,
+                ..DrawingListLimits::default()
+            },
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest {
+                    limits,
+                    ..DrawingListRequest::default()
+                },
+            ))
+            .expect_err("the Class builder must stop at its first over-budget item");
+        let RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a resource-limit error for {id}, got {error}");
+        };
+        assert_eq!(limit.id, id);
+        assert_eq!(limit.phase, "drawing-list-validation");
+        assert_eq!(limit.actual, actual, "first over-budget item for {id}");
+        assert_eq!(limit.maximum, maximum);
+    }
 }
 
 #[test]
