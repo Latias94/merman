@@ -695,7 +695,7 @@ pub(crate) fn build_for_family(
             pie::build_pie_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::QuadrantChart(pair) => {
-            quadrantchart::build_quadrantchart_document(pair, metadata, policy, session)
+            quadrantchart::build_quadrantchart_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Radar(pair) => {
             radar::build_radar_document(pair, metadata, policy, limits, session)
@@ -719,7 +719,7 @@ pub(crate) fn build_for_family(
             treemap::build_treemap_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::TreeView(pair) => {
-            tree_view::build_tree_view_document(pair, metadata, policy, session)
+            tree_view::build_tree_view_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Venn(pair) => {
             venn::build_venn_document(pair, metadata, policy, limits, session)

@@ -9,6 +9,7 @@ use super::{
     parse_font_families_for,
 };
 use crate::config::config_font_family_css_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -30,10 +31,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use merman_display_list::{
-    CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListPolicy,
-    DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource, PathSegment,
-    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
-    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor, FontStyle,
+    Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -44,15 +45,16 @@ pub(crate) fn build_quadrantchart_document(
     pair: &QuadrantChartPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    QuadrantChartBuilder::new(pair, metadata, policy, session)?.build()
+    QuadrantChartBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct QuadrantChartBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a QuadrantChartRenderModel,
     layout: &'a QuadrantChartDiagramLayout,
     root_width: f64,
@@ -60,9 +62,6 @@ struct QuadrantChartBuilder<'a> {
     font_family_css: String,
     font: FontDescriptor,
     text_obligation: TextObligation,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     svg_semantic_classes: BTreeMap<String, String>,
     use_max_width: bool,
 }
@@ -72,6 +71,7 @@ impl<'a> QuadrantChartBuilder<'a> {
         pair: &'a QuadrantChartPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -85,7 +85,11 @@ impl<'a> QuadrantChartBuilder<'a> {
         Ok(Self {
             metadata,
             session,
-            policy,
+            output: {
+                let mut output = DrawingListBuilder::new(policy, limits, session);
+                output.push_control(DrawingCommand::Save)?;
+                output
+            },
             model: pair.semantic(),
             layout,
             root_width: layout.width.max(1.0),
@@ -102,17 +106,14 @@ impl<'a> QuadrantChartBuilder<'a> {
             },
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
-            resources: Vec::new(),
-            commands: vec![DrawingCommand::Save],
-            semantics: Vec::new(),
             svg_semantic_classes: BTreeMap::new(),
             use_max_width,
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.begin_group("quadrantchart.document");
-        self.semantics.push(SemanticAnnotation {
+        self.begin_group("quadrantchart.document")?;
+        self.output.push_semantic(SemanticAnnotation {
             id: "quadrantchart.document".to_string(),
             role: SemanticRole::Document,
             // Body/frontmatter titles are visible chart labels.  Only an explicit `accTitle`
@@ -120,36 +121,36 @@ impl<'a> QuadrantChartBuilder<'a> {
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
-        self.begin_group("quadrantchart.quadrants");
+        self.begin_group("quadrantchart.quadrants")?;
         for index in 0..self.layout.quadrants.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let quadrant = self.layout.quadrants[index].clone();
             self.emit_quadrant(index, &quadrant)?;
         }
-        self.end_group();
-        self.push_structural_semantic("quadrantchart.quadrants");
+        self.end_group()?;
+        self.push_structural_semantic("quadrantchart.quadrants")?;
 
-        self.begin_group("quadrantchart.border");
+        self.begin_group("quadrantchart.border")?;
         for index in 0..self.layout.border_lines.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let border = self.layout.border_lines[index].clone();
             self.emit_border(index, &border)?;
         }
-        self.end_group();
-        self.push_structural_semantic("quadrantchart.border");
+        self.end_group()?;
+        self.push_structural_semantic("quadrantchart.border")?;
 
-        self.begin_group("quadrantchart.data-points");
+        self.begin_group("quadrantchart.data-points")?;
         for index in 0..self.layout.points.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let point = self.layout.points[index].clone();
             self.emit_point(index, &point)?;
         }
-        self.end_group();
-        self.push_structural_semantic("quadrantchart.data-points");
+        self.end_group()?;
+        self.push_structural_semantic("quadrantchart.data-points")?;
 
-        self.begin_group("quadrantchart.labels");
+        self.begin_group("quadrantchart.labels")?;
         for index in 0..self.layout.axis_labels.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let label = self.layout.axis_labels[index].clone();
@@ -160,8 +161,8 @@ impl<'a> QuadrantChartBuilder<'a> {
                 "axis label fill",
             )?;
         }
-        self.end_group();
-        self.push_structural_semantic("quadrantchart.labels");
+        self.end_group()?;
+        self.push_structural_semantic("quadrantchart.labels")?;
 
         if let Some(title) = self.layout.title.clone() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -173,26 +174,18 @@ impl<'a> QuadrantChartBuilder<'a> {
             )?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(0.0, 0.0, self.root_width, self.root_height)),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(0.0, 0.0, self.root_width, self.root_height)),
+            BTreeMap::from([(
                 "x-merman-quadrantchart".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
                     "text_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -207,33 +200,34 @@ impl<'a> QuadrantChartBuilder<'a> {
         })
     }
 
-    fn begin_group(&mut self, semantic_id: &str) {
+    fn begin_group(&mut self, semantic_id: &str) -> Result<()> {
         if let Some(class) = quadrantchart_svg_group_class(semantic_id) {
             self.svg_semantic_classes
                 .insert(semantic_id.to_string(), class.to_string());
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })
     }
 
-    fn end_group(&mut self) {
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+    fn end_group(&mut self) -> Result<()> {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)
     }
 
-    fn push_structural_semantic(&mut self, semantic_id: &str) {
-        self.semantics.push(SemanticAnnotation {
+    fn push_structural_semantic(&mut self, semantic_id: &str) -> Result<()> {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Group,
             title: None,
             description: None,
             link: None,
-        });
+        })
     }
 
     fn emit_quadrant(&mut self, index: usize, quadrant: &QuadrantChartQuadrantData) -> Result<()> {
         let semantic_id = format!("quadrantchart.quadrant.{index}");
-        self.begin_group(&semantic_id);
+        self.begin_group(&semantic_id)?;
         let styles = PortableStyleResolver::new("quadrantchart");
         if let Some(fill) = styles.optional_color("quadrant fill", &quadrant.fill)? {
             self.add_path(
@@ -252,14 +246,14 @@ impl<'a> QuadrantChartBuilder<'a> {
             )?;
         }
         self.emit_text(&quadrant.text, "quadrant text fill")?;
-        self.end_group();
-        self.semantics.push(SemanticAnnotation {
+        self.end_group()?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&quadrant.text.text),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -292,7 +286,7 @@ impl<'a> QuadrantChartBuilder<'a> {
 
     fn emit_point(&mut self, index: usize, point: &QuadrantChartPointData) -> Result<()> {
         let semantic_id = format!("quadrantchart.point.{index}");
-        self.begin_group(&semantic_id);
+        self.begin_group(&semantic_id)?;
         let styles = PortableStyleResolver::new("quadrantchart");
         let fill_value = if is_mermaid_missing_amount_hsl(&point.fill) {
             QUADRANT_BROWSER_POINT_FILL
@@ -321,14 +315,14 @@ impl<'a> QuadrantChartBuilder<'a> {
             )?;
         }
         self.emit_text(&point.text, "point text fill")?;
-        self.end_group();
-        self.semantics.push(SemanticAnnotation {
+        self.end_group()?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: visible_text(&point.text.text),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -340,16 +334,16 @@ impl<'a> QuadrantChartBuilder<'a> {
         fill_property: &'static str,
     ) -> Result<()> {
         let title = visible_text(&text.text);
-        self.begin_group(&semantic_id);
+        self.begin_group(&semantic_id)?;
         self.emit_text(text, fill_property)?;
-        self.end_group();
-        self.semantics.push(SemanticAnnotation {
+        self.end_group()?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role,
             title,
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -358,8 +352,8 @@ impl<'a> QuadrantChartBuilder<'a> {
         text: &QuadrantChartTextData,
         fill_property: &'static str,
     ) -> Result<()> {
-        let text_value = svg_plain_text(&text.text);
-        if text_value.is_empty() {
+        let parts = normalized_text_parts(&text.text);
+        if parts.clone().next().is_none() {
             return Ok(());
         }
         let Some(fill) = PortableStyleResolver::new("quadrantchart")
@@ -375,71 +369,45 @@ impl<'a> QuadrantChartBuilder<'a> {
             QuadrantTextBaseline::Hanging => TextBaseline::Hanging,
             QuadrantTextBaseline::Middle => TextBaseline::Middle,
         };
-        let bounds = self.measure_text_bounds(&text_value, text.font_size, anchor, baseline)?;
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: text_transform(text.x, text.y, text.rotation),
-        });
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text_value,
-            origin: Point::new(0.0, 0.0),
-            bounds,
-            style: TextStyle {
-                font: self.font.clone(),
-                font_size: text.font_size,
-                letter_spacing: 0.0,
-                line_height: text.font_size,
-                fill: Paint::solid(fill),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.commands.push(DrawingCommand::Restore);
+        })?;
+        let session = self.session;
+        let font_family_css = self.font_family_css.clone();
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
+        self.output.draw_host_text_iter(parts, |text_value| {
+            let bounds = measure_text_bounds(
+                session,
+                &font_family_css,
+                &text_value,
+                text.font_size,
+                anchor,
+                baseline,
+            )?;
+            Ok(TextRun {
+                text: text_value,
+                origin: Point::new(0.0, 0.0),
+                bounds,
+                style: TextStyle {
+                    font,
+                    font_size: text.font_size,
+                    letter_spacing: 0.0,
+                    line_height: text.font_size,
+                    fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation,
+            })
+        })?;
+        self.output.push_control(DrawingCommand::Restore)?;
         Ok(())
-    }
-
-    fn measure_text_bounds(
-        &self,
-        text: &str,
-        font_size: f64,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<Rect> {
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(self.font_family_css.clone()),
-            font_size,
-            font_weight: None,
-            font_style: None,
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
-        let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
-        self.session.checkpoint(OperationPhase::Emit)?;
-        if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
-            return Err(invalid(
-                "QuadrantChart text measurement returned invalid bounds",
-            ));
-        }
-        let x = match anchor {
-            TextAnchor::Start => 0.0,
-            TextAnchor::Middle => -width / 2.0,
-            TextAnchor::End => -width,
-        };
-        let y = match baseline {
-            TextBaseline::Hanging | TextBaseline::TextBeforeEdge => 0.0,
-            TextBaseline::Middle | TextBaseline::Central => -height / 2.0,
-            TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
-                -height
-            }
-        };
-        Ok(Rect::new(x, y, width, height))
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
@@ -448,15 +416,58 @@ impl<'a> QuadrantChartBuilder<'a> {
                 "QuadrantChart path `{id}` has no geometry"
             )));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
+}
+
+fn measure_text_bounds(
+    session: &RenderSession,
+    font_family_css: &str,
+    text: &str,
+    font_size: f64,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+) -> Result<Rect> {
+    let measurement_style = MeasurementTextStyle {
+        font_family: Some(font_family_css.to_string()),
+        font_size,
+        font_weight: None,
+        font_style: None,
+    };
+    let measurer =
+        session.controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+    let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
+    let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
+    session.checkpoint(OperationPhase::Emit)?;
+    if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+        return Err(invalid(
+            "QuadrantChart text measurement returned invalid bounds",
+        ));
+    }
+    let x = match anchor {
+        TextAnchor::Start => 0.0,
+        TextAnchor::Middle => -width / 2.0,
+        TextAnchor::End => -width,
+    };
+    let y = match baseline {
+        TextBaseline::Hanging | TextBaseline::TextBeforeEdge => 0.0,
+        TextBaseline::Middle | TextBaseline::Central => -height / 2.0,
+        TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
+            -height
+        }
+    };
+    Ok(Rect::new(x, y, width, height))
+}
+
+fn normalized_text_parts(text: &str) -> impl Iterator<Item = &str> + Clone {
+    text.split(crate::text::is_html_collapsible_ascii_whitespace)
+        .filter(|part| !part.is_empty())
+        .enumerate()
+        .flat_map(|(index, part)| {
+            [(index > 0).then_some(" "), Some(part)]
+                .into_iter()
+                .flatten()
+        })
 }
 
 fn visible_text(text: &str) -> Option<String> {

@@ -227,6 +227,8 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "zenuml\n@Starter(Client)\nClient->Service: call\n",
         "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
         "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01 { sku: \"SKU-1\" }\n",
+        "quadrantChart\n  title Portfolio\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Leaders\n  Point: [0.7, 0.8]\n",
+        "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file)\n",
         "kanban\n  Todo\n    task[Task]\n",
         concat!(
             "C4Context\ntitle Context\n",
@@ -348,6 +350,8 @@ fn newly_bounded_families_reject_before_the_first_output_command() {
         "zenuml\n@Starter(Client)\nClient->Service: call\n",
         "venn-beta\nset A[\"Core\"]:20\nset B[\"Editor\"]:14\nunion A,B[\"Shared\"]:4\n",
         "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01 { sku: \"SKU-1\" }\n",
+        "quadrantChart\n  title Portfolio\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Leaders\n  Point: [0.7, 0.8]\n",
+        "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file)\n",
     ] {
         let error = Renderer::new()
             .render(RenderRequest::drawing_list(

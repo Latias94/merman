@@ -9,6 +9,7 @@ use super::{
     parse_font_families_for, parse_svg_path,
 };
 use crate::config::config_font_family_css_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -23,10 +24,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -42,15 +43,15 @@ pub(crate) fn build_tree_view_document(
     pair: &TreeViewPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    TreeViewBuilder::new(pair, metadata, policy, session)?.build()
+    TreeViewBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct TreeViewBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a TreeViewDiagramRenderModel,
     layout: &'a TreeViewDiagramLayout,
     text_obligation: TextObligation,
@@ -67,9 +68,7 @@ struct TreeViewBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
 }
 
 impl<'a> TreeViewBuilder<'a> {
@@ -77,6 +76,7 @@ impl<'a> TreeViewBuilder<'a> {
         pair: &'a TreeViewPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -114,10 +114,15 @@ impl<'a> TreeViewBuilder<'a> {
         let directory_font = font(font_families.clone(), 700, FontStyle::Normal);
         let description_font = font(font_families, 400, FontStyle::Italic);
 
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "treeView.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
@@ -150,19 +155,12 @@ impl<'a> TreeViewBuilder<'a> {
             )]),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "treeView.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
+            output,
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "treeView.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -174,7 +172,7 @@ impl<'a> TreeViewBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
         self.emit_background()?;
 
         for item in tree_view_render_items(self.layout) {
@@ -188,23 +186,16 @@ impl<'a> TreeViewBuilder<'a> {
             }
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 -self.layout.line_thickness / 2.0,
                 0.0,
                 self.layout.total_width,
                 self.layout.total_height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-tree-view".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -213,8 +204,7 @@ impl<'a> TreeViewBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -267,9 +257,10 @@ impl<'a> TreeViewBuilder<'a> {
         let semantic_id = format!("treeView.node.{}", node.id);
         self.semantic_classes
             .insert(semantic_id.clone(), "treeView-node".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         if let Some(highlight) = highlight {
             let highlight_style = PathStyle {
@@ -307,14 +298,14 @@ impl<'a> TreeViewBuilder<'a> {
         self.emit_node_label(&node)?;
         self.emit_description(&node)?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(node.name),
             description: node.description,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -330,19 +321,16 @@ impl<'a> TreeViewBuilder<'a> {
         let id = ResourceId::new(format!("{semantic_id}.icon"));
         self.path_classes
             .insert(id.as_str().to_string(), "treeView-node-icon".to_string());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments: parse_svg_path(icon.path_data)?,
-        }));
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        let segments = parse_svg_path(icon.path_data)?;
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(
                 node.x + self.layout.padding_x,
                 node.y + self.layout.padding_y,
             ),
-        });
+        })?;
         let scale = TREE_VIEW_ICON_SIZE / 24.0;
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: Transform {
                 a: scale,
                 b: 0.0,
@@ -351,10 +339,11 @@ impl<'a> TreeViewBuilder<'a> {
                 e: 0.0,
                 f: 0.0,
             },
-        });
-        self.commands.push(DrawingCommand::DrawPath {
-            path: id,
-            style: PathStyle {
+        })?;
+        self.output.draw_path(
+            id,
+            segments,
+            PathStyle {
                 fill_rule: if icon.even_odd {
                     FillRule::EvenOdd
                 } else {
@@ -363,8 +352,8 @@ impl<'a> TreeViewBuilder<'a> {
                 fill: Some(Paint::solid(fill)),
                 stroke: None,
             },
-        });
-        self.commands.push(DrawingCommand::Restore);
+        )?;
+        self.output.push_control(DrawingCommand::Restore)?;
         Ok(())
     }
 
@@ -398,9 +387,10 @@ impl<'a> TreeViewBuilder<'a> {
             .insert(semantic_id.clone(), "treeView-node-label-group".to_string());
         self.text_classes
             .insert(semantic_id.clone(), tree_view_label_classes(node));
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_text(
             &node.name,
             Point::new(node.label_x, node.label_y),
@@ -412,15 +402,15 @@ impl<'a> TreeViewBuilder<'a> {
             ),
             font,
             fill,
-        );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        )?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(node.name.clone()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -444,9 +434,10 @@ impl<'a> TreeViewBuilder<'a> {
         );
         self.text_classes
             .insert(semantic_id.clone(), DESCRIPTION_CLASS.to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.emit_text(
             description,
             Point::new(x, node.label_y),
@@ -458,15 +449,15 @@ impl<'a> TreeViewBuilder<'a> {
             ),
             self.description_font.clone(),
             fill,
-        );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        )?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(description.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -477,9 +468,10 @@ impl<'a> TreeViewBuilder<'a> {
         bounds: Rect,
         font: FontDescriptor,
         fill: Color,
-    ) {
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+    ) -> Result<()> {
+        let text_obligation = self.text_obligation.clone();
+        self.output.draw_host_text(text, |text| TextRun {
+            text,
             origin,
             bounds,
             style: TextStyle {
@@ -495,8 +487,8 @@ impl<'a> TreeViewBuilder<'a> {
             baseline: TextBaseline::Middle,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+            obligation: text_obligation,
+        })
     }
 
     fn emit_line(&mut self, line_index: usize) -> Result<()> {
@@ -511,9 +503,10 @@ impl<'a> TreeViewBuilder<'a> {
             .insert(semantic_id.clone(), LINE_CLASS.to_string());
         self.path_classes
             .insert(format!("{semantic_id}.path"), LINE_CLASS.to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if line.stroke_width > 0.0
             && let Some(color) = self.line_color
         {
@@ -527,14 +520,14 @@ impl<'a> TreeViewBuilder<'a> {
                 },
             )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: None,
             description: Some(format!("{} tree connector", line.kind)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -542,14 +535,7 @@ impl<'a> TreeViewBuilder<'a> {
         if segments.is_empty() || (style.fill.is_none() && style.stroke.is_none()) {
             return Ok(());
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
 }
 
