@@ -136,6 +136,9 @@ jobs:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
 
+      - name: Verify ADR identities
+        run: python3 scripts/adr_identity.py
+
       - name: Verify static release surface contract
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}

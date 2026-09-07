@@ -173,6 +173,9 @@ jobs:
       - name: Verify release version projections
         run: python3 scripts/release-version.py
 
+      - name: Verify ADR identities
+        run: python3 scripts/adr_identity.py
+
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
 
