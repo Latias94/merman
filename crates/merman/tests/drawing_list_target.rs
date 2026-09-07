@@ -1018,6 +1018,39 @@ fn packet_emits_typed_blocks_bit_numbers_title_and_styles() {
 }
 
 #[test]
+fn packet_resource_limit_reaches_the_bounded_document_builder() {
+    let site_config = MermaidConfig::from_value(serde_json::json!({
+        "packet": {
+            "blockFillColor": "#123456"
+        }
+    }));
+    let request = DrawingListRequest {
+        limits: DrawingListLimits {
+            max_resources: 1,
+            ..DrawingListLimits::default()
+        },
+        ..DrawingListRequest::default()
+    };
+    let error = Renderer::new()
+        .with_engine(Engine::new().with_site_config(site_config))
+        .render(RenderRequest::drawing_list(
+            "packet\n0-7: \"Version\"\n8-15: \"Length\"\n",
+            OperationControl::new(),
+            request,
+        ))
+        .expect_err("the Packet builder must reject its second path resource");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "resources"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 2
+                && limit.maximum == 1
+    ));
+}
+
+#[test]
 fn sankey_emits_typed_nodes_gradient_links_blending_and_semantics() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

@@ -7,6 +7,7 @@
 use super::{
     PacketSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families,
 };
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -20,10 +21,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -34,15 +35,16 @@ pub(crate) fn build_packet_document(
     pair: &PacketPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    PacketBuilder::new(pair, metadata, policy, session)?.build()
+    PacketBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct PacketBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a PacketDiagramRenderModel,
     layout: &'a PacketDiagramLayout,
     title: Option<String>,
@@ -58,9 +60,6 @@ struct PacketBuilder<'a> {
     block_stroke_color: Option<Color>,
     block_stroke_width: f64,
     block_fill_color: Option<Color>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> PacketBuilder<'a> {
@@ -68,6 +67,7 @@ impl<'a> PacketBuilder<'a> {
         pair: &'a PacketPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -80,11 +80,16 @@ impl<'a> PacketBuilder<'a> {
         let title = packet_title(model.title.as_deref(), metadata.title.as_deref())
             .map(svg_plain_text)
             .filter(|title| !title.is_empty());
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "packet.document".to_string(),
+        })?;
 
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             title,
@@ -107,19 +112,11 @@ impl<'a> PacketBuilder<'a> {
                 .optional_color("blockStrokeColor", &style.block_stroke_color)?,
             block_stroke_width: styles.length("blockStrokeWidth", &style.block_stroke_width)?,
             block_fill_color: styles.optional_color("blockFillColor", &style.block_fill_color)?,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "packet.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "packet.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -130,7 +127,7 @@ impl<'a> PacketBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         for (word_index, word) in self.layout.words.iter().enumerate() {
             for (block_index, block) in word.blocks.iter().enumerate() {
@@ -140,28 +137,22 @@ impl<'a> PacketBuilder<'a> {
         }
         self.emit_title()?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
         let bounds = self
             .layout
             .bounds
             .as_ref()
             .expect("validated in constructor");
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(
                 bounds.min_x,
                 bounds.min_y,
                 bounds.max_x - bounds.min_x,
                 bounds.max_y - bounds.min_y,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-packet".to_string(),
                 json!({
                     "bits_per_row": self.layout.bits_per_row,
@@ -170,8 +161,7 @@ impl<'a> PacketBuilder<'a> {
                     "text_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -191,9 +181,10 @@ impl<'a> PacketBuilder<'a> {
         block: &PacketBlockLayout,
     ) -> Result<()> {
         let semantic_id = format!("packet.block.{word_index}.{block_index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if self.block_fill_color.is_some() || self.block_stroke_color.is_some() {
             self.add_path(
                 format!("{semantic_id}.shape"),
@@ -216,24 +207,29 @@ impl<'a> PacketBuilder<'a> {
         let label = svg_plain_text(&block.label);
         let semantic_title = (!label.is_empty()).then(|| label.clone());
         if !label.is_empty() {
-            self.commands.push(DrawingCommand::DrawText {
-                run: self.text_run(
-                    label,
+            let font = &self.font;
+            let text_obligation = &self.text_obligation;
+            self.document.draw_host_text(&label, |text| {
+                packet_text_run(
+                    text,
                     Point::new(block.x + block.width / 2.0, block.y + block.height / 2.0),
                     Rect::new(block.x, block.y, block.width, block.height),
                     self.label_font_size,
                     self.label_color,
                     TextAnchor::Middle,
                     TextBaseline::Middle,
-                ),
-            });
+                    font,
+                    text_obligation,
+                )
+            })?;
         }
 
         if self.layout.show_bits {
-            self.emit_bit_numbers(block);
+            self.emit_bit_numbers(block)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: semantic_title,
@@ -243,11 +239,11 @@ impl<'a> PacketBuilder<'a> {
                 format!("Bits {}–{}", block.start, block.end)
             }),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
-    fn emit_bit_numbers(&mut self, block: &PacketBlockLayout) {
+    fn emit_bit_numbers(&mut self, block: &PacketBlockLayout) -> Result<()> {
         let is_single = block.start == block.end;
         let y = block.y - 2.0;
         let start_anchor = if is_single {
@@ -266,30 +262,39 @@ impl<'a> PacketBuilder<'a> {
             block.width,
             self.byte_font_size,
         );
-        self.commands.push(DrawingCommand::DrawText {
-            run: self.text_run(
-                block.start.to_string(),
+        let start = block.start.to_string();
+        let font = &self.font;
+        let text_obligation = &self.text_obligation;
+        self.document.draw_host_text(&start, |text| {
+            packet_text_run(
+                text,
                 Point::new(start_x, y),
                 bounds,
                 self.byte_font_size,
                 self.start_byte_color,
                 start_anchor,
                 TextBaseline::Alphabetic,
-            ),
-        });
+                font,
+                text_obligation,
+            )
+        })?;
         if !is_single {
-            self.commands.push(DrawingCommand::DrawText {
-                run: self.text_run(
-                    block.end.to_string(),
+            let end = block.end.to_string();
+            self.document.draw_host_text(&end, |text| {
+                packet_text_run(
+                    text,
                     Point::new(block.x + block.width, y),
                     bounds,
                     self.byte_font_size,
                     self.end_byte_color,
                     TextAnchor::End,
                     TextBaseline::Alphabetic,
-                ),
-            });
+                    font,
+                    text_obligation,
+                )
+            })?;
         }
+        Ok(())
     }
 
     fn emit_title(&mut self) -> Result<()> {
@@ -300,12 +305,15 @@ impl<'a> PacketBuilder<'a> {
         let semantic_id = "packet.title".to_string();
         let total_row_height = self.layout.row_height + self.layout.padding_y;
         let y = packet_title_y(self.layout);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
-        self.commands.push(DrawingCommand::DrawText {
-            run: self.text_run(
-                title.clone(),
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
+        let font = &self.font;
+        let text_obligation = &self.text_obligation;
+        self.document.draw_host_text(&title, |text| {
+            packet_text_run(
+                text,
                 Point::new(self.layout.width / 2.0, y),
                 Rect::new(
                     0.0,
@@ -317,61 +325,59 @@ impl<'a> PacketBuilder<'a> {
                 self.title_color,
                 TextAnchor::Middle,
                 TextBaseline::Middle,
-            ),
-        });
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+                font,
+                text_obligation,
+            )
+        })?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(title),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn text_run(
-        &self,
-        text: String,
-        origin: Point,
-        bounds: Rect,
-        font_size: f64,
-        color: Color,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> TextRun {
-        TextRun {
-            text,
-            origin,
-            bounds,
-            style: TextStyle {
-                font: self.font.clone(),
-                font_size,
-                letter_spacing: 0.0,
-                line_height: font_size,
-                fill: Paint::solid(color),
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
         if segments.is_empty() {
             return Err(invalid(format!("Packet path `{id}` has no geometry")));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document
+            .draw_path(ResourceId::new(id), segments, style)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn packet_text_run(
+    text: String,
+    origin: Point,
+    bounds: Rect,
+    font_size: f64,
+    color: Color,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    font: &FontDescriptor,
+    text_obligation: &TextObligation,
+) -> TextRun {
+    TextRun {
+        text,
+        origin,
+        bounds,
+        style: TextStyle {
+            font: font.clone(),
+            font_size,
+            letter_spacing: 0.0,
+            line_height: font_size,
+            fill: Paint::solid(color),
+        },
+        anchor,
+        baseline,
+        direction: TextDirection::Auto,
+        language: None,
+        obligation: text_obligation.clone(),
     }
 }
 

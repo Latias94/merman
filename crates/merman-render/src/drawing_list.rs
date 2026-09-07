@@ -684,7 +684,7 @@ pub(crate) fn build_for_family(
             mindmap::build_mindmap_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Packet(pair) => {
-            packet::build_packet_document(pair, metadata, policy, session)
+            packet::build_packet_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Pie(pair) => {
             pie::build_pie_document(pair, metadata, policy, session)

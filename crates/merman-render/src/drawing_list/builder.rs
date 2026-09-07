@@ -11,9 +11,9 @@ use std::collections::BTreeMap;
 
 /// Operation-local owner for one bounded DrawingList candidate.
 ///
-/// The backing collections never escape this module. Error and Info are the first migrated
-/// families; later cohorts can deepen this interface when they introduce additional resource or
-/// scope kinds without weakening the final protocol validator.
+/// The backing collections never escape this module. Error, Info, and Packet are the first
+/// migrated families; later cohorts can deepen this interface when they introduce additional
+/// resource or scope kinds without weakening the final protocol validator.
 pub(crate) struct DrawingListBuilder<'a> {
     limits: DrawingListLimits,
     session: &'a RenderSession,
@@ -101,8 +101,8 @@ impl<'a> DrawingListBuilder<'a> {
 
     /// Adds an already-materialized path without cloning its segment storage.
     ///
-    /// The current Error paths are fixed upstream assets. Dynamic path producers will receive a
-    /// separate iterator-based admission method when their family cohort is migrated.
+    /// The current Error and Packet paths have fixed, small segment counts. Families whose input
+    /// can amplify into large paths need an incremental admission method before they migrate.
     pub(crate) fn draw_path(
         &mut self,
         id: ResourceId,
