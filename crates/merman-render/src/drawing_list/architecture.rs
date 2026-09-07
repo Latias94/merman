@@ -5,6 +5,7 @@
 //! set, while external Iconify content and HTML `iconText` fail closed because neither has a
 //! renderer-neutral representation in DrawingList v1.
 
+use super::builder::DrawingListBuilder;
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for, theme_color,
 };
@@ -31,10 +32,10 @@ use merman_core::diagrams::architecture::{
     ArchitectureRenderNode, ArchitectureRenderNodeType,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -58,15 +59,16 @@ pub(crate) fn build_architecture_document(
     pair: &ArchitecturePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    ArchitectureBuilder::new(pair, metadata, policy, session)?.build()
+    ArchitectureBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct ArchitectureBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a ArchitectureDiagramRenderModel,
     layout: &'a ArchitectureDiagramLayout,
     icon_size: f64,
@@ -84,9 +86,6 @@ struct ArchitectureBuilder<'a> {
     nodes_by_id: HashMap<&'a str, &'a LayoutNode>,
     model_nodes_by_id: HashMap<&'a str, &'a ArchitectureRenderNode>,
     group_bounds: HashMap<&'a str, Bounds>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -108,6 +107,7 @@ impl<'a> ArchitectureBuilder<'a> {
         pair: &'a ArchitecturePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -238,10 +238,16 @@ impl<'a> ArchitectureBuilder<'a> {
             ),
         ]);
 
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        for semantic in semantics {
+            output.push_semantic(semantic)?;
+        }
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            output,
             model,
             layout,
             icon_size,
@@ -259,9 +265,6 @@ impl<'a> ArchitectureBuilder<'a> {
             nodes_by_id,
             model_nodes_by_id,
             group_bounds,
-            resources: Vec::new(),
-            commands: vec![DrawingCommand::Save],
-            semantics,
             semantic_classes,
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -271,33 +274,36 @@ impl<'a> ArchitectureBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "architecture.edges".to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "architecture.edges".to_string(),
+            })?;
         for (index, edge) in self.model.edges.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_edge(index, edge, &self.layout.edges[index])?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "architecture.services".to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "architecture.services".to_string(),
+            })?;
         for (index, node) in self.model.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(index, node)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "architecture.groups".to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "architecture.groups".to_string(),
+            })?;
         for (index, group) in self.model.groups.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_group(index, group)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
         let bounds = self.content_bounds.unwrap_or(Bounds {
             min_x: -self.icon_size / 2.0,
@@ -306,21 +312,14 @@ impl<'a> ArchitectureBuilder<'a> {
             max_y: self.icon_size / 2.0,
         });
         let viewport = expand_bounds(&bounds, self.padding);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 viewport.min_x,
                 viewport.min_y,
                 (viewport.max_x - viewport.min_x).max(1.0),
                 (viewport.max_y - viewport.min_y).max(1.0),
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-architecture".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -329,8 +328,7 @@ impl<'a> ArchitectureBuilder<'a> {
                     "group_bounds": "fcose_or_child_union",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -388,9 +386,10 @@ impl<'a> ArchitectureBuilder<'a> {
             self.dom_ids
                 .insert(semantic_id.clone(), format!("service-{}", node.id));
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         match node.node_type {
             ArchitectureRenderNodeType::Junction => {
                 let path_id = format!("{semantic_id}.junction");
@@ -479,8 +478,8 @@ impl<'a> ArchitectureBuilder<'a> {
                 ));
             }
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: node.title.clone().or_else(|| Some(node.id.clone())),
@@ -489,7 +488,7 @@ impl<'a> ArchitectureBuilder<'a> {
                 ArchitectureRenderNodeType::Junction => "Architecture junction".to_string(),
             }),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -500,9 +499,10 @@ impl<'a> ArchitectureBuilder<'a> {
             .cloned()
             .ok_or_else(|| invalid(format!("Architecture group `{}` has no bounds", group.id)))?;
         let semantic_id = format!("architecture.group.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_svg_path(
             format!("{semantic_id}.outline"),
             rect_path(
@@ -571,14 +571,14 @@ impl<'a> ArchitectureBuilder<'a> {
                 },
             )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: group.title.clone().or_else(|| Some(group.id.clone())),
             description: Some("Architecture group".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -624,9 +624,10 @@ impl<'a> ArchitectureBuilder<'a> {
             self.padding,
         );
         let semantic_id = format!("architecture.edge.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_svg_path(
             format!("{semantic_id}.route"),
             polyline_path(&points),
@@ -684,14 +685,14 @@ impl<'a> ArchitectureBuilder<'a> {
             );
             self.emit_edge_label(&semantic_id, &title, &points, edge.lhs_dir, edge.rhs_dir)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: edge.title.clone(),
             description: Some(format!("{} → {}", edge.lhs_id, edge.rhs_id)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -740,15 +741,18 @@ impl<'a> ArchitectureBuilder<'a> {
             axis, lhs_dir, rhs_dir, middle, width, height, rotation,
         );
         self.extend_content_rect(transformed_rect_bounds(local_bounds, transform));
-        self.commands.push(DrawingCommand::Save);
-        self.commands
-            .push(DrawingCommand::ConcatTransform { transform });
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: lines.join("\n"),
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output
+            .push_control(DrawingCommand::ConcatTransform { transform })?;
+        let text_obligation = self.text_obligation.clone();
+        let font = self.font.clone();
+        let text_value = lines.join("\n");
+        self.output.draw_host_text(&text_value, |text| TextRun {
+            text,
             origin: Point::new(0.0, 0.0),
             bounds: local_bounds,
             style: TextStyle {
-                font: self.font.clone(),
+                font,
                 font_size: self.font_size,
                 letter_spacing: 0.0,
                 line_height: self.font_size * 1.1,
@@ -760,16 +764,16 @@ impl<'a> ArchitectureBuilder<'a> {
             baseline: TextBaseline::Middle,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.commands.push(DrawingCommand::Restore);
-        self.semantics.push(SemanticAnnotation {
+            obligation: text_obligation,
+        })?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: format!("{semantic_id}.label"),
             role: SemanticRole::Label,
             title: Some(text.to_string()),
             description: Some("Architecture edge label".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -821,12 +825,15 @@ impl<'a> ArchitectureBuilder<'a> {
         if include_in_root_bounds {
             self.extend_content_rect(bounds);
         }
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: lines.join("\n"),
+        let text_obligation = self.text_obligation.clone();
+        let font = self.font.clone();
+        let text_value = lines.join("\n");
+        self.output.draw_host_text(&text_value, |text| TextRun {
+            text,
             origin,
             bounds,
             style: TextStyle {
-                font: self.font.clone(),
+                font,
                 font_size: self.font_size,
                 letter_spacing: 0.0,
                 line_height: self.font_size * 1.1,
@@ -838,15 +845,15 @@ impl<'a> ArchitectureBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        self.semantics.push(SemanticAnnotation {
+            obligation: text_obligation,
+        })?;
+        self.output.push_semantic(SemanticAnnotation {
             id: id.to_string(),
             role: SemanticRole::Label,
             title: Some(text.to_string()),
             description: Some("Architecture label".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -1067,12 +1074,14 @@ impl<'a> ArchitectureBuilder<'a> {
                 )?;
             }
             "unknown" => {
-                self.commands.push(DrawingCommand::draw_text(TextRun {
-                    text: "?".to_string(),
+                let text_obligation = self.text_obligation.clone();
+                let font = self.font.clone();
+                self.output.draw_host_text("?", |text| TextRun {
+                    text,
                     origin: Point::new(origin.x + size / 2.0, origin.y + size * 0.82),
                     bounds: Rect::new(origin.x, origin.y, size, size),
                     style: TextStyle {
-                        font: self.font.clone(),
+                        font,
                         font_size: size * 0.7,
                         letter_spacing: 0.0,
                         line_height: size,
@@ -1084,8 +1093,8 @@ impl<'a> ArchitectureBuilder<'a> {
                     baseline: TextBaseline::Alphabetic,
                     direction: TextDirection::Auto,
                     language: None,
-                    obligation: self.text_obligation.clone(),
-                }));
+                    obligation: text_obligation,
+                })?;
             }
             "blank" => {}
             // `icon` is normalized to the built-in set above. Keep this arm defensive rather
@@ -1240,15 +1249,7 @@ impl<'a> ArchitectureBuilder<'a> {
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: ResourceId::new(id.clone()),
-            segments,
-        }));
-        self.commands.push(DrawingCommand::DrawPath {
-            path: ResourceId::new(id),
-            style,
-        });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
 }
 

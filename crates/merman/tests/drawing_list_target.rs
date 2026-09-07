@@ -814,6 +814,33 @@ architecture-beta
 
 #[cfg(feature = "layout-cytoscape")]
 #[test]
+fn architecture_limits_reject_before_first_emitted_command() {
+    let source = "architecture-beta\n    service api(server)[API]\n";
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("Architecture must reject its first builder command");
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
+}
+
+#[cfg(feature = "layout-cytoscape")]
+#[test]
 fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
     let source = r#"mindmap
         root((Merman))
@@ -850,6 +877,32 @@ fn mindmap_emits_typed_shapes_routes_text_and_semantics() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.id.starts_with("mindmap.edge.")
     }));
+}
+
+#[cfg(feature = "layout-cytoscape")]
+#[test]
+fn mindmap_limits_stop_at_the_first_over_budget_command() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "mindmap\n  root((Merman))\n    Parser\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("Mindmap must reject its first builder command");
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
 }
 
 #[cfg(feature = "layout-cytoscape")]

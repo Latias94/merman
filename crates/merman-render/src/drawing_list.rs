@@ -686,7 +686,7 @@ pub(crate) fn build_for_family(
             kanban::build_kanban_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
-            mindmap::build_mindmap_document(pair, metadata, policy, session)
+            mindmap::build_mindmap_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Packet(pair) => {
             packet::build_packet_document(pair, metadata, policy, limits, session)
@@ -750,7 +750,7 @@ pub(crate) fn build_for_family(
         }
         #[cfg(feature = "layout-cytoscape")]
         BuiltinFamilyArtifact::Architecture(pair) => {
-            architecture::build_architecture_document(pair, metadata, policy, session)
+            architecture::build_architecture_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Zenuml(pair) => {
             zenuml::build_zenuml_document(pair, metadata, policy, session)

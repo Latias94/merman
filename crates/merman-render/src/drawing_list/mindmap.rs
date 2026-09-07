@@ -12,6 +12,7 @@ use super::{
 use crate::config::{
     config_bool, config_diagram_look, config_f64, config_font_family_css_raw, config_string,
 };
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::environment::{RenderSession, TextMeasurementPhase, TextMeasurementSource};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::flowchart::flowchart_label_plain_text_for_layout;
@@ -24,12 +25,11 @@ use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, GradientSpread,
-    GradientStop, LineCap, LineJoin, LinearGradientResource, MeasurementProvenance, Paint,
-    PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, GradientSpread, GradientStop, LineCap, LineJoin, LinearGradientResource,
+    MeasurementProvenance, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
+    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -75,16 +75,17 @@ pub(crate) fn build_mindmap_document(
     pair: &MindmapPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = MindmapBuilder::new(pair, metadata, policy, session)?;
+    let builder = MindmapBuilder::new(pair, metadata, policy, limits, session)?;
     builder.build()
 }
 
 struct MindmapBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a MindmapDiagramRenderModel,
     layout: &'a MindmapDiagramLayout,
     layout_nodes_by_id: HashMap<&'a str, &'a LayoutNode>,
@@ -102,9 +103,6 @@ struct MindmapBuilder<'a> {
     use_gradient: bool,
     gradient_start: Option<Color>,
     gradient_stop: Option<Color>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     svg_nodes: BTreeMap<String, MindmapSvgNode>,
     svg_edges: BTreeMap<String, MindmapSvgEdge>,
     extensions: std::collections::BTreeMap<String, Value>,
@@ -115,6 +113,7 @@ impl<'a> MindmapBuilder<'a> {
         pair: &'a MindmapPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -262,10 +261,16 @@ impl<'a> MindmapBuilder<'a> {
         };
         let text_obligation = text_obligation(session);
 
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "mindmap.document".to_string(),
+        })?;
+
         let builder = Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             layout_nodes_by_id,
@@ -283,14 +288,6 @@ impl<'a> MindmapBuilder<'a> {
             use_gradient,
             gradient_start,
             gradient_stop,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "mindmap.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
             svg_nodes: BTreeMap::new(),
             svg_edges: BTreeMap::new(),
             extensions: std::collections::BTreeMap::new(),
@@ -299,9 +296,9 @@ impl<'a> MindmapBuilder<'a> {
         Ok(builder)
     }
 
-    fn build(&mut self) -> Result<RenderDocument> {
+    fn build(mut self) -> Result<RenderDocument> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "mindmap.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -311,39 +308,49 @@ impl<'a> MindmapBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: None,
             link: None,
-        });
-        self.semantics.extend([
+        })?;
+        for semantic in [
             mindmap_container_semantic("mindmap.subgraphs", "Mindmap subgraphs"),
             mindmap_container_semantic("mindmap.edges", "Mindmap edges"),
             mindmap_container_semantic("mindmap.edge_labels", "Mindmap edge labels"),
             mindmap_container_semantic("mindmap.nodes", "Mindmap nodes"),
-        ]);
+        ] {
+            self.document.push_semantic(semantic)?;
+        }
 
         // Match Mermaid's painter order: routes first, then node shapes and labels.
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "mindmap.subgraphs".to_string(),
-        });
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "mindmap.edges".to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "mindmap.subgraphs".to_string(),
+            })?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "mindmap.edges".to_string(),
+            })?;
         for (index, edge) in self.model.edges.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_edge(index, edge)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "mindmap.edge_labels".to_string(),
-        });
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "mindmap.nodes".to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "mindmap.edge_labels".to_string(),
+            })?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "mindmap.nodes".to_string(),
+            })?;
         for (index, node) in self.model.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(index, node)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
 
         self.extensions.insert(
             "x-merman-mindmap".to_string(),
@@ -354,8 +361,9 @@ impl<'a> MindmapBuilder<'a> {
                 "label_mode": "plain_host_text",
             }),
         );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let bounds = crate::mindmap::mindmap_visual_bounds(self.layout, self.model)
             .or_else(|| self.layout.bounds.clone())
@@ -366,23 +374,15 @@ impl<'a> MindmapBuilder<'a> {
         )
         .filter(|value| value.is_finite() && *value >= 0.0)
         .unwrap_or(10.0);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(
                 bounds.min_x - padding,
                 bounds.min_y - padding,
                 (bounds.max_x - bounds.min_x) + 2.0 * padding,
                 (bounds.max_y - bounds.min_y) + 2.0 * padding,
             )),
-            policy: self.policy,
-            resources: std::mem::take(&mut self.resources),
-            commands: std::mem::take(&mut self.commands),
-            semantics: std::mem::take(&mut self.semantics),
-            fallbacks: Vec::new(),
-            extensions: std::mem::take(&mut self.extensions),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+            std::mem::take(&mut self.extensions),
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -606,9 +606,10 @@ impl<'a> MindmapBuilder<'a> {
                     .collect(),
             },
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.route"),
             segments,
@@ -626,14 +627,15 @@ impl<'a> MindmapBuilder<'a> {
                 }),
             },
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: Some(edge.id.clone()),
             description: Some(format!("{} → {}", edge.start, edge.end)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -665,14 +667,14 @@ impl<'a> MindmapBuilder<'a> {
                 label_source: node.label.clone(),
             },
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let shape_paths = mindmap_node_paths(node, layout_node)?;
         let stroke_paint = if let Some((gradient_id, gradient)) = style.gradient {
-            self.resources
-                .push(DrawingResource::LinearGradient(gradient));
+            self.document.push_linear_gradient(gradient)?;
             Paint::resource(gradient_id)
         } else {
             Paint::solid(style.stroke)
@@ -733,16 +735,19 @@ impl<'a> MindmapBuilder<'a> {
         let text = self.plain_label(node)?;
         if !text.is_empty() {
             let bounds = mindmap_label_bounds(node, layout_node);
-            self.commands.push(DrawingCommand::draw_text(TextRun {
+            let font = self.font.clone();
+            let obligation = self.text_obligation.clone();
+            let text_color = style.text;
+            self.document.draw_host_text(&text, |text| TextRun {
                 text,
                 origin: Point::new(layout_node.x, layout_node.y),
                 bounds,
                 style: TextStyle {
-                    font: self.font.clone(),
+                    font,
                     font_size: 16.0,
                     letter_spacing: 0.0,
                     line_height: 24.0,
-                    fill: Paint::solid(style.text),
+                    fill: Paint::solid(text_color),
                     stroke: None,
                     paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
@@ -750,17 +755,18 @@ impl<'a> MindmapBuilder<'a> {
                 baseline: TextBaseline::Middle,
                 direction: TextDirection::Auto,
                 language: None,
-                obligation: self.text_obligation.clone(),
-            }));
+                obligation,
+            })?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(text_for_semantic(node)),
             description: (!node.node_id.is_empty()).then(|| node.node_id.clone()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -901,14 +907,8 @@ impl<'a> MindmapBuilder<'a> {
         if segments.is_empty() {
             return Err(invalid(format!("Mindmap path `{id}` has no geometry")));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document
+            .draw_path(ResourceId::new(id), segments, style)
     }
 }
 

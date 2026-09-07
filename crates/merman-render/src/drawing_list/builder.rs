@@ -3,8 +3,9 @@ use crate::{Error, Result};
 use merman_core::OperationPhase;
 use merman_display_list::{
     CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListError,
-    DrawingListFootprint, DrawingListLimits, DrawingListPolicy, DrawingResource, PathResource,
-    PathSegment, PathStyle, ResourceId, SemanticAnnotation, TextObligation, TextRun, Viewport,
+    DrawingListFootprint, DrawingListLimits, DrawingListPolicy, DrawingResource,
+    LinearGradientResource, PathResource, PathSegment, PathStyle, ResourceId, SemanticAnnotation,
+    TextObligation, TextRun, Viewport,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -211,6 +212,25 @@ impl<'a> DrawingListBuilder<'a> {
         }));
         self.commands
             .push(DrawingCommand::DrawPath { path: id, style });
+        self.usage = next;
+        Ok(())
+    }
+
+    /// Adds a linear gradient after charging its resource and stop footprint.
+    pub(crate) fn push_linear_gradient(&mut self, gradient: LinearGradientResource) -> Result<()> {
+        let mut next = self.usage;
+        checked_increment(&mut next.resources, 1, "resource count")?;
+        checked_increment(
+            &mut next.gradient_stops,
+            gradient.stops.len(),
+            "gradient stop count",
+        )?;
+        self.preflight(next)?;
+        self.resources
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("resources"))?;
+        self.resources
+            .push(DrawingResource::LinearGradient(gradient));
         self.usage = next;
         Ok(())
     }
