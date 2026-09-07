@@ -53,9 +53,15 @@ fn block_html_label_metrics_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    html_labels: bool,
 ) -> (f64, f64) {
-    let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
+    let metrics = measurer.measure_wrapped(text, style, None, wrap_mode);
+    (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -509,6 +515,7 @@ fn to_sized_block_shallow(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    html_labels: bool,
     children: Vec<SizedBlock>,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
@@ -527,7 +534,7 @@ fn to_sized_block_shallow(
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
     } else {
-        block_html_label_metrics_px(&label_decoded, measurer, text_style)
+        block_html_label_metrics_px(&label_decoded, measurer, text_style, html_labels)
     };
     let shape_label_height = label_height;
 
@@ -563,6 +570,7 @@ fn to_sized_block(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    html_labels: bool,
 ) -> SizedBlock {
     let mut stack: Vec<(&BlockNode, bool)> = vec![(node, false)];
     let mut completed: HashMap<*const BlockNode, SizedBlock> = HashMap::new();
@@ -576,7 +584,7 @@ fn to_sized_block(
                 .collect();
             completed.insert(
                 block as *const BlockNode,
-                to_sized_block_shallow(block, padding, measurer, text_style, children),
+                to_sized_block_shallow(block, padding, measurer, text_style, html_labels, children),
             );
         } else {
             stack.push((block, true));
@@ -588,7 +596,9 @@ fn to_sized_block(
 
     completed
         .remove(&(node as *const BlockNode))
-        .unwrap_or_else(|| to_sized_block_shallow(node, padding, measurer, text_style, Vec::new()))
+        .unwrap_or_else(|| {
+            to_sized_block_shallow(node, padding, measurer, text_style, html_labels, Vec::new())
+        })
 }
 
 fn get_max_child_size(block: &SizedBlock) -> (f64, f64) {
@@ -981,12 +991,14 @@ pub(crate) fn layout_block_diagram_typed(
         padding,
         text_style,
     } = BlockConfigView::new(effective_config).layout_settings();
-    layout_block_diagram_typed_with_text_style(model, padding, text_style, measurer)
+    let html_labels = crate::config::config_effective_html_labels(effective_config);
+    layout_block_diagram_typed_with_text_style(model, padding, html_labels, text_style, measurer)
 }
 
 pub(crate) fn layout_block_diagram_typed_with_text_style(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     padding: f64,
+    html_labels: bool,
     text_style: TextStyle,
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
@@ -1000,7 +1012,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
 
     validate_block_columns(root)?;
 
-    let mut root = to_sized_block(root, padding, measurer, &text_style);
+    let mut root = to_sized_block(root, padding, measurer, &text_style, html_labels);
     set_block_sizes(&mut root, padding);
     layout_blocks(&mut root, padding)?;
 
@@ -1067,7 +1079,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
         } else {
             let edge_label = decode_block_label_html(&e.label);
             let (label_width, label_height) =
-                block_html_label_metrics_px(&edge_label, measurer, &text_style);
+                block_html_label_metrics_px(&edge_label, measurer, &text_style, html_labels);
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
@@ -1204,6 +1216,7 @@ mod tests {
             "Font size precedence should widen this block",
             &SelectedMeasurer,
             &style,
+            true,
         );
 
         assert_eq!(width, 321.25);

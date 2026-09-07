@@ -1409,6 +1409,39 @@ fn block_root_viewbox_contains_edge_label_foreign_object() {
 }
 
 #[test]
+fn block_html_labels_false_emits_svg_text_for_nodes_and_edges() {
+    let svg = render_block_svg_from_text(
+        r#"%%{init: {"htmlLabels": false}}%%
+block
+  A["Alpha"] -- "Edge label" --> B["Beta"]
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+
+    assert!(
+        document
+            .descendants()
+            .all(|node| !node.has_tag_name("foreignObject")),
+        "htmlLabels:false must not emit foreignObject labels: {svg}"
+    );
+
+    let text_content = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .flat_map(|node| {
+            node.descendants()
+                .filter_map(|descendant| descendant.text())
+        })
+        .collect::<String>();
+    assert!(
+        text_content.contains("Alpha")
+            && text_content.contains("Beta")
+            && text_content.contains("Edge label"),
+        "htmlLabels:false must preserve node and edge label text in SVG text terminals: {svg}"
+    );
+}
+
+#[test]
 fn block_root_viewbox_contains_rough_stroke_bounds() {
     let svg = render_block_svg_from_text(
         r#"block

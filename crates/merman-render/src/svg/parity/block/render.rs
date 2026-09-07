@@ -848,6 +848,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         "render.block.roughjs",
     );
     let node_theme = MermaidThemeAdapter::new(effective_config).node_diagram();
+    let html_labels = crate::config::config_effective_html_labels(effective_config);
     let node_fill_color = node_theme.main_bkg.as_str();
     let node_stroke_color = node_theme.node_border.as_str();
     // RoughJS uses 1.3px as its default node stroke width in Mermaid's handDrawnShapeStyles.
@@ -1191,28 +1192,42 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 ),
             );
         }
-        let span_style_attr = if node_text_style.is_empty() {
-            String::new()
+        if html_labels {
+            let span_style_attr = if node_text_style.is_empty() {
+                String::new()
+            } else {
+                format!(r#" style="{}""#, escape_attr(&node_text_style))
+            };
+            let label_markup = if node.label.is_empty() {
+                String::new()
+            } else {
+                format!("<p>{}</p>", escape_xml(&label))
+            };
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+                escape_attr(&node_text_style),
+                fmt(label_tx),
+                fmt(label_ty),
+                fmt(label_w),
+                fmt(label_h),
+                escape_attr(&node_div_style_prefix),
+                span_style_attr,
+                label_markup
+            );
         } else {
-            format!(r#" style="{}""#, escape_attr(&node_text_style))
-        };
-        let label_markup = if node.label.is_empty() {
-            String::new()
-        } else {
-            format!("<p>{}</p>", escape_xml(&label))
-        };
-        let _ = write!(
-            &mut out,
-            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
-            escape_attr(&node_text_style),
-            fmt(label_tx),
-            fmt(label_ty),
-            fmt(label_w),
-            fmt(label_h),
-            escape_attr(&node_div_style_prefix),
-            span_style_attr,
-            label_markup
-        );
+            let label_text =
+                crate::flowchart::flowchart_label_plain_text_for_layout(&label, "text", false);
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
+                escape_attr(&node_text_style),
+                fmt(label_tx),
+                fmt(label_ty),
+            );
+            crate::svg::parity::label::write_svg_text_centered(&mut out, &label_text, true);
+            out.push_str("</g>");
+        }
 
         out.push_str("</g>");
         out.checkpoint()?;
@@ -1298,18 +1313,37 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             ),
         );
 
-        let _ = write!(
-            &mut out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
-            fmt(lbl.x),
-            fmt(lbl.y),
-            escape_attr(&e.id),
-            fmt(-lbl.width / 2.0),
-            fmt(-lbl.height / 2.0),
-            fmt(lbl.width),
-            fmt(lbl.height),
-            escape_xml(&decode_block_label_html(&e.label))
-        );
+        if html_labels {
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                fmt(lbl.x),
+                fmt(lbl.y),
+                escape_attr(&e.id),
+                fmt(-lbl.width / 2.0),
+                fmt(-lbl.height / 2.0),
+                fmt(lbl.width),
+                fmt(lbl.height),
+                escape_xml(&decode_block_label_html(&e.label))
+            );
+        } else {
+            let label_text = crate::flowchart::flowchart_label_plain_text_for_layout(
+                &decode_block_label_html(&e.label),
+                "text",
+                false,
+            );
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><rect class="background" style="stroke: none"/>"#,
+                fmt(lbl.x),
+                fmt(lbl.y),
+                escape_attr(&e.id),
+                fmt(-lbl.width / 2.0),
+                fmt(-lbl.height / 2.0),
+            );
+            crate::svg::parity::label::write_svg_text_centered(&mut out, &label_text, true);
+            out.push_str("</g></g>");
+        }
         out.checkpoint()?;
     }
 

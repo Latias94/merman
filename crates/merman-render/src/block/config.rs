@@ -87,4 +87,21 @@ mod tests {
         assert_eq!(settings.padding, -2.0);
         assert_eq!(settings.text_style.font_size, 1.0);
     }
+
+    #[test]
+    fn block_layout_settings_honor_root_html_label_override() {
+        let cfg = json!({
+            "htmlLabels": false,
+            "flowchart": {"htmlLabels": true}
+        });
+
+        assert!(!crate::config::config_effective_html_labels(&cfg));
+    }
+
+    #[test]
+    fn block_layout_settings_use_flowchart_html_label_fallback() {
+        let cfg = json!({"flowchart": {"htmlLabels": false}});
+
+        assert!(!crate::config::config_effective_html_labels(&cfg));
+    }
 }
