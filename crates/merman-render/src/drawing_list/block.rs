@@ -342,6 +342,16 @@ impl<'a> BlockBuilder<'a> {
                 .insert(semantic_id.clone(), source.styles.clone());
         }
         if !style.visible {
+            // Keep the node's semantic/DOM anchor even when its resolved CSS hides all visual
+            // children.  The SVG serializer can only project semantic groups represented in the
+            // command stream; storing the annotation alone would make `display:none` nodes
+            // disappear from the canonical DOM and from host accessibility/debug selectors.
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,

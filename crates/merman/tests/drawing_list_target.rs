@@ -4101,6 +4101,44 @@ fn block_resolves_shape_and_html_label_class_opacity_in_their_source_orders() {
 }
 
 #[test]
+fn block_display_none_retains_a_semantic_dom_anchor() {
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"block
+                A["Hidden"]
+                classDef hidden display:none
+                class A hidden
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("hidden Block node should still produce a DrawingList");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let document = output.document();
+    let semantic = document
+        .semantics
+        .iter()
+        .find(|semantic| semantic.title.as_deref() == Some("Hidden"))
+        .expect("display:none node must retain semantic metadata");
+    assert!(document.commands.iter().any(|command| {
+        matches!(
+            command,
+            merman_display_list::DrawingCommand::BeginSemanticGroup { semantic_id }
+                if semantic_id == &semantic.id
+        )
+    }));
+    assert!(!document.commands.iter().any(|command| {
+        matches!(
+            command,
+            merman_display_list::DrawingCommand::DrawText { run } if run.text == "Hidden"
+        )
+    }));
+}
+
+#[test]
 fn block_inline_background_color_does_not_replace_svg_fill() {
     let node_fill = |source: &str| {
         let output = Renderer::new()
