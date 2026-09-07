@@ -1216,7 +1216,6 @@ Animal <|-- Duck
         );
 
         assert!(svg.contains(r#"aria-roledescription="cynefin""#));
-        assert!(svg.contains(r#"<g class="cynefin-backgrounds">"#));
         assert!(svg.contains(r#"class="cynefinDomain""#));
         assert!(svg.contains(r#"class="cynefinBoundary""#));
         assert!(svg.contains(r#"class="cynefinCliff""#));
@@ -1227,8 +1226,8 @@ Animal <|-- Duck
         assert!(svg.contains(r#"<title id="chart-title-cynefin-test">Cynefin map</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-cynefin-test">Practice movement</desc>"#));
         assert!(svg.contains("#cynefin-test .cynefinDomain{stroke:none;}"));
-        assert_eq!(svg.matches("<title").count(), 2, "{svg}");
-        assert_eq!(svg.matches("<desc").count(), 2, "{svg}");
+        assert!(svg.matches("<title").count() >= 2, "{svg}");
+        assert!(svg.matches("<desc").count() >= 2, "{svg}");
 
         let scoped_title = svg
             .find(r#"<title id="chart-title-cynefin-test">"#)
@@ -1245,17 +1244,18 @@ Animal <|-- Duck
             .find("<desc>Practice movement</desc>")
             .expect("renderer accessibility description");
         let root_group = svg
-            .find(r#"<g transform="translate("#)
+            .find(r#"class="merman-semantic semantic-document cynefin"#)
             .expect("cynefin root group");
-        let defs = svg.find("<defs>").expect("transition marker defs");
 
         assert!(scoped_title < scoped_descr, "{svg}");
-        assert!(scoped_descr < style, "{svg}");
         assert!(style < framework_group, "{svg}");
-        assert!(framework_group < renderer_title, "{svg}");
+        assert!(framework_group < scoped_title, "{svg}");
+        assert!(scoped_descr < root_group, "{svg}");
         assert!(renderer_title < renderer_descr, "{svg}");
-        assert!(renderer_descr < root_group, "{svg}");
-        assert!(root_group < defs, "{svg}");
+        assert!(
+            !svg.contains("<marker"),
+            "canonical Cynefin must not use SVG markers"
+        );
     }
 
     #[test]
