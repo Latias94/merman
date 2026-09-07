@@ -1,4 +1,4 @@
-# ADR-0082: Independent Rustdoc Integration Paths
+# ADR-0087: Independent Rustdoc Integration Paths
 
 - Status: accepted
 - Date: 2026-08-14
