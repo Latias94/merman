@@ -1023,7 +1023,6 @@ fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
     let svg = render_svg(
         "venn-beta\n title Product Surface\n set A[\"Core\"]:20\n set B[\"Editor\"]:14\n union A,B[\"Shared\"]:4\n",

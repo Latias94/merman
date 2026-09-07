@@ -1239,6 +1239,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Pie
             | RenderFamilyKind::Cynefin
             | RenderFamilyKind::Railroad
+            | RenderFamilyKind::Venn
     )
 }
 

@@ -33,6 +33,6 @@
     { "id": "treeView", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "ishikawa", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "eventmodeling", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "venn", "document_adapter": "direct", "svg_serializer": "legacy-bridge" }
+    { "id": "venn", "document_adapter": "direct", "svg_serializer": "canonical" }
   ]
 }
