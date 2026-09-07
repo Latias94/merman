@@ -736,7 +736,6 @@ fn treemap_canonical_svg_preserves_upstream_custom_class_tokens() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",

@@ -1242,6 +1242,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Venn
             | RenderFamilyKind::EventModeling
             | RenderFamilyKind::Ishikawa
+            | RenderFamilyKind::Radar
     )
 }
 
