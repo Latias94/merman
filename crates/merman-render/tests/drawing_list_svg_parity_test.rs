@@ -331,7 +331,6 @@ fn error_nonportable_css_effects_use_an_explicit_effect_bridge() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn packet_canonical_svg_keeps_root_profile_and_packet_dom_roles() {
     let svg = render_svg(
         "packet\ntitle Header\n0-7: \"Version\"\n8-15: \"Length\"\n",
@@ -376,7 +375,118 @@ fn packet_canonical_svg_keeps_root_profile_and_packet_dom_roles() {
             .count(),
         2
     );
-    assert!(svg.contains("chart-title-packet-parity"));
+    assert!(!svg.contains("chart-title-packet-parity"));
+    let words = root
+        .children()
+        .filter(|node| {
+            node.has_tag_name("g") && node.children().any(|child| child.has_tag_name("rect"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(words.len(), 1);
+    assert_eq!(
+        words[0]
+            .children()
+            .filter(|node| node.has_tag_name("rect"))
+            .count(),
+        2
+    );
+    for label in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("packetLabel"))
+    {
+        assert_eq!(label.attribute("dominant-baseline"), Some("middle"));
+    }
+    for byte in document.descendants().filter(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.starts_with("packetByte"))
+    }) {
+        assert_eq!(byte.attribute("dominant-baseline"), Some("auto"));
+    }
+}
+
+#[test]
+fn packet_canonical_svg_preserves_empty_labels_words_and_authored_accessibility() {
+    let svg = render_svg(
+        "packet\naccTitle: Header map\naccDescr: Two words\n0: \"\"\n1-31: \"<literal>\"\n32-39: \"Tail\"\n",
+        "packet-empty",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let root = document.root_element();
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-packet-empty")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-packet-empty")
+    );
+    let children = root
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
+    assert_eq!(children[0].tag_name().name(), "title");
+    assert_eq!(children[0].text(), Some("Header map"));
+    assert_eq!(children[1].tag_name().name(), "desc");
+    assert_eq!(children[2].tag_name().name(), "style");
+    assert_eq!(
+        children
+            .iter()
+            .filter(|node| node.has_tag_name("g"))
+            .count(),
+        3
+    );
+    let first_word = children[4];
+    let texts = first_word
+        .children()
+        .filter(|node| node.has_tag_name("text"))
+        .collect::<Vec<_>>();
+    assert_eq!(texts[0].attribute("class"), Some("packetLabel"));
+    assert!(texts[0].text().unwrap_or_default().is_empty());
+    assert_eq!(texts[1].attribute("class"), Some("packetByte start"));
+    assert_eq!(texts[1].attribute("text-anchor"), Some("middle"));
+    assert_eq!(texts[1].text(), Some("0"));
+    assert_eq!(texts[2].text(), Some("<literal>"));
+    let title = children.last().unwrap();
+    assert_eq!(title.attribute("class"), Some("packetTitle"));
+    assert!(title.text().unwrap_or_default().is_empty());
+
+    let empty = render_svg("packet\n", "packet-header-only");
+    let empty = roxmltree::Document::parse(&empty).unwrap();
+    let title = empty
+        .descendants()
+        .find(|node| node.attribute("class") == Some("packetTitle"))
+        .unwrap();
+    assert_eq!(title.attribute("x"), Some("513"));
+    assert_eq!(title.attribute("y"), Some("-8.5"));
+
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "packet": { "showBits": false, "blockFillColor": "none", "blockStrokeColor": "none" }
+    })));
+    let hidden = render_family_svg_with_engine(engine, "packet\n0: \"\"\n", "packet-no-paint");
+    assert_eq!(
+        hidden.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+    let hidden = roxmltree::Document::parse(hidden.svg()).unwrap();
+    let rect = hidden
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert_eq!(rect.attribute("class"), Some("packetBlock"));
+    let css = hidden
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains(".packetBlock{stroke:none;stroke-width:0;fill:none;}"));
+    assert_eq!(
+        hidden
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .count(),
+        2
+    );
 }
 
 #[test]

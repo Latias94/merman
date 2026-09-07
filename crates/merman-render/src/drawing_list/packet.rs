@@ -119,6 +119,26 @@ impl<'a> PacketBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        let bounds = self
+            .layout
+            .bounds
+            .as_ref()
+            .expect("validated in constructor");
+        // The SVG root's white background is real paint, so native hosts must receive it too.
+        self.add_path(
+            "packet.background".to_string(),
+            polygon_path(&[
+                Point::new(bounds.min_x, bounds.min_y),
+                Point::new(bounds.max_x, bounds.min_y),
+                Point::new(bounds.max_x, bounds.max_y),
+                Point::new(bounds.min_x, bounds.max_y),
+            ]),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(Color::rgba(255, 255, 255, 255))),
+                stroke: None,
+            },
+        )?;
         self.document.push_semantic(SemanticAnnotation {
             id: "packet.document".to_string(),
             role: SemanticRole::Document,
@@ -133,10 +153,24 @@ impl<'a> PacketBuilder<'a> {
         })?;
 
         for (word_index, word) in self.layout.words.iter().enumerate() {
+            let word_id = format!("packet.word.{word_index}");
+            self.document.push_semantic(SemanticAnnotation {
+                id: word_id.clone(),
+                role: SemanticRole::Group,
+                title: None,
+                description: None,
+                link: None,
+            })?;
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: word_id,
+                })?;
             for (block_index, block) in word.blocks.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 self.emit_block(word_index, block_index, block)?;
             }
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
         }
         self.emit_title()?;
 
@@ -172,6 +206,7 @@ impl<'a> PacketBuilder<'a> {
                 family: RenderFamilyKind::Packet,
                 body: SvgStructureBody::Packet(PacketSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    expose_accessibility_title: self.model.acc_title.is_some(),
                 }),
             },
         })
@@ -188,44 +223,40 @@ impl<'a> PacketBuilder<'a> {
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             })?;
-        if self.block_fill_color.is_some() || self.block_stroke_color.is_some() {
-            self.add_path(
-                format!("{semantic_id}.shape"),
-                polygon_path(&[
-                    Point::new(block.x, block.y),
-                    Point::new(block.x + block.width, block.y),
-                    Point::new(block.x + block.width, block.y + block.height),
-                    Point::new(block.x, block.y + block.height),
-                ]),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: self.block_fill_color.map(Paint::solid),
-                    stroke: self
-                        .block_stroke_color
-                        .map(|color| stroke(color, self.block_stroke_width)),
-                },
-            )?;
-        }
+        self.add_path(
+            format!("{semantic_id}.shape"),
+            polygon_path(&[
+                Point::new(block.x, block.y),
+                Point::new(block.x + block.width, block.y),
+                Point::new(block.x + block.width, block.y + block.height),
+                Point::new(block.x, block.y + block.height),
+            ]),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: self.block_fill_color.map(Paint::solid),
+                stroke: self
+                    .block_stroke_color
+                    .map(|color| stroke(color, self.block_stroke_width)),
+            },
+        )?;
 
         let label = svg_plain_text(&block.label);
         let semantic_title = (!label.is_empty()).then(|| label.clone());
-        if !label.is_empty() {
-            let font = &self.font;
-            let text_obligation = &self.text_obligation;
-            self.document.draw_host_text(&label, |text| {
-                packet_text_run(
-                    text,
-                    Point::new(block.x + block.width / 2.0, block.y + block.height / 2.0),
-                    Rect::new(block.x, block.y, block.width, block.height),
-                    self.label_font_size,
-                    self.label_color,
-                    TextAnchor::Middle,
-                    TextBaseline::Middle,
-                    font,
-                    text_obligation,
-                )
-            })?;
-        }
+        let font = &self.font;
+        let text_obligation = &self.text_obligation;
+        self.document.draw_host_text(&label, |text| {
+            packet_text_run(
+                text,
+                Point::new(block.x + block.width / 2.0, block.y + block.height / 2.0),
+                Rect::new(block.x, block.y, block.width, block.height),
+                self.label_font_size,
+                self.label_color,
+                TextAnchor::Middle,
+                TextBaseline::Middle,
+                font,
+                text_obligation,
+            )
+        })?;
 
         if self.layout.show_bits {
             self.emit_bit_numbers(block)?;
@@ -301,9 +332,7 @@ impl<'a> PacketBuilder<'a> {
     }
 
     fn emit_title(&mut self) -> Result<()> {
-        let Some(title) = self.title.clone() else {
-            return Ok(());
-        };
+        let title = self.title.take().unwrap_or_default();
         self.session.checkpoint(OperationPhase::Emit)?;
         let semantic_id = "packet.title".to_string();
         let total_row_height = self.layout.row_height + self.layout.padding_y;

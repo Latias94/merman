@@ -37,7 +37,13 @@ pub(crate) fn render_document_svg(
 ) -> Result<String> {
     let svg =
         DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
-    super::apply_theme_css(svg, effective_config, session)
+    if matches!(document.svg.body, SvgStructureBody::Packet(_)) {
+        // Packet style is fully resolved in the command stream. Theme CSS is rejected by the
+        // builder; an encoder must not reintroduce a second visual source from external config.
+        Ok(svg)
+    } else {
+        super::apply_theme_css(svg, effective_config, session)
+    }
 }
 
 struct DocumentSvgEncoder<'a> {
@@ -57,6 +63,7 @@ struct DocumentSvgEncoder<'a> {
     semantic_svg_ids: BTreeMap<String, String>,
     fallbacks: BTreeMap<String, &'a merman_display_list::RasterFallback>,
     error_projection: Option<super::error::ErrorProjection<'a>>,
+    packet_styles: Option<super::packet::PacketSvgStyles<'a>>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -169,6 +176,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             semantic_svg_ids,
             fallbacks,
             error_projection,
+            packet_styles: if matches!(document.svg.body, SvgStructureBody::Packet(_)) {
+                Some(super::packet::PacketSvgStyles::new(
+                    &document.public,
+                    session,
+                )?)
+            } else {
+                None
+            },
             state: GraphicsState::default(),
             saves: Vec::new(),
             groups: Vec::new(),
@@ -231,6 +246,15 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Wardley(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
             }
+            SvgStructureBody::Packet(body) => (
+                self.document_semantic().and_then(|semantic| {
+                    body.expose_accessibility_title
+                        .then(|| semantic.title.clone())
+                        .flatten()
+                }),
+                self.document_semantic()
+                    .and_then(|semantic| semantic.description.clone()),
+            ),
             #[cfg(feature = "layout-cytoscape")]
             SvgStructureBody::Architecture(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
@@ -327,6 +351,14 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let root_document = root_context.write_open(&mut self.output, root_spec, chrome)?;
 
+        if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+            self.write_accessibility_metadata(
+                title.as_deref(),
+                description.as_deref(),
+                title_id.as_deref(),
+                description_id.as_deref(),
+            );
+        }
         self.write_family_style()?;
         if matches!(
             self.svg_body,
@@ -338,14 +370,20 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("<g/>");
         }
         self.write_defs()?;
-        self.write_accessibility_metadata(
-            title.as_deref(),
-            description.as_deref(),
-            title_id.as_deref(),
-            description_id.as_deref(),
-        );
-        for command in &self.document.commands {
+        if !matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+            self.write_accessibility_metadata(
+                title.as_deref(),
+                description.as_deref(),
+                title_id.as_deref(),
+                description_id.as_deref(),
+            );
+        }
+        let packet_root_background = self.packet_background_is_root_paint();
+        for (index, command) in self.document.commands.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
+            if packet_root_background && index == 2 {
+                continue;
+            }
             self.emit_command(command)?;
         }
 
@@ -387,12 +425,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                     .with_max_width(root_svg::RootMaxWidth::SvgNumber(body.max_width_px))
                     .without_background())
             }
-            SvgStructureBody::Packet(_) => Ok(root_svg::RootViewportSpec::responsive(
-                viewport_bounds,
-            )
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
-                viewport_bounds.width,
-            ))),
+            SvgStructureBody::Packet(_) => {
+                let spec = root_svg::RootViewportSpec::responsive(viewport_bounds).with_max_width(
+                    root_svg::RootMaxWidth::CssSixSignificant(viewport_bounds.width),
+                );
+                Ok(if self.packet_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Mindmap(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -546,6 +588,33 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
     }
 
+    /// Project the first full-viewport white path into Mermaid's root background CSS. Only an
+    /// exact, untransformed paint can take this DOM-preserving form; edited documents retain the
+    /// ordinary path and a transparent root instead.
+    fn packet_background_is_root_paint(&self) -> bool {
+        if !matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+            return false;
+        }
+        let [
+            DrawingCommand::Save,
+            DrawingCommand::BeginSemanticGroup { semantic_id },
+            DrawingCommand::DrawPath { path, style },
+            ..,
+        ] = self.document.commands.as_slice()
+        else {
+            return false;
+        };
+        if semantic_id != "packet.document"
+            || path.as_str() != "packet.background"
+            || style.stroke.is_some()
+            || style.fill != Some(Paint::solid(Color::rgba(255, 255, 255, 255)))
+        {
+            return false;
+        }
+        self.path_resource(path).ok().and_then(rectangle_from_path)
+            == Some(self.document.viewport.bounds)
+    }
+
     fn write_family_style(&mut self) -> Result<()> {
         let css = match self.svg_body {
             SvgStructureBody::Info(_) => Some((
@@ -564,7 +633,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             )),
             SvgStructureBody::Packet(_) => Some((
                 false,
-                super::packet::packet_css(self.diagram_id.as_str(), self.effective_config),
+                self.packet_styles
+                    .as_ref()
+                    .ok_or_else(|| invalid("Packet styles are missing"))?
+                    .css(self.diagram_id.as_str())?,
             )),
             SvgStructureBody::Mindmap(_) => Some((
                 false,
@@ -1273,6 +1345,18 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.begin_mindmap_semantic_group(semantic_id);
         }
+        if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
+            let emitted = semantic_id.starts_with("packet.word.");
+            if emitted {
+                self.output.push_str("<g>");
+            }
+            self.groups.push(GroupKind::Semantic {
+                linked: false,
+                emitted,
+                semantic_id: semantic_id.to_owned(),
+            });
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
             // Info has two semantic scopes in the renderer-neutral document, but Mermaid's SVG
             // contract exposes only one ordinary group around the version text.  Keep both scopes
@@ -1928,6 +2012,24 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             let path = self.path_resource(path_id)?;
             if let Some(bounds) = rectangle_from_path(path) {
+                if self
+                    .packet_styles
+                    .as_ref()
+                    .is_some_and(|styles| styles.compact_block(style))
+                {
+                    write!(
+                        self.output,
+                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" class=\"packetBlock\"",
+                        fmt(bounds.x),
+                        fmt(bounds.y),
+                        fmt(bounds.width),
+                        fmt(bounds.height)
+                    )
+                    .map_err(|_| invalid("failed to write Packet block"))?;
+                    self.write_state_attrs();
+                    self.output.push_str("/>");
+                    return Ok(());
+                }
                 return self.emit_rect(path_id, bounds, style);
             }
         }
@@ -2815,6 +2917,32 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if let Some(styles) = &self.packet_styles
+            && let Some(class) =
+                super::packet::packet_text_class(semantic_id.as_deref(), text_index)
+            && styles.compact_text(class, run)
+        {
+            let baseline = match run.baseline {
+                TextBaseline::Middle => "middle",
+                TextBaseline::Alphabetic => "auto",
+                other => text_baseline(other),
+            };
+            write!(
+                self.output,
+                "<text x=\"{}\" y=\"{}\" class=\"{}\" dominant-baseline=\"{}\" text-anchor=\"{}\"",
+                fmt(run.origin.x),
+                fmt(run.origin.y),
+                class,
+                baseline,
+                text_anchor(run.anchor)
+            )
+            .map_err(|_| invalid("failed to write Packet text"))?;
+            self.write_state_attrs();
+            self.output.push('>');
+            escape_xml_into(&mut self.output, &run.text);
+            self.output.push_str("</text>");
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
             write!(
                 self.output,
@@ -2875,6 +3003,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.style.font_size).to_string()
         };
         let baseline = match self.svg_body {
+            SvgStructureBody::Packet(_) => match run.baseline {
+                TextBaseline::Middle => "middle",
+                TextBaseline::Alphabetic => "auto",
+                other => text_baseline(other),
+            },
             SvgStructureBody::XyChart(_) => xychart_text_baseline(run.baseline),
             SvgStructureBody::Wardley(_) => wardley_text_baseline(run.baseline),
             _ => text_baseline(run.baseline),
@@ -3716,16 +3849,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         match self.svg_body {
             SvgStructureBody::Error(_) => Some(Cow::Borrowed("error-text")),
             SvgStructureBody::Info(_) => Some(Cow::Borrowed("version")),
-            SvgStructureBody::Packet(_) => match self.current_semantic_id() {
-                Some("packet.title") => Some(Cow::Borrowed("packetTitle")),
-                Some(id) if id.starts_with("packet.block.") => match text_index {
-                    Some(0) => Some(Cow::Borrowed("packetLabel")),
-                    Some(1) => Some(Cow::Borrowed("packetByte start")),
-                    Some(2) => Some(Cow::Borrowed("packetByte end")),
-                    _ => None,
-                },
-                _ => None,
-            },
+            SvgStructureBody::Packet(_) => {
+                super::packet::packet_text_class(self.current_semantic_id(), text_index)
+                    .map(Cow::Borrowed)
+            }
             SvgStructureBody::Pie(body) => self
                 .current_semantic_id()
                 .and_then(|id| body.text_classes.get(id))

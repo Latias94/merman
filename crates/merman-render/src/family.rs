@@ -1231,7 +1231,10 @@ fn render_legacy_family_artifact_svg(
 /// serializer.  The list is intentionally explicit: adding a family requires a focused SVG
 /// parity fixture and a review of every effect that the public document can carry.
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
-    matches!(family, RenderFamilyKind::Error | RenderFamilyKind::Info)
+    matches!(
+        family,
+        RenderFamilyKind::Error | RenderFamilyKind::Info | RenderFamilyKind::Packet
+    )
 }
 
 #[inline(never)]
@@ -1986,6 +1989,201 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn packet_svg_uses_public_geometry_and_styles_not_external_config() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingResource, Paint, PathSegment, Point,
+        };
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "packet\n0-7: \"First\"\n8-15: \"Second\"\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse packet")
+            .expect("detect packet");
+        let artifact =
+            prepare(parsed, &LayoutOptions::default(), session()).expect("prepare packet artifact");
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::AllowRasterSubtree,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .expect("build canonical packet document");
+        let options = SvgRenderOptions {
+            diagram_id: Some("packet-public-source".to_string()),
+            ..SvgRenderOptions::default()
+        };
+        let debug = SvgDebugOptions::default();
+        let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
+            crate::svg::render_document_svg(document, &options, &debug, config, &artifact.session)
+                .expect("serialize canonical packet document")
+        };
+        let config = artifact.metadata.effective_config.as_value();
+        let mut conflicting_config = config.clone();
+        conflicting_config["packet"] = json!({
+            "labelColor": "#ff0000",
+            "labelFontSize": 99,
+            "blockFillColor": "#00ff00",
+            "blockStrokeColor": "#0000ff",
+            "blockStrokeWidth": 17
+        });
+        conflicting_config["themeCSS"] =
+            json!(".packetLabel { fill: url(javascript:alert(1)); font-size: 123px; }");
+        let baseline = render(&document, config);
+        assert_eq!(baseline, render(&document, &conflicting_config));
+        // Uniform labels use upstream's class rule; after changing one label the unchanged
+        // sibling must receive the same effective style through element attributes instead.
+        assert!(baseline.contains(".packetLabel{fill:#000000;font-size:12px;}"));
+
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawText { run } = command
+                && run.text.is_empty()
+            {
+                run.text = "Public title\nSecond line".to_string();
+            }
+        }
+        let multiline = render(&document, &conflicting_config);
+        let multiline_xml = roxmltree::Document::parse(&multiline).unwrap();
+        let title = multiline_xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("packetTitle"))
+            .unwrap();
+        let second_line = title
+            .children()
+            .find(|node| node.has_tag_name("tspan"))
+            .expect("public multiline text must retain its second line");
+        assert_eq!(second_line.text(), Some("Second line"));
+        assert_eq!(second_line.attribute("dy"), Some("14"));
+
+        let path = document
+            .public
+            .resources
+            .iter_mut()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "packet.block.0.0.shape" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .expect("first packet rectangle resource");
+        path.segments = vec![
+            PathSegment::MoveTo {
+                to: Point::new(11.0, 13.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(58.0, 13.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(58.0, 42.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(11.0, 42.0),
+            },
+            PathSegment::Close,
+        ];
+        let mut changed_label = false;
+        let mut changed_block = false;
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } if run.text == "First" => {
+                    run.text = "Public label".to_string();
+                    run.style.font_size = 31.0;
+                    run.style.fill = Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255));
+                    changed_label = true;
+                }
+                DrawingCommand::DrawText { run } if matches!(run.text.as_str(), "0" | "8") => {
+                    run.style.font_size = 17.0;
+                }
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "packet.block.0.0.shape" =>
+                {
+                    style.fill = Some(Paint::solid(Color::rgba(0xab, 0xcd, 0xef, 255)));
+                    changed_block = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(changed_label && changed_block);
+        let modified = render(&document, config);
+        assert_ne!(baseline, modified);
+        assert_eq!(modified, render(&document, &conflicting_config));
+        let modified_xml = roxmltree::Document::parse(&modified).expect("valid modified SVG");
+        let rectangle = modified_xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("data-merman-resource") == Some("packet.block.0.0.shape")
+            })
+            .expect("modified public rectangle");
+        for (attribute, expected) in [
+            ("x", "11"),
+            ("y", "13"),
+            ("width", "47"),
+            ("height", "29"),
+            ("fill", "#abcdef"),
+        ] {
+            assert_eq!(
+                rectangle.attribute(attribute),
+                Some(expected),
+                "{attribute}"
+            );
+        }
+        let labels: Vec<_> = modified_xml
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && node.attribute("class") == Some("packetLabel")
+            })
+            .collect();
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].text(), Some("Public label"));
+        assert_eq!(labels[0].attribute("font-size"), Some("31"));
+        assert_eq!(labels[0].attribute("fill"), Some("#123456"));
+        assert_eq!(labels[1].text(), Some("Second"));
+        assert_eq!(labels[1].attribute("font-size"), Some("12"));
+        assert_eq!(labels[1].attribute("fill"), Some("#000000"));
+        assert!(!modified.contains("#packet-public-source .packetLabel{"));
+        assert!(!modified.contains("#packet-public-source .packetBlock{"));
+        assert!(!modified.contains("#packet-public-source .packetByte{"));
+        for (class, size) in [("packetByte start", "17"), ("packetByte end", "10")] {
+            let bytes = modified_xml
+                .descendants()
+                .filter(|node| node.attribute("class") == Some(class))
+                .collect::<Vec<_>>();
+            assert_eq!(bytes.len(), 2);
+            assert!(
+                bytes
+                    .iter()
+                    .all(|node| node.attribute("font-size") == Some(size))
+            );
+        }
+        assert!(!modified.contains("javascript:"));
+
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "packet.background"
+            {
+                style.fill = Some(Paint::solid(Color::rgba(0x11, 0x22, 0x33, 255)));
+            }
+        }
+        let recolored = render(&document, &conflicting_config);
+        let recolored_xml = roxmltree::Document::parse(&recolored).unwrap();
+        assert!(
+            !recolored_xml
+                .root_element()
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("background-color: white")
+        );
+        let background = recolored_xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some("packet.background"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("#112233"));
     }
 
     #[test]

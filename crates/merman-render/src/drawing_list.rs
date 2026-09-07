@@ -329,6 +329,7 @@ pub(crate) struct PieSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct PacketSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) expose_accessibility_title: bool,
 }
 
 /// SVG-only metadata retained beside the public QuadrantChart document.
