@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Homebrew test environment
-        uses: Homebrew/actions/setup-homebrew@2026.08.24.1
+        uses: Homebrew/actions/setup-homebrew@2026.08.31.1
         with:
           core: true
           setup-sandbox: true
