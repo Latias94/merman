@@ -439,6 +439,9 @@ fn encode_pair_on_backend_stack(
     }
     let solid_report = solid.report_for_output(RasterOutputKind::Png);
     let solid_pixmap = solid.render_pixmap(solid.matte, control)?;
+    // The rendered pixmap and owned observation are the only solid-side values needed after
+    // preparation. Release the parsed tree before preparing the underlay and transparent trees.
+    drop(solid);
     let solid_bytes = solid_pixmap
         .encode_png()
         .map_err(|_| ExportError::PngEncode)?;
@@ -451,6 +454,7 @@ fn encode_pair_on_backend_stack(
     require_no_opaque_control_targets(&underlay_tree)?;
     require_solid_underlay_path_compatibility(&solid_tree, &underlay_tree)?;
     let underlay_pixmap = underlay.render_pixmap(underlay.matte, control)?;
+    drop(underlay);
 
     let solid_delta = observe_solid_delta(
         &solid_pixmap,
@@ -483,6 +487,7 @@ fn encode_pair_on_backend_stack(
     require_transparent_path_compatibility(&underlay_tree, &transparent_tree, &solid_tree)?;
     let transparent_report = transparent.report_for_output(RasterOutputKind::Png);
     let transparent_pixmap = transparent.render_pixmap(transparent.matte, control)?;
+    drop(transparent);
     let transparent_reference_mismatches = transparent_pixmap
         .pixels()
         .iter()
@@ -494,6 +499,7 @@ fn encode_pair_on_backend_stack(
             "transparent PNG differs from the solid SVG underlay reference",
         ));
     }
+    drop(underlay_pixmap);
     let transparent_bytes = transparent_pixmap
         .encode_png()
         .map_err(|_| ExportError::PngEncode)?;
