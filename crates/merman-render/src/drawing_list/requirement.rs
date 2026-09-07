@@ -17,7 +17,7 @@ use crate::drawing_list::support::{
 };
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
-use crate::model::{Bounds, LayoutEdge, LayoutNode, RequirementDiagramLayout};
+use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, RequirementDiagramLayout};
 use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
 use crate::requirement::{
     RequirementEdgeLabelPlan, RequirementNodeLabelPlan, RequirementNodeRenderPlan,
@@ -674,10 +674,11 @@ impl<'a> RequirementBuilder<'a> {
     }
 
     fn emit_contains_marker(&mut self, semantic_id: &str, edge: &LayoutEdge) -> Result<()> {
-        let [start, next, ..] = edge.points.as_slice() else {
-            return Err(invalid("Requirement edge has no start marker tangent"));
-        };
-        let direction = normalize(next.x - start.x, next.y - start.y);
+        let start = edge
+            .points
+            .first()
+            .ok_or_else(|| invalid("Requirement edge has no start marker point"))?;
+        let direction = start_marker_direction(&edge.points)?;
         let normal = Point::new(-direction.y, direction.x);
         let scale = self.relation_width.max(0.1);
         let center = Point::new(
@@ -719,10 +720,11 @@ impl<'a> RequirementBuilder<'a> {
     }
 
     fn emit_arrow_marker(&mut self, semantic_id: &str, edge: &LayoutEdge) -> Result<()> {
-        let [.., previous, end] = edge.points.as_slice() else {
-            return Err(invalid("Requirement edge has no end marker tangent"));
-        };
-        let direction = normalize(end.x - previous.x, end.y - previous.y);
+        let end = edge
+            .points
+            .last()
+            .ok_or_else(|| invalid("Requirement edge has no end marker point"))?;
+        let direction = end_marker_direction(&edge.points)?;
         let normal = Point::new(-direction.y, direction.x);
         let scale = self.relation_width.max(0.1);
         let base = Point::new(
@@ -1011,13 +1013,44 @@ fn line_segments(from: Point, to: Point) -> Vec<PathSegment> {
     vec![PathSegment::MoveTo { to: from }, PathSegment::LineTo { to }]
 }
 
-fn normalize(x: f64, y: f64) -> Point {
+fn unit_direction(x: f64, y: f64) -> Option<Point> {
     let length = x.hypot(y);
     if !length.is_finite() || length <= f64::EPSILON {
-        Point::new(0.0, 1.0)
+        None
     } else {
-        Point::new(x / length, y / length)
+        Some(Point::new(x / length, y / length))
     }
+}
+
+fn start_marker_direction(points: &[LayoutPoint]) -> Result<Point> {
+    let start = points
+        .first()
+        .ok_or_else(|| invalid("Requirement edge has no start marker point"))?;
+    points
+        .iter()
+        .skip(1)
+        .find_map(|candidate| unit_direction(candidate.x - start.x, candidate.y - start.y))
+        .ok_or_else(|| {
+            unavailable(
+                "Requirement start marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation",
+            )
+        })
+}
+
+fn end_marker_direction(points: &[LayoutPoint]) -> Result<Point> {
+    let end = points
+        .last()
+        .ok_or_else(|| invalid("Requirement edge has no end marker point"))?;
+    points
+        .iter()
+        .rev()
+        .skip(1)
+        .find_map(|candidate| unit_direction(end.x - candidate.x, end.y - candidate.y))
+        .ok_or_else(|| {
+            unavailable(
+                "Requirement end marker has no non-zero tangent; DrawingList v1 cannot choose a lossless marker orientation",
+            )
+        })
 }
 
 fn parse_font_weight(value: &str) -> Result<u16> {
@@ -1192,5 +1225,49 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "requirement".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn layout_point(x: f64, y: f64) -> LayoutPoint {
+        LayoutPoint { x, y }
+    }
+
+    #[test]
+    fn marker_directions_skip_coincident_endpoint_points() {
+        let points = [
+            layout_point(1.0, 2.0),
+            layout_point(1.0, 2.0),
+            layout_point(4.0, 6.0),
+            layout_point(4.0, 6.0),
+        ];
+
+        assert_eq!(
+            start_marker_direction(&points).expect("start marker direction"),
+            Point::new(0.6, 0.8)
+        );
+        assert_eq!(
+            end_marker_direction(&points).expect("end marker direction"),
+            Point::new(0.6, 0.8)
+        );
+    }
+
+    #[test]
+    fn marker_directions_reject_a_fully_degenerate_route() {
+        let points = [layout_point(1.0, 2.0), layout_point(1.0, 2.0)];
+
+        for error in [
+            start_marker_direction(&points).expect_err("start marker must fail closed"),
+            end_marker_direction(&points).expect_err("end marker must fail closed"),
+        ] {
+            assert!(matches!(
+                error,
+                Error::DrawingListUnavailable { ref family, .. } if family == "requirement"
+            ));
+            assert!(error.to_string().contains("no non-zero tangent"));
+        }
     }
 }

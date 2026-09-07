@@ -574,6 +574,39 @@ fn gradient_reference_check_rejects_an_orphaned_resource() {
     assert!(!path_paint_references_resource(&document, &gradient_id));
 }
 
+#[test]
+fn expanded_marker_reference_check_rejects_orphaned_resources() {
+    let (_, rendered) = render_drawing_list(
+        "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
+    );
+    let mut document = rendered.expect("Wardley marker fixture must render");
+    let marker_ids = document
+        .resources
+        .iter()
+        .filter_map(|resource| match resource {
+            DrawingResource::Path(path) if is_expanded_marker_path_id(&path.id) => {
+                Some(path.id.clone())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!marker_ids.is_empty());
+    assert!(has_expanded_marker(&document));
+
+    document.commands.retain(|command| {
+        !matches!(
+            command,
+            DrawingCommand::DrawPath { path, .. } if marker_ids.contains(path)
+        )
+    });
+
+    document
+        .validate()
+        .expect("orphaned marker resources are currently protocol-valid");
+    assert!(!has_expanded_marker(&document));
+    assert!(!observed_protocol_effects(&document).contains("expanded_marker"));
+}
+
 fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'static str> {
     let mut effects = BTreeSet::new();
 
@@ -669,16 +702,26 @@ fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'stati
 }
 
 fn has_expanded_marker(document: &DrawingListDocument) -> bool {
-    document.resources.iter().any(|resource| {
-        matches!(
-            resource,
-            DrawingResource::Path(path)
-                if path.id.as_str().contains("marker")
-                    || (path.id.as_str().starts_with("wardley.link.")
-                        && (path.id.as_str().ends_with(".start")
-                            || path.id.as_str().ends_with(".end")))
-                    || (path.id.as_str().starts_with("wardley.trend.")
-                        && path.id.as_str().ends_with(".end"))
-        )
-    })
+    document
+        .resources
+        .iter()
+        .filter_map(|resource| match resource {
+            DrawingResource::Path(path) if is_expanded_marker_path_id(&path.id) => Some(&path.id),
+            _ => None,
+        })
+        .any(|marker_id| {
+            document.commands.iter().any(|command| {
+                matches!(
+                    command,
+                    DrawingCommand::DrawPath { path, .. } if path == marker_id
+                )
+            })
+        })
+}
+
+fn is_expanded_marker_path_id(path_id: &ResourceId) -> bool {
+    path_id.as_str().contains("marker")
+        || (path_id.as_str().starts_with("wardley.link.")
+            && (path_id.as_str().ends_with(".start") || path_id.as_str().ends_with(".end")))
+        || (path_id.as_str().starts_with("wardley.trend.") && path_id.as_str().ends_with(".end"))
 }
