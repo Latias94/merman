@@ -9,6 +9,7 @@ use super::{
     parse_svg_path,
 };
 use crate::config::config_font_family_css_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -27,10 +28,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_display_list::{
-    CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListPolicy,
-    DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource, PathSegment,
-    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
-    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor, FontStyle,
+    Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -50,23 +51,21 @@ pub(crate) fn build_xychart_document(
     pair: &XyChartPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    XyChartBuilder::new(pair, metadata, policy, session)?.build()
+    XyChartBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct XyChartBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a XyChartDiagramRenderModel,
     layout: &'a XyChartDiagramLayout,
+    output: DrawingListBuilder<'a>,
     font_family_css: String,
     font: FontDescriptor,
     text_obligation: TextObligation,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
     svg_semantic_classes: BTreeMap<String, String>,
 }
 
@@ -75,19 +74,25 @@ impl<'a> XyChartBuilder<'a> {
         pair: &'a XyChartPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
         let layout = pair.layout();
-        validate_layout(layout)?;
+        validate_layout(layout, session)?;
         let font_family_css = config_font_family_css_raw(config);
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "xychart.document".to_string(),
+        })?;
         Ok(Self {
             metadata,
             session,
-            policy,
             model: pair.semantic(),
             layout,
+            output,
             font: FontDescriptor {
                 families: parse_font_families_for(&font_family_css, RenderFamilyKind::XyChart)?,
                 weight: 400,
@@ -97,14 +102,6 @@ impl<'a> XyChartBuilder<'a> {
             },
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "xychart.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
             svg_semantic_classes: BTreeMap::from([(
                 "xychart.document".to_string(),
                 "main".to_string(),
@@ -113,7 +110,7 @@ impl<'a> XyChartBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "xychart.document".to_string(),
             role: SemanticRole::Document,
             // Body/frontmatter titles are painted chart labels, not accessibility titles.  The
@@ -121,27 +118,20 @@ impl<'a> XyChartBuilder<'a> {
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         for drawable_index in 0..self.layout.drawables.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            let drawable = self.layout.drawables[drawable_index].clone();
-            self.emit_drawable(drawable_index, &drawable)?;
+            let drawable = &self.layout.drawables[drawable_index];
+            self.emit_drawable(drawable_index, drawable)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
+            BTreeMap::from([(
                 "x-merman-xychart".to_string(),
                 json!({
                     "chart_orientation": self.layout.chart_orientation,
@@ -151,8 +141,7 @@ impl<'a> XyChartBuilder<'a> {
                     "text_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -206,9 +195,10 @@ impl<'a> XyChartBuilder<'a> {
             self.svg_semantic_classes
                 .insert(semantic_id.clone(), classes);
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         match drawable {
             XyChartDrawableElem::Rect { data, .. } => {
                 for (item_index, rect) in data.iter().enumerate() {
@@ -243,14 +233,14 @@ impl<'a> XyChartBuilder<'a> {
                 }
             }
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: self.drawable_title(group_texts),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -262,9 +252,10 @@ impl<'a> XyChartBuilder<'a> {
         rect: &XyChartRectData,
     ) -> Result<()> {
         let semantic_id = format!("xychart.rect.{drawable_index}.{item_index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let styles = PortableStyleResolver::new("xychart");
         let fill = styles.optional_color("rectangle fill", &rect.fill)?;
@@ -291,15 +282,15 @@ impl<'a> XyChartBuilder<'a> {
             )?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         let (role, title, description) = self.rect_semantics(group_texts, item_index);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role,
             title,
             description,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -311,9 +302,10 @@ impl<'a> XyChartBuilder<'a> {
         path: &XyChartPathData,
     ) -> Result<()> {
         let semantic_id = format!("xychart.path.{drawable_index}.{item_index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let styles = PortableStyleResolver::new("xychart");
         let fill = path
@@ -337,14 +329,14 @@ impl<'a> XyChartBuilder<'a> {
             )?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: self.drawable_title(group_texts),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -365,13 +357,13 @@ impl<'a> XyChartBuilder<'a> {
             }
         };
         let text_value = svg_plain_text(&text.text);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.clone(),
             role: SemanticRole::Label,
             title: (!text_value.is_empty()).then_some(text_value.clone()),
             description: group_title(group_texts),
             link: None,
-        });
+        })?;
         // SVG font-size=0 produces no pixels, while DrawingList text runs require a positive size.
         // Keep the semantic value above and omit only the visually empty command.
         if text_value.is_empty() || text.font_size == 0.0 {
@@ -387,47 +379,65 @@ impl<'a> XyChartBuilder<'a> {
         let baseline = text_baseline(text);
         let local_bounds =
             self.measure_text_bounds(&text_value, text.font_size, anchor, baseline)?;
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         match placement {
             TextPlacement::Transformed => {
-                self.commands.push(DrawingCommand::Save);
-                self.commands.push(DrawingCommand::ConcatTransform {
+                self.output.push_control(DrawingCommand::Save)?;
+                self.output.push_control(DrawingCommand::ConcatTransform {
                     transform: text_transform(text.x, text.y, text.rotation),
-                });
-                self.commands.push(DrawingCommand::draw_text(self.text_run(
-                    text_value,
-                    TextRunSpec {
-                        origin: Point::new(0.0, 0.0),
-                        bounds: local_bounds,
-                        font_size: text.font_size,
-                        fill,
-                        anchor,
-                        baseline,
-                    },
-                )));
-                self.commands.push(DrawingCommand::Restore);
+                })?;
+                let font = self.font.clone();
+                let obligation = self.text_obligation.clone();
+                self.output.draw_host_text(&text_value, move |owned| {
+                    Self::text_run(
+                        font,
+                        obligation,
+                        owned,
+                        TextRunSpec {
+                            origin: Point::new(0.0, 0.0),
+                            bounds: local_bounds,
+                            font_size: text.font_size,
+                            fill,
+                            anchor,
+                            baseline,
+                        },
+                    )
+                })?;
+                self.output.push_control(DrawingCommand::Restore)?;
             }
             TextPlacement::Direct => {
-                self.commands.push(DrawingCommand::draw_text(self.text_run(
-                    text_value,
-                    TextRunSpec {
-                        origin: Point::new(text.x, text.y),
-                        bounds: translate_rect(local_bounds, text.x, text.y),
-                        font_size: text.font_size,
-                        fill,
-                        anchor,
-                        baseline,
-                    },
-                )));
+                let font = self.font.clone();
+                let obligation = self.text_obligation.clone();
+                self.output.draw_host_text(&text_value, move |owned| {
+                    Self::text_run(
+                        font,
+                        obligation,
+                        owned,
+                        TextRunSpec {
+                            origin: Point::new(text.x, text.y),
+                            bounds: translate_rect(local_bounds, text.x, text.y),
+                            font_size: text.font_size,
+                            fill,
+                            anchor,
+                            baseline,
+                        },
+                    )
+                })?;
             }
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         Ok(())
     }
 
-    fn text_run(&self, text: String, spec: TextRunSpec) -> TextRun {
+    fn text_run(
+        font: FontDescriptor,
+        obligation: TextObligation,
+        text: String,
+        spec: TextRunSpec,
+    ) -> TextRun {
         let TextRunSpec {
             origin,
             bounds,
@@ -441,7 +451,7 @@ impl<'a> XyChartBuilder<'a> {
             origin,
             bounds,
             style: TextStyle {
-                font: self.font.clone(),
+                font,
                 font_size,
                 letter_spacing: 0.0,
                 line_height: font_size,
@@ -453,7 +463,7 @@ impl<'a> XyChartBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
+            obligation,
         }
     }
 
@@ -499,13 +509,7 @@ impl<'a> XyChartBuilder<'a> {
             return Err(invalid(format!("XYChart path `{id}` has no geometry")));
         }
         let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(id, segments, style)
     }
 
     fn drawable_title(&self, group_texts: &[String]) -> Option<String> {
@@ -627,7 +631,7 @@ fn translate_rect(rect: Rect, x: f64, y: f64) -> Rect {
     Rect::new(rect.x + x, rect.y + y, rect.width, rect.height)
 }
 
-fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
+fn validate_layout(layout: &XyChartDiagramLayout, session: &RenderSession) -> Result<()> {
     if ![layout.width, layout.height]
         .into_iter()
         .all(f64::is_finite)
@@ -641,9 +645,11 @@ fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
     }
 
     for drawable in &layout.drawables {
+        session.checkpoint(OperationPhase::Emit)?;
         match drawable {
             XyChartDrawableElem::Rect { data, .. } => {
                 for rect in data {
+                    session.checkpoint(OperationPhase::Emit)?;
                     if ![rect.x, rect.y, rect.width, rect.height, rect.stroke_width]
                         .into_iter()
                         .all(f64::is_finite)
@@ -659,22 +665,27 @@ fn validate_layout(layout: &XyChartDiagramLayout) -> Result<()> {
             }
             XyChartDrawableElem::Text { data, .. } => {
                 for text in data {
+                    session.checkpoint(OperationPhase::Emit)?;
                     validate_text(text, false)?;
                 }
             }
             XyChartDrawableElem::BarDataLabel { data, .. } => {
                 for text in data {
+                    session.checkpoint(OperationPhase::Emit)?;
                     validate_text(text, true)?;
                 }
             }
             XyChartDrawableElem::Path { data, .. } => {
-                if data.iter().any(|path| !path.stroke_width.is_finite()) {
-                    return Err(unavailable(
-                        "XYChart layout contains non-finite path geometry",
-                    ));
-                }
-                if data.iter().any(|path| path.stroke_width < 0.0) {
-                    return Err(invalid("XYChart contains invalid path stroke geometry"));
+                for path in data {
+                    session.checkpoint(OperationPhase::Emit)?;
+                    if !path.stroke_width.is_finite() {
+                        return Err(unavailable(
+                            "XYChart layout contains non-finite path geometry",
+                        ));
+                    }
+                    if path.stroke_width < 0.0 {
+                        return Err(invalid("XYChart contains invalid path stroke geometry"));
+                    }
                 }
             }
         }

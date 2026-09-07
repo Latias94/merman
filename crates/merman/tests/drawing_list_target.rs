@@ -216,6 +216,11 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n",
         "timeline\ntitle Releases\nsection Planning\nPlan : Build\nShip : Done\n",
         "timeline TD\nsection Planning\nPlan : Build\nShip : Done\n",
+        "cynefin-beta\n",
+        "radar-beta\n  title Release health\n  axis Speed, Quality, Reach\n  curve Current{80, 60, 90}\n  curve Target{90, 90, 90}\n  graticule circle\n  ticks 3\n",
+        "railroad-beta\nexpr = terminal(\"A\") ;\n",
+        "sankey\nSource,Target,10\nTarget,Done,4\n",
+        "xychart-beta\n  x-axis [Jan, Feb]\n  line [1, 2]\n",
         "kanban\n  Todo\n    task[Task]\n",
         concat!(
             "C4Context\ntitle Context\n",
@@ -321,6 +326,43 @@ fn kanban_command_limit_reaches_the_bounded_document_builder() {
                 && limit.actual == 1
                 && limit.maximum == 0
     ));
+}
+
+#[test]
+fn newly_bounded_families_reject_before_the_first_output_command() {
+    for source in [
+        "cynefin-beta\n",
+        "radar-beta\n  title Release health\n  axis Speed, Quality, Reach\n  curve Current{80, 60, 90}\n  curve Target{90, 90, 90}\n  graticule circle\n  ticks 3\n",
+        "railroad-beta\nexpr = terminal(\"A\") ;\n",
+        "sankey\nSource,Target,10\n",
+        "xychart-beta\n  x-axis [Jan, Feb]\n  line [1, 2]\n",
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest {
+                    limits: DrawingListLimits {
+                        max_commands: 0,
+                        ..DrawingListLimits::default()
+                    },
+                    ..DrawingListRequest::default()
+                },
+            ))
+            .expect_err("the bounded family must reject its first command");
+
+        assert!(
+            matches!(
+                &error,
+                RenderError::ResourceLimitExceeded(limit)
+                    if limit.id == "max_commands"
+                        && limit.phase == "drawing-list-validation"
+                        && limit.actual == 1
+                        && limit.maximum == 0
+            ),
+            "{source}: {error}"
+        );
+    }
 }
 
 #[test]
@@ -1714,13 +1756,21 @@ fn radar_emits_grids_series_axes_legends_and_title_with_separate_fill_opacity() 
         2,
         "series fill and stroke must remain independently painted"
     );
-    for opacity in [0.3, 0.5] {
-        assert!(document.commands.iter().any(|command| matches!(
-            command,
-            merman_display_list::DrawingCommand::SetOpacity { opacity: actual }
-                if (*actual - opacity).abs() <= f64::EPSILON
-        )));
-    }
+    let fill_alpha = |path_id: &str| {
+        document.commands.iter().find_map(|command| match command {
+            merman_display_list::DrawingCommand::DrawPath { path, style }
+                if path.as_str() == path_id =>
+            {
+                match style.fill.as_ref() {
+                    Some(merman_display_list::Paint::Solid { color }) => Some(color.alpha),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+    };
+    assert_eq!(fill_alpha("radar.graticule.0.shape"), Some(77));
+    assert_eq!(fill_alpha("radar.curve.0.shape"), Some(128));
 
     assert!(document.commands.iter().any(|command| matches!(
         command,

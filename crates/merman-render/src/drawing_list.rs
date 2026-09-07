@@ -698,16 +698,16 @@ pub(crate) fn build_for_family(
             quadrantchart::build_quadrantchart_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Radar(pair) => {
-            radar::build_radar_document(pair, metadata, policy, session)
+            radar::build_radar_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Railroad(pair) => {
-            railroad::build_railroad_document(pair, metadata, policy, session)
+            railroad::build_railroad_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Requirement(pair) => {
             requirement::build_requirement_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Sankey(pair) => {
-            sankey::build_sankey_document(pair, metadata, policy, session)
+            sankey::build_sankey_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Sequence(pair) => {
             sequence::build_sequence_document(pair, metadata, policy, limits, session)
@@ -725,13 +725,13 @@ pub(crate) fn build_for_family(
             venn::build_venn_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::XyChart(pair) => {
-            xychart::build_xychart_document(pair, metadata, policy, session)
+            xychart::build_xychart_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::EventModeling(pair) => {
             eventmodeling::build_eventmodeling_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Cynefin(pair) => {
-            cynefin::build_cynefin_document(pair, metadata, policy, session)
+            cynefin::build_cynefin_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Gantt(pair) => {
             gantt::build_gantt_document(pair, metadata, policy, limits, session)

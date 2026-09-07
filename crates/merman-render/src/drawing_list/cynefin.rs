@@ -4,6 +4,7 @@
 //! control points in its typed layout.  This adapter expands SVG markers and generated paths into
 //! ordinary vector resources while retaining opacity, dash, text, and accessibility semantics.
 
+use super::builder::DrawingListBuilder;
 use super::{
     CynefinSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     parse_svg_path,
@@ -24,11 +25,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -39,15 +39,16 @@ pub(crate) fn build_cynefin_document(
     pair: &CynefinPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    CynefinBuilder::new(pair, metadata, policy, session)?.build()
+    CynefinBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct CynefinBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a CynefinDiagramRenderModel,
     layout: &'a CynefinDiagramLayout,
     theme: CynefinTheme,
@@ -62,9 +63,6 @@ struct CynefinBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 #[derive(Clone, Copy)]
@@ -82,6 +80,7 @@ impl<'a> CynefinBuilder<'a> {
         pair: &'a CynefinPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -110,10 +109,15 @@ impl<'a> CynefinBuilder<'a> {
             postscript_name: None,
             resource: None,
         };
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "cynefin.document".to_string(),
+        })?;
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             label_color: styles.color("cynefin.labelColor", &theme.label_color)?,
@@ -131,14 +135,6 @@ impl<'a> CynefinBuilder<'a> {
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             domain_fills,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "cynefin.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
@@ -148,7 +144,7 @@ impl<'a> CynefinBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "cynefin.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -159,12 +155,13 @@ impl<'a> CynefinBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
         self.emit_background()?;
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
-            transform: translate(self.layout.padding, self.layout.padding),
-        });
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::ConcatTransform {
+                transform: translate(self.layout.padding, self.layout.padding),
+            })?;
         self.emit_domain_backgrounds()?;
         self.emit_boundaries()?;
         self.emit_labels()?;
@@ -176,25 +173,19 @@ impl<'a> CynefinBuilder<'a> {
         if let Some(title) = title {
             self.emit_title(&title)?;
         }
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document.push_control(DrawingCommand::Restore)?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(
                 0.0,
                 0.0,
                 self.layout.total_width,
                 self.layout.total_height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-cynefin".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -204,8 +195,7 @@ impl<'a> CynefinBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -252,9 +242,9 @@ impl<'a> CynefinBuilder<'a> {
                 format!("cynefin.domain.{domain_name}.background"),
                 "cynefinDomain".to_string(),
             );
-            self.commands.push(DrawingCommand::Save);
-            self.commands
-                .push(DrawingCommand::SetOpacity { opacity: 0.4 });
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::SetOpacity { opacity: 0.4 })?;
             self.add_path(
                 format!("cynefin.domain.{domain_name}.background"),
                 rectangle_path(x, y, width, height),
@@ -264,7 +254,7 @@ impl<'a> CynefinBuilder<'a> {
                     stroke: None,
                 },
             )?;
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
         Ok(())
     }
@@ -468,9 +458,10 @@ impl<'a> CynefinBuilder<'a> {
             );
             self.text_classes
                 .insert(semantic_id.clone(), "cynefinItemText".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(item.x, item.y, item.width, item.height, 4.0),
@@ -502,14 +493,15 @@ impl<'a> CynefinBuilder<'a> {
                     baseline: TextBaseline::Middle,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(item.label.clone()),
                 description: Some(format!("{} domain", domain_title(&item.domain))),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -529,9 +521,10 @@ impl<'a> CynefinBuilder<'a> {
             );
             self.text_classes
                 .insert(semantic_id.clone(), "cynefinArrowLabel".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.line"),
                 vec![
@@ -582,14 +575,15 @@ impl<'a> CynefinBuilder<'a> {
                     },
                 )?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Edge,
                 title: transition.label.clone(),
                 description: Some(format!("{} → {}", transition.from, transition.to)),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -599,9 +593,10 @@ impl<'a> CynefinBuilder<'a> {
             .insert("cynefin.title".to_string(), "cynefin-title".to_string());
         self.text_classes
             .insert("cynefin.title".to_string(), "cynefinTitle".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "cynefin.title".to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "cynefin.title".to_string(),
+            })?;
         self.emit_text(
             "cynefin.title",
             title,
@@ -614,14 +609,15 @@ impl<'a> CynefinBuilder<'a> {
                 baseline: TextBaseline::Middle,
             },
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: "cynefin.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -636,18 +632,20 @@ impl<'a> CynefinBuilder<'a> {
             .insert(semantic_id.to_string(), "cynefin-label".to_string());
         self.text_classes
             .insert(semantic_id.to_string(), class_name.to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         self.emit_text(semantic_id, text, spec)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Label,
             title: Some(text.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -691,22 +689,24 @@ impl<'a> CynefinBuilder<'a> {
             width,
             height,
         );
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+        let italic = semantic_id.contains(".model")
+            || semantic_id.contains(".practice")
+            || semantic_id.ends_with(".subtitle");
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
+        self.document.draw_host_text(text, move |owned| TextRun {
+            text: owned,
             origin,
             bounds,
             style: TextStyle {
                 font: FontDescriptor {
                     weight,
-                    style: if semantic_id.contains(".model")
-                        || semantic_id.contains(".practice")
-                        || semantic_id.ends_with(".subtitle")
-                    {
+                    style: if italic {
                         FontStyle::Italic
                     } else {
                         FontStyle::Normal
                     },
-                    ..self.font.clone()
+                    ..font
                 },
                 font_size,
                 letter_spacing: 0.0,
@@ -719,8 +719,8 @@ impl<'a> CynefinBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+            obligation,
+        })?;
         Ok(())
     }
 
@@ -738,13 +738,7 @@ impl<'a> CynefinBuilder<'a> {
             return Err(invalid("Cynefin path has no geometry"));
         }
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document.draw_path(id, segments, style)
     }
 
     fn find_domain(&self, name: &str) -> Option<&CynefinDomainLayout> {

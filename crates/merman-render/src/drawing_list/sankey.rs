@@ -9,7 +9,7 @@
 use super::{
     RenderDocument, SankeySvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
-use crate::drawing_list::flowchart::polygon_path;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::support::{PortableStyleResolver, svg_plain_text, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
@@ -23,11 +23,11 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
 use merman_display_list::{
-    BlendMode, Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, GradientSpread,
-    GradientStop, LineCap, LineJoin, LinearGradientResource, Paint, PathResource, PathSegment,
-    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    BlendMode, Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule,
+    FontDescriptor, FontStyle, GradientSpread, GradientStop, LineCap, LineJoin,
+    LinearGradientResource, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
+    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -38,24 +38,22 @@ pub(crate) fn build_sankey_document(
     pair: &SankeyPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    SankeyBuilder::new(pair, metadata, policy, session)?.build()
+    SankeyBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct SankeyBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     plan: SankeyVisualPlan,
     font: FontDescriptor,
     text_color: Color,
     text_obligation: TextObligation,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
 }
 
 impl<'a> SankeyBuilder<'a> {
@@ -63,6 +61,7 @@ impl<'a> SankeyBuilder<'a> {
         pair: &SankeyPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -84,35 +83,33 @@ impl<'a> SankeyBuilder<'a> {
             resource: None,
         };
 
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "sankey.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
             plan,
             font,
             text_color,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "sankey.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
+            output,
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "sankey.document".to_string(),
             role: SemanticRole::Document,
             title: self.metadata.title.clone(),
             description: None,
             link: None,
-        });
+        })?;
 
         for node_index in 0..self.plan.nodes.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -123,35 +120,26 @@ impl<'a> SankeyBuilder<'a> {
             self.emit_link(link_index)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
         let bounds = &self.plan.bounds;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x - bounds.min_x,
-                bounds.max_y - bounds.min_y,
-            )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
-                "x-merman-sankey".to_string(),
-                json!({
-                    "diagram_type": self.metadata.diagram_type,
-                    "label_style": "legacy",
-                    "link_color": self.plan.link_color,
-                    "show_values": self.plan.show_values,
-                    "text_mode": "plain_host_text",
-                }),
-            )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        let viewport = Viewport::new(Rect::new(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x - bounds.min_x,
+            bounds.max_y - bounds.min_y,
+        ));
+        let extensions = BTreeMap::from([(
+            "x-merman-sankey".to_string(),
+            json!({
+                "diagram_type": self.metadata.diagram_type,
+                "label_style": "legacy",
+                "link_color": self.plan.link_color,
+                "show_values": self.plan.show_values,
+                "text_mode": "plain_host_text",
+            }),
+        )]);
+        let document = self.output.finish(viewport, extensions)?;
 
         Ok(RenderDocument {
             public: document,
@@ -177,44 +165,49 @@ impl<'a> SankeyBuilder<'a> {
         let semantic_id = format!("sankey.node.{node_index}");
         self.semantic_classes
             .insert(semantic_id.clone(), "node".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let fill = PortableStyleResolver::new("sankey").optional_color("nodeColors", &node.fill)?;
         if let Some(fill) = fill {
             let path_id = ResourceId::new(format!("{semantic_id}.shape"));
             self.path_classes
                 .insert(path_id.as_str().to_string(), "node-shape".to_string());
-            self.resources.push(DrawingResource::Path(PathResource {
-                id: path_id.clone(),
-                segments: polygon_path(&[
-                    Point::new(node.x, node.y),
-                    Point::new(node.x + node.width, node.y),
-                    Point::new(node.x + node.width, node.y + node.height),
-                    Point::new(node.x, node.y + node.height),
-                ]),
-            }));
-            self.commands.push(DrawingCommand::DrawPath {
-                path: path_id,
-                style: PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(fill)),
-                    stroke: None,
-                },
-            });
+            let style = PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(fill)),
+                stroke: None,
+            };
+            let top = node.y;
+            let bottom = node.y + node.height;
+            let left = node.x;
+            let right = node.x + node.width;
+            self.output.draw_path_with(path_id, style, |emit| {
+                emit(PathSegment::MoveTo {
+                    to: Point::new(left, top),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(right, top),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(right, bottom),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(left, bottom),
+                })?;
+                emit(PathSegment::Close)
+            })?;
         }
-        let labels = self
-            .plan
-            .labels
-            .iter()
-            .filter(|label| label.node_index == node_index)
-            .cloned()
-            .collect::<Vec<_>>();
-        for label in labels {
-            self.emit_label_text(label)?;
+        for label_index in 0..self.plan.labels.len() {
+            if self.plan.labels[label_index].node_index != node_index {
+                continue;
+            }
+            let label = self.plan.labels[label_index].clone();
+            self.emit_label_text(&label)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: {
@@ -223,11 +216,11 @@ impl<'a> SankeyBuilder<'a> {
             },
             description: Some(format!("Value {}", node.value)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
-    fn emit_label_text(&mut self, label: crate::sankey::SankeyVisualLabel) -> Result<()> {
+    fn emit_label_text(&mut self, label: &crate::sankey::SankeyVisualLabel) -> Result<()> {
         let text = svg_plain_text(&label.text);
         if text.is_empty() {
             return Ok(());
@@ -236,34 +229,39 @@ impl<'a> SankeyBuilder<'a> {
         let ascent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_ASCENT_EM;
         let descent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_DESCENT_EM;
         let bounds = &self.plan.bounds;
-        self.commands.push(DrawingCommand::draw_text(TextRun {
+        let origin = Point::new(label.x, baseline_y);
+        let text_bounds = Rect::new(
+            bounds.min_x,
+            baseline_y - ascent,
+            bounds.max_x - bounds.min_x,
+            ascent + descent,
+        );
+        let font = self.font.clone();
+        let text_color = self.text_color;
+        let text_obligation = self.text_obligation.clone();
+        let anchor = match label.anchor {
+            SankeyLabelAnchor::Start => TextAnchor::Start,
+            SankeyLabelAnchor::End => TextAnchor::End,
+        };
+        self.output.draw_host_text(&text, |text| TextRun {
             text,
-            origin: Point::new(label.x, baseline_y),
-            bounds: Rect::new(
-                bounds.min_x,
-                baseline_y - ascent,
-                bounds.max_x - bounds.min_x,
-                ascent + descent,
-            ),
+            origin,
+            bounds: text_bounds,
             style: TextStyle {
-                font: self.font.clone(),
+                font,
                 font_size: SANKEY_LABEL_FONT_SIZE_PX,
                 letter_spacing: 0.0,
                 line_height: SANKEY_LABEL_FONT_SIZE_PX,
-                fill: Paint::solid(self.text_color),
+                fill: Paint::solid(text_color),
                 stroke: None,
                 paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-            anchor: match label.anchor {
-                SankeyLabelAnchor::Start => TextAnchor::Start,
-                SankeyLabelAnchor::End => TextAnchor::End,
-            },
+            anchor,
             baseline: TextBaseline::Alphabetic,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
+            obligation: text_obligation,
+        })
     }
 
     fn emit_link(&mut self, link_index: usize) -> Result<()> {
@@ -281,46 +279,41 @@ impl<'a> SankeyBuilder<'a> {
             let path_id = ResourceId::new(format!("{semantic_id}.path"));
             self.path_classes
                 .insert(path_id.as_str().to_string(), "link-path".to_string());
-            self.resources.push(DrawingResource::Path(PathResource {
-                id: path_id.clone(),
-                segments: vec![
-                    PathSegment::MoveTo {
-                        to: Point::new(link.start_x, link.start_y),
-                    },
-                    PathSegment::CubicTo {
-                        control1: Point::new(link.control_x, link.start_y),
-                        control2: Point::new(link.control_x, link.end_y),
-                        to: Point::new(link.end_x, link.end_y),
-                    },
-                ],
-            }));
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
-            self.commands
-                .push(DrawingCommand::SetOpacity { opacity: 0.5 });
-            self.commands.push(DrawingCommand::SetBlendMode {
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
+            self.output
+                .push_control(DrawingCommand::SetOpacity { opacity: 0.5 })?;
+            self.output.push_control(DrawingCommand::SetBlendMode {
                 blend_mode: BlendMode::Multiply,
-            });
-            self.commands.push(DrawingCommand::DrawPath {
-                path: path_id,
-                style: PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: None,
-                    stroke: Some(stroke_with_paint(paint, link.width)),
-                },
-            });
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.commands.push(DrawingCommand::Restore);
+            })?;
+            let style = PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(stroke_with_paint(paint, link.width)),
+            };
+            self.output.draw_path_with(path_id, style, |emit| {
+                emit(PathSegment::MoveTo {
+                    to: Point::new(link.start_x, link.start_y),
+                })?;
+                emit(PathSegment::CubicTo {
+                    control1: Point::new(link.control_x, link.start_y),
+                    control2: Point::new(link.control_x, link.end_y),
+                    to: Point::new(link.end_x, link.end_y),
+                })
+            })?;
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_control(DrawingCommand::Restore)?;
         }
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: Some(format!("{} → {}", link.source, link.target)),
             description: Some(format!("Value {}", link.value)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -337,15 +330,14 @@ impl<'a> SankeyBuilder<'a> {
                 let start = styles.color("gradient source node color", start_color)?;
                 let end = styles.color("gradient target node color", end_color)?;
                 let id = ResourceId::new(format!("{semantic_id}.paint"));
-                self.resources
-                    .push(DrawingResource::LinearGradient(LinearGradientResource {
-                        id: id.clone(),
-                        start: Point::new(link.start_x, 0.0),
-                        end: Point::new(link.end_x, 0.0),
-                        transform: Transform::IDENTITY,
-                        spread: GradientSpread::Pad,
-                        stops: vec![GradientStop::new(0.0, start), GradientStop::new(1.0, end)],
-                    }));
+                self.output.push_linear_gradient(LinearGradientResource {
+                    id: id.clone(),
+                    start: Point::new(link.start_x, 0.0),
+                    end: Point::new(link.end_x, 0.0),
+                    transform: Transform::IDENTITY,
+                    spread: GradientSpread::Pad,
+                    stops: vec![GradientStop::new(0.0, start), GradientStop::new(1.0, end)],
+                })?;
                 Ok(Some(Paint::resource(id)))
             }
         }

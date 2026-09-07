@@ -4,6 +4,7 @@
 //! helpers own title selection and axis-label placement. This adapter resolves the remaining
 //! theme paint and emits portable paths/text without reconstructing an SVG group tree.
 
+use super::builder::DrawingListBuilder;
 use super::{
     RadarSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
     parse_svg_path,
@@ -26,11 +27,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -45,15 +45,16 @@ pub(crate) fn build_radar_document(
     pair: &RadarPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    RadarBuilder::new(pair, metadata, policy, session)?.build()
+    RadarBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct RadarBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a RadarDiagramRenderModel,
     layout: &'a RadarDiagramLayout,
     use_max_width: bool,
@@ -73,9 +74,6 @@ struct RadarBuilder<'a> {
     curve_opacity: f64,
     curve_stroke_width: f64,
     series_colors: Vec<String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> RadarBuilder<'a> {
@@ -83,6 +81,7 @@ impl<'a> RadarBuilder<'a> {
         pair: &'a RadarPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -96,10 +95,16 @@ impl<'a> RadarBuilder<'a> {
             crate::config::config_string(config, &["themeVariables", "fontFamily"])
                 .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
 
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "radar.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            output,
             model,
             layout,
             use_max_width: render_settings.use_max_width,
@@ -125,20 +130,12 @@ impl<'a> RadarBuilder<'a> {
             curve_opacity: theme.curve_opacity,
             curve_stroke_width: theme.curve_stroke_width,
             series_colors: theme.series_colors,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "radar.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
         let title = radar_title(self.model, self.metadata.title.as_deref());
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "radar.document".to_string(),
             role: SemanticRole::Document,
             // Preserve Mermaid's accessibility contract: a body/frontmatter chart title is visual
@@ -146,13 +143,13 @@ impl<'a> RadarBuilder<'a> {
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(self.layout.center_x, self.layout.center_y),
-        });
+        })?;
 
         for index in 0..self.layout.graticules.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -172,25 +169,18 @@ impl<'a> RadarBuilder<'a> {
         }
         self.emit_title(title)?;
 
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::Restore)?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 0.0,
                 0.0,
                 self.layout.svg_width,
                 self.layout.svg_height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-radar".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -200,8 +190,7 @@ impl<'a> RadarBuilder<'a> {
                     "use_max_width": self.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -240,9 +229,10 @@ impl<'a> RadarBuilder<'a> {
             .get(index)
             .ok_or_else(|| invalid(format!("missing Radar graticule {index}")))?;
         let semantic_id = format!("radar.graticule.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let segments = if graticule.kind == "polygon" {
             polygon_points(&graticule.points)
@@ -271,14 +261,14 @@ impl<'a> RadarBuilder<'a> {
         };
         self.add_painted_path(format!("{semantic_id}.shape"), segments, fill, stroke)?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(format!("Radar grid {}", index + 1)),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -290,9 +280,10 @@ impl<'a> RadarBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Radar axis {index}")))?
             .clone();
         let semantic_id = format!("radar.axis.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let axis_color =
             PortableStyleResolver::new("radar").optional_color("axis color", &self.axis_color)?;
@@ -328,14 +319,14 @@ impl<'a> RadarBuilder<'a> {
             &text_color,
         )?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&axis.label),
             description: Some(format!("Axis {}", index + 1)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -347,17 +338,18 @@ impl<'a> RadarBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Radar curve {index}")))?
             .clone();
         let semantic_id = format!("radar.curve.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         let segments = self.curve_segments(&curve)?;
         let (fill, stroke) = self.series_paint(curve.class_index, false)?;
         self.add_painted_path(format!("{semantic_id}.shape"), segments, fill, stroke)?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         let model_curve = self.model.curves.get(index);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&curve.label),
@@ -373,7 +365,7 @@ impl<'a> RadarBuilder<'a> {
                 )
             }),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -385,13 +377,14 @@ impl<'a> RadarBuilder<'a> {
             .ok_or_else(|| invalid(format!("missing Radar legend item {index}")))?
             .clone();
         let semantic_id = format!("radar.legend.{index}");
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(item.x, item.y),
-        });
+        })?;
 
         let (fill, stroke) = self.series_paint(item.class_index, true)?;
         self.add_painted_path(
@@ -416,15 +409,15 @@ impl<'a> RadarBuilder<'a> {
             &text_color,
         )?;
 
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::Restore)?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&item.label),
             description: Some("Radar legend item".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -437,9 +430,10 @@ impl<'a> RadarBuilder<'a> {
             return Ok(());
         }
         let semantic_id = "radar.title".to_string();
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let font_size =
             PortableStyleResolver::new("radar").length("title font-size", &self.title_font_size)?;
         let title_color = self.title_color.clone();
@@ -451,14 +445,14 @@ impl<'a> RadarBuilder<'a> {
             TextBaseline::Hanging,
             &title_color,
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(title),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -479,65 +473,57 @@ impl<'a> RadarBuilder<'a> {
         else {
             return Ok(());
         };
-        let bounds = self.measure_text_bounds(&value, origin, font_size, anchor, baseline)?;
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: value,
-            origin,
-            bounds,
-            style: TextStyle {
-                font: self.font.clone(),
+        let session = self.session;
+        let font_family_css = &self.font_family_css;
+        let font = &self.font;
+        let obligation = &self.text_obligation;
+        self.output.draw_host_text_parts(&[&value], |text| {
+            let measurement_style = MeasurementTextStyle {
+                font_family: Some(font_family_css.clone()),
                 font_size,
-                letter_spacing: 0.0,
-                line_height: font_size,
-                fill: Paint::solid(fill),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
-    }
-
-    fn measure_text_bounds(
-        &self,
-        text: &str,
-        origin: Point,
-        font_size: f64,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-    ) -> Result<Rect> {
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(self.font_family_css.clone()),
-            font_size,
-            font_weight: None,
-            font_style: None,
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
-        let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
-        self.session.checkpoint(OperationPhase::Emit)?;
-        if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
-            return Err(invalid("Radar text measurement returned invalid bounds"));
-        }
-        let x = match anchor {
-            TextAnchor::Start => origin.x,
-            TextAnchor::Middle => origin.x - width / 2.0,
-            TextAnchor::End => origin.x - width,
-        };
-        let y = match baseline {
-            TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
-            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
-            TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
-                origin.y - height
+                font_weight: None,
+                font_style: None,
+            };
+            let measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let width = measurer.measure_svg_simple_text_bbox_width_px(&text, &measurement_style);
+            let height = measurer.measure_svg_simple_text_bbox_height_px(&text, &measurement_style);
+            session.checkpoint(OperationPhase::Emit)?;
+            if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                return Err(invalid("Radar text measurement returned invalid bounds"));
             }
-        };
-        Ok(Rect::new(x, y, width, height))
+            let x = match anchor {
+                TextAnchor::Start => origin.x,
+                TextAnchor::Middle => origin.x - width / 2.0,
+                TextAnchor::End => origin.x - width,
+            };
+            let y = match baseline {
+                TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
+                TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
+                TextBaseline::Alphabetic
+                | TextBaseline::Ideographic
+                | TextBaseline::TextAfterEdge => origin.y - height,
+            };
+            Ok(TextRun {
+                text,
+                origin,
+                bounds: Rect::new(x, y, width, height),
+                style: TextStyle {
+                    font: font.clone(),
+                    font_size,
+                    letter_spacing: 0.0,
+                    line_height: font_size,
+                    fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: obligation.clone(),
+            })
+        })
     }
 
     fn curve_segments(&self, curve: &RadarCurveLayout) -> Result<Vec<PathSegment>> {
@@ -592,38 +578,23 @@ impl<'a> RadarBuilder<'a> {
             return Ok(false);
         }
 
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
+        let mut styles = Vec::with_capacity(2);
         if let Some((color, opacity)) = fill.filter(|(_, opacity)| *opacity > 0.0) {
-            if opacity < 1.0 {
-                self.commands.push(DrawingCommand::Save);
-                self.commands.push(DrawingCommand::SetOpacity { opacity });
-            }
-            self.commands.push(DrawingCommand::DrawPath {
-                path: id.clone(),
-                style: PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(color)),
-                    stroke: None,
-                },
+            styles.push(PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(with_alpha(color, opacity))),
+                stroke: None,
             });
-            if opacity < 1.0 {
-                self.commands.push(DrawingCommand::Restore);
-            }
         }
         if let Some(stroke) = stroke {
-            self.commands.push(DrawingCommand::DrawPath {
-                path: id,
-                style: PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: None,
-                    stroke: Some(stroke),
-                },
+            styles.push(PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(stroke),
             });
         }
+        self.output
+            .draw_path_layers(ResourceId::new(id), segments, styles)?;
         Ok(true)
     }
 }
@@ -685,6 +656,16 @@ fn portable_opacity(property: &str, value: f64) -> Result<f64> {
         )));
     }
     Ok(value)
+}
+
+fn with_alpha(color: Color, opacity: f64) -> Color {
+    let opacity = opacity.clamp(0.0, 1.0);
+    Color::rgba(
+        color.red,
+        color.green,
+        color.blue,
+        (f64::from(color.alpha) * opacity).round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 fn validate_layout(layout: &RadarDiagramLayout, model: &RadarDiagramRenderModel) -> Result<()> {

@@ -8,6 +8,7 @@ use super::{
     RailroadSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
     parse_font_families_for, parse_svg_path,
 };
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -23,11 +24,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::railroad::{RailroadDiagramRenderModel, RailroadRuleModel};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -38,15 +38,16 @@ pub(crate) fn build_railroad_document(
     pair: &RailroadPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    RailroadBuilder::new(pair, metadata, policy, session)?.build()
+    RailroadBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct RailroadBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    output: DrawingListBuilder<'a>,
     model: &'a RailroadDiagramRenderModel,
     layout: &'a RailroadDiagramLayout,
     style: RailroadStyle,
@@ -66,9 +67,6 @@ struct RailroadBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> RailroadBuilder<'a> {
@@ -76,6 +74,7 @@ impl<'a> RailroadBuilder<'a> {
         pair: &'a RailroadPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -93,11 +92,16 @@ impl<'a> RailroadBuilder<'a> {
             postscript_name: None,
             resource: None,
         };
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "railroad.document".to_string(),
+        })?;
 
         Ok(Self {
             metadata,
             session,
-            policy,
+            output,
             model,
             layout,
             terminal_fill: styles.optional_color("terminalFill", &style.terminal_fill)?,
@@ -120,25 +124,17 @@ impl<'a> RailroadBuilder<'a> {
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "railroad.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "railroad.document".to_string(),
             role: SemanticRole::Document,
             title: self.model.acc_title.clone(),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         for rule_index in 0..self.layout.rules.len() {
@@ -148,18 +144,11 @@ impl<'a> RailroadBuilder<'a> {
             self.emit_rule(rule_index, &layout_rule, &model_rule)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
+        let document = self.output.finish(
+            Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
+            BTreeMap::from([(
                 "x-merman-railroad".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -168,8 +157,7 @@ impl<'a> RailroadBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -223,24 +211,25 @@ impl<'a> RailroadBuilder<'a> {
         };
         self.session.checkpoint(OperationPhase::Emit)?;
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(layout_rule.x, layout_rule.y),
-        });
+        })?;
 
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(
                 layout_rule.definition_x,
                 layout_rule.baseline_y - definition_up,
             ),
-        });
+        })?;
         let mut counters = RuleCounters::default();
         self.emit_render_node(&semantic_id, &render_node, &mut counters)?;
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::Restore)?;
 
         self.emit_rule_name(&semantic_id, layout_rule)?;
         self.emit_marker(
@@ -279,15 +268,15 @@ impl<'a> RailroadBuilder<'a> {
             Some("End connector".to_string()),
         )?;
 
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::Restore)?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&layout_rule.name),
             description: Some("Railroad grammar rule".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -306,17 +295,17 @@ impl<'a> RailroadBuilder<'a> {
                 validate_group_class(class)?;
                 if let Some((x, y)) = transform {
                     validate_translation(*x, *y)?;
-                    self.commands.push(DrawingCommand::Save);
-                    self.commands.push(DrawingCommand::ConcatTransform {
+                    self.output.push_control(DrawingCommand::Save)?;
+                    self.output.push_control(DrawingCommand::ConcatTransform {
                         transform: translate(*x, *y),
-                    });
+                    })?;
                 }
                 for child in children {
                     self.session.checkpoint(OperationPhase::Emit)?;
                     self.emit_render_node(rule_id, child, counters)?;
                 }
                 if transform.is_some() {
-                    self.commands.push(DrawingCommand::Restore);
+                    self.output.push_control(DrawingCommand::Restore)?;
                 }
             }
             RailroadRenderNode::Element { layout, transform } => {
@@ -385,15 +374,16 @@ impl<'a> RailroadBuilder<'a> {
         self.text_classes
             .insert(semantic_id.to_string(), "railroad-label".to_string());
 
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         if let Some((x, y)) = transform {
             validate_translation(x, y)?;
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::ConcatTransform {
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output.push_control(DrawingCommand::ConcatTransform {
                 transform: translate(x, y),
-            });
+            })?;
         }
 
         if element.width > 0.0 && element.height > 0.0 {
@@ -429,16 +419,16 @@ impl<'a> RailroadBuilder<'a> {
         self.emit_element_text(element, text_color)?;
 
         if transform.is_some() {
-            self.commands.push(DrawingCommand::Restore);
+            self.output.push_control(DrawingCommand::Restore)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Node,
             title: visible_text(&element.label),
             description: Some(format!("Railroad {kind}")),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -454,15 +444,18 @@ impl<'a> RailroadBuilder<'a> {
         if text.is_empty() || self.style.font_size == 0.0 {
             return Ok(());
         }
-        self.commands.push(DrawingCommand::draw_text(TextRun {
+        let font = self.font.clone();
+        let font_size = self.style.font_size;
+        let obligation = self.text_obligation.clone();
+        self.output.draw_host_text(&text, move |text| TextRun {
             text,
             origin: Point::new(element.text_x, element.text_y),
             bounds: Rect::new(0.0, 0.0, element.width, element.height),
             style: TextStyle {
-                font: self.font.clone(),
-                font_size: self.style.font_size,
+                font,
+                font_size,
                 letter_spacing: 0.0,
-                line_height: self.style.font_size,
+                line_height: font_size,
                 fill: Paint::solid(color),
                 stroke: None,
                 paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
@@ -471,9 +464,8 @@ impl<'a> RailroadBuilder<'a> {
             baseline: TextBaseline::Middle,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
+            obligation,
+        })
     }
 
     fn emit_rule_name(&mut self, rule_id: &str, rule: &RailroadRuleLayout) -> Result<()> {
@@ -483,9 +475,10 @@ impl<'a> RailroadBuilder<'a> {
         self.text_classes
             .insert(semantic_id.clone(), "railroad-rule-name".to_string());
         let text = svg_plain_text(&format!("{} =", rule.name));
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if let Some(color) = self.rule_name_color
             && !text.is_empty()
             && self.style.font_size > 0.0
@@ -500,15 +493,17 @@ impl<'a> RailroadBuilder<'a> {
             )?;
             let mut font = self.font.clone();
             font.weight = 700;
-            self.commands.push(DrawingCommand::draw_text(TextRun {
+            let font_size = self.style.font_size;
+            let obligation = self.text_obligation.clone();
+            self.output.draw_host_text(&text, move |text| TextRun {
                 text,
                 origin,
                 bounds,
                 style: TextStyle {
                     font,
-                    font_size: self.style.font_size,
+                    font_size,
                     letter_spacing: 0.0,
-                    line_height: self.style.font_size,
+                    line_height: font_size,
                     fill: Paint::solid(color),
                     stroke: None,
                     paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
@@ -517,17 +512,17 @@ impl<'a> RailroadBuilder<'a> {
                 baseline: TextBaseline::Alphabetic,
                 direction: TextDirection::Auto,
                 language: None,
-                obligation: self.text_obligation.clone(),
-            }));
+                obligation,
+            })?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: visible_text(&rule.name),
             description: Some("Railroad rule name".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -556,9 +551,10 @@ impl<'a> RailroadBuilder<'a> {
                 "railroad-end".to_string()
             },
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         if let Some(fill) = self.marker_fill
             && radius > 0.0
         {
@@ -572,14 +568,14 @@ impl<'a> RailroadBuilder<'a> {
                 },
             )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Node,
             title: Some(title.to_string()),
             description: Some("Railroad boundary marker".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -600,17 +596,18 @@ impl<'a> RailroadBuilder<'a> {
             .insert(format!("{semantic_id}.path"), "railroad-line".to_string());
         self.semantic_classes
             .insert(semantic_id.to_string(), "railroad-line".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.to_string(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.to_string(),
+            })?;
         if let Some(color) = self.line_color
             && self.style.stroke_width > 0.0
         {
             if path.x != 0.0 || path.y != 0.0 {
-                self.commands.push(DrawingCommand::Save);
-                self.commands.push(DrawingCommand::ConcatTransform {
+                self.output.push_control(DrawingCommand::Save)?;
+                self.output.push_control(DrawingCommand::ConcatTransform {
                     transform: translate(path.x, path.y),
-                });
+                })?;
             }
             self.add_path(
                 format!("{semantic_id}.path"),
@@ -622,17 +619,17 @@ impl<'a> RailroadBuilder<'a> {
                 },
             )?;
             if path.x != 0.0 || path.y != 0.0 {
-                self.commands.push(DrawingCommand::Restore);
+                self.output.push_control(DrawingCommand::Restore)?;
             }
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Edge,
             title,
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -690,13 +687,7 @@ impl<'a> RailroadBuilder<'a> {
             return Err(invalid(format!("Railroad path `{id}` has no geometry")));
         }
         let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(id, segments, style)
     }
 }
 
