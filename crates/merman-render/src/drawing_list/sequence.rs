@@ -11,6 +11,7 @@ use super::{
     parse_font_families_for, theme_color,
 };
 use crate::config::{config_diagram_look, config_f64, config_string};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -34,10 +35,10 @@ use merman_core::diagrams::sequence::{
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -134,15 +135,16 @@ pub(crate) fn build_sequence_document(
     pair: &SequencePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    SequenceBuilder::new(pair, metadata, policy, session)?.build()
+    SequenceBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct SequenceBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a SequenceDiagramRenderModel,
     layout: &'a SequenceDiagramLayout,
     settings: SequenceSettings,
@@ -155,9 +157,6 @@ struct SequenceBuilder<'a> {
     edges_by_id: HashMap<&'a str, &'a LayoutEdge>,
     activations: Vec<ActivationRect>,
     controls: Vec<ControlBlock>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> SequenceBuilder<'a> {
@@ -165,9 +164,15 @@ impl<'a> SequenceBuilder<'a> {
         pair: &'a SequencePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "sequence.document".to_string(),
+        })?;
         let config = metadata.effective_config.as_value();
         if config_diagram_look(config).as_str() != "classic" {
             return Err(unavailable(
@@ -203,7 +208,7 @@ impl<'a> SequenceBuilder<'a> {
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             settings,
@@ -216,21 +221,13 @@ impl<'a> SequenceBuilder<'a> {
             edges_by_id,
             activations,
             controls,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "sequence.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
         let navigation_security = self.navigation_security();
         let actor_links = self.portable_actor_links(navigation_security)?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "sequence.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -240,7 +237,7 @@ impl<'a> SequenceBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_boxes()?;
         self.emit_rect_blocks()?;
@@ -256,44 +253,36 @@ impl<'a> SequenceBuilder<'a> {
             self.emit_title(title)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let bounds = self
             .layout
             .bounds
             .as_ref()
             .ok_or_else(|| invalid("Sequence layout did not provide root bounds"))?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x - VIEWPORT_PADDING,
-                bounds.min_y - VIEWPORT_PADDING,
-                (bounds.max_x - bounds.min_x + 2.0 * VIEWPORT_PADDING).max(1.0),
-                (bounds.max_y - bounds.min_y + 2.0 * VIEWPORT_PADDING).max(1.0),
-            )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
-                "x-merman-sequence".to_string(),
-                json!({
-                    "diagram_type": self.metadata.diagram_type,
-                    "look": "classic",
-                    "text_mode": "plain_host_text",
-                    "markup": "plain_only_with_br",
-                    "markers": "typed_paths",
-                    "mirror_actors": self.settings.mirror_actors,
-                    "right_angles": self.settings.right_angles,
-                    "message_align": self.settings.message_align.as_str(),
-                    "links": actor_links,
-                }),
-            )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        let viewport = Viewport::new(Rect::new(
+            bounds.min_x - VIEWPORT_PADDING,
+            bounds.min_y - VIEWPORT_PADDING,
+            (bounds.max_x - bounds.min_x + 2.0 * VIEWPORT_PADDING).max(1.0),
+            (bounds.max_y - bounds.min_y + 2.0 * VIEWPORT_PADDING).max(1.0),
+        ));
+        let extensions = BTreeMap::from([(
+            "x-merman-sequence".to_string(),
+            json!({
+                "diagram_type": self.metadata.diagram_type,
+                "look": "classic",
+                "text_mode": "plain_host_text",
+                "markup": "plain_only_with_br",
+                "markers": "typed_paths",
+                "mirror_actors": self.settings.mirror_actors,
+                "right_angles": self.settings.right_angles,
+                "message_align": self.settings.message_align.as_str(),
+                "links": actor_links,
+            }),
+        )]);
+        let document = self.document.finish(viewport, extensions)?;
 
         Ok(RenderDocument {
             public: document,
@@ -366,9 +355,10 @@ impl<'a> SequenceBuilder<'a> {
             let width = max_x - min_x + 2.0 * pad_x;
             let height = max_y - min_y + pad_top + pad_bottom;
             let semantic_id = format!("sequence.box.{box_index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let fill =
                 PortableStyleResolver::new("sequence").color("box.fill", &sequence_box.fill)?;
             self.add_path(
@@ -399,14 +389,15 @@ impl<'a> SequenceBuilder<'a> {
                     },
                 )?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: sequence_box.name.clone(),
                 description: Some("Sequence participant box".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -433,9 +424,10 @@ impl<'a> SequenceBuilder<'a> {
             let fill =
                 PortableStyleResolver::new("sequence").optional_color("rect.fill", &fill_value)?;
             let semantic_id = format!("sequence.rect.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(node.x, node.y, node.width, node.height, 0.0),
@@ -445,14 +437,15 @@ impl<'a> SequenceBuilder<'a> {
                     stroke: Some(stroke(self.palette.node_border, self.palette.stroke_width)),
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(fill_value),
                 description: Some("Sequence rect block".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -475,9 +468,10 @@ impl<'a> SequenceBuilder<'a> {
             .clone();
             let actor = actor.clone();
             let semantic_id = format!("sequence.actor.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.top.shape"),
                 rounded_rect_path(top.x, top.y, top.width, top.height, 3.0),
@@ -508,14 +502,15 @@ impl<'a> SequenceBuilder<'a> {
                 )?;
                 self.emit_actor_label(&format!("{semantic_id}.bottom.label"), &actor, &bottom)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(actor.description.clone()),
                 description: Some(format!("Sequence participant {actor_id}")),
                 link: actor_link,
-            });
+            })?;
         }
         Ok(())
     }
@@ -594,9 +589,10 @@ impl<'a> SequenceBuilder<'a> {
                     block.start_id
                 )));
             }
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.frame"),
                 rectangle_segments(
@@ -684,14 +680,15 @@ impl<'a> SequenceBuilder<'a> {
                     )?;
                 }
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(label.to_string()),
                 description: Some(format!("Sequence {} control block", label)),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -741,9 +738,10 @@ impl<'a> SequenceBuilder<'a> {
     fn emit_activations(&mut self) -> Result<()> {
         for (index, activation) in self.activations.clone().into_iter().enumerate() {
             let semantic_id = format!("sequence.activation.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(
@@ -762,8 +760,9 @@ impl<'a> SequenceBuilder<'a> {
                     )),
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(activation.start_id),
@@ -772,7 +771,7 @@ impl<'a> SequenceBuilder<'a> {
                     activation.class_index
                 )),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -790,9 +789,10 @@ impl<'a> SequenceBuilder<'a> {
                 })?)
             .clone();
             let semantic_id = format!("sequence.note.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(node.x, node.y, node.width, node.height, 0.0),
@@ -815,14 +815,15 @@ impl<'a> SequenceBuilder<'a> {
                     anchor: TextAnchor::Middle,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(svg_plain_text(message.message_text())),
                 description: Some("Sequence note".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -833,7 +834,7 @@ impl<'a> SequenceBuilder<'a> {
         let mut autonumber_step = 1.0;
         for (index, source_message) in self.model.messages.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            let message = source_message.clone();
+            let message = source_message;
             match message.semantic_kind() {
                 SequenceMessageKind::Autonumber => {
                     if let merman_core::diagrams::sequence::SequenceMessagePayload::Autonumber(
@@ -870,13 +871,12 @@ impl<'a> SequenceBuilder<'a> {
                 .to
                 .as_deref()
                 .ok_or_else(|| invalid("Sequence signal has no target"))?;
-            let edge = (**self
+            let edge = *self
                 .edges_by_id
                 .get(format!("msg-{}", message.id).as_str())
                 .ok_or_else(|| {
                     invalid(format!("Sequence signal {} has no layout edge", message.id))
-                })?)
-            .clone();
+                })?;
             if edge.points.len() < 2 {
                 return Err(invalid(format!(
                     "Sequence signal {} has too few route points",
@@ -890,13 +890,14 @@ impl<'a> SequenceBuilder<'a> {
                 ))
             })?;
             let semantic_id = format!("sequence.message.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             if let Some(label) = edge.label.as_ref() {
                 let lines = plain_lines(message.message_text(), "Sequence message label")?;
                 if !is_empty_lines(&lines) {
-                    let (x, anchor) = self.message_label_position(&edge, label);
+                    let (x, anchor) = self.message_label_position(edge, label);
                     let message_font = self.message_font.clone();
                     self.emit_text_lines(
                         &format!("{semantic_id}.label"),
@@ -912,52 +913,74 @@ impl<'a> SequenceBuilder<'a> {
                     )?;
                 }
             }
-            let route_segments =
-                message_route_segments(&message, &edge, self.settings.right_angles)?;
+            let self_route = if from == to {
+                self_message_route_segments(edge, self.settings.right_angles)
+            } else {
+                Vec::new()
+            };
             let start_marker = marker_endpoint_for(
                 semantics.source_marker,
                 &edge.points,
-                &route_segments,
+                &self_route,
                 MarkerPosition::Start,
                 &message.id,
             )?;
             let end_marker = marker_endpoint_for(
                 semantics.target_marker,
                 &edge.points,
-                &route_segments,
+                &self_route,
                 MarkerPosition::End,
                 &message.id,
             )?;
-            self.add_path(
-                format!("{semantic_id}.route"),
-                route_segments,
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: None,
-                    stroke: Some(dashed_stroke(
-                        self.palette.signal,
-                        SIGNAL_WIDTH,
-                        if semantics.stroke == SequenceMessageStroke::Dotted {
-                            vec![3.0, 3.0]
-                        } else {
-                            Vec::new()
-                        },
-                    )),
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let route_style = PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(dashed_stroke(
+                    self.palette.signal,
+                    SIGNAL_WIDTH,
+                    if semantics.stroke == SequenceMessageStroke::Dotted {
+                        vec![3.0, 3.0]
+                    } else {
+                        Vec::new()
+                    },
+                )),
+            };
+            self.document.draw_path_with(
+                ResourceId::new(format!("{semantic_id}.route")),
+                route_style,
+                |emit| {
+                    if self_route.is_empty() {
+                        for (index, point) in edge.points.iter().enumerate() {
+                            let to = Point::new(point.x, point.y);
+                            emit(if index == 0 {
+                                PathSegment::MoveTo { to }
+                            } else {
+                                PathSegment::LineTo { to }
+                            })?;
+                        }
+                    } else {
+                        for segment in self_route {
+                            emit(segment)?;
+                        }
+                    }
+                    Ok(())
                 },
             )?;
             self.emit_message_markers(&semantic_id, semantics, start_marker, end_marker)?;
-            self.emit_central_connection(&semantic_id, &message, from, to, edge.points[0].y)?;
+            self.emit_central_connection(&semantic_id, message, from, to, edge.points[0].y)?;
             if autonumber_visible {
-                self.emit_sequence_number(&semantic_id, &edge, &message, autonumber)?;
+                self.emit_sequence_number(&semantic_id, edge, message, autonumber)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Edge,
                 title: Some(svg_plain_text(message.message_text())),
                 description: Some(format!("{from} → {to}")),
                 link: None,
-            });
+            })?;
             if autonumber.is_finite() {
                 autonumber = ((autonumber + autonumber_step) * 100.0).round() / 100.0;
             }
@@ -1242,13 +1265,13 @@ impl<'a> SequenceBuilder<'a> {
                 anchor: TextAnchor::Middle,
             },
         )?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "sequence.title".to_string(),
             role: SemanticRole::Label,
             title: Some(svg_plain_text(title)),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -1302,9 +1325,6 @@ impl<'a> SequenceBuilder<'a> {
         } = spec;
         let line_step = sequence_text_line_step_px(font_size);
         let line_count = lines.len().max(1) as f64;
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
         let style = MeasurementTextStyle {
             font_family: Some(font.families.join(", ")),
             font_size,
@@ -1314,44 +1334,50 @@ impl<'a> SequenceBuilder<'a> {
         for (index, line) in lines.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             let display = if line.is_empty() {
-                "\u{200B}".to_string()
+                "\u{200B}"
             } else {
-                svg_plain_text(line)
+                line.as_str()
             };
-            let width = measurer
-                .measure_svg_raw_text_bbox_width_px(&display, &style)
-                .max(1.0);
-            let height = measurer
-                .measure_svg_simple_text_bbox_height_px(&display, &style)
-                .max(1.0);
             let y = center.y + (index as f64 - (line_count - 1.0) / 2.0) * line_step;
-            let left = match anchor {
-                TextAnchor::Start => center.x,
-                TextAnchor::Middle => center.x - width / 2.0,
-                TextAnchor::End => center.x - width,
-            };
-            self.commands.push(DrawingCommand::draw_text(TextRun {
-                text: display,
-                origin: Point::new(center.x, y),
-                bounds: Rect::new(left, y - height / 2.0, width, height),
-                style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..font.clone()
+            let session = self.session;
+            let obligation = self.text_obligation.clone();
+            let font = font.clone();
+            self.document.draw_host_text_parts(&[display], |text| {
+                let measurer = session
+                    .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+                let width = measurer.measure_svg_raw_text_bbox_width_px(&text, &style);
+                let height = measurer.measure_svg_simple_text_bbox_height_px(&text, &style);
+                session.checkpoint(OperationPhase::Emit)?;
+                if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                    return Err(invalid("Sequence text measurement returned invalid bounds"));
+                }
+                let width = width.max(1.0);
+                let height = height.max(1.0);
+                let left = match anchor {
+                    TextAnchor::Start => center.x,
+                    TextAnchor::Middle => center.x - width / 2.0,
+                    TextAnchor::End => center.x - width,
+                };
+                Ok(TextRun {
+                    text,
+                    origin: Point::new(center.x, y),
+                    bounds: Rect::new(left, y - height / 2.0, width, height),
+                    style: DisplayTextStyle {
+                        font: FontDescriptor { weight, ..font },
+                        font_size,
+                        letter_spacing: 0.0,
+                        line_height: line_step,
+                        fill: Paint::solid(color),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height: line_step,
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
-            }));
+                    anchor,
+                    baseline: TextBaseline::Middle,
+                    direction: TextDirection::Auto,
+                    language: None,
+                    obligation,
+                })
+            })?;
         }
         Ok(())
     }
@@ -1362,17 +1388,9 @@ impl<'a> SequenceBuilder<'a> {
         segments: Vec<PathSegment>,
         style: PathStyle,
     ) -> Result<()> {
-        if segments.is_empty() {
-            return Err(invalid("Sequence path has no geometry"));
-        }
+        self.session.checkpoint(OperationPhase::Emit)?;
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document.draw_path(id, segments, style)
     }
 }
 
@@ -1811,48 +1829,36 @@ fn collect_controls(
     Ok(blocks)
 }
 
-fn message_route_segments(
-    message: &SequenceMessage,
-    edge: &LayoutEdge,
-    right_angles: bool,
-) -> Result<Vec<PathSegment>> {
+fn self_message_route_segments(edge: &LayoutEdge, right_angles: bool) -> Vec<PathSegment> {
     let start = Point::new(edge.points[0].x, edge.points[0].y);
-    if message.from.as_deref() == message.to.as_deref() {
-        if right_angles {
-            let dx = edge
-                .label
-                .as_ref()
-                .map(|label| label.width / 2.0)
-                .unwrap_or(30.0)
-                .max(30.0);
-            return Ok(vec![
-                PathSegment::MoveTo { to: start },
-                PathSegment::LineTo {
-                    to: Point::new(start.x + dx, start.y),
-                },
-                PathSegment::LineTo {
-                    to: Point::new(start.x + dx, start.y + 25.0),
-                },
-                PathSegment::LineTo {
-                    to: Point::new(start.x, start.y + 25.0),
-                },
-            ]);
-        }
-        return Ok(vec![
+    if right_angles {
+        let dx = edge
+            .label
+            .as_ref()
+            .map(|label| label.width / 2.0)
+            .unwrap_or(30.0)
+            .max(30.0);
+        return vec![
             PathSegment::MoveTo { to: start },
-            PathSegment::CubicTo {
-                control1: Point::new(start.x + 60.0, start.y - 10.0),
-                control2: Point::new(start.x + 60.0, start.y + 30.0),
-                to: Point::new(start.x, start.y + 20.0),
+            PathSegment::LineTo {
+                to: Point::new(start.x + dx, start.y),
             },
-        ]);
+            PathSegment::LineTo {
+                to: Point::new(start.x + dx, start.y + 25.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(start.x, start.y + 25.0),
+            },
+        ];
     }
-    let mut segments = Vec::with_capacity(edge.points.len());
-    segments.push(PathSegment::MoveTo { to: start });
-    segments.extend(edge.points.iter().skip(1).map(|point| PathSegment::LineTo {
-        to: Point::new(point.x, point.y),
-    }));
-    Ok(segments)
+    vec![
+        PathSegment::MoveTo { to: start },
+        PathSegment::CubicTo {
+            control1: Point::new(start.x + 60.0, start.y - 10.0),
+            control2: Point::new(start.x + 60.0, start.y + 30.0),
+            to: Point::new(start.x, start.y + 20.0),
+        },
+    ]
 }
 
 fn control_label(kind: SequenceControlKind) -> &'static str {

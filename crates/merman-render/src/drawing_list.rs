@@ -670,7 +670,9 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::C4(pair) => {
             c4::build_c4_document(pair, metadata, policy, limits, session)
         }
-        BuiltinFamilyArtifact::Er(pair) => er::build_er_document(pair, metadata, policy, session),
+        BuiltinFamilyArtifact::Er(pair) => {
+            er::build_er_document(pair, metadata, policy, limits, session)
+        }
         BuiltinFamilyArtifact::Info(pair) => {
             info::build_info_document(pair, metadata, policy, limits, session)
         }
@@ -708,7 +710,7 @@ pub(crate) fn build_for_family(
             sankey::build_sankey_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Sequence(pair) => {
-            sequence::build_sequence_document(pair, metadata, policy, session)
+            sequence::build_sequence_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::State(pair) => {
             state::build_state_document(pair, metadata, policy, session)

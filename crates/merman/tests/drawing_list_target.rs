@@ -182,6 +182,35 @@ fn flowchart_and_swimlane_limits_stop_at_the_first_over_budget_item() {
 }
 
 #[test]
+fn er_command_limit_stops_at_the_first_over_budget_item() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("the ER builder must reject its first command before returning output");
+
+    assert!(
+        matches!(
+            &error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn bounded_families_fit_their_exact_document_budgets() {
     for source in [
         "flowchart TD\nA[Parse] -->|next| B{Layout}\nB --> C([Done])\n",
@@ -190,6 +219,13 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n",
         "timeline\ntitle Releases\nsection Planning\nPlan : Build\nShip : Done\n",
         "timeline TD\nsection Planning\nPlan : Build\nShip : Done\n",
+        concat!(
+            "C4Context\ntitle Context\n",
+            "Person(user, \"User\")\n",
+            "System_Boundary(service, \"Service\") {\n",
+            "System(api, \"API\", \"Service\")\n}\n",
+            "Rel(user, api, \"uses\")\nRel(api, user, \"responds\")\n",
+        ),
     ] {
         let renderer = Renderer::new();
         let RenderOutput::DrawingList(Some(output)) = renderer

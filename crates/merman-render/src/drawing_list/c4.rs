@@ -1383,7 +1383,7 @@ fn rounded_rect_path(bounds: Rect, radius: f64) -> Vec<PathSegment> {
 }
 
 fn plain_text(raw: &str) -> std::result::Result<String, String> {
-    if raw.contains("**") || raw.contains("__") || contains_html_tag(raw) {
+    if contains_unsupported_text_markup(raw) {
         return Err("contains styled Markdown or HTML markup".to_string());
     }
     Ok(crate::entities::decode_entities_minimal(raw)
@@ -1397,14 +1397,24 @@ fn contains_html_tag(text: &str) -> bool {
         "<a", "</a", "<b", "</b", "<div", "</div", "<em", "</em", "<i", "</i", "<p", "</p",
         "<span", "</span",
     ];
-    let lower = text.to_ascii_lowercase();
-    TAGS.iter().any(|tag| lower.contains(tag))
+    TAGS.iter().any(|tag| {
+        text.as_bytes()
+            .windows(tag.len())
+            .any(|window| window.eq_ignore_ascii_case(tag.as_bytes()))
+    })
+}
+
+fn contains_unsupported_text_markup(text: &str) -> bool {
+    text.contains("**") || text.contains("__") || contains_html_tag(text)
 }
 
 fn validate_text(text: &str, label: &str) -> Result<()> {
-    plain_text(text)
-        .map(|_| ())
-        .map_err(|error| unavailable(format!("{label}: {error}")))
+    if contains_unsupported_text_markup(text) {
+        return Err(unavailable(format!(
+            "{label}: contains styled Markdown or HTML markup"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_c4_metadata(alias: &str, inputs: C4MetadataInputs<'_>) -> Result<()> {

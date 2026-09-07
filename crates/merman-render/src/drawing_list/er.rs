@@ -9,6 +9,7 @@ use super::{
     parse_font_families_for, theme_color,
 };
 use crate::config::{config_bool, config_f64_explicit_css_px, config_string};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::support::{stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::er::{
@@ -17,7 +18,7 @@ use crate::er::{
 };
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutNode};
-use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
+use crate::render_geometry::{FlowchartCurveKind, emit_flowchart_curve_segments};
 use crate::text::TextMeasurer as _;
 use crate::{Error, Result};
 use base64::Engine as _;
@@ -27,10 +28,10 @@ use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -41,19 +42,19 @@ pub(crate) fn build_er_document(
     pair: &ErPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = ErBuilder::new(pair, metadata, policy, session)?;
+    let builder = ErBuilder::new(pair, metadata, policy, limits, session)?;
     builder.build()
 }
 
 struct ErBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a ErDiagramRenderModel,
     layout: &'a ErDiagramLayout,
-    edges: Vec<LayoutEdge>,
+    edges: &'a [LayoutEdge],
     entities_by_id: HashMap<&'a str, &'a ErEntityRenderModel>,
     relationships_by_index: HashMap<usize, &'a ErRelationshipRenderModel>,
     font: FontDescriptor,
@@ -78,9 +79,7 @@ struct ErBuilder<'a> {
     data_look: String,
     relationship_html_labels: bool,
     entity_html_labels: bool,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -134,6 +133,7 @@ impl<'a> ErBuilder<'a> {
         pair: &'a ErPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -215,9 +215,9 @@ impl<'a> ErBuilder<'a> {
 
         unique_layout_nodes(layout)?;
         let edges = if layout.render_edges.is_empty() {
-            layout.edges.clone()
+            layout.edges.as_slice()
         } else {
-            layout.render_edges.clone()
+            layout.render_edges.as_slice()
         };
         let entities_by_id = model
             .entities
@@ -230,10 +230,20 @@ impl<'a> ErBuilder<'a> {
             .enumerate()
             .collect::<HashMap<_, _>>();
 
-        let builder = Self {
+        let document_semantic = SemanticAnnotation {
+            id: "er.document".to_string(),
+            role: SemanticRole::Document,
+            title: model
+                .acc_title
+                .clone()
+                .or_else(|| metadata.title.clone())
+                .or_else(|| Some(metadata.diagram_type.clone())),
+            description: model.acc_descr.clone(),
+            link: None,
+        };
+        let mut builder = Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             edges,
@@ -263,24 +273,7 @@ impl<'a> ErBuilder<'a> {
             // Mermaid's ER box renderer keeps entity labels in foreignObject shells even when
             // `htmlLabels` is false; that flag changes measurement/padding, not this DOM shape.
             entity_html_labels: true,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "er.document".to_string(),
-                },
-            ],
-            semantics: vec![SemanticAnnotation {
-                id: "er.document".to_string(),
-                role: SemanticRole::Document,
-                title: model
-                    .acc_title
-                    .clone()
-                    .or_else(|| metadata.title.clone())
-                    .or_else(|| Some(metadata.diagram_type.clone())),
-                description: model.acc_descr.clone(),
-                link: None,
-            }],
+            output: DrawingListBuilder::new(policy, limits, session),
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -288,11 +281,19 @@ impl<'a> ErBuilder<'a> {
             edge_metadata: BTreeMap::new(),
             marker_types: std::collections::BTreeSet::new(),
         };
+        builder.output.push_semantic(document_semantic)?;
+        builder.output.push_control(DrawingCommand::Save)?;
+        builder
+            .output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "er.document".to_string(),
+            })?;
         builder.preflight()?;
         Ok(builder)
     }
 
-    fn build(&mut self) -> Result<RenderDocument> {
+    fn build(mut self) -> Result<RenderDocument> {
+        let edges = self.edges;
         self.semantic_classes
             .insert("er.root".to_string(), "root".to_string());
         self.semantic_classes
@@ -317,67 +318,67 @@ impl<'a> ErBuilder<'a> {
             ("er.edgeLabels", "ER relationship labels"),
             ("er.nodes", "ER entities"),
         ] {
-            self.semantics.push(SemanticAnnotation {
+            self.push_semantic(SemanticAnnotation {
                 id: id.to_string(),
                 role: SemanticRole::Group,
                 title: None,
                 description: Some(description.to_string()),
                 link: None,
-            });
+            })?;
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: "er.root".to_string(),
-        });
+        })?;
 
         // ELK's common painter lowers edges before clusters; Dagre keeps clusters before edges.
         // The public command order follows the same source-backed z-order so SVG and native hosts
         // observe identical overlap semantics.
         if self.is_elk_layout() {
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
+            self.push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "er.edges".to_string(),
-            });
-            for (index, edge) in self.edges.clone().iter().enumerate() {
+            })?;
+            for (index, edge) in edges.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 self.emit_edge(index, edge)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
+            self.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "er.clusters".to_string(),
-            });
+            })?;
             for (index, cluster) in self.layout.clusters.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 self.emit_cluster(index, cluster)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.push_control(DrawingCommand::EndSemanticGroup)?;
         } else {
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
+            self.push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "er.clusters".to_string(),
-            });
+            })?;
             for (index, cluster) in self.layout.clusters.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 self.emit_cluster(index, cluster)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
+            self.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "er.edges".to_string(),
-            });
-            for (index, edge) in self.edges.clone().iter().enumerate() {
+            })?;
+            for (index, edge) in edges.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 self.emit_edge(index, edge)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
+            self.push_control(DrawingCommand::EndSemanticGroup)?;
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: "er.edgeLabels".to_string(),
-        });
-        for (index, edge) in self.edges.clone().iter().enumerate() {
+        })?;
+        for (index, edge) in edges.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_edge_label(index, edge)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: "er.nodes".to_string(),
-        });
+        })?;
         for (index, node) in self.layout.nodes.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             if node.is_cluster || node.id.contains("---") {
@@ -385,25 +386,18 @@ impl<'a> ErBuilder<'a> {
             }
             self.emit_entity(index, node)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
         if let Some(title) = self.diagram_title() {
             self.emit_title(&title)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_control(DrawingCommand::Restore)?;
 
         let viewport = self.viewport(self.diagram_title().as_deref())?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(viewport),
-            policy: self.policy,
-            resources: std::mem::take(&mut self.resources),
-            commands: std::mem::take(&mut self.commands),
-            semantics: std::mem::take(&mut self.semantics),
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.output.finish(
+            Viewport::new(viewport),
+            BTreeMap::from([(
                 "x-merman-er".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -412,8 +406,7 @@ impl<'a> ErBuilder<'a> {
                     "label_mode": "plain_host_text",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
@@ -506,7 +499,7 @@ impl<'a> ErBuilder<'a> {
         for node in &self.layout.nodes {
             validate_layout_node(node)?;
         }
-        for edge in &self.edges {
+        for edge in self.edges {
             if edge.points.len() < 2 {
                 return Err(invalid(format!(
                     "ER edge `{}` has fewer than two points",
@@ -541,9 +534,9 @@ impl<'a> ErBuilder<'a> {
         self.text_classes
             .insert(semantic_id.clone(), "nodeLabel".to_string());
         self.dom_ids.insert(semantic_id.clone(), cluster.id.clone());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
-        });
+        })?;
         let bounds = centered_rect(cluster.x, cluster.y, cluster.width, cluster.height);
         self.add_path(
             format!("{semantic_id}.box"),
@@ -572,16 +565,16 @@ impl<'a> ErBuilder<'a> {
                     TextAnchor::Middle,
                     TextBaseline::Middle,
                 ),
-            );
+            )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(title),
             description: Some(format!("ER subgraph {}", cluster.id)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -625,22 +618,29 @@ impl<'a> ErBuilder<'a> {
                 end_marker: edge.end_marker.clone(),
             },
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
-        });
-        let segments =
-            flowchart_curve_segments(&edge.points, FlowchartCurveKind::Basis, 0.0, false, None);
+        })?;
         let mut line = stroke(self.line_color, 1.0);
         if edge.stroke_dasharray.as_deref() == Some("8,8") {
             line.dash_array = vec![8.0, 8.0];
         }
-        self.add_path(
+        self.add_path_with(
             edge_path_id,
-            segments,
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: None,
                 stroke: Some(line),
+            },
+            |emit| {
+                emit_flowchart_curve_segments(
+                    &edge.points,
+                    FlowchartCurveKind::Basis,
+                    0.0,
+                    false,
+                    None,
+                    emit,
+                )
             },
         )?;
         if let Some(marker) = edge.start_marker.as_deref() {
@@ -649,13 +649,13 @@ impl<'a> ErBuilder<'a> {
         if let Some(marker) = edge.end_marker.as_deref() {
             self.emit_cardinality_marker(&semantic_id, edge, marker, false)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
         let title = relation
             .and_then(|relation| {
                 (!relation.role_a.trim().is_empty()).then(|| plain_text(&relation.role_a).ok())
             })
             .flatten();
-        self.semantics.push(SemanticAnnotation {
+        self.push_semantic(SemanticAnnotation {
             id: semantic_id.clone(),
             role: SemanticRole::Edge,
             title,
@@ -663,7 +663,7 @@ impl<'a> ErBuilder<'a> {
                 .map(|relation| format!("{} → {}", relation.entity_a, relation.entity_b))
                 .or_else(|| Some(format!("{} → {}", edge.from, edge.to))),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -744,9 +744,9 @@ impl<'a> ErBuilder<'a> {
         if text.trim().is_empty() {
             return Ok(());
         }
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
-        });
+        })?;
         let bounds = centered_rect(label.x, label.y, label.width, label.height);
         self.add_path(
             format!("{semantic_id}.background"),
@@ -768,15 +768,15 @@ impl<'a> ErBuilder<'a> {
                 TextAnchor::Middle,
                 TextBaseline::Middle,
             ),
-        );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        )?;
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Label,
             title: Some(text),
             description: Some(description),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -858,9 +858,9 @@ impl<'a> ErBuilder<'a> {
         );
         self.semantic_classes
             .insert("er.title".to_string(), "erDiagramTitleText".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: "er.title".to_string(),
-        });
+        })?;
         self.draw_text(
             title,
             TextEmitSpec::new(
@@ -880,17 +880,17 @@ impl<'a> ErBuilder<'a> {
                 TextAnchor::Middle,
                 TextBaseline::Alphabetic,
             ),
-        );
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        )?;
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
         self.text_classes
             .insert("er.title".to_string(), "erDiagramTitleText".to_string());
-        self.semantics.push(SemanticAnnotation {
+        self.push_semantic(SemanticAnnotation {
             id: "er.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -924,9 +924,9 @@ impl<'a> ErBuilder<'a> {
         };
         self.text_classes
             .insert(semantic_id.clone(), text_class.to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
+        self.push_control(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.clone(),
-        });
+        })?;
         let bounds = centered_rect(
             layout_node.x,
             layout_node.y,
@@ -964,18 +964,18 @@ impl<'a> ErBuilder<'a> {
                     TextAnchor::Middle,
                     TextBaseline::Middle,
                 ),
-            );
+            )?;
         } else {
             self.emit_entity_attribute_table(&semantic_id, &measure, bounds)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(name),
             description: Some(format!("Entity {}", entity.id)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -999,15 +999,9 @@ impl<'a> ErBuilder<'a> {
         let line_height = (self.font_size * 1.5).max(1.0);
         let name_row_height = (measure.label_height + measure.text_padding).max(1.0);
         let separator_y = bounds.y + name_row_height;
-        let mut row_layouts = Vec::with_capacity(measure.rows.len());
         let mut row_top = separator_y;
-        for row in &measure.rows {
+        for (row_index, row) in measure.rows.iter().enumerate() {
             let row_height = row.height.max(1.0);
-            row_layouts.push((row_top, row_height));
-            row_top += row_height;
-        }
-
-        for (row_index, (row_y, row_height)) in row_layouts.iter().copied().enumerate() {
             let row_id = format!("{semantic_id}.row.{row_index}");
             self.path_classes.insert(
                 row_id.clone(),
@@ -1020,7 +1014,7 @@ impl<'a> ErBuilder<'a> {
             );
             self.add_path(
                 row_id,
-                rectangle_path(Rect::new(bounds.x, row_y, bounds.width, row_height)),
+                rectangle_path(Rect::new(bounds.x, row_top, bounds.width, row_height)),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(if row_index % 2 == 0 {
@@ -1031,6 +1025,7 @@ impl<'a> ErBuilder<'a> {
                     stroke: None,
                 },
             )?;
+            row_top += row_height;
         }
 
         let name_width = measure.label_html_width.max(0.0);
@@ -1056,7 +1051,7 @@ impl<'a> ErBuilder<'a> {
                 TextAnchor::Middle,
                 TextBaseline::Middle,
             ),
-        );
+        )?;
 
         let padding = if self.entity_measurement.html_labels_raw {
             self.entity_measurement.diagram_padding
@@ -1071,8 +1066,9 @@ impl<'a> ErBuilder<'a> {
             left_text_x + measure.type_col_w + measure.name_col_w + measure.key_col_w,
         ];
         let measurer = self.session.text_measurer(TextMeasurementPhase::Layout);
+        let mut row_y = separator_y;
         for (row_index, row) in measure.rows.iter().enumerate() {
-            let (row_y, row_height) = row_layouts[row_index];
+            let row_height = row.height.max(1.0);
             let cell_y = row_y + row_height / 2.0 - line_height / 2.0;
             let cells = [
                 (
@@ -1122,8 +1118,9 @@ impl<'a> ErBuilder<'a> {
                         TextAnchor::Start,
                         TextBaseline::Middle,
                     ),
-                );
+                )?;
             }
+            row_y += row_height;
         }
 
         let mut divider_xs = vec![bounds.x + measure.type_col_w];
@@ -1166,10 +1163,12 @@ impl<'a> ErBuilder<'a> {
                 stroke: Some(stroke(self.node_stroke, 1.0)),
             },
         )?;
-        for (row_index, (row_y, row_height)) in row_layouts.iter().copied().enumerate() {
-            if row_index + 1 == row_layouts.len() {
+        let mut row_y = separator_y;
+        for (row_index, row) in measure.rows.iter().enumerate() {
+            if row_index + 1 == measure.rows.len() {
                 continue;
             }
+            let row_height = row.height.max(1.0);
             let divider_id = format!("{semantic_id}.divider.row.{row_index}");
             self.path_classes
                 .insert(divider_id.clone(), "divider".to_string());
@@ -1185,13 +1184,23 @@ impl<'a> ErBuilder<'a> {
                     stroke: Some(stroke(self.node_stroke, 1.0)),
                 },
             )?;
+            row_y += row_height;
         }
         Ok(())
     }
 
-    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+    fn push_control(&mut self, command: DrawingCommand) -> Result<()> {
+        self.output.push_control(command)
+    }
+
+    fn push_semantic(&mut self, semantic: SemanticAnnotation) -> Result<()> {
+        self.output.push_semantic(semantic)
+    }
+
+    fn draw_text(&mut self, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let obligation = self.text_obligation.clone();
+        self.output.draw_host_text(text, |text| TextRun {
+            text,
             origin: spec.origin,
             bounds: spec.bounds,
             style: spec.style,
@@ -1199,20 +1208,21 @@ impl<'a> ErBuilder<'a> {
             baseline: spec.baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+            obligation,
+        })
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: ResourceId::new(id.clone()),
-            segments,
-        }));
-        self.commands.push(DrawingCommand::DrawPath {
-            path: ResourceId::new(id),
-            style,
-        });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
+    }
+
+    fn add_path_with(
+        &mut self,
+        id: String,
+        style: PathStyle,
+        emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<()>,
+    ) -> Result<()> {
+        self.output.draw_path_with(ResourceId::new(id), style, emit)
     }
 }
 
