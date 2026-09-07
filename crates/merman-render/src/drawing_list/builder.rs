@@ -149,6 +149,114 @@ impl<'a> DrawingListBuilder<'a> {
         Ok(())
     }
 
+    /// Adds one path resource with multiple paint commands, preserving source painter order.
+    ///
+    /// Some SVG families paint a shape fill and stroke as separate elements while sharing the
+    /// same geometry. Keeping that layering in the protocol avoids changing DOM order merely to
+    /// satisfy the bounded builder.
+    pub(crate) fn draw_path_layers(
+        &mut self,
+        id: ResourceId,
+        segments: Vec<PathSegment>,
+        styles: Vec<PathStyle>,
+    ) -> Result<()> {
+        if segments.is_empty() {
+            return Err(contract_error("DrawingList path has no geometry"));
+        }
+        if styles.is_empty() {
+            return Err(contract_error("DrawingList path has no paint commands"));
+        }
+        let mut next = self.usage;
+        checked_increment(&mut next.resources, 1, "resource count")?;
+        checked_increment(&mut next.commands, styles.len(), "command count")?;
+        checked_increment(
+            &mut next.path_segments,
+            segments.len(),
+            "path segment count",
+        )?;
+        for style in &styles {
+            if let Some(stroke) = &style.stroke {
+                checked_increment(
+                    &mut next.stroke_dash_entries,
+                    stroke.dash_array.len(),
+                    "stroke dash entry count",
+                )?;
+            }
+        }
+        self.preflight(next)?;
+
+        self.resources
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("resources"))?;
+        self.commands
+            .try_reserve(styles.len())
+            .map_err(|_| allocation_failed("commands"))?;
+        self.resources.push(DrawingResource::Path(PathResource {
+            id: id.clone(),
+            segments,
+        }));
+        for style in styles {
+            self.commands.push(DrawingCommand::DrawPath {
+                path: id.clone(),
+                style,
+            });
+        }
+        self.usage = next;
+        Ok(())
+    }
+
+    /// Adds a path resource used by a clip command without emitting a visible paint command.
+    ///
+    /// Clip paths have the same variable-sized resource footprint as painted paths, so they
+    /// must be admitted through the bounded builder instead of being appended directly by an
+    /// adapter.
+    pub(crate) fn draw_clip_path(
+        &mut self,
+        id: ResourceId,
+        segments: Vec<PathSegment>,
+        fill_rule: merman_display_list::FillRule,
+    ) -> Result<()> {
+        if segments.is_empty() {
+            return Err(contract_error("DrawingList clip path has no geometry"));
+        }
+        let mut next = self.usage;
+        checked_increment(&mut next.resources, 1, "resource count")?;
+        checked_increment(&mut next.commands, 1, "command count")?;
+        checked_increment(
+            &mut next.path_segments,
+            segments.len(),
+            "path segment count",
+        )?;
+        next.max_nesting_depth = next.max_nesting_depth.max(
+            self.scopes
+                .len()
+                .checked_add(1)
+                .ok_or_else(|| contract_error("DrawingList nesting depth overflows usize"))?,
+        );
+        self.preflight(next)?;
+
+        self.resources
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("resources"))?;
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("commands"))?;
+        self.scopes
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("command scopes"))?;
+        self.resources.push(DrawingResource::Path(PathResource {
+            id: id.clone(),
+            segments,
+        }));
+        self.commands.push(DrawingCommand::ClipPath {
+            path: id,
+            fill_rule,
+        });
+        self.scopes.push(BuildScope::Clip);
+        self.usage = next;
+        Ok(())
+    }
+
     /// Admits each generated segment before growing the path's backing storage.
     ///
     /// Resource and command budgets are checked before invoking the producer. A rejected path
@@ -360,7 +468,7 @@ impl<'a> DrawingListBuilder<'a> {
             DrawingCommand::BeginSemanticGroup { .. } => {
                 Ok(ScopeChange::Push(BuildScope::Semantic))
             }
-            DrawingCommand::Restore => self.preview_scope_pop(BuildScope::Save),
+            DrawingCommand::Restore => self.preview_restore(),
             DrawingCommand::EndSemanticGroup => self.preview_scope_pop(BuildScope::Semantic),
             DrawingCommand::BeginLayer { .. }
             | DrawingCommand::EndLayer
@@ -380,11 +488,40 @@ impl<'a> DrawingListBuilder<'a> {
         }
     }
 
+    fn preview_restore(&self) -> Result<ScopeChange> {
+        let Some(save_index) = self
+            .scopes
+            .iter()
+            .rposition(|scope| *scope == BuildScope::Save)
+        else {
+            return Err(contract_error(
+                "DrawingList restore does not match an open save scope",
+            ));
+        };
+        if self.scopes[save_index + 1..]
+            .iter()
+            .any(|scope| *scope != BuildScope::Clip)
+        {
+            return Err(contract_error(
+                "DrawingList restore crosses an open semantic group",
+            ));
+        }
+        Ok(ScopeChange::PopState {
+            clips: self.scopes.len() - save_index - 1,
+        })
+    }
+
     fn apply_scope_change(&mut self, change: ScopeChange) {
         match change {
             ScopeChange::None => {}
             ScopeChange::Push(scope) => self.scopes.push(scope),
             ScopeChange::Pop => {
+                self.scopes.pop();
+            }
+            ScopeChange::PopState { clips } => {
+                for _ in 0..clips {
+                    self.scopes.pop();
+                }
                 self.scopes.pop();
             }
         }
@@ -395,6 +532,7 @@ impl<'a> DrawingListBuilder<'a> {
 enum BuildScope {
     Save,
     Semantic,
+    Clip,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -402,6 +540,7 @@ enum ScopeChange {
     None,
     Push(BuildScope),
     Pop,
+    PopState { clips: usize },
 }
 
 fn checked_increment(target: &mut usize, delta: usize, label: &'static str) -> Result<()> {

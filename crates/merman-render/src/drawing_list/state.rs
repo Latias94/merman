@@ -9,6 +9,7 @@ use super::{
     RenderDocument, StateSvgBody, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::config::{MERMAID_DEFAULT_FONT_FAMILY_CSS, config_diagram_look};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -24,10 +25,10 @@ use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -41,16 +42,16 @@ pub(crate) fn build_state_document(
     pair: &StatePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    let mut builder = StateBuilder::new(pair, metadata, policy, session)?;
+    let builder = StateBuilder::new(pair, metadata, policy, limits, session)?;
     builder.build()
 }
 
 struct StateBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a StateDiagramRenderModel,
     layout: &'a StateDiagramLayout,
     nodes_by_id: HashMap<&'a str, &'a LayoutNode>,
@@ -70,9 +71,7 @@ struct StateBuilder<'a> {
     marker_fill: Color,
     edge_label_background: Color,
     stroke_width: f64,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -85,6 +84,7 @@ impl<'a> StateBuilder<'a> {
         pair: &'a StatePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -145,10 +145,14 @@ impl<'a> StateBuilder<'a> {
 
         let nodes_by_id = unique_layout_nodes(layout)?;
         let edges_by_id = unique_layout_edges(layout)?;
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "state.document".to_string(),
+        })?;
         let builder = Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             nodes_by_id,
@@ -172,14 +176,7 @@ impl<'a> StateBuilder<'a> {
             marker_fill,
             edge_label_background,
             stroke_width,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "state.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
+            output,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -190,9 +187,9 @@ impl<'a> StateBuilder<'a> {
         Ok(builder)
     }
 
-    fn build(&mut self) -> Result<RenderDocument> {
+    fn build(mut self) -> Result<RenderDocument> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "state.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -202,7 +199,7 @@ impl<'a> StateBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
         self.semantic_looks
             .insert("state.document".to_string(), "classic".to_string());
 
@@ -220,28 +217,21 @@ impl<'a> StateBuilder<'a> {
             self.emit_node(index, node)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
         let bounds = self
             .layout
             .bounds
             .as_ref()
             .expect("validated in constructor");
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.output.finish(
+            Viewport::new(Rect::new(
                 bounds.min_x - VIEWPORT_PADDING,
                 bounds.min_y - VIEWPORT_PADDING,
                 (bounds.max_x - bounds.min_x) + 2.0 * VIEWPORT_PADDING,
                 (bounds.max_y - bounds.min_y) + 2.0 * VIEWPORT_PADDING,
             )),
-            policy: self.policy,
-            resources: std::mem::take(&mut self.resources),
-            commands: std::mem::take(&mut self.commands),
-            semantics: std::mem::take(&mut self.semantics),
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-state".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -251,8 +241,7 @@ impl<'a> StateBuilder<'a> {
                     "geometry_subset": "start-rect-transition",
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -260,11 +249,11 @@ impl<'a> StateBuilder<'a> {
                 family: RenderFamilyKind::State,
                 body: SvgStructureBody::State(StateSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
-                    semantic_classes: std::mem::take(&mut self.semantic_classes),
-                    path_classes: std::mem::take(&mut self.path_classes),
-                    text_classes: std::mem::take(&mut self.text_classes),
-                    semantic_looks: std::mem::take(&mut self.semantic_looks),
-                    dom_ids: std::mem::take(&mut self.dom_ids),
+                    semantic_classes: self.semantic_classes,
+                    path_classes: self.path_classes,
+                    text_classes: self.text_classes,
+                    semantic_looks: self.semantic_looks,
+                    dom_ids: self.dom_ids,
                 }),
             },
         })
@@ -510,9 +499,10 @@ impl<'a> StateBuilder<'a> {
             format!("{semantic_id}.route"),
             "edge-thickness-normal edge-pattern-solid transition".to_string(),
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.route"),
             route_segments,
@@ -523,16 +513,16 @@ impl<'a> StateBuilder<'a> {
             },
         )?;
         self.add_classic_barb_marker(index, &points)?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         let edge_label = edge.label.trim();
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: (!edge_label.is_empty())
                 .then(|| state_plain_text_label(edge_label).expect("validated in preflight")),
             description: Some(format!("{} → {}", edge.start, edge.end)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -606,9 +596,10 @@ impl<'a> StateBuilder<'a> {
             .insert(format!("{semantic_id}.background"), "label".to_string());
         self.text_classes
             .insert(semantic_id.clone(), "edgeLabel".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.background"),
             rounded_rect_path(label.x, label.y, label.width, label.height, 0.0),
@@ -618,14 +609,14 @@ impl<'a> StateBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.commands.push(DrawingCommand::draw_text(self.text_run(
-            text.clone(),
+        self.draw_text(
+            &text,
             Point::new(label.x, label.y),
             bounds,
             self.transition_label,
-        )));
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        )?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(text),
@@ -634,7 +625,7 @@ impl<'a> StateBuilder<'a> {
                 edge.start, edge.end
             )),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -659,9 +650,10 @@ impl<'a> StateBuilder<'a> {
                 dom_id.to_string()
             },
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         let title = match node.shape.as_str() {
             "stateStart" => {
                 self.path_classes
@@ -707,8 +699,8 @@ impl<'a> StateBuilder<'a> {
                 };
                 let label_width = (layout.width - 2.0 * horizontal_padding).max(0.0);
                 let label_height = (layout.height - 2.0 * self.state_padding).max(0.0);
-                self.commands.push(DrawingCommand::draw_text(self.text_run(
-                    text.clone(),
+                self.draw_text(
+                    &text,
                     Point::new(layout.x, layout.y),
                     Rect::new(
                         layout.x - label_width / 2.0,
@@ -717,32 +709,36 @@ impl<'a> StateBuilder<'a> {
                         label_height,
                     ),
                     self.state_label,
-                )));
+                )?;
                 text
             }
             _ => unreachable!("unsupported shapes fail preflight"),
         };
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(title),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
-    fn text_run(&self, text: String, origin: Point, bounds: Rect, color: Color) -> TextRun {
-        TextRun {
+    fn draw_text(&mut self, text: &str, origin: Point, bounds: Rect, color: Color) -> Result<()> {
+        let font = self.font.clone();
+        let font_size = self.font_size;
+        let line_height = self.line_height;
+        let text_obligation = self.text_obligation.clone();
+        self.output.draw_host_text(text, move |text| TextRun {
             text,
             origin,
             bounds,
             style: TextStyle {
-                font: self.font.clone(),
-                font_size: self.font_size,
+                font,
+                font_size,
                 letter_spacing: 0.0,
-                line_height: self.line_height,
+                line_height,
                 fill: Paint::solid(color),
                 stroke: None,
                 paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
@@ -751,22 +747,15 @@ impl<'a> StateBuilder<'a> {
             baseline: TextBaseline::Middle,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }
+            obligation: text_obligation,
+        })
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
         if segments.is_empty() {
             return Err(invalid(format!("State path `{id}` has no geometry")));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
 }
 

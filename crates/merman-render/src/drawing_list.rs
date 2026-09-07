@@ -713,10 +713,10 @@ pub(crate) fn build_for_family(
             sequence::build_sequence_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::State(pair) => {
-            state::build_state_document(pair, metadata, policy, session)
+            state::build_state_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Treemap(pair) => {
-            treemap::build_treemap_document(pair, metadata, policy, session)
+            treemap::build_treemap_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::TreeView(pair) => {
             tree_view::build_tree_view_document(pair, metadata, policy, session)

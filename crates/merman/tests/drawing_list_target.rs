@@ -197,17 +197,14 @@ fn er_command_limit_stops_at_the_first_over_budget_item() {
         ))
         .expect_err("the ER builder must reject its first command before returning output");
 
-    assert!(
-        matches!(
-            &error,
-            RenderError::ResourceLimitExceeded(limit)
-                if limit.id == "max_commands"
-                    && limit.phase == "drawing-list-validation"
-                    && limit.actual == 1
-                    && limit.maximum == 0
-        ),
-        "{error}"
-    );
+    assert!(matches!(
+        &error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
 }
 
 #[test]
@@ -829,14 +826,17 @@ fn architecture_limits_reject_before_first_emitted_command() {
             },
         ))
         .expect_err("Architecture must reject its first builder command");
-    assert!(matches!(
-        error,
-        RenderError::ResourceLimitExceeded(limit)
-            if limit.id == "max_commands"
-                && limit.phase == "drawing-list-validation"
-                && limit.actual == 1
-                && limit.maximum == 0
-    ));
+    assert!(
+        matches!(
+            error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "{error}"
+    );
 }
 
 #[cfg(feature = "layout-cytoscape")]
@@ -1065,6 +1065,35 @@ fn state_emits_typed_nodes_transitions_markers_and_labels() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("finish")
     }));
+}
+
+#[test]
+fn state_command_limit_stops_before_the_first_output_command() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "stateDiagram-v2\n  A --> B\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("State must reject its first command before returning output");
+
+    assert!(
+        matches!(
+            &error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "{error}"
+    );
 }
 
 #[test]
@@ -2394,6 +2423,34 @@ classDef important fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:3px,strok
         semantic.role == merman_display_list::SemanticRole::Node
             && semantic.title.as_deref() == Some("Frontend")
     }));
+}
+
+#[test]
+fn treemap_limits_stop_at_the_first_over_budget_command() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("Treemap must reject its first builder command");
+    assert!(
+        matches!(
+            &error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "{error}"
+    );
 }
 
 #[test]

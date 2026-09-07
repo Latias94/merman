@@ -8,6 +8,7 @@ use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, TreemapSvgBody, parse_font_families_for,
 };
 use crate::config::config_font_family_css_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -24,11 +25,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::treemap::TreemapDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    BlendMode, Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, LineCap, LineJoin,
-    Paint, PathResource, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Transform, Viewport,
+    BlendMode, Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule,
+    FontDescriptor, FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect,
+    ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline,
+    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -48,15 +48,16 @@ pub(crate) fn build_treemap_document(
     pair: &TreemapPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    TreemapBuilder::new(pair, metadata, policy, session)?.build()
+    TreemapBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct TreemapBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a TreemapDiagramRenderModel,
     layout: &'a TreemapDiagramLayout,
     presentation: TreemapPresentation,
@@ -69,9 +70,6 @@ struct TreemapBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     text_class_counts: BTreeMap<String, usize>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 impl<'a> TreemapBuilder<'a> {
@@ -79,6 +77,7 @@ impl<'a> TreemapBuilder<'a> {
         pair: &'a TreemapPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -124,10 +123,16 @@ impl<'a> TreemapBuilder<'a> {
             ));
         }
 
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "treemap.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             presentation,
@@ -146,19 +151,11 @@ impl<'a> TreemapBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             text_class_counts: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "treemap.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "treemap.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -170,14 +167,15 @@ impl<'a> TreemapBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         self.emit_title()?;
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
-            transform: translate(0.0, self.layout.title_height),
-        });
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::ConcatTransform {
+                transform: translate(0.0, self.layout.title_height),
+            })?;
         for index in 0..self.presentation.sections.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_section(index)?;
@@ -186,26 +184,20 @@ impl<'a> TreemapBuilder<'a> {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_leaf(index)?;
         }
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document.push_control(DrawingCommand::Restore)?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let viewport = self.presentation.viewport;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(
                 viewport.x,
                 viewport.y,
                 viewport.width,
                 viewport.height,
             )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+            BTreeMap::from([(
                 "x-merman-treemap".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -216,8 +208,7 @@ impl<'a> TreemapBuilder<'a> {
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -254,9 +245,10 @@ impl<'a> TreemapBuilder<'a> {
             return Ok(());
         };
         let semantic_id = "treemap.title".to_string();
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         if let Some(fill) = self.title_fill {
             let style = ResolvedTextStyle {
                 font: self.base_font.clone(),
@@ -279,14 +271,15 @@ impl<'a> TreemapBuilder<'a> {
                 },
             )?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(title.text),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -309,15 +302,17 @@ impl<'a> TreemapBuilder<'a> {
             .insert(semantic_id.clone(), section_class.clone());
         self.path_classes
             .insert(format!("{semantic_id}.shape"), section_class);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
 
         if !presentation.hidden {
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::ConcatTransform {
-                transform: translate(presentation.x, presentation.y),
-            });
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::ConcatTransform {
+                    transform: translate(presentation.x, presentation.y),
+                })?;
             let path_style = ResolvedPathStyle::resolve(
                 &presentation.compiled,
                 &presentation.fill,
@@ -333,11 +328,12 @@ impl<'a> TreemapBuilder<'a> {
             )?;
             self.emit_section_label(&semantic_id, &presentation)?;
             self.emit_section_value(&semantic_id, &presentation)?;
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: Some(layout.name),
@@ -346,7 +342,7 @@ impl<'a> TreemapBuilder<'a> {
                 layout.depth, layout.value
             )),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -443,13 +439,15 @@ impl<'a> TreemapBuilder<'a> {
             format!("{semantic_id}.shape"),
             format!("treemapNode leaf treemapLeaf leaf{index}"),
         );
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: semantic_id.clone(),
-        });
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::ConcatTransform {
-            transform: translate(presentation.x, presentation.y),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::ConcatTransform {
+                transform: translate(presentation.x, presentation.y),
+            })?;
 
         let path_style = ResolvedPathStyle::resolve(
             &presentation.compiled,
@@ -466,15 +464,16 @@ impl<'a> TreemapBuilder<'a> {
         )?;
         self.emit_leaf_text(&semantic_id, &layout, &presentation)?;
 
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_control(DrawingCommand::Restore)?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: Some(layout.name),
             description: Some(format!("Treemap value {}", layout.value)),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -560,54 +559,47 @@ impl<'a> TreemapBuilder<'a> {
         }
 
         let resource_id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: resource_id.clone(),
-            segments,
-        }));
         let has_state = style.opacity != 1.0 || style.blend_mode != BlendMode::Normal;
         if has_state {
-            self.commands.push(DrawingCommand::Save);
+            self.document.push_control(DrawingCommand::Save)?;
             if style.opacity != 1.0 {
-                self.commands.push(DrawingCommand::SetOpacity {
+                self.document.push_control(DrawingCommand::SetOpacity {
                     opacity: style.opacity,
-                });
+                })?;
             }
             if style.blend_mode != BlendMode::Normal {
-                self.commands.push(DrawingCommand::SetBlendMode {
+                self.document.push_control(DrawingCommand::SetBlendMode {
                     blend_mode: style.blend_mode,
-                });
+                })?;
             }
         }
+        let mut styles = Vec::with_capacity(2);
         if let Some(fill) = fill {
-            self.commands.push(DrawingCommand::DrawPath {
-                path: resource_id.clone(),
-                style: PathStyle {
-                    fill_rule: style.fill_rule,
-                    fill: Some(Paint::solid(fill)),
-                    stroke: None,
-                },
+            styles.push(PathStyle {
+                fill_rule: style.fill_rule,
+                fill: Some(Paint::solid(fill)),
+                stroke: None,
             });
         }
         if let Some(stroke_color) = stroke_color {
-            self.commands.push(DrawingCommand::DrawPath {
-                path: resource_id,
-                style: PathStyle {
-                    fill_rule: style.fill_rule,
-                    fill: None,
-                    stroke: Some(StrokeStyle {
-                        paint: Paint::solid(stroke_color),
-                        width: style.stroke_width,
-                        dash_array: style.dash_array.clone(),
-                        dash_offset: style.dash_offset,
-                        line_cap: style.line_cap,
-                        line_join: style.line_join,
-                        miter_limit: style.miter_limit,
-                    }),
-                },
+            styles.push(PathStyle {
+                fill_rule: style.fill_rule,
+                fill: None,
+                stroke: Some(StrokeStyle {
+                    paint: Paint::solid(stroke_color),
+                    width: style.stroke_width,
+                    dash_array: style.dash_array.clone(),
+                    dash_offset: style.dash_offset,
+                    line_cap: style.line_cap,
+                    line_join: style.line_join,
+                    miter_limit: style.miter_limit,
+                }),
             });
         }
+        self.document
+            .draw_path_layers(resource_id, segments, styles)?;
         if has_state {
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
         Ok(())
     }
@@ -627,51 +619,66 @@ impl<'a> TreemapBuilder<'a> {
         if text.is_empty() || style.font_size <= 0.0 {
             return Ok(());
         }
-        let bounds = self.measure_text_bounds(text, origin, anchor, baseline, style)?;
-        let run = TextRun {
-            text: text.to_string(),
-            origin,
-            bounds,
-            style: TextStyle {
-                font: style.font.clone(),
-                font_size: style.font_size,
-                letter_spacing: style.letter_spacing,
-                line_height: style.line_height,
-                fill: Paint::solid(fill),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
+        let font = style.font.clone();
+        let measurement_font_family = style.measurement_font_family.clone();
+        let font_size = style.font_size;
+        let letter_spacing = style.letter_spacing;
+        let line_height = style.line_height;
+        let obligation = self.text_obligation.clone();
+        let session = self.session;
+        let make_run = |text: String| {
+            let bounds = measure_text_bounds(
+                session,
+                &text,
+                origin,
+                anchor,
+                baseline,
+                &font,
+                &measurement_font_family,
+                font_size,
+            )?;
+            Ok(TextRun {
+                text,
+                origin,
+                bounds,
+                style: TextStyle {
+                    font: font.clone(),
+                    font_size,
+                    letter_spacing,
+                    line_height,
+                    fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: obligation.clone(),
+            })
         };
         if let Some((clip_id, clip_bounds)) = clip {
             if clip_bounds.width <= 0.0 || clip_bounds.height <= 0.0 {
                 return Ok(());
             }
             let clip_id = ResourceId::new(clip_id);
-            self.resources.push(DrawingResource::Path(PathResource {
-                id: clip_id.clone(),
-                segments: rectangle_path(
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document.draw_clip_path(
+                clip_id,
+                rectangle_path(
                     clip_bounds.x,
                     clip_bounds.y,
                     clip_bounds.width,
                     clip_bounds.height,
                 ),
-            }));
-            self.commands.push(DrawingCommand::Save);
-            self.commands.push(DrawingCommand::ClipPath {
-                path: clip_id,
-                fill_rule: FillRule::NonZero,
-            });
+                FillRule::NonZero,
+            )?;
             self.record_text_class(semantic_id, class);
-            self.commands.push(DrawingCommand::draw_text(run));
-            self.commands.push(DrawingCommand::Restore);
+            self.document.draw_host_text_parts(&[text], make_run)?;
+            self.document.push_control(DrawingCommand::Restore)?;
         } else {
             self.record_text_class(semantic_id, class);
-            self.commands.push(DrawingCommand::draw_text(run));
+            self.document.draw_host_text_parts(&[text], make_run)?;
         }
         Ok(())
     }
@@ -686,61 +693,59 @@ impl<'a> TreemapBuilder<'a> {
         self.text_classes
             .insert(format!("{semantic_id}#{index}"), class.to_string());
     }
+}
 
-    fn measure_text_bounds(
-        &self,
-        text: &str,
-        origin: Point,
-        anchor: TextAnchor,
-        baseline: TextBaseline,
-        style: &ResolvedTextStyle,
-    ) -> Result<Rect> {
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(style.measurement_font_family.clone()),
-            font_size: style.font_size,
-            font_weight: Some(style.font.weight.to_string()),
-            font_style: match style.font.style {
-                FontStyle::Normal => None,
-                FontStyle::Italic => Some("italic".to_string()),
-                FontStyle::Oblique => Some("oblique".to_string()),
-            },
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
-        let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
-        self.session.checkpoint(OperationPhase::Emit)?;
-        if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
-            return Err(invalid("Treemap text measurement returned invalid bounds"));
-        }
-        let x = match anchor {
-            TextAnchor::Start => origin.x,
-            TextAnchor::Middle => origin.x - width / 2.0,
-            TextAnchor::End => origin.x - width,
-        };
-        let y = match baseline {
-            TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
-            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
-            TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
-                origin.y - height
-            }
-        };
-        Ok(Rect::new(x, y, width, height))
+#[allow(clippy::too_many_arguments)]
+fn measure_text_bounds(
+    session: &RenderSession,
+    text: &str,
+    origin: Point,
+    anchor: TextAnchor,
+    baseline: TextBaseline,
+    font: &FontDescriptor,
+    measurement_font_family: &str,
+    font_size: f64,
+) -> Result<Rect> {
+    let measurement_style = MeasurementTextStyle {
+        font_family: Some(measurement_font_family.to_string()),
+        font_size,
+        font_weight: Some(font.weight.to_string()),
+        font_style: match font.style {
+            FontStyle::Normal => None,
+            FontStyle::Italic => Some("italic".to_string()),
+            FontStyle::Oblique => Some("oblique".to_string()),
+        },
+    };
+    let measurer =
+        session.controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+    let width = measurer.measure_svg_simple_text_bbox_width_px(text, &measurement_style);
+    let height = measurer.measure_svg_simple_text_bbox_height_px(text, &measurement_style);
+    session.checkpoint(OperationPhase::Emit)?;
+    if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+        return Err(invalid("Treemap text measurement returned invalid bounds"));
     }
+    let x = match anchor {
+        TextAnchor::Start => origin.x,
+        TextAnchor::Middle => origin.x - width / 2.0,
+        TextAnchor::End => origin.x - width,
+    };
+    let y = match baseline {
+        TextBaseline::Hanging | TextBaseline::TextBeforeEdge => origin.y,
+        TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
+        TextBaseline::Alphabetic | TextBaseline::Ideographic | TextBaseline::TextAfterEdge => {
+            origin.y - height
+        }
+    };
+    Ok(Rect::new(x, y, width, height))
+}
 
+impl<'a> TreemapBuilder<'a> {
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {
         if segments.is_empty() || (style.fill.is_none() && style.stroke.is_none()) {
             return Ok(());
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document
+            .draw_path(ResourceId::new(id), segments, style)
     }
 }
 
