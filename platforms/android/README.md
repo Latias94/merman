@@ -10,7 +10,7 @@ Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a W
 - Java 17 toolchain
 - `arm64-v8a` or `x86_64`
 
-At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The published Android AAR carries the default native prebuilt SKU: SVG, DrawingList, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
+At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, both binding payload schemas, capability implications, callable operation/output/metadata relations, output policies, resource profiles, and the text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. The immutable `v0.8.0-alpha.6` AAR carries the original default native prebuilt SKU and does not include DrawingList. A default-profile AAR built from current post-alpha.6 source adds DrawingList to SVG, both layout engines, ASCII, analysis, validation, and document analysis. Every known ID in that generated artifact contract must be present in stable sorted order. Unknown future IDs and fields remain additive and are preserved. The optional option-group and constructor-service sections may be omitted only for legacy schema-1 producers; when present, their known IDs and contracts must match the generated Android contract. Exact package-version equality is not checked, so always ship the Kotlin classes and native library from the same AAR.
 
 ## Add A Release AAR
 
@@ -62,8 +62,8 @@ check(result.mediaType == "text/plain; charset=utf-8")
 val text = result.data.toString(Charsets.UTF_8)
 ```
 
-Use `drawing-list-json` when a native graphics host wants the resolved renderer-neutral document
-instead of SVG:
+With a default-profile AAR built from current post-alpha.6 source, use `drawing-list-json` when a
+native graphics host wants the resolved renderer-neutral document instead of SVG:
 
 ```kotlin
 val result = Merman.execute("drawing-list-json", source)
@@ -91,7 +91,7 @@ reports an explicit cancellation request, while deadline expiry is reported by e
 an operation that already cloned the control, but using the released object for a new operation is
 a typed invalid-argument failure.
 
-`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis; DrawingList is available through the generic operation API. The default AAR supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and document analysis. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; the default AAR reports `MISSING_CAPABILITY` with the exact capability ID. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
+`Merman` is the discovery and one-shot facade. Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, validation, and document analysis; current post-alpha.6 source also makes DrawingList available through the generic operation API. A current default-profile AAR supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and document analysis; the published alpha.6 AAR does not include DrawingList. Math-bearing SVG and PNG, JPEG, or PDF helpers remain available for source-built artifacts that enable those capabilities; a default-profile AAR reports `MISSING_CAPABILITY` with the exact capability ID when a requested capability is absent. `metadataJson(id)` is the generic metadata path for every ID advertised by `runtimeCatalogJson()`. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID.
 
 Resource failures always expose lossless `exactResourceDetails`; its `actual` and `max` fields are
 canonical unsigned decimal strings covering the complete native `u64` range. The existing
