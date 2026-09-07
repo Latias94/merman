@@ -226,11 +226,13 @@ impl<'input> ParsedSvgDom<'input> {
                     .descendants()
                     .find(|node| node.has_tag_name("svg"))
                     .expect("parsed SVG document invariant");
+                let eventmodeling_root_fill = eventmodeling_root_fill_value(root);
                 let mut signature = build_node(
                     root,
                     key.descendants,
                     key.decimals,
                     key.normalize_browser_text_wrapping,
+                    eventmodeling_root_fill.as_deref(),
                 );
                 if key.normalize_browser_text_wrapping {
                     normalize_browser_text_wrapping(
@@ -389,6 +391,41 @@ fn extract_style_prop_value(style: &str, prop_name: &str) -> Option<String> {
             return None;
         }
         return Some(v.to_string());
+    }
+    None
+}
+
+/// Returns the fill from Event Modeling's exact root rule, when the stylesheet proves one.
+///
+/// Event Modeling's upstream renderer keeps swimlane text color in the diagram root rule while
+/// Merman emits the same effective value directly on each text terminal. This deliberately narrow
+/// lookup aligns those two representations without turning the comparator into a CSS engine.
+fn eventmodeling_root_fill_value(root: roxmltree::Node<'_, '_>) -> Option<String> {
+    if root.attribute("aria-roledescription") != Some("eventmodeling") {
+        return None;
+    }
+    let diagram_id = root.attribute("id")?;
+    let selector = format!("#{diagram_id}");
+
+    for style in root
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "style")
+    {
+        let css = style.text()?;
+        for block in css.split('}') {
+            let Some((selectors, declarations)) = block.split_once('{') else {
+                continue;
+            };
+            if !selectors
+                .split(',')
+                .any(|candidate| candidate.trim() == selector)
+            {
+                continue;
+            }
+            if let Some(fill) = extract_style_prop_value(declarations, "fill") {
+                return Some(fill);
+            }
+        }
     }
     None
 }
@@ -1436,6 +1473,7 @@ fn build_node(
     mode: DomMode,
     decimals: u32,
     preserve_browser_text_rows: bool,
+    eventmodeling_root_fill: Option<&str>,
 ) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
@@ -1776,15 +1814,6 @@ fn build_node(
                 continue;
             }
 
-            if mode != DomMode::Strict && key == "fill" && is_eventmodeling_swimlane_text(n) {
-                // Event Modeling's typed text route emits the final fill on each SVG text
-                // terminal, while Mermaid's reference stylesheet supplies the same value from
-                // the root text rule. The inline declaration is redundant presentation detail;
-                // keep strict mode exact and continue comparing a real upstream fill when one is
-                // present.
-                continue;
-            }
-
             if mode != DomMode::Strict && is_ishikawa_text_bbox_attr(n, &key) {
                 // Ishikawa's renderer-owned text bbox is evidence metadata for the local
                 // receipt, not an upstream Mermaid DOM semantic. Keep it in strict signatures
@@ -2028,6 +2057,17 @@ fn build_node(
 
             attrs.insert(key, val);
         }
+
+        if mode != DomMode::Strict
+            && is_eventmodeling_swimlane_text(n)
+            && !attrs.contains_key("fill")
+            && let Some(fill) = eventmodeling_root_fill
+        {
+            attrs.insert(
+                "fill".to_string(),
+                normalize_numeric_tokens_mode(fill, decimals, mode),
+            );
+        }
     }
 
     fn normalize_text_node_text(t: &str) -> Option<String> {
@@ -2045,7 +2085,13 @@ fn build_node(
         if has_element_child {
             for c in n.children() {
                 if c.is_element() {
-                    children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+                    children.push(build_node(
+                        c,
+                        mode,
+                        decimals,
+                        preserve_browser_text_rows,
+                        eventmodeling_root_fill,
+                    ));
                 } else if c.is_text()
                     && let Some(t) = c.text().and_then(normalize_text_node_text)
                 {
@@ -2060,13 +2106,25 @@ fn build_node(
         } else {
             text = n.text().and_then(normalize_text_node_text);
             for c in n.children().filter(|c| c.is_element()) {
-                children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+                children.push(build_node(
+                    c,
+                    mode,
+                    decimals,
+                    preserve_browser_text_rows,
+                    eventmodeling_root_fill,
+                ));
             }
         }
     } else {
         // Non-strict modes treat text as non-semantic and only track element structure.
         for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
+            children.push(build_node(
+                c,
+                mode,
+                decimals,
+                preserve_browser_text_rows,
+                eventmodeling_root_fill,
+            ));
         }
         if preserve_browser_text_rows
             && n.tag_name().name() == "tspan"
@@ -3038,17 +3096,32 @@ mod tests {
     }
 
     #[test]
-    fn parity_ignores_only_eventmodeling_swimlane_inline_fill() {
-        let upstream = r#"<svg aria-roledescription="eventmodeling"><g class="em-swimlane"><text font-weight="bold">Events</text></g></svg>"#;
-        let local = r##"<svg aria-roledescription="eventmodeling"><g class="em-swimlane"><text fill="#333" font-weight="bold">Events</text></g></svg>"##;
+    fn parity_compares_eventmodeling_swimlane_effective_fill() {
+        let upstream = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text font-weight="bold">Events</text></g></svg>"##;
+        let local = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text fill="#333" font-weight="bold">Events</text></g></svg>"##;
 
-        assert_eq!(
-            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
-            dom_signature(local, DomMode::Parity, 3).unwrap()
-        );
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap(),
+                "mode={mode:?}"
+            );
+        }
         assert_ne!(
             dom_signature(upstream, DomMode::Strict, 3).unwrap(),
             dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+
+        let wrong_fill = local.replace("fill=\"#333\"", "fill=\"#f00\"");
+        assert_ne!(
+            dom_signature(upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(&wrong_fill, DomMode::Parity, 3).unwrap()
+        );
+
+        let unproven_upstream = upstream.replace("<style>#event-diagram{fill:#333;}</style>", "");
+        assert_ne!(
+            dom_signature(&unproven_upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(local, DomMode::Parity, 3).unwrap()
         );
     }
 
