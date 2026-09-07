@@ -37,17 +37,45 @@ pub(crate) fn flowchart_curve_segments(
     compact_rounded_corners: bool,
     rounded_corner_mask: Option<&[bool]>,
 ) -> Vec<PathSegment> {
+    let mut out = Vec::new();
+    let result: std::result::Result<(), std::convert::Infallible> = emit_flowchart_curve_segments(
+        points,
+        curve,
+        rounded_radius,
+        compact_rounded_corners,
+        rounded_corner_mask,
+        |segment| {
+            out.push(segment);
+            Ok(())
+        },
+    );
+    match result {
+        Ok(()) => out,
+        Err(never) => match never {},
+    }
+}
+
+/// Emits curve geometry incrementally, stopping immediately when the sink rejects a segment.
+pub(crate) fn emit_flowchart_curve_segments<E>(
+    points: &[LayoutPoint],
+    curve: FlowchartCurveKind,
+    rounded_radius: f64,
+    compact_rounded_corners: bool,
+    rounded_corner_mask: Option<&[bool]>,
+    emit: impl FnMut(PathSegment) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
     match curve {
-        FlowchartCurveKind::Linear => linear_segments(points),
-        FlowchartCurveKind::Basis => basis_segments(points),
-        FlowchartCurveKind::Step => step_segments(points, StepCurve::Midpoint),
-        FlowchartCurveKind::StepBefore => step_segments(points, StepCurve::Before),
-        FlowchartCurveKind::StepAfter => step_segments(points, StepCurve::After),
-        FlowchartCurveKind::Rounded => rounded_segments(
+        FlowchartCurveKind::Linear => emit_linear_segments(points, emit),
+        FlowchartCurveKind::Basis => emit_basis_segments(points, emit),
+        FlowchartCurveKind::Step => emit_step_segments(points, StepCurve::Midpoint, emit),
+        FlowchartCurveKind::StepBefore => emit_step_segments(points, StepCurve::Before, emit),
+        FlowchartCurveKind::StepAfter => emit_step_segments(points, StepCurve::After, emit),
+        FlowchartCurveKind::Rounded => emit_rounded_segments(
             points,
             rounded_radius,
             compact_rounded_corners,
             rounded_corner_mask,
+            emit,
         ),
     }
 }
@@ -335,65 +363,59 @@ enum StepCurve {
     After,
 }
 
-fn step_segments(points: &[LayoutPoint], curve: StepCurve) -> Vec<PathSegment> {
+fn emit_step_segments<E>(
+    points: &[LayoutPoint],
+    curve: StepCurve,
+    mut emit: impl FnMut(PathSegment) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
     let Some(first) = points.first() else {
-        return Vec::new();
+        return Ok(());
     };
-    let mut out = Vec::with_capacity(points.len().saturating_mul(3));
-    out.push(PathSegment::MoveTo {
+    emit(PathSegment::MoveTo {
         to: Point::new(first.x, first.y),
-    });
+    })?;
     let mut previous = first;
     for point in points.iter().skip(1) {
         match curve {
-            StepCurve::Before => out.push(PathSegment::LineTo {
+            StepCurve::Before => emit(PathSegment::LineTo {
                 to: Point::new(previous.x, point.y),
-            }),
+            })?,
             StepCurve::Midpoint => {
                 let mid_x = (previous.x + point.x) / 2.0;
-                out.push(PathSegment::LineTo {
+                emit(PathSegment::LineTo {
                     to: Point::new(mid_x, previous.y),
-                });
-                out.push(PathSegment::LineTo {
+                })?;
+                emit(PathSegment::LineTo {
                     to: Point::new(mid_x, point.y),
-                });
+                })?;
             }
-            StepCurve::After => out.push(PathSegment::LineTo {
+            StepCurve::After => emit(PathSegment::LineTo {
                 to: Point::new(point.x, previous.y),
-            }),
+            })?,
         }
-        out.push(PathSegment::LineTo {
+        emit(PathSegment::LineTo {
             to: Point::new(point.x, point.y),
-        });
+        })?;
         previous = point;
     }
-    out
+    Ok(())
 }
 
-fn linear_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
-    let mut out = Vec::with_capacity(points.len());
+fn emit_linear_segments<E>(
+    points: &[LayoutPoint],
+    mut emit: impl FnMut(PathSegment) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
     if let Some(first) = points.first() {
-        out.push(PathSegment::MoveTo {
+        emit(PathSegment::MoveTo {
             to: Point::new(first.x, first.y),
-        });
-        out.extend(points.iter().skip(1).map(|point| PathSegment::LineTo {
-            to: Point::new(point.x, point.y),
-        }));
+        })?;
+        for point in points.iter().skip(1) {
+            emit(PathSegment::LineTo {
+                to: Point::new(point.x, point.y),
+            })?;
+        }
     }
-    out
-}
-
-fn basis_segments(points: &[LayoutPoint]) -> Vec<PathSegment> {
-    let mut out = Vec::new();
-    let result: std::result::Result<(), std::convert::Infallible> =
-        emit_basis_segments(points, |segment| {
-            out.push(segment);
-            Ok(())
-        });
-    match result {
-        Ok(()) => out,
-        Err(never) => match never {},
-    }
+    Ok(())
 }
 
 pub(crate) fn emit_basis_segments<E>(
@@ -459,24 +481,25 @@ pub(crate) fn emit_basis_segments<E>(
     emit(PathSegment::LineTo { to: current })
 }
 
-fn rounded_segments(
+fn emit_rounded_segments<E>(
     points: &[LayoutPoint],
     radius: f64,
     compact: bool,
     rounded_corner_mask: Option<&[bool]>,
-) -> Vec<PathSegment> {
+    mut emit: impl FnMut(PathSegment) -> std::result::Result<(), E>,
+) -> std::result::Result<(), E> {
     if points.len() < 2 {
-        return linear_segments(points);
+        return emit_linear_segments(points, emit);
     }
-    let mut out = vec![PathSegment::MoveTo {
+    emit(PathSegment::MoveTo {
         to: Point::new(points[0].x, points[0].y),
-    }];
+    })?;
     for index in 1..points.len() {
         let current = Point::new(points[index].x, points[index].y);
         if index + 1 == points.len()
             || rounded_corner_mask.is_some_and(|mask| mask.get(index) == Some(&false))
         {
-            out.push(PathSegment::LineTo { to: current });
+            emit(PathSegment::LineTo { to: current })?;
             continue;
         }
         let previous = Point::new(points[index - 1].x, points[index - 1].y);
@@ -488,7 +511,7 @@ fn rounded_segments(
         let len1 = dx1.hypot(dy1);
         let len2 = dx2.hypot(dy2);
         if len1 < 1e-5 || len2 < 1e-5 {
-            out.push(PathSegment::LineTo { to: current });
+            emit(PathSegment::LineTo { to: current })?;
             continue;
         }
         let nx1 = dx1 / len1;
@@ -497,7 +520,7 @@ fn rounded_segments(
         let ny2 = dy2 / len2;
         let angle = (nx1 * nx2 + ny1 * ny2).clamp(-1.0, 1.0).acos();
         if angle < 1e-5 || (std::f64::consts::PI - angle).abs() < 1e-5 {
-            out.push(PathSegment::LineTo { to: current });
+            emit(PathSegment::LineTo { to: current })?;
             continue;
         }
         let mermaid_cut = radius / (angle / 2.0).sin();
@@ -509,13 +532,13 @@ fn rounded_segments(
         let cut = radius_cut.min(len1 / 2.0).min(len2 / 2.0);
         let start = Point::new(current.x - nx1 * cut, current.y - ny1 * cut);
         let end = Point::new(current.x + nx2 * cut, current.y + ny2 * cut);
-        out.push(PathSegment::LineTo { to: start });
-        out.push(PathSegment::QuadTo {
+        emit(PathSegment::LineTo { to: start })?;
+        emit(PathSegment::QuadTo {
             control: current,
             to: end,
-        });
+        })?;
     }
-    out
+    Ok(())
 }
 
 #[cfg(test)]
@@ -530,7 +553,7 @@ mod tests {
     fn basis_emission_preserves_geometry_and_propagates_rejection() {
         let points = [point(0.0, 0.0), point(6.0, 12.0), point(12.0, 0.0)];
         assert_eq!(
-            basis_segments(&points),
+            flowchart_curve_segments(&points, FlowchartCurveKind::Basis, 0.0, false, None),
             vec![
                 PathSegment::MoveTo {
                     to: Point::new(0.0, 0.0),
@@ -555,8 +578,20 @@ mod tests {
         );
         for length in 0..3 {
             assert_eq!(
-                basis_segments(&points[..length]),
-                linear_segments(&points[..length])
+                flowchart_curve_segments(
+                    &points[..length],
+                    FlowchartCurveKind::Basis,
+                    0.0,
+                    false,
+                    None,
+                ),
+                flowchart_curve_segments(
+                    &points[..length],
+                    FlowchartCurveKind::Linear,
+                    0.0,
+                    false,
+                    None,
+                )
             );
         }
         let mut attempted = 0;
@@ -566,6 +601,117 @@ mod tests {
         });
         assert_eq!(result, Err("stop"));
         assert_eq!(attempted, 3);
+    }
+
+    #[test]
+    fn flowchart_curve_emission_stops_at_the_rejected_segment() {
+        let points = [
+            point(0.0, 0.0),
+            point(10.0, 0.0),
+            point(10.0, 20.0),
+            point(20.0, 20.0),
+        ];
+        for curve in [
+            FlowchartCurveKind::Linear,
+            FlowchartCurveKind::Basis,
+            FlowchartCurveKind::Step,
+            FlowchartCurveKind::StepBefore,
+            FlowchartCurveKind::StepAfter,
+            FlowchartCurveKind::Rounded,
+        ] {
+            for rejected_at in 1..=3 {
+                let mut attempted = 0;
+                let result =
+                    emit_flowchart_curve_segments(&points, curve, 2.0, false, None, |_| {
+                        attempted += 1;
+                        if attempted == rejected_at {
+                            Err("stop")
+                        } else {
+                            Ok(())
+                        }
+                    });
+                assert_eq!(result, Err("stop"), "{curve:?}");
+                assert_eq!(attempted, rejected_at, "{curve:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn linear_curves_preserve_duplicate_points_and_empty_input() {
+        assert!(
+            flowchart_curve_segments(&[], FlowchartCurveKind::Linear, 0.0, false, None).is_empty()
+        );
+        assert_eq!(
+            flowchart_curve_segments(
+                &[point(2.0, 3.0), point(2.0, 3.0), point(5.0, 7.0)],
+                FlowchartCurveKind::Linear,
+                0.0,
+                false,
+                None,
+            ),
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(2.0, 3.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(2.0, 3.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(5.0, 7.0),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rounded_curves_clip_the_cut_and_respect_the_corner_mask() {
+        let points = [point(0.0, 0.0), point(10.0, 0.0), point(10.0, 20.0)];
+        for compact in [false, true] {
+            assert_eq!(
+                flowchart_curve_segments(
+                    &points,
+                    FlowchartCurveKind::Rounded,
+                    100.0,
+                    compact,
+                    None,
+                ),
+                vec![
+                    PathSegment::MoveTo {
+                        to: Point::new(0.0, 0.0),
+                    },
+                    PathSegment::LineTo {
+                        to: Point::new(5.0, 0.0),
+                    },
+                    PathSegment::QuadTo {
+                        control: Point::new(10.0, 0.0),
+                        to: Point::new(10.0, 5.0),
+                    },
+                    PathSegment::LineTo {
+                        to: Point::new(10.0, 20.0),
+                    },
+                ]
+            );
+        }
+        assert_eq!(
+            flowchart_curve_segments(
+                &points,
+                FlowchartCurveKind::Rounded,
+                100.0,
+                false,
+                Some(&[true, false, true]),
+            ),
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(10.0, 0.0),
+                },
+                PathSegment::LineTo {
+                    to: Point::new(10.0, 20.0),
+                },
+            ]
+        );
     }
 
     #[test]
