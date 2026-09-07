@@ -1121,7 +1121,6 @@ fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
     let svg = render_svg(
         "eventmodeling\ntf 01 ui Web.ShopCart\ntf 02 cmd Cart.AddItem ->> 01 { sku: \"SKU-1\" }\ntf 03 evt Cart.ItemAdded ->> 02\n",

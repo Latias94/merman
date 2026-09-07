@@ -1240,6 +1240,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Cynefin
             | RenderFamilyKind::Railroad
             | RenderFamilyKind::Venn
+            | RenderFamilyKind::EventModeling
     )
 }
 
