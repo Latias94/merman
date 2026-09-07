@@ -112,29 +112,123 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
-fn drawing_list_footprint_limit_is_reported_as_a_resource_limit() {
-    let request = DrawingListRequest {
-        limits: DrawingListLimits {
-            max_commands: 0,
-            ..DrawingListLimits::default()
-        },
-        ..DrawingListRequest::default()
-    };
-    let error = Renderer::new()
-        .render(RenderRequest::drawing_list(
-            "flowchart TD\nA --> B\n",
-            OperationControl::new(),
-            request,
-        ))
-        .expect_err("a zero command budget must reject before returning a document");
+fn flowchart_and_swimlane_limits_stop_at_the_first_over_budget_item() {
+    for (source, first_text_bytes, first_path_segments) in [
+        ("flowchart TD\nA --> B\n", 1, 2),
+        ("swimlane-beta LR\nsubgraph Lane\nA --> B\nend\n", 4, 5),
+    ] {
+        for (id, actual, maximum, limits) in [
+            (
+                "max_commands",
+                1,
+                0,
+                DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+            ),
+            (
+                "max_resources",
+                2,
+                1,
+                DrawingListLimits {
+                    max_resources: 1,
+                    ..DrawingListLimits::default()
+                },
+            ),
+            (
+                "max_text_bytes",
+                first_text_bytes,
+                0,
+                DrawingListLimits {
+                    max_text_bytes: 0,
+                    ..DrawingListLimits::default()
+                },
+            ),
+            (
+                "max_path_segments",
+                first_path_segments,
+                1,
+                DrawingListLimits {
+                    max_path_segments: 1,
+                    ..DrawingListLimits::default()
+                },
+            ),
+        ] {
+            let error = Renderer::new()
+                .render(RenderRequest::drawing_list(
+                    source,
+                    OperationControl::new(),
+                    DrawingListRequest {
+                        limits,
+                        ..DrawingListRequest::default()
+                    },
+                ))
+                .expect_err("the builder must reject the first over-budget item without output");
 
-    assert!(matches!(
-        error,
-        RenderError::ResourceLimitExceeded(limit)
-            if limit.id == "max_commands"
-                && limit.phase == "drawing-list-validation"
-                && limit.actual > limit.maximum
-    ));
+            assert!(
+                matches!(
+                    &error,
+                    RenderError::ResourceLimitExceeded(limit)
+                    if limit.id == id
+                        && limit.phase == "drawing-list-validation"
+                        && limit.actual == actual
+                        && limit.maximum == maximum
+                ),
+                "{source}: {id}: {error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_and_swimlane_fit_their_exact_document_budgets() {
+    for source in [
+        "flowchart TD\nA[Parse] -->|next| B{Layout}\nB --> C([Done])\n",
+        "swimlane-beta LR\nsubgraph Lane\nA -->|next| B\nend\n",
+    ] {
+        let renderer = Renderer::new();
+        let RenderOutput::DrawingList(Some(output)) = renderer
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect("portable diagram renders")
+        else {
+            panic!("expected DrawingList");
+        };
+        let footprint = output.document().footprint().unwrap();
+        let limits = DrawingListLimits {
+            max_serialized_bytes: output.json().len(),
+            max_commands: footprint.commands,
+            max_resources: footprint.resources,
+            max_path_segments: footprint.path_segments,
+            max_stroke_dash_entries: footprint.stroke_dash_entries,
+            max_image_bytes: footprint.image_bytes,
+            max_image_pixels: footprint.image_pixels,
+            max_fallback_pixels: footprint.fallback_pixels,
+            max_font_bytes: footprint.font_bytes,
+            max_nesting_depth: footprint.max_nesting_depth,
+            max_fallbacks: footprint.fallbacks,
+            max_text_bytes: footprint.text_bytes,
+            max_glyphs: footprint.glyphs,
+        };
+        let RenderOutput::DrawingList(Some(bounded)) = renderer
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest {
+                    limits,
+                    ..DrawingListRequest::default()
+                },
+            ))
+            .expect("exact budgets must admit the complete document")
+        else {
+            panic!("expected DrawingList");
+        };
+        assert_eq!(bounded.json(), output.json(), "{source}");
+    }
 }
 
 #[test]

@@ -11,9 +11,9 @@ use std::collections::BTreeMap;
 
 /// Operation-local owner for one bounded DrawingList candidate.
 ///
-/// The backing collections never escape this module. Error, Info, and Packet are the first
-/// migrated families; later cohorts can deepen this interface when they introduce additional
-/// resource or scope kinds without weakening the final protocol validator.
+/// The backing collections never escape this module. Adapters can deepen this interface when
+/// they introduce additional resource or scope kinds without weakening the final protocol
+/// validator.
 pub(crate) struct DrawingListBuilder<'a> {
     limits: DrawingListLimits,
     session: &'a RenderSession,

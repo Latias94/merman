@@ -660,10 +660,10 @@ pub(crate) fn build_for_family(
             build_error_document(pair.layout(), metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Flowchart(artifact) => {
-            build_flowchart_document(artifact, metadata, policy, session)
+            build_flowchart_document(artifact, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Swimlane(artifact) => {
-            build_swimlane_document(artifact, metadata, policy, session)
+            build_swimlane_document(artifact, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Class(pair) => {
             class::build_class_document(pair, metadata, policy, limits, session)
