@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::MermaidConfig;
 use merman_core::diagrams::gantt::GanttRenderTask;
+use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -10,10 +10,10 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
+    resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet, DirectStaticSelectorDomain, FamilyThemeEvidence,
+    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
 };
 use crate::resources::OperationWorkMeter;
 
@@ -237,12 +237,10 @@ impl GanttTaskTheme {
             }
             expectation.stroke =
                 typed_stroke_expectation(theme, effective_config, expectation.state, &style)?;
-            if let Some(stroke) = &expectation.stroke {
-                if let (Some(rule_index), Some(capability)) =
-                    (stroke.typed_rule_index(), stroke.typed_capability())
-                {
-                    typed_stroke_capabilities.insert(rule_index, capability);
-                } else if let Some(origin) = style.stroke_resolution().winner() {
+            if expectation.stroke.as_ref().is_some_and(|stroke| {
+                stroke.typed_rule_index().is_none() && stroke.typed_capability().is_none()
+            }) {
+                if let Some(origin) = style.stroke_resolution().winner() {
                     source_owned_stroke_rules.insert(origin.rule_index());
                 }
             }
@@ -297,16 +295,36 @@ impl GanttTaskTheme {
             resolve_gantt_warning_stroke(theme, effective_config, work_meter)?;
         let warning_stroke = warning_stroke_resolution.expectation;
         let warning_stroke_source_owned = warning_stroke_resolution.source_owned;
-        if let Some(warning) = warning_stroke.as_ref().filter(|warning| warning.vert_typed) {
+        let mut ordinary_stroke_rules_replaced_by_warning = BTreeSet::new();
+        if let Some(warning) = warning_stroke.as_ref() {
             for expectation in &mut task_expectations {
                 if expectation.vert {
-                    expectation.stroke = Some(GanttTaskStrokeExpectation {
-                        css: warning.vert_css.clone(),
-                        owner: GanttTaskStrokeOwner::Typed {
-                            rule_index: warning.rule_index,
-                            capability: warning.capability,
-                        },
-                    });
+                    if let Some(stroke) = expectation.stroke.take() {
+                        if let Some(rule_index) = stroke.typed_rule_index() {
+                            ordinary_stroke_rules_replaced_by_warning.insert(rule_index);
+                        }
+                    }
+                    if warning.vert_typed {
+                        expectation.stroke = Some(GanttTaskStrokeExpectation {
+                            css: warning.vert_css.clone(),
+                            owner: GanttTaskStrokeOwner::Typed {
+                                rule_index: warning.rule_index,
+                                capability: warning.capability,
+                            },
+                        });
+                    }
+                }
+            }
+        }
+        // Reconcile ordinary stroke ownership against the *final* terminal plan.  A vertical
+        // marker is a warning surface, not an ordinary task-bar stroke; if warning owns every
+        // occurrence of a rule, the ordinary route is NotApplicable rather than incomplete.
+        for expectation in &task_expectations {
+            if let Some(stroke) = &expectation.stroke {
+                if let (Some(rule_index), Some(capability)) =
+                    (stroke.typed_rule_index(), stroke.typed_capability())
+                {
+                    typed_stroke_capabilities.insert(rule_index, capability);
                 }
             }
         }
@@ -407,7 +425,9 @@ impl GanttTaskTheme {
                             if let Some(capability) = typed_stroke_capabilities.get(&rule_index) {
                                 observation.pending.stroke = true;
                                 observation.pending.capabilities.insert(*capability);
-                            } else if source_owned_stroke_rules.contains(&rule_index) {
+                            } else if source_owned_stroke_rules.contains(&rule_index)
+                                || ordinary_stroke_rules_replaced_by_warning.contains(&rule_index)
+                            {
                                 observation.suppressed = true;
                             } else {
                                 observation.incomplete = true;
@@ -766,7 +786,17 @@ impl GanttTaskTheme {
                 | FamilyThemeMechanismKey::OrdinalPalette { .. }
                 | FamilyThemeMechanismKey::EffectBinding { .. } => continue,
             };
-            if receipt.proves_rule(rule_index, pending) {
+            if pending.warning_stroke {
+                if receipt.proves_rule(rule_index, pending) && receipt.has_typed_warning_terminal()
+                {
+                    evidence.mark_applied_with_capabilities(
+                        key.clone(),
+                        pending.capabilities.iter().copied(),
+                    );
+                } else if receipt.warning_is_not_applicable() {
+                    evidence.mark_not_applicable(key.clone());
+                }
+            } else if receipt.proves_rule(rule_index, pending) {
                 evidence.mark_applied_with_capabilities(
                     key.clone(),
                     pending.capabilities.iter().copied(),
@@ -774,8 +804,6 @@ impl GanttTaskTheme {
             } else if pending.title_fill && !receipt.has_visible_title_fill_terminal() {
                 evidence.mark_not_applicable(key.clone());
             } else if pending.text_fill && !receipt.has_visible_text_fill_terminal() {
-                evidence.mark_not_applicable(key.clone());
-            } else if pending.warning_stroke && !receipt.has_visible_warning_terminal() {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -851,12 +879,6 @@ fn resolve_gantt_warning_stroke(
         effective_config,
         "themeVariables.vertLineColor",
     );
-    if today_source_owned && vert_source_owned {
-        return Ok(GanttWarningStrokeResolution {
-            expectation: None,
-            source_owned: true,
-        });
-    }
     let today_css = if today_source_owned {
         effective_config
             .get_str("themeVariables.todayLineColor")
@@ -886,7 +908,7 @@ fn resolve_gantt_warning_stroke(
             rule_index,
             capability,
         }),
-        source_owned: false,
+        source_owned: today_source_owned && vert_source_owned,
     })
 }
 
@@ -1205,6 +1227,7 @@ pub(crate) struct GanttTaskThemeReceipt {
     warning_vert_css_matches: bool,
     warning_today_terminal_recorded: bool,
     warning_today_terminal_visible: bool,
+    warning_today_terminal_source_owned: bool,
     warning_today_terminal_matches: bool,
     warning_vert_terminal_count: usize,
     warning_vert_terminal_visible: bool,
@@ -1268,6 +1291,7 @@ impl GanttTaskThemeReceipt {
             warning_vert_css_matches: true,
             warning_today_terminal_recorded: false,
             warning_today_terminal_visible: false,
+            warning_today_terminal_source_owned: false,
             warning_today_terminal_matches: true,
             warning_vert_terminal_count: 0,
             warning_vert_terminal_visible: false,
@@ -1312,6 +1336,7 @@ impl GanttTaskThemeReceipt {
             warning_vert_css_matches: false,
             warning_today_terminal_recorded: false,
             warning_today_terminal_visible: false,
+            warning_today_terminal_source_owned: false,
             warning_today_terminal_matches: false,
             warning_vert_terminal_count: 0,
             warning_vert_terminal_visible: false,
@@ -1517,10 +1542,19 @@ impl GanttTaskThemeReceipt {
         }
         self.warning_today_terminal_recorded = true;
         self.warning_today_terminal_visible = visible;
-        let inline_owns_stroke = inline_style
-            .split(';')
-            .any(|declaration| declaration.trim_start().starts_with("stroke:"));
-        self.warning_today_terminal_matches = !visible || !inline_owns_stroke;
+        if visible {
+            // Today-marker styles are source-owned when their final inline declaration sets
+            // `stroke`. Use the shared CSS declaration parser so quoted semicolons and casing do
+            // not turn an unrelated declaration into a false ownership result.
+            let mut inline_owns_stroke = false;
+            crate::mermaid_style::visit_parsed_style_declarations(inline_style, |declaration| {
+                inline_owns_stroke |= declaration.property() == "stroke";
+            });
+            self.warning_today_terminal_source_owned = inline_owns_stroke;
+            self.warning_today_terminal_matches = !inline_owns_stroke;
+        } else {
+            self.warning_today_terminal_matches = true;
+        }
     }
 
     pub(crate) fn record_vertical_terminal(
@@ -1581,8 +1615,7 @@ impl GanttTaskThemeReceipt {
             && (!pending.text_fill
                 || (self.expected_text_fill_rule == Some(rule_index)
                     && self.has_visible_text_fill_terminal()))
-            && (!pending.warning_stroke
-                || (self.proves_warning_stroke() && self.has_visible_warning_terminal()))
+            && (!pending.warning_stroke || self.proves_warning_stroke())
             && (!pending.warning_stroke || self.expected_warning_rule == Some(rule_index))
     }
 
@@ -1597,16 +1630,28 @@ impl GanttTaskThemeReceipt {
 
     fn proves_warning_stroke(&self) -> bool {
         let today_proved = self.expected_warning_today_css.is_none()
-            || (self.warning_today_terminal_recorded && self.warning_today_terminal_matches);
+            || (self.warning_today_terminal_recorded
+                && (!self.warning_today_terminal_visible
+                    || self.warning_today_terminal_source_owned
+                    || self.warning_today_terminal_matches));
         let vert_proved = self.expected_warning_vert_css.is_none()
             || (!self.warning_vert_terminal_visible
                 || (self.warning_vert_terminal_count != 0 && self.warning_vert_terminal_matches));
         today_proved && vert_proved
     }
 
-    fn has_visible_warning_terminal(&self) -> bool {
-        (self.expected_warning_today_css.is_some() && self.warning_today_terminal_visible)
-            || (self.expected_warning_vert_css.is_some() && self.warning_vert_terminal_count != 0)
+    fn has_typed_warning_terminal(&self) -> bool {
+        (self.expected_warning_today_css.is_some()
+            && self.warning_today_terminal_visible
+            && !self.warning_today_terminal_source_owned
+            && self.warning_today_terminal_matches)
+            || (self.expected_warning_vert_css.is_some()
+                && self.warning_vert_terminal_count != 0
+                && self.warning_vert_terminal_matches)
+    }
+
+    fn warning_is_not_applicable(&self) -> bool {
+        self.proves_warning_stroke() && !self.has_typed_warning_terminal()
     }
 
     fn proves_typography(&self) -> bool {
@@ -1700,11 +1745,9 @@ mod tests {
 
         assert!(task_theme.typed_font_stack_requested);
         assert!(task_theme.typed_font_stack_active);
-        assert!(
-            task_theme
-                .unsupported_typography_properties
-                .contains(&ThemeTypographyProperty::FontWeight)
-        );
+        assert!(task_theme
+            .unsupported_typography_properties
+            .contains(&ThemeTypographyProperty::FontWeight));
         assert!(task_theme.bind_layout_occurrences(vec![0]));
         let mut receipt = task_theme
             .begin_terminal_receipt()
@@ -1715,13 +1758,11 @@ mod tests {
         assert!(task_theme.record_terminal(receipt));
 
         let evidence = task_theme.finish_evidence();
-        assert!(
-            evidence
-                .applied()
-                .contains(&FamilyThemeMechanismKey::Typography(
-                    ThemeTypographyProperty::FontStack
-                ))
-        );
+        assert!(evidence
+            .applied()
+            .contains(&FamilyThemeMechanismKey::Typography(
+                ThemeTypographyProperty::FontStack
+            )));
         assert!(evidence.residuals().iter().any(|residual| {
             residual.key()
                 == &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontWeight)
@@ -1945,11 +1986,9 @@ mod tests {
         };
         assert!(!evidence.applied().contains(&unqualified));
         assert!(evidence.not_applicable_mechanisms().contains(&unqualified));
-        assert!(
-            evidence
-                .residuals()
-                .iter()
-                .any(|residual| residual.key() == &active)
-        );
+        assert!(evidence
+            .residuals()
+            .iter()
+            .any(|residual| residual.key() == &active));
     }
 }

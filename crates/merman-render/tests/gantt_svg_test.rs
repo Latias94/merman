@@ -1,5 +1,4 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     InsetsPx, LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified,
@@ -17,8 +16,9 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use std::sync::Arc;
+use merman_render::LayoutOptions;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
@@ -535,11 +535,9 @@ fn gantt_warning_stroke_reaches_today_and_vertical_terminals() {
                 })
         })
         .expect("today line terminal");
-    assert!(
-        !today
-            .attribute("style")
-            .is_some_and(|style| style.contains("stroke:"))
-    );
+    assert!(!today
+        .attribute("style")
+        .is_some_and(|style| style.contains("stroke:")));
 
     let vertical_task = document
         .descendants()
@@ -583,6 +581,190 @@ fn gantt_warning_stroke_is_not_applicable_without_warning_terminals() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Gantt without warning terminals");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_preserves_the_ordinary_task_stroke_for_non_vertical_tasks() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker 2024-01-03\nsection Delivery\nVertical marker: vert, vertical-marker, 2024-01-02, 0d\nTask: regular-task, 2024-01-02, 1d\n";
+    let theme = gantt_task_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#123456").expect("valid task stroke")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#d97706").expect("valid warning stroke")),
+        )
+        .with_variant(ThemeVariant::Warning),
+    ]);
+    let rendered = prepare_gantt_family_with_theme(source, &theme)
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-warning-mixed".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render mixed Gantt task and warning strokes");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid mixed Gantt SVG");
+    let vertical = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("gantt-warning-mixed-vertical-marker")
+        })
+        .expect("vertical marker terminal");
+    let regular = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("gantt-warning-mixed-regular-task")
+        })
+        .expect("regular task terminal");
+    assert_eq!(
+        style_property(vertical.attribute("style").unwrap_or_default(), "stroke"),
+        Some("#d97706")
+    );
+    assert_eq!(
+        style_property(regular.attribute("style").unwrap_or_default(), "stroke"),
+        Some("#123456")
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_does_not_require_ordinary_stroke_on_vertical_only_diagrams() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nVertical marker: vert, vertical-marker, 2024-01-02, 0d\n";
+    let theme = gantt_task_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#123456").expect("valid task stroke")),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Task,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#d97706").expect("valid warning stroke")),
+        )
+        .with_variant(ThemeVariant::Warning),
+    ]);
+    let rendered = prepare_gantt_family_with_theme(source, &theme)
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-warning-vertical-only".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render vertical-only warning Gantt");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid vertical-only SVG");
+    let vertical = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("gantt-warning-vertical-only-vertical-marker")
+        })
+        .expect("vertical marker terminal");
+    assert_eq!(
+        style_property(vertical.attribute("style").unwrap_or_default(), "stroke"),
+        Some("#d97706")
+    );
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.accounted_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nVertical marker: vert, vertical-marker, 2024-01-02, 0d\n";
+    let theme =
+        gantt_warning_stroke_theme(CanvasPaint::solid("#d97706").expect("valid warning stroke"));
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {"vertLineColor": "#15803d"}
+    })));
+    let rendered = prepare_gantt_family_with_theme_and_engine(source, &theme, engine)
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-warning-source-owned".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render source-owned vertical warning Gantt");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid source-owned SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("source-owned warning stylesheet");
+    assert!(stylesheet.contains(
+        "#gantt-warning-source-owned .vert{stroke:#15803d;}#gantt-warning-source-owned .vertText{font-size:15px;text-anchor:middle;fill:#15803d!important;}"
+    ));
+    let vertical = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("id") == Some("gantt-warning-source-owned-vertical-marker")
+        })
+        .expect("source-owned vertical terminal");
+    assert!(!vertical
+        .attribute("style")
+        .is_some_and(|style| style_property(style, "stroke").is_some()));
+
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gantt_warning_stroke_detects_source_owned_comma_delimited_today_marker() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker STROKE : #15803d,opacity:0.5\nsection Delivery\nTask: regular-task, 2024-01-02, 1d\n";
+    let theme =
+        gantt_warning_stroke_theme(CanvasPaint::solid("#d97706").expect("valid warning stroke"));
+    let rendered = prepare_gantt_family_with_theme(source, &theme)
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-warning-comma-marker".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render comma-delimited source-owned today marker");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid comma-marker SVG");
+    let today = document
+        .descendants()
+        .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+        .expect("today marker terminal");
+    assert_eq!(
+        style_property(today.attribute("style").unwrap_or_default(), "stroke"),
+        Some("#15803d")
+    );
+
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.required_count(), 1);
