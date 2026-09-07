@@ -1237,6 +1237,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Info
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie
+            | RenderFamilyKind::Cynefin
     )
 }
 
