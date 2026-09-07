@@ -187,7 +187,7 @@ fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
     out.push((key.to_string(), raw.to_string()));
 }
 
-pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String, String, String) {
+fn render_block_inline_styles(styles: &[String], important: bool) -> (String, String, String) {
     let mut box_decls: Vec<(String, String)> = Vec::new();
     let mut text_decls: Vec<(String, String)> = Vec::new();
 
@@ -217,6 +217,9 @@ pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String,
         let mut out = String::new();
         for (_, raw) in decls {
             out.push_str(raw);
+            if important {
+                out.push_str(" !important");
+            }
             out.push(';');
         }
         out
@@ -229,17 +232,39 @@ pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String,
             if !value.is_empty() {
                 let _ = write!(
                     &mut div_prefix,
-                    "color: {}; ",
-                    super::super::util::cssom_color_value(value)
+                    "color: {}{}; ",
+                    super::super::util::cssom_color_value(value),
+                    if important { " !important" } else { "" }
                 );
             }
         } else {
             div_prefix.push_str(raw);
+            if important {
+                div_prefix.push_str(" !important");
+            }
             div_prefix.push_str("; ");
         }
     }
 
     (style_attr(&box_decls), style_attr(&text_decls), div_prefix)
+}
+
+pub(in crate::svg::parity) fn block_inline_styles(styles: &[String]) -> (String, String, String) {
+    render_block_inline_styles(styles, false)
+}
+
+fn block_compiled_inline_styles(
+    class_defs: &indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDefRenderModel>,
+    classes: &[String],
+    styles: &[String],
+) -> (String, String, String) {
+    let mut compiled_styles = classes
+        .iter()
+        .filter_map(|class| class_defs.get(class))
+        .flat_map(|class_def| class_def.styles.iter().cloned())
+        .collect::<Vec<_>>();
+    compiled_styles.extend_from_slice(styles);
+    render_block_inline_styles(&compiled_styles, true)
 }
 
 pub(crate) fn render_block_diagram_svg_model(
@@ -649,7 +674,7 @@ pub(crate) fn render_block_diagram_svg_model(
             format!("{} flowchart-label", node.classes.join(" "))
         };
         let (node_box_style, node_text_style, node_div_style_prefix) =
-            block_inline_styles(&node.styles);
+            block_compiled_inline_styles(&model.class_defs, &node.classes, &node.styles);
 
         let geometry =
             shape_geometries_by_id

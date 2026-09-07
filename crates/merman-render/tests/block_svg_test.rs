@@ -306,9 +306,9 @@ fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
 "#,
     );
 
-    assert!(svg.contains("color: rgb(248, 255, 235); display: table-cell;"));
-    assert!(svg.contains("color: rgba(128, 144, 160, 0.502); display: table-cell;"));
-    assert!(svg.contains("color: var(--MyColor); display: table-cell;"));
+    assert!(svg.contains("color: rgb(248, 255, 235) !important; display: table-cell;"));
+    assert!(svg.contains("color: rgba(128, 144, 160, 0.502) !important; display: table-cell;"));
+    assert!(svg.contains("color: var(--MyColor) !important; display: table-cell;"));
 }
 
 #[test]
@@ -412,6 +412,69 @@ fn block_svg_applies_class_definitions_to_assigned_nodes() {
     assert!(
         svg.contains(r#"#merman .back&gt;*{fill:#969!important;stroke:#333!important;}"#),
         "expected the back class definition to style Block shapes: {svg}"
+    );
+}
+
+#[test]
+fn block_svg_compiles_class_styles_in_node_assignment_order() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  classDef first opacity:0.2
+  classDef second opacity:0.5
+  class A second
+  class A first
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("Block node DOM identity");
+    assert_eq!(
+        node.attribute("class"),
+        Some("node second first flowchart-label")
+    );
+
+    let shape = node
+        .children()
+        .find(|child| child.has_tag_name("rect"))
+        .expect("Block node shape");
+    assert!(
+        shape.attribute("style").is_some_and(|style| style
+            .split(';')
+            .any(|declaration| { declaration.trim() == "opacity:0.2 !important" })),
+        "the last assigned class should win in Mermaid's compiled shape style: {svg}"
+    );
+
+    let label = node
+        .children()
+        .find(|child| {
+            child.has_tag_name("g")
+                && child.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "label")
+                })
+        })
+        .expect("Block HTML label group");
+    assert!(
+        !label
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("opacity")
+    );
+    let span = label
+        .descendants()
+        .find(|descendant| descendant.has_tag_name("span"))
+        .expect("Block HTML label span");
+    assert!(
+        !span
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("opacity")
+    );
+    assert!(
+        svg.contains(r#"#merman .second span{opacity:0.5!important;}"#),
+        "the HTML label should continue to receive class opacity from the stylesheet: {svg}"
     );
 }
 
