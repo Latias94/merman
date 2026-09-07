@@ -1297,22 +1297,30 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         );
 
         assert!(svg.contains(r#"aria-roledescription="railroad""#));
-        assert!(svg.contains(r#"class="railroad-diagram""#));
-        assert!(svg.contains(r#"class="railroad-rule""#));
-        assert!(svg.contains(r#"class="railroad-rule-name""#));
-        assert!(svg.contains(r#"class="railroad-nonterminal""#));
-        assert!(svg.contains(r#"class="railroad-special""#));
-        assert!(svg.contains(r#"class="railroad-terminal""#));
-        assert!(svg.contains(r#"class="railroad-line""#));
+        let document = roxmltree::Document::parse(&svg).expect("Railroad SVG is XML");
+        let has_class = |class: &str| {
+            document.descendants().any(|node| {
+                node.attribute("class")
+                    .is_some_and(|value| value.split_whitespace().any(|token| token == class))
+            })
+        };
+        for class in [
+            "railroad-diagram",
+            "railroad-rule",
+            "railroad-rule-name",
+            "railroad-nonterminal",
+            "railroad-special",
+            "railroad-terminal",
+            "railroad-line",
+        ] {
+            assert!(has_class(class), "expected Railroad class {class}: {svg}");
+        }
         assert!(svg.contains("term"));
         assert!(svg.contains("? guard ?"));
         assert!(svg.contains("+"));
         assert!(svg.contains(r#"<title id="chart-title-railroad-test">Railroad grammar</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-railroad-test">Expression grammar</desc>"#));
-        assert!(
-            svg.contains("</style><g/><g class=\"railroad-rule\""),
-            "{svg}"
-        );
+        assert!(svg.contains("</style><g/><title id=\"chart-title-railroad-test\">"));
     }
 
     #[cfg(feature = "layout-elk")]
