@@ -1,10 +1,11 @@
 # Native ABI 3 Migration
 
-The `0.8.0-alpha.3` packages used native ABI 2. The alpha.5 and current alpha.6 packages use
-native ABI 3. ABI 3 keeps its minimum-prefix layout stable when new operation codes are appended,
-but a release-matched generated header is still required for the complete current operation
-catalog. Rebuild every C, C++, Dart FFI, or custom native host against the generated headers from
-the same Merman release; do not call an operation that an older header does not declare.
+The `0.8.0-alpha.3` packages used native ABI 2. The published alpha.5 and immutable alpha.6
+packages use native ABI 3, and current unreleased source remains on ABI 3. ABI 3 keeps its
+minimum-prefix layout stable when new operation codes are appended, but a release-matched generated
+header is still required for the complete operation catalog a host intends to call. Rebuild every C,
+C++, Dart FFI, or custom native host against the generated headers from the same Merman release or
+source revision; do not call an operation that an older header does not declare.
 
 ## Required Host Changes
 

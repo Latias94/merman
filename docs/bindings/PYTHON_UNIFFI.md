@@ -25,9 +25,13 @@ the shared wrapper layer, and
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for current Mermaid parity.
 
+This guide tracks current unreleased source. The immutable `0.8.0a6` wheels predate DrawingList;
+examples using `render_drawing_list(...)` require a generated Python module and native library built
+from current source or a later matching release.
+
 ## Generate Locally
 
-`scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
+`scripts/build-python-uniffi-wheel.py` resolves the current `python-uniffi-native` artifact profile. It
 builds the release library set with the default native direct feature list, then runs a separate
 generator with only `binding-generation`. UniFFI metadata is read from the matching Rust `rlib`,
 because fully stripped ELF cdylibs intentionally omit the metadata symbol table; the generated
@@ -59,7 +63,7 @@ cargo run -p merman-uniffi --no-default-features --features binding-generation -
 
 ## API
 
-The package re-exports the generated UniFFI API:
+The following example targets the generated UniFFI API from current unreleased source:
 
 ```python
 import json
@@ -123,9 +127,11 @@ finally:
     engine.close()
 ```
 
-The default wheel includes DrawingList and omits math, PNG, JPEG, and PDF. The omitted generated
-methods remain available for a custom current-contract library and otherwise raise `MermanError.Binding` with
-`MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
+The immutable alpha.6 default wheel provides SVG, ASCII, semantic/layout operations, analysis,
+validation, and document analysis, but not DrawingList. Current unreleased default wheel profiles
+add DrawingList. Both profiles omit math, PNG, JPEG, and PDF. Generated modules and native libraries
+must remain release-matched; operations omitted by a matching artifact raise `MermanError.Binding`
+with `MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional

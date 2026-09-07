@@ -4,6 +4,10 @@ Merman ships its Apple package as a direct UniFFI binding. Swift calls the
 `merman-uniffi` component; it does not call the C ABI and does not maintain a
 second Swift implementation of engine ownership, callbacks, or result buffers.
 
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` XCFramework predates
+DrawingList; examples using `renderDrawingList(...)` require generated Swift source and native
+libraries built from current source or a later matching release.
+
 The local SwiftPM package contains:
 
 - the root `Package.swift` product named `Merman`;
@@ -40,6 +44,8 @@ explicit contract/checksum mismatch message; prerelease artifacts must always be
 together.
 
 ## Swift API
+
+The following example uses the current unreleased generated API:
 
 ```swift
 import Merman
@@ -102,10 +108,11 @@ Cancellation is cooperative. Parser, layout, SVG/ASCII emission, and export chec
 the shared control, but an opaque callback or encoder call may return before the next checkpoint.
 Use worker or process isolation when the host requires hard preemption.
 
-The default XCFramework supports SVG, DrawingList, ASCII, semantic/layout operations, analysis,
-validation, and document analysis. It omits math and the PNG, JPEG, and PDF exporters. The
-generated export helpers remain valid for custom current-contract libraries; the default artifact returns
-`.missingCapability` with the required descriptor ID.
+The immutable alpha.6 default XCFramework supports SVG, ASCII, semantic/layout operations, analysis,
+validation, and document analysis, but not DrawingList. Current unreleased default XCFramework
+profiles additionally support DrawingList. Both profiles omit math and the PNG, JPEG, and PDF
+exporters. Generated Swift source and native libraries must remain release-matched; an operation
+omitted by a matching artifact returns `.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding

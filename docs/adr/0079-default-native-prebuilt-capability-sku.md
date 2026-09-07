@@ -4,6 +4,23 @@
 - Supersedes: the native prebuilt SKU decision in ADR-0076
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
 
+## Post-alpha.6 Amendment (2026-09-07)
+
+The original decision and size evidence below describe the default native SKU shipped from the
+immutable `v0.8.0-alpha.6` source. Those published Android, Apple, Python, and Flutter artifacts
+retain the original direct feature set and do not contain DrawingList.
+
+Current unreleased source adds the renderer-neutral `drawing-list` capability to the same default
+native SKU, making its direct feature set:
+
+```text
+analysis,ascii,drawing-list,layout-cytoscape,layout-elk,svg
+```
+
+The current artifact profiles are the authority for builds produced from current source. This
+additive amendment does not retroactively change the immutable alpha.6 artifacts or the measurements
+that justified their original capability boundary.
+
 ## Context
 
 The published Android, Apple, Python, and Flutter packages embed native libraries. Shipping every

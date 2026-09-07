@@ -8,6 +8,11 @@ The generated [`merman.h`](../../crates/merman-ffi/include/merman.h) header is t
 
 Start with the [package README](../../platforms/flutter/README.md) for normal use, the [native ABI protocol](FFI_PROTOCOL.md) for C-level details, the [ABI 3 migration guide](ABI3_MIGRATION.md) for host changes, and the [options contract](OPTIONS_JSON.md) for resource policy.
 
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` pub.dev package predates
+DrawingList and exposes 13 executable operations through `svg-plan-json`; examples using
+`renderDrawingList(...)` or `drawing-list-json` require a Dart facade and native libraries built
+from current source or a later matching release.
+
 ## Public Dart API
 
 Application code imports `package:merman/merman.dart`. Generated raw FFI declarations, native pointers, callback context, engine tokens, result allocation tokens, and native result buffers remain private.
@@ -49,9 +54,9 @@ print(result.metadata);
 final semantic = result.jsonObject;
 ```
 
-`MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. Named methods for SVG, DrawingList, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
+`MermanOperationResult` contains the requested `operation`, returned `mediaType`, copied Dart-owned `bytes`, and decoded operation `metadata`. `utf8Text` and `jsonObject` are decoding conveniences. In current unreleased source, named methods for SVG, DrawingList, PNG, JPEG, PDF, ASCII, semantic/layout/analysis JSON, document analysis, and validation are projections over the same `execute` path.
 
-The pub.dev package's prebuilt libraries select the default native SKU: SVG, DrawingList, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. The generated Dart operation vocabulary remains unchanged for custom current-contract libraries; unavailable bundled operations use the existing typed `missing-capability` result.
+The immutable alpha.6 pub.dev package's prebuilt libraries provide SVG, semantic JSON, layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis; they do not provide DrawingList. Current unreleased default native profiles additionally provide DrawingList. Both profile generations omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime` so one package can carry the Android, Apple, Linux, and Windows target matrix within the registry size limit. Generated Dart and native artifacts must remain release-matched; unavailable bundled operations use the existing typed `missing-capability` result.
 
 Native failures use `MermanException` and machine-readable `MermanErrorKind`. Unknown operation codes throw `MermanUnknownOperationException`; valid operations whose artifact lacks a backend throw `MermanMissingCapabilityException` with the exact `capabilityId`. `MermanBusyException` and `MermanReentrantCallException` preserve the two nonblocking engine-admission failures. Resource failures expose `exactResourceDetails` with the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, canonical unsigned-decimal actual value, effective maximum, and selected profile. The compatibility `resourceDetails` view remains available only when both counts fit a signed 64-bit Dart `int`.
 
@@ -271,7 +276,7 @@ See [host text measurement](HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) for cach
 | Linux | arm64 and x86_64 `libmerman_ffi.so` |
 | Windows | `merman_ffi.dll` |
 
-Flutter uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile and the shared default native feature set. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
+Current Flutter source uses owner-specific C ABI recipes. Android selects `flutter-android-native`; iOS and desktop select their corresponding target-set recipes. These recipes package `merman-ffi` directly with the size-oriented `native-distribution` Cargo profile and the current shared default native feature set. The Kotlin AAR's JNI transport remains structurally isolated in `merman-android-jni`, and Python's UniFFI transport is not part of the Dart call path.
 
 `hook/build.dart` maps the requested OS, architecture, and iOS SDK to one file under `native/`, then emits a bundled dynamic `CodeAsset` with the same asset ID used by the generated `@Native` declaration. Flutter performs final copying, multi-architecture Apple framework assembly, install-name rewriting, and signing. The package therefore owns no Flutter plugin registrars, CocoaPods podspecs, Swift packages, Gradle plugin modules, or CMake plugin wrappers. Android applications must target API 24 or newer; the hook rejects a lower target before bundling.
 

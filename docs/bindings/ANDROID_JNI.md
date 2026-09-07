@@ -9,6 +9,10 @@ The Android AAR builds the internal, non-published `merman-android-jni` crate th
 `android-native` artifact recipe. The public `merman-ffi` crate remains a C ABI transport and is
 not linked into the Kotlin AAR.
 
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` AAR predates DrawingList;
+examples using `drawing-list-json` require Kotlin declarations and native libraries built from
+current source or a later matching release.
+
 ## Layers
 
 ```text
@@ -39,10 +43,11 @@ val svg = result.data.toString(Charsets.UTF_8)
 `MermanOperationResult` contains `operationId`, `mediaType`, `data`, and typed operation metadata
 that retains its original JSON. `Merman` also exposes convenience methods for SVG, ASCII, PNG,
 JPEG, PDF, semantic JSON, layout JSON, analysis facts, SVG planning, document analysis, and
-validation. DrawingList is available through generic operation ID `drawing-list-json`. The default
-AAR supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and
-document analysis. Binary methods remain in the generated API for custom artifacts and return typed
-missing-capability errors against the default AAR.
+validation. Current unreleased source additionally exposes DrawingList through generic operation ID
+`drawing-list-json`; its default AAR profile supports SVG, DrawingList, ASCII, semantic/layout
+operations, analysis, validation, and document analysis. The immutable alpha.6 AAR has the same
+surface without DrawingList. Binary methods remain in each release-matched generated API for custom
+artifacts and return typed missing-capability errors when the matching AAR omits their backend.
 
 ```kotlin
 val drawingList = Merman.execute(
@@ -85,20 +90,23 @@ validates:
   and
 - the independent text-measurement protocol version and provider ownership.
 
-The published Android AAR uses the default native SKU, so known IDs must match the generated
-Android artifact contract in sorted order. This prevents package documentation from drifting from
-the native library that it redistributes. Unknown future IDs and fields are accepted only as
-additive values and must retain the catalog's sorted-ID rules. Legacy schema-1 producers may omit
-the option-group and constructor-service sections; if either section is present, its known entries
-are validated. Exact package-version equality is intentionally not required. A custom SKU must
-regenerate and package the matching Kotlin contract.
+Each published Android AAR uses the default native SKU frozen at its source revision, so known IDs
+must match the generated Android artifact contract packaged with that AAR in sorted order. The
+immutable alpha.6 contract excludes DrawingList; the current unreleased contract includes it. This
+prevents package documentation from drifting from the native library that it redistributes. Unknown
+future IDs and fields are accepted only as additive values and must retain the catalog's sorted-ID
+rules. Legacy schema-1 producers may omit the option-group and constructor-service sections; if
+either section is present, its known entries are validated. Exact package-version equality is
+intentionally not required. A custom SKU must regenerate and package the matching Kotlin contract.
 
 The default AAR does not compile native runtime adapters. A custom `merman-android-jni` build may
 enable the atomic `native-runtime` feature; it does not expose separate clock, time-zone, or random
 Cargo switches. The catalog reports the concrete adapter IDs only when those callable services are
 present rather than exposing the artifact assembly feature.
 
-Read the validated catalog with `Merman.runtimeCatalogJson()`:
+Read the validated catalog with `Merman.runtimeCatalogJson()`. The following shape represents the
+current unreleased default profile; the immutable alpha.6 catalog omits `drawing-list` and
+`drawing-list-json`:
 
 ```json
 {

@@ -46,7 +46,7 @@ For a symbol-by-symbol compatibility table and longer Rust examples, see the [de
 - Keep generic UniFFI requests on `MermanOperationRequestV4`; optional `MermanOperationControl` carries cooperative cancellation and relative deadlines, while cancellation details remain separate from resource-limit details.
 - Upgrade Web and WASM artifacts to transport API `5`; transport-dispatched requests accept top-level `timeout_ms`. Same-realm execution is cooperatively cancellable, while hard interruption requires a Worker or process boundary.
 - Upgrade Android JNI transport API `1` to API `2` and replace the Kotlin classes and `libmerman_android_jni.so` together; API 2 owns the opaque operation-control registry and exact resource/cancellation detail projections.
-- The native C ABI remains ABI 3 and keeps the alpha.5 minimum-prefix digest for additive changes. An alpha.5 header may discover the alpha.6 library, but it cannot call the new `drawing-list-json` operation; rebuild the generated header/table together when enabling the complete alpha.6 surface.
+- The native C ABI remains ABI 3 and keeps the alpha.5 minimum-prefix digest. An alpha.5 header may discover the alpha.6 library, but alpha.6 executable operation codes still end at `13` with `svg-plan-json`; neither release contains `drawing-list-json`. Current post-alpha.6 source appends DrawingList as operation code `14`, so rebuild the generated header and native library together when adopting that later surface.
 
 Generated bindings and native artifacts are version-coupled. Runtime catalogs and binding probes are expected to reject mixed API versions before decoding changed records; do not add local aliases for the removed probes.
 
@@ -55,7 +55,7 @@ Generated bindings and native artifacts are version-coupled. Runtime catalogs an
 - Flutter now uses Dart `package_ffi` and Native Assets with Dart `3.10` / Flutter `3.38` minimums; legacy plugin registrars, platform wrapper glue, and `openMermanLibrary()` are removed, while `Merman.open()` remains the default facade.
 - The default Android, Apple, Python, and Flutter artifacts bundle SVG, Cytoscape/ELK layout, ASCII, analysis, validation, and document analysis, while omitting math, PNG, JPEG, PDF, and native clock/time-zone/random adapters; inspect the runtime catalog before calling optional operations.
 - Typst package `0.3.0` is independently versioned and was published to Typst Universe on 2026-09-01 from the alpha.6 source line; its availability is still separate from the workspace tag and must not be inferred for other channels.
-- The alpha.6 source README and package changelogs distinguish the published workspace/crates.io/CLI surfaces from independent alpha.5 channels; a registry install on one channel is not evidence that another package has been rebuilt from the alpha.6 source revision.
+- The alpha.6 source README and package changelogs distinguish the workspace release from independently published alpha.6 platform channels; a registry install on one channel is not evidence about another channel's artifact bytes or capabilities.
 
 ## Capability and output compatibility
 
