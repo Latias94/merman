@@ -251,6 +251,8 @@ impl<'a> SankeyBuilder<'a> {
                     letter_spacing: 0.0,
                     line_height: SANKEY_LABEL_FONT_SIZE_PX,
                     fill: Paint::solid(self.text_color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor: match label.anchor {
                     SankeyLabelAnchor::Start => TextAnchor::Start,

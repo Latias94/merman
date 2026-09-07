@@ -1107,6 +1107,8 @@ impl<'a> FlowchartBuilder<'a> {
                 letter_spacing: style.letter_spacing,
                 line_height: style.line_height,
                 fill: Paint::solid(style.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
             anchor: TextAnchor::Middle,
             baseline: TextBaseline::Middle,

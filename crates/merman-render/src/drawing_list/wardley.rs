@@ -928,6 +928,8 @@ impl<'a> WardleyBuilder<'a> {
                     letter_spacing: 0.0,
                     line_height: text.font_size,
                     fill: Paint::solid(color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor: map_anchor(text.text_anchor),
                 baseline: map_baseline(text.dominant_baseline),

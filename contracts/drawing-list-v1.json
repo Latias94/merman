@@ -516,14 +516,16 @@
     },
     "text_style": {
       "type": "object",
-      "required": ["font", "font_size", "letter_spacing", "line_height", "fill"],
+      "required": ["font", "font_size", "letter_spacing", "line_height", "fill", "stroke", "paint_order"],
       "additionalProperties": false,
       "properties": {
         "font": { "$ref": "#/$defs/font_descriptor" },
         "font_size": { "type": "number", "exclusiveMinimum": 0 },
         "letter_spacing": { "type": "number" },
         "line_height": { "type": "number", "exclusiveMinimum": 0 },
-        "fill": { "$ref": "#/$defs/paint" }
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "anyOf": [{ "$ref": "#/$defs/stroke_style" }, { "type": "null" }] },
+        "paint_order": { "enum": ["fill_then_stroke", "stroke_then_fill"] }
       }
     },
     "text_run": {

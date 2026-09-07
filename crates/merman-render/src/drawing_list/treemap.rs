@@ -638,6 +638,8 @@ impl<'a> TreemapBuilder<'a> {
                 letter_spacing: style.letter_spacing,
                 line_height: style.line_height,
                 fill: Paint::solid(fill),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
             anchor,
             baseline,

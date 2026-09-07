@@ -388,6 +388,8 @@ impl<'a> QuadrantChartBuilder<'a> {
                     letter_spacing: 0.0,
                     line_height: text.font_size,
                     fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor,
                 baseline,

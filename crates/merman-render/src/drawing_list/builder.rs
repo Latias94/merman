@@ -325,6 +325,8 @@ mod tests {
                 letter_spacing: 0.0,
                 line_height: 1.0,
                 fill: Paint::solid(Color::rgba(0, 0, 0, 255)),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
             anchor: TextAnchor::Start,
             baseline: TextBaseline::Alphabetic,

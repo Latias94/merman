@@ -1,7 +1,10 @@
 mod common;
 
 use common::{extended_document, sample_document};
-use merman_display_list::{DrawingCommand, DrawingListDocument, TextBaseline};
+use merman_display_list::{
+    DrawingCommand, DrawingListDocument, Paint, ResourceId, StrokeStyle, TextBaseline,
+    TextPaintOrder,
+};
 use serde_json::{Map, Value, json};
 
 #[test]
@@ -66,6 +69,49 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         validator.is_valid(&value),
         "published schema rejected runtime document: {value}"
     );
+
+    let mut stroked_text = sample_document();
+    let DrawingCommand::DrawText { run } = &mut stroked_text.commands[5] else {
+        panic!("sample document command 5 is text");
+    };
+    run.style.stroke = Some(StrokeStyle {
+        paint: Paint::resource(ResourceId::new("paint.node-fill")),
+        width: 2.0,
+        dash_array: vec![3.0, 1.0],
+        dash_offset: 0.5,
+        line_cap: merman_display_list::LineCap::Round,
+        line_join: merman_display_list::LineJoin::Bevel,
+        miter_limit: 4.0,
+    });
+    run.style.paint_order = TextPaintOrder::StrokeThenFill;
+    stroked_text
+        .validate()
+        .expect("text stroke may reference a paint resource");
+    let stroked_value = serde_json::to_value(&stroked_text).expect("stroked text serializes");
+    assert!(
+        validator.is_valid(&stroked_value),
+        "published schema rejected a valid text stroke: {stroked_value}"
+    );
+    let decoded: DrawingListDocument =
+        serde_json::from_value(stroked_value.clone()).expect("stroked text decodes");
+    assert!(matches!(
+        &decoded.commands[5],
+        DrawingCommand::DrawText { run }
+            if run.style.paint_order == TextPaintOrder::StrokeThenFill
+                && run.style.stroke.is_some()
+    ));
+
+    for required_field in ["stroke", "paint_order"] {
+        let mut missing_field = stroked_value.clone();
+        missing_field["commands"][5]["run"]["style"]
+            .as_object_mut()
+            .expect("text style is an object")
+            .remove(required_field);
+        assert!(
+            !validator.is_valid(&missing_field),
+            "schema must require text style field {required_field}"
+        );
+    }
 
     let mut central_baseline = value.clone();
     central_baseline["commands"][5]["run"]["baseline"] = json!("central");

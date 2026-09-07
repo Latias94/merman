@@ -98,6 +98,8 @@ pub(crate) fn build_info_document(
             letter_spacing: 0.0,
             line_height: VERSION_FONT_SIZE,
             fill: Paint::solid(text_color),
+            stroke: None,
+            paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
         },
         anchor: TextAnchor::Middle,
         baseline: TextBaseline::Alphabetic,

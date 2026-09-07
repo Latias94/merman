@@ -811,6 +811,9 @@ impl DrawingListDocument {
                     })?;
                     validate_count("text_bytes", text_bytes, limits.max_text_bytes)?;
                     validate_paint(Some(&run.style.fill), &paint_ids)?;
+                    if let Some(stroke) = &run.style.stroke {
+                        validate_paint(Some(&stroke.paint), &paint_ids)?;
+                    }
                     if let Some(font) = &run.style.font.resource
                         && !font_ids.contains(font)
                     {

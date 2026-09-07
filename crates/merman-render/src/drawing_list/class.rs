@@ -847,6 +847,8 @@ impl<'a> ClassBuilder<'a> {
                     letter_spacing: 0.0,
                     line_height: self.line_height,
                     fill: Paint::solid(spec.fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor: spec.anchor,
                 baseline: spec.baseline,

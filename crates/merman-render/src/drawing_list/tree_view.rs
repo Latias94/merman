@@ -486,6 +486,8 @@ impl<'a> TreeViewBuilder<'a> {
                     letter_spacing: 0.0,
                     line_height: self.label_font_size,
                     fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor: TextAnchor::Start,
                 baseline: TextBaseline::Middle,

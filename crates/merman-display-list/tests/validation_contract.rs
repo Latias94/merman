@@ -4,7 +4,7 @@ use common::{apng_1x1, extended_document, png_1x1, png_64x64, png_alpha_1x1, sam
 use merman_display_list::{
     AlphaMode, DrawingCommand, DrawingListError, DrawingListLimits, DrawingResource, EncodedAsset,
     EncodedImage, FallbackReason, FillRule, FontResource, ImageResource, Paint, PathSegment, Point,
-    RasterFallback, RasterFormat, Rect, ResourceId, VisualSource,
+    RasterFallback, RasterFormat, Rect, ResourceId, StrokeStyle, TextPaintOrder, VisualSource,
 };
 
 fn png_crc32(bytes: &[u8]) -> u32 {
@@ -85,6 +85,49 @@ fn validator_rejects_unbalanced_state_and_wrong_resource_kind() {
             stroke: None,
         },
     };
+    assert!(document.validate().is_err());
+}
+
+#[test]
+fn validator_checks_text_stroke_style_and_paint_resources() {
+    let mut document = sample_document();
+    let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+        panic!("sample document command 5 is text");
+    };
+    run.style.stroke = Some(StrokeStyle {
+        paint: Paint::resource(ResourceId::new("paint.node-fill")),
+        width: 1.5,
+        dash_array: Vec::new(),
+        dash_offset: 0.0,
+        line_cap: merman_display_list::LineCap::Round,
+        line_join: merman_display_list::LineJoin::Round,
+        miter_limit: 4.0,
+    });
+    run.style.paint_order = TextPaintOrder::StrokeThenFill;
+    document
+        .validate()
+        .expect("text stroke may reference a known paint resource");
+
+    let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+        unreachable!("sample document command 5 remains text");
+    };
+    run.style
+        .stroke
+        .as_mut()
+        .expect("test installed a text stroke")
+        .paint = Paint::resource(ResourceId::new("paint.missing"));
+    assert!(document.validate().is_err());
+
+    let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+        unreachable!("sample document command 5 remains text");
+    };
+    let stroke = run
+        .style
+        .stroke
+        .as_mut()
+        .expect("test installed a text stroke");
+    stroke.paint = Paint::solid(merman_display_list::Color::rgba(0, 0, 0, 255));
+    stroke.width = f64::NAN;
     assert!(document.validate().is_err());
 }
 

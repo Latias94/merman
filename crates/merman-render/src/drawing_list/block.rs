@@ -569,6 +569,8 @@ impl<'a> BlockBuilder<'a> {
                         letter_spacing: 0.0,
                         line_height: text_line_height,
                         fill: Paint::solid(style.text),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
                     anchor: style.text_anchor,
                     baseline: TextBaseline::Middle,

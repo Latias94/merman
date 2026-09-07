@@ -488,6 +488,8 @@ impl<'a> PieBuilder<'a> {
                 letter_spacing: 0.0,
                 line_height: font_size,
                 fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
             anchor,
             baseline: TextBaseline::Alphabetic,

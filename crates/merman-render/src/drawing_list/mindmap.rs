@@ -743,6 +743,8 @@ impl<'a> MindmapBuilder<'a> {
                         letter_spacing: 0.0,
                         line_height: 24.0,
                         fill: Paint::solid(style.text),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,

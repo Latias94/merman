@@ -867,6 +867,8 @@ fn error_text_run(
             letter_spacing: 0.0,
             line_height: font_size,
             fill: Paint::solid(fill),
+            stroke: None,
+            paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
         },
         anchor: TextAnchor::Middle,
         baseline: TextBaseline::Alphabetic,

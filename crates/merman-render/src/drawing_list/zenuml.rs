@@ -1608,6 +1608,8 @@ impl<'a> ZenUmlBuilder<'a> {
                     letter_spacing: letter_spacing.unwrap_or(0.0),
                     line_height,
                     fill: Paint::solid(with_alpha(spec.color, spec.opacity)),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
                 anchor,
                 baseline,

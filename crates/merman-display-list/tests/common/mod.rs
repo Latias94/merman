@@ -5,8 +5,8 @@ use merman_display_list::{
     GradientSpread, GradientStop, ImageResource, LineCap, LineJoin, LinearGradientResource,
     MeasurementProvenance, Paint, PathResource, PathSegment, PathStyle, Point, PositionedGlyph,
     RadialGradientResource, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextPaintOrder, TextRun, TextStyle,
+    Transform, Viewport,
 };
 use std::collections::BTreeMap;
 
@@ -152,6 +152,8 @@ pub fn sample_document() -> DrawingListDocument {
                         letter_spacing: 0.0,
                         line_height: 19.2,
                         fill: Paint::solid(Color::rgba(21, 52, 80, 255)),
+                        stroke: None,
+                        paint_order: TextPaintOrder::FillThenStroke,
                     },
                     anchor: TextAnchor::Middle,
                     baseline: TextBaseline::Middle,

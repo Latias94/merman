@@ -169,6 +169,17 @@ pub struct TextStyle {
     pub letter_spacing: f64,
     pub line_height: f64,
     pub fill: crate::Paint,
+    pub stroke: Option<StrokeStyle>,
+    pub paint_order: TextPaintOrder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextPaintOrder {
+    /// Paint the fill first and the stroke on top, matching the SVG default.
+    FillThenStroke,
+    /// Paint the stroke first and the fill on top, matching CSS `paint-order: stroke`.
+    StrokeThenFill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -295,16 +306,7 @@ impl TextRun {
                 "text language must not be empty when present",
             ));
         }
-        if !self.style.font_size.is_finite()
-            || self.style.font_size <= 0.0
-            || !self.style.letter_spacing.is_finite()
-            || !self.style.line_height.is_finite()
-            || self.style.line_height <= 0.0
-        {
-            return Err(DrawingListError::invalid(
-                "text style contains invalid numeric values",
-            ));
-        }
+        self.style.validate()?;
         if self.style.font.families.is_empty()
             || self.style.font.families.iter().any(String::is_empty)
             || self.style.font.weight == 0
@@ -346,6 +348,25 @@ impl TextRun {
                 }
             }
             TextObligation::Outline { .. } | TextObligation::RasterFallback { .. } => {}
+        }
+        Ok(())
+    }
+}
+
+impl TextStyle {
+    fn validate(&self) -> Result<(), DrawingListError> {
+        if !self.font_size.is_finite()
+            || self.font_size <= 0.0
+            || !self.letter_spacing.is_finite()
+            || !self.line_height.is_finite()
+            || self.line_height <= 0.0
+        {
+            return Err(DrawingListError::invalid(
+                "text style contains invalid numeric values",
+            ));
+        }
+        if let Some(stroke) = &self.stroke {
+            stroke.validate()?;
         }
         Ok(())
     }

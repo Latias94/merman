@@ -14,7 +14,7 @@ mod resources;
 pub use commands::{
     BlendMode, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, LineCap,
     LineJoin, MeasurementProvenance, PathStyle, PositionedGlyph, StrokeStyle, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    TextBaseline, TextDirection, TextObligation, TextPaintOrder, TextRun, TextStyle,
 };
 pub use document::{
     AlphaMode, CoordinateSystem, DrawingListDocument, DrawingListFootprint, DrawingListLimits,

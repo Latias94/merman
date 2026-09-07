@@ -1339,6 +1339,8 @@ impl<'a> SequenceBuilder<'a> {
                         letter_spacing: 0.0,
                         line_height: line_step,
                         fill: Paint::solid(color),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
                     anchor,
                     baseline: TextBaseline::Middle,
