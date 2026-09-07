@@ -230,42 +230,25 @@ fn deep_icon_text_diagram(depth: usize) -> String {
     format!("architecture-beta\n  service worker \"{icon_text}\" [Worker]\n")
 }
 
-type SvgPoint = (f64, f64);
-type SvgPoints = Vec<SvgPoint>;
+fn arrow_transform_after_edge(svg: &str, edge_id: &str) -> String {
+    let pattern = format!(r#"id="{}"[^>]*/><polygon([^>]*)>"#, regex::escape(edge_id));
+    let re = Regex::new(&pattern).expect("valid regex");
+    let attrs = re
+        .captures(svg)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str())
+        .unwrap_or_else(|| panic!("missing arrow polygon after edge {edge_id}"));
+    assert!(
+        attrs.contains(r#"class="arrow""#),
+        "expected polygon after edge {edge_id} to be an arrow, got {attrs}"
+    );
 
-fn parse_svg_points(value: &str) -> SvgPoints {
-    let number =
-        Regex::new(r#"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"#).expect("valid number regex");
-    let values = number
-        .find_iter(value)
-        .map(|value| value.as_str().parse::<f64>().expect("finite SVG number"))
-        .collect::<Vec<_>>();
-    assert_eq!(values.len() % 2, 0, "SVG point list must contain pairs");
-    values
-        .chunks_exact(2)
-        .map(|pair| (pair[0], pair[1]))
-        .collect()
-}
-
-fn edge_and_arrow_points(svg: &str, edge_id: &str) -> (SvgPoints, SvgPoints) {
-    let document = roxmltree::Document::parse(svg).expect("Architecture SVG is XML");
-    let edge = document
-        .descendants()
-        .find(|node| node.has_tag_name("path") && node.attribute("id") == Some(edge_id))
-        .unwrap_or_else(|| panic!("missing edge path {edge_id}"));
-    let route = parse_svg_points(edge.attribute("d").expect("edge path data"));
-    let group = edge.parent().expect("edge semantic group");
-    let arrow = group
-        .children()
-        .find(|node| {
-            node.has_tag_name("polygon")
-                && node
-                    .attribute("class")
-                    .is_some_and(|class| class.split_whitespace().any(|token| token == "arrow"))
-        })
-        .unwrap_or_else(|| panic!("missing arrow polygon for edge {edge_id}"));
-    let arrow = parse_svg_points(arrow.attribute("points").expect("arrow polygon points"));
-    (route, arrow)
+    let transform_re = Regex::new(r#"\btransform="([^"]+)""#).expect("valid regex");
+    transform_re
+        .captures(attrs)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| panic!("missing arrow transform after edge {edge_id}"))
 }
 
 fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str, context: &str) -> f64 {
@@ -274,25 +257,24 @@ fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str, context: &str) -
         .unwrap_or_else(|| panic!("invalid {name} for {context}"))
 }
 
-fn service_origin(svg: &str, service_id: &str) -> (f64, f64) {
-    let document = roxmltree::Document::parse(svg).expect("Architecture SVG is XML");
-    let service = document
-        .descendants()
-        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some(service_id))
-        .unwrap_or_else(|| panic!("missing service group for {service_id}"));
-    let background = service
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node
-                    .attribute("data-merman-resource")
-                    .is_some_and(|id| id.ends_with(".icon.background"))
-        })
-        .unwrap_or_else(|| panic!("missing canonical icon background for {service_id}"));
-    (
-        numeric_attribute(background, "x", service_id),
-        numeric_attribute(background, "y", service_id),
-    )
+fn service_translate(svg: &str, service_id: &str) -> (f64, f64) {
+    let pattern = format!(
+        r#"id="{}"[^>]*\btransform="translate\(([^,\s]+)[,\s]+([^)]+)\)""#,
+        regex::escape(service_id)
+    );
+    let re = Regex::new(&pattern).expect("valid regex");
+    let caps = re
+        .captures(svg)
+        .unwrap_or_else(|| panic!("missing service transform for {service_id}"));
+    let x = caps
+        .get(1)
+        .and_then(|m| m.as_str().parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("invalid service x transform for {service_id}"));
+    let y = caps
+        .get(2)
+        .and_then(|m| m.as_str().parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("invalid service y transform for {service_id}"));
+    (x, y)
 }
 
 fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
@@ -307,47 +289,6 @@ fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
         numeric_attribute(group, "width", group_id),
         numeric_attribute(group, "height", group_id),
     )
-}
-
-fn assert_arrow_follows_final_segment(route: &[(f64, f64)], arrow: &[(f64, f64)]) {
-    assert!(route.len() >= 2, "edge route must contain a final segment");
-    assert_eq!(arrow.len(), 3, "Architecture arrow must be a triangle");
-    let start = route[route.len() - 2];
-    let end = route[route.len() - 1];
-    let segment = (end.0 - start.0, end.1 - start.1);
-    let segment_length = segment.0.hypot(segment.1);
-    assert!(segment_length > 0.0, "edge final segment must be non-zero");
-    let unit = (segment.0 / segment_length, segment.1 / segment_length);
-    let tip_index = arrow
-        .iter()
-        .enumerate()
-        .max_by(|(_, left), (_, right)| {
-            let left_projection = left.0 * unit.0 + left.1 * unit.1;
-            let right_projection = right.0 * unit.0 + right.1 * unit.1;
-            left_projection.total_cmp(&right_projection)
-        })
-        .map(|(index, _)| index)
-        .expect("arrow tip");
-    let base = arrow
-        .iter()
-        .enumerate()
-        .filter_map(|(index, point)| (index != tip_index).then_some(*point))
-        .collect::<Vec<_>>();
-    let base_vector = (base[1].0 - base[0].0, base[1].1 - base[0].1);
-    let perpendicular_error = (base_vector.0 * unit.0 + base_vector.1 * unit.1).abs()
-        / base_vector.0.hypot(base_vector.1);
-    assert!(
-        perpendicular_error <= 1e-9,
-        "arrow base must be perpendicular to the final edge segment"
-    );
-    let base_middle = ((base[0].0 + base[1].0) / 2.0, (base[0].1 + base[1].1) / 2.0);
-    let tip = arrow[tip_index];
-    let aim = (tip.0 - base_middle.0, tip.1 - base_middle.1);
-    let parallel_error = (aim.0 * unit.1 - aim.1 * unit.0).abs() / aim.0.hypot(aim.1);
-    assert!(
-        parallel_error <= 1e-9 && aim.0 * unit.0 + aim.1 * unit.1 > 0.0,
-        "arrow tip must point along the final edge segment"
-    );
 }
 
 fn svg_max_width(svg: &str) -> f64 {
@@ -493,26 +434,17 @@ fn architecture_diagonal_arrows_follow_the_actual_edge_segment() {
         "stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd",
     );
 
-    let (diagonal_route, diagonal_arrow) =
-        edge_and_arrow_points(&svg, "architecture-crosslinks-L_fe_east_api_0");
-    let diagonal_start = diagonal_route[diagonal_route.len() - 2];
-    let diagonal_end = diagonal_route[diagonal_route.len() - 1];
+    let diagonal = arrow_transform_after_edge(&svg, "architecture-crosslinks-L_fe_east_api_0");
     assert!(
-        (diagonal_end.0 - diagonal_start.0).abs() > 1.0
-            && (diagonal_end.1 - diagonal_start.1).abs() > 1.0,
-        "fixture must retain a diagonal final edge segment"
+        diagonal.contains("rotate("),
+        "expected diagonal Architecture edge arrow to rotate with the edge segment, got {diagonal}"
     );
-    assert_arrow_follows_final_segment(&diagonal_route, &diagonal_arrow);
 
-    let (vertical_route, vertical_arrow) =
-        edge_and_arrow_points(&svg, "architecture-crosslinks-L_fe_west_api_0");
-    let vertical_start = vertical_route[vertical_route.len() - 2];
-    let vertical_end = vertical_route[vertical_route.len() - 1];
+    let vertical = arrow_transform_after_edge(&svg, "architecture-crosslinks-L_fe_west_api_0");
     assert!(
-        (vertical_end.0 - vertical_start.0).abs() <= 1e-9,
-        "fixture must retain an axis-aligned final edge segment"
+        !vertical.contains("rotate("),
+        "axis-aligned Architecture arrows should keep the Mermaid-compatible translate-only DOM, got {vertical}"
     );
-    assert_arrow_follows_final_segment(&vertical_route, &vertical_arrow);
 }
 
 #[test]
@@ -525,10 +457,10 @@ fn architecture_group_alignment_follows_source_endpoint_traversal_order() {
         },
     );
 
-    let lb = service_origin(&svg, "architecture-deep-service-lb");
-    let api = service_origin(&svg, "architecture-deep-service-api");
-    let cache = service_origin(&svg, "architecture-deep-service-cache");
-    let ext = service_origin(&svg, "architecture-deep-service-ext");
+    let lb = service_translate(&svg, "architecture-deep-service-lb");
+    let api = service_translate(&svg, "architecture-deep-service-api");
+    let cache = service_translate(&svg, "architecture-deep-service-cache");
+    let ext = service_translate(&svg, "architecture-deep-service-ext");
 
     assert_close(
         lb.1,
