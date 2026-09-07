@@ -259,7 +259,7 @@
     "base64_data": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
       "contentEncoding": "base64",
       "$comment": "The JSON wire spelling must contain the canonical padded Base64 characters directly, without JSON escape sequences, so decoders can enforce byte budgets before allocating payload strings."
     },
@@ -275,12 +275,14 @@
     "image_media_type": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/[Pp][Nn][Gg](?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+      "pattern": "^[\\t\\n\\r ]*[Ii][Mm][Aa][Gg][Ee]/[Pp][Nn][Gg](?:[\\t ]*;.*)?[\\t\\n\\r ]*$",
+      "$comment": "Whitespace may surround the value or parameter separator, but not the type/subtype slash."
     },
     "font_media_type": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^[\\t\\n\\r ]*(?:[Ff][Oo][Nn][Tt]/(?:[Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?)|[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]/(?:[Ff][Oo][Nn][Tt]-[Ss][Ff][Nn][Tt]|[Vv][Nn][Dd]\\.[Mm][Ss]-[Ff][Oo][Nn][Tt][Oo][Bb][Jj][Ee][Cc][Tt]))(?:[\\t ]*;.*)?[\\t\\n\\r ]*$"
+      "pattern": "^[\\t\\n\\r ]*(?:[Ff][Oo][Nn][Tt]/(?:[Tt][Tt][Ff]|[Oo][Tt][Ff]|[Ww][Oo][Ff][Ff]2?)|[Aa][Pp][Pp][Ll][Ii][Cc][Aa][Tt][Ii][Oo][Nn]/(?:[Ff][Oo][Nn][Tt]-[Ss][Ff][Nn][Tt]|[Vv][Nn][Dd]\\.[Mm][Ss]-[Ff][Oo][Nn][Tt][Oo][Bb][Jj][Ee][Cc][Tt]))(?:[\\t ]*;.*)?[\\t\\n\\r ]*$",
+      "$comment": "Whitespace may surround the value or parameter separator, but not the type/subtype slash."
     },
     "image_asset": {
       "type": "object",

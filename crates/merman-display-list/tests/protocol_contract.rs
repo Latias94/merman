@@ -145,6 +145,21 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
     image["image"]["media_type"] = json!("image/svg+xml");
     assert!(!validator.is_valid(&invalid_image));
 
+    for media_type in ["image /png", "image/ png"] {
+        let mut invalid_image = extended.clone();
+        let image = invalid_image["resources"]
+            .as_array_mut()
+            .expect("resources are an array")
+            .iter_mut()
+            .find(|resource| resource["kind"] == "image")
+            .expect("extended fixture has an image");
+        image["image"]["media_type"] = json!(media_type);
+        assert!(
+            !validator.is_valid(&invalid_image),
+            "schema must reject media type whitespace adjacent to '/': {media_type}"
+        );
+    }
+
     let mut invalid_u32 = serde_json::to_value(extended_document()).expect("fixture serializes");
     let image = invalid_u32["resources"]
         .as_array_mut()
@@ -174,4 +189,19 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
         .expect("extended fixture has an image");
     image["image"]["data"] = json!("not-base64!");
     assert!(!validator.is_valid(&invalid_base64));
+
+    for non_canonical in ["Zh==", "Zm9="] {
+        let mut invalid_pad_bits = extended.clone();
+        let font = invalid_pad_bits["resources"]
+            .as_array_mut()
+            .expect("resources are an array")
+            .iter_mut()
+            .find(|resource| resource["kind"] == "font")
+            .expect("extended fixture has a font");
+        font["font"]["data"] = json!(non_canonical);
+        assert!(
+            !validator.is_valid(&invalid_pad_bits),
+            "schema must reject non-zero Base64 pad bits: {non_canonical}"
+        );
+    }
 }

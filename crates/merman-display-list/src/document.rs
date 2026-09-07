@@ -1,11 +1,15 @@
 use crate::{
     DRAWING_LIST_VERSION, DrawingCommand, DrawingListError, DrawingListPolicy, DrawingResource,
-    PathSegment, Point, Rect, ResourceId, TextObligation,
+    PathSegment, Point, Rect, ResourceId, TextObligation, resources::canonical_base64_decoded_len,
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{self, DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor},
+};
 use serde_json::{Value, value::RawValue};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::io::{self, Write};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -934,7 +938,7 @@ impl DrawingListDocument {
         limits: &DrawingListLimits,
     ) -> Result<Self, DrawingListError> {
         validate_count("serialized_bytes", bytes.len(), limits.max_serialized_bytes)?;
-        validate_encoded_asset_budgets(bytes, limits)?;
+        validate_wire_budgets(bytes, limits)?;
         let document = serde_json::from_slice::<Self>(bytes)
             .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
         document.validate_with_limits(limits)?;
@@ -1043,15 +1047,11 @@ fn validate_count(
 }
 
 #[derive(Deserialize)]
-struct EncodedAssetBudgetDocument<'a> {
-    #[serde(borrow)]
-    resources: Vec<&'a RawValue>,
-}
-
-#[derive(Deserialize)]
 struct EncodedAssetBudgetResource<'a> {
     #[serde(borrow)]
     kind: Cow<'a, str>,
+    #[serde(default, borrow)]
+    segments: Option<&'a RawValue>,
     #[serde(default, borrow)]
     image: Option<&'a RawValue>,
     #[serde(default, borrow)]
@@ -1064,54 +1064,382 @@ struct EncodedAssetBudget<'a> {
     data: &'a RawValue,
 }
 
-/// Charges encoded assets before their Base64 payloads are materialized by the public model.
-///
-/// This is deliberately a narrow borrowed wire view rather than a second DrawingList decoder. It
-/// leaves structural validation to Serde and [`DrawingListDocument::validate_with_limits`], while
-/// making caller-selected image and font byte ceilings effective before decoded buffers allocate.
-fn validate_encoded_asset_budgets(
-    bytes: &[u8],
-    limits: &DrawingListLimits,
-) -> Result<(), DrawingListError> {
-    let document = serde_json::from_slice::<EncodedAssetBudgetDocument<'_>>(bytes)
-        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-    validate_count("resources", document.resources.len(), limits.max_resources)?;
+#[derive(Deserialize)]
+struct EncodedCommandBudget<'a> {
+    #[serde(borrow)]
+    kind: Cow<'a, str>,
+    #[serde(default, borrow)]
+    run: Option<&'a RawValue>,
+}
 
-    let mut image_bytes = 0usize;
-    let mut font_bytes = 0usize;
-    for raw in document.resources {
-        let resource = serde_json::from_str::<EncodedAssetBudgetResource<'_>>(raw.get())
-            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-        let (asset, total, maximum, label) = match resource.kind.as_ref() {
-            "image" => (
-                resource.image,
-                &mut image_bytes,
-                limits.max_image_bytes,
-                "image_bytes",
-            ),
-            "font" => (
-                resource.font,
-                &mut font_bytes,
-                limits.max_font_bytes,
-                "font_bytes",
-            ),
-            _ => continue,
-        };
-        let Some(asset) = asset else {
-            continue;
-        };
-        let asset = serde_json::from_str::<EncodedAssetBudget<'_>>(asset.get())
-            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-        let decoded = canonical_base64_decoded_len(asset.data.get())?;
-        *total = total
-            .checked_add(decoded)
-            .ok_or_else(|| DrawingListError::invalid(format!("{label} count overflows usize")))?;
-        validate_count(label, *total, maximum)?;
+#[derive(Deserialize)]
+struct EncodedTextRunBudget<'a> {
+    #[serde(default, borrow)]
+    obligation: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct EncodedTextObligationBudget<'a> {
+    #[serde(borrow)]
+    kind: Cow<'a, str>,
+    #[serde(default, borrow)]
+    glyphs: Option<&'a RawValue>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WireSequenceKind {
+    Resources,
+    Commands,
+    Fallbacks,
+    PathSegments,
+    Glyphs,
+}
+
+struct WireBudgetState<'a> {
+    limits: &'a DrawingListLimits,
+    resources: usize,
+    commands: usize,
+    fallbacks: usize,
+    path_segments: usize,
+    glyphs: usize,
+    image_bytes: usize,
+    font_bytes: usize,
+    failure: Option<DrawingListError>,
+}
+
+impl<'a> WireBudgetState<'a> {
+    fn new(limits: &'a DrawingListLimits) -> Self {
+        Self {
+            limits,
+            resources: 0,
+            commands: 0,
+            fallbacks: 0,
+            path_segments: 0,
+            glyphs: 0,
+            image_bytes: 0,
+            font_bytes: 0,
+            failure: None,
+        }
+    }
+
+    fn record_failure<E>(&mut self, error: DrawingListError) -> E
+    where
+        E: de::Error,
+    {
+        if self.failure.is_none() {
+            self.failure = Some(error);
+        }
+        E::custom("DrawingList wire budget validation failed")
+    }
+}
+
+struct WireBudgetSeed<'a, 'limits> {
+    state: &'a mut WireBudgetState<'limits>,
+}
+
+impl<'de> DeserializeSeed<'de> for WireBudgetSeed<'_, '_> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_map(WireBudgetVisitor { state: self.state })
+    }
+}
+
+struct WireBudgetVisitor<'a, 'limits> {
+    state: &'a mut WireBudgetState<'limits>,
+}
+
+impl<'de> Visitor<'de> for WireBudgetVisitor<'_, '_> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a DrawingList JSON object")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut saw_resources = false;
+        let mut saw_commands = false;
+        let mut saw_fallbacks = false;
+        while let Some(field) = map.next_key::<Cow<'de, str>>()? {
+            let kind = match field.as_ref() {
+                "resources" => {
+                    if saw_resources {
+                        return Err(<A::Error as de::Error>::duplicate_field("resources"));
+                    }
+                    saw_resources = true;
+                    Some(WireSequenceKind::Resources)
+                }
+                "commands" => {
+                    if saw_commands {
+                        return Err(<A::Error as de::Error>::duplicate_field("commands"));
+                    }
+                    saw_commands = true;
+                    Some(WireSequenceKind::Commands)
+                }
+                "fallbacks" => {
+                    if saw_fallbacks {
+                        return Err(<A::Error as de::Error>::duplicate_field("fallbacks"));
+                    }
+                    saw_fallbacks = true;
+                    Some(WireSequenceKind::Fallbacks)
+                }
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                map.next_value_seed(WireSequenceSeed {
+                    state: &mut *self.state,
+                    kind,
+                })?;
+            } else {
+                map.next_value::<IgnoredAny>()?;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct WireSequenceSeed<'a, 'limits> {
+    state: &'a mut WireBudgetState<'limits>,
+    kind: WireSequenceKind,
+}
+
+impl<'de> DeserializeSeed<'de> for WireSequenceSeed<'_, '_> {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(WireSequenceVisitor {
+            state: self.state,
+            kind: self.kind,
+        })
+    }
+}
+
+struct WireSequenceVisitor<'a, 'limits> {
+    state: &'a mut WireBudgetState<'limits>,
+    kind: WireSequenceKind,
+}
+
+impl<'de> Visitor<'de> for WireSequenceVisitor<'_, '_> {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a DrawingList budgeted array")
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        match self.kind {
+            WireSequenceKind::PathSegments => {
+                let maximum = self.state.limits.max_path_segments;
+                return count_ignored_sequence(
+                    &mut sequence,
+                    "path_segments",
+                    &mut self.state.path_segments,
+                    maximum,
+                    &mut self.state.failure,
+                );
+            }
+            WireSequenceKind::Glyphs => {
+                let maximum = self.state.limits.max_glyphs;
+                return count_ignored_sequence(
+                    &mut sequence,
+                    "glyphs",
+                    &mut self.state.glyphs,
+                    maximum,
+                    &mut self.state.failure,
+                );
+            }
+            WireSequenceKind::Resources
+            | WireSequenceKind::Commands
+            | WireSequenceKind::Fallbacks => {}
+        }
+
+        while let Some(raw) = sequence.next_element::<&'de RawValue>()? {
+            let result = match self.kind {
+                WireSequenceKind::Resources => {
+                    let maximum = self.state.limits.max_resources;
+                    checked_accumulate("resources", &mut self.state.resources, 1, maximum)
+                        .and_then(|()| inspect_resource_budget(raw, &mut *self.state))
+                }
+                WireSequenceKind::Commands => {
+                    let maximum = self.state.limits.max_commands;
+                    checked_accumulate("commands", &mut self.state.commands, 1, maximum)
+                        .and_then(|()| inspect_command_budget(raw, &mut *self.state))
+                }
+                WireSequenceKind::Fallbacks => {
+                    let maximum = self.state.limits.max_fallbacks;
+                    checked_accumulate("fallbacks", &mut self.state.fallbacks, 1, maximum)
+                }
+                WireSequenceKind::PathSegments | WireSequenceKind::Glyphs => Err(
+                    DrawingListError::invalid("invalid nested wire-budget dispatch"),
+                ),
+            };
+            if let Err(error) = result {
+                return Err(self.state.record_failure(error));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn count_ignored_sequence<'de, A>(
+    sequence: &mut A,
+    label: &'static str,
+    total: &mut usize,
+    maximum: usize,
+    failure: &mut Option<DrawingListError>,
+) -> Result<(), A::Error>
+where
+    A: SeqAccess<'de>,
+{
+    while sequence.next_element::<IgnoredAny>()?.is_some() {
+        if let Err(error) = checked_accumulate(label, total, 1, maximum) {
+            *failure = Some(error);
+            return Err(<A::Error as de::Error>::custom(
+                "DrawingList nested wire budget exceeded",
+            ));
+        }
     }
     Ok(())
 }
 
-fn canonical_base64_decoded_len(json_string: &str) -> Result<usize, DrawingListError> {
+/// Charges wire-level collection and encoded-asset budgets before the owned public model is
+/// materialized. This visitor intentionally understands only fields that can amplify allocation;
+/// structural and semantic validation remain owned by `DrawingListDocument::validate_with_limits`.
+fn validate_wire_budgets(bytes: &[u8], limits: &DrawingListLimits) -> Result<(), DrawingListError> {
+    let mut state = WireBudgetState::new(limits);
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    let result = WireBudgetSeed { state: &mut state }.deserialize(&mut deserializer);
+    if let Err(error) = result {
+        return Err(state
+            .failure
+            .take()
+            .unwrap_or_else(|| DrawingListError::JsonDecode(error.to_string())));
+    }
+    deserializer
+        .end()
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))
+}
+
+fn inspect_resource_budget(
+    raw: &RawValue,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    let resource = serde_json::from_str::<EncodedAssetBudgetResource<'_>>(raw.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    match resource.kind.as_ref() {
+        "path" => {
+            if let Some(segments) = resource.segments {
+                inspect_nested_sequence(segments, state, WireSequenceKind::PathSegments)?;
+            }
+        }
+        "image" => {
+            let maximum = state.limits.max_image_bytes;
+            inspect_asset_budget(
+                resource.image,
+                "image_bytes",
+                &mut state.image_bytes,
+                maximum,
+            )?;
+        }
+        "font" => {
+            let maximum = state.limits.max_font_bytes;
+            inspect_asset_budget(resource.font, "font_bytes", &mut state.font_bytes, maximum)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn inspect_asset_budget(
+    asset: Option<&RawValue>,
+    label: &'static str,
+    total: &mut usize,
+    maximum: usize,
+) -> Result<(), DrawingListError> {
+    let Some(asset) = asset else {
+        return Ok(());
+    };
+    let asset = serde_json::from_str::<EncodedAssetBudget<'_>>(asset.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    let decoded = canonical_base64_json_decoded_len(asset.data.get())?;
+    checked_accumulate(label, total, decoded, maximum)
+}
+
+fn inspect_command_budget(
+    raw: &RawValue,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    let command = serde_json::from_str::<EncodedCommandBudget<'_>>(raw.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    if command.kind != "draw_text" {
+        return Ok(());
+    }
+    let Some(run) = command.run else {
+        return Ok(());
+    };
+    let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    let Some(obligation) = run.obligation else {
+        return Ok(());
+    };
+    let obligation = serde_json::from_str::<EncodedTextObligationBudget<'_>>(obligation.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    if obligation.kind == "glyph_run"
+        && let Some(glyphs) = obligation.glyphs
+    {
+        inspect_nested_sequence(glyphs, state, WireSequenceKind::Glyphs)?;
+    }
+    Ok(())
+}
+
+fn inspect_nested_sequence(
+    raw: &RawValue,
+    state: &mut WireBudgetState<'_>,
+    kind: WireSequenceKind,
+) -> Result<(), DrawingListError> {
+    let mut deserializer = serde_json::Deserializer::from_str(raw.get());
+    let result = WireSequenceSeed {
+        state: &mut *state,
+        kind,
+    }
+    .deserialize(&mut deserializer);
+    if let Err(error) = result {
+        return Err(if state.failure.is_some() {
+            DrawingListError::invalid("DrawingList nested wire budget validation failed")
+        } else {
+            DrawingListError::JsonDecode(error.to_string())
+        });
+    }
+    deserializer
+        .end()
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))
+}
+
+fn checked_accumulate(
+    resource: &'static str,
+    actual: &mut usize,
+    additional: usize,
+    maximum: usize,
+) -> Result<(), DrawingListError> {
+    *actual = (*actual)
+        .checked_add(additional)
+        .ok_or_else(|| DrawingListError::invalid(format!("{resource} count overflows usize")))?;
+    validate_count(resource, *actual, maximum)
+}
+
+fn canonical_base64_json_decoded_len(json_string: &str) -> Result<usize, DrawingListError> {
     let bytes = json_string.as_bytes();
     let encoded = bytes
         .strip_prefix(b"\"")
@@ -1126,34 +1454,11 @@ fn canonical_base64_decoded_len(json_string: &str) -> Result<usize, DrawingListE
             "encoded asset data must not use JSON escapes".to_string(),
         ));
     }
-    if encoded.len() % 4 != 0 {
-        return Err(DrawingListError::JsonDecode(
-            "encoded asset data must use padded Base64".to_string(),
-        ));
-    }
-    let padding = if encoded.ends_with(b"==") {
-        2
-    } else if encoded.ends_with(b"=") {
-        1
-    } else {
-        0
-    };
-    let content_len = encoded.len().saturating_sub(padding);
-    if encoded[..content_len]
-        .iter()
-        .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'+' | b'/'))
-        || encoded[content_len..].iter().any(|byte| *byte != b'=')
-        || (padding == 1 && content_len % 4 != 3)
-        || (padding == 2 && content_len % 4 != 2)
-    {
-        return Err(DrawingListError::JsonDecode(
-            "encoded asset data is not canonical Base64".to_string(),
-        ));
-    }
-    (encoded.len() / 4)
-        .checked_mul(3)
-        .and_then(|decoded| decoded.checked_sub(padding))
-        .ok_or_else(|| DrawingListError::invalid("encoded asset byte count overflows usize"))
+    let encoded = std::str::from_utf8(encoded).map_err(|_| {
+        DrawingListError::JsonDecode("encoded asset data is not canonical Base64".to_string())
+    })?;
+    canonical_base64_decoded_len(encoded)
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))
 }
 
 fn validate_extensions(extensions: &BTreeMap<String, Value>) -> Result<(), DrawingListError> {

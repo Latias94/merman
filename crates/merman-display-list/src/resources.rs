@@ -1,7 +1,10 @@
 use crate::{Color, DrawingListError, Point, Rect, Transform};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{Engine as _, display::Base64Display, engine::general_purpose::STANDARD};
 use png::ColorType;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{
+    Deserialize, Deserializer, Serialize, Serializer,
+    de::{self, Visitor},
+};
 use std::{fmt, io::Cursor};
 
 /// Compares a media type's type/subtype while ignoring ASCII case and optional parameters.
@@ -14,9 +17,11 @@ pub(crate) fn media_type_matches(
 ) -> bool {
     let Some((kind, subtype)) = media_type.split(';').next().and_then(|value| {
         let (kind, subtype) = value.trim().split_once('/')?;
-        let kind = kind.trim();
-        let subtype = subtype.trim();
-        (!kind.is_empty() && !subtype.is_empty()).then_some((kind, subtype))
+        (!kind.is_empty()
+            && !subtype.is_empty()
+            && kind.trim() == kind
+            && subtype.trim() == subtype)
+            .then_some((kind, subtype))
     }) else {
         return false;
     };
@@ -595,14 +600,127 @@ mod base64_bytes {
     where
         S: Serializer,
     {
-        serializer.serialize_str(&STANDARD.encode(bytes))
+        serializer.collect_str(&Base64Display::new(bytes, &STANDARD))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let encoded = String::deserialize(deserializer)?;
-        STANDARD.decode(encoded).map_err(serde::de::Error::custom)
+        deserializer.deserialize_str(CanonicalBase64Visitor)
+    }
+
+    struct CanonicalBase64Visitor;
+
+    impl<'de> Visitor<'de> for CanonicalBase64Visitor {
+        type Value = Vec<u8>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a canonical padded Base64 string")
+        }
+
+        fn visit_borrowed_str<E>(self, encoded: &'de str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            decode_canonical_base64(encoded).map_err(E::custom)
+        }
+
+        fn visit_str<E>(self, encoded: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            decode_canonical_base64(encoded).map_err(E::custom)
+        }
+
+        fn visit_string<E>(self, encoded: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            decode_canonical_base64(&encoded).map_err(E::custom)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CanonicalBase64Error {
+    InvalidLength,
+    NotCanonical,
+    LengthOverflow,
+}
+
+impl fmt::Display for CanonicalBase64Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidLength => "encoded asset data must use padded Base64",
+            Self::NotCanonical => "encoded asset data is not canonical Base64",
+            Self::LengthOverflow => "encoded asset byte count overflows usize",
+        })
+    }
+}
+
+/// Returns the decoded length of canonical standard Base64 without allocating decoded storage.
+///
+/// Besides alphabet and padding placement, this rejects non-zero unused bits in the final
+/// sextet. Accepting those alternative spellings would make canonical JSON have more than one
+/// wire representation for the same byte sequence.
+pub(crate) fn canonical_base64_decoded_len(encoded: &str) -> Result<usize, CanonicalBase64Error> {
+    let bytes = encoded.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return Err(CanonicalBase64Error::InvalidLength);
+    }
+    let padding = if bytes.ends_with(b"==") {
+        2
+    } else if bytes.ends_with(b"=") {
+        1
+    } else {
+        0
+    };
+    let content_len = bytes.len().saturating_sub(padding);
+    if bytes[..content_len]
+        .iter()
+        .any(|byte| standard_base64_value(*byte).is_none())
+        || bytes[content_len..].iter().any(|byte| *byte != b'=')
+        || (padding == 1 && content_len % 4 != 3)
+        || (padding == 2 && content_len % 4 != 2)
+    {
+        return Err(CanonicalBase64Error::NotCanonical);
+    }
+
+    let trailing_value = content_len
+        .checked_sub(1)
+        .and_then(|index| bytes.get(index))
+        .and_then(|byte| standard_base64_value(*byte));
+    if matches!((padding, trailing_value), (1, Some(value)) if value & 0b11 != 0)
+        || matches!((padding, trailing_value), (2, Some(value)) if value & 0b1111 != 0)
+    {
+        return Err(CanonicalBase64Error::NotCanonical);
+    }
+
+    (bytes.len() / 4)
+        .checked_mul(3)
+        .and_then(|decoded| decoded.checked_sub(padding))
+        .ok_or(CanonicalBase64Error::LengthOverflow)
+}
+
+fn decode_canonical_base64(encoded: &str) -> Result<Vec<u8>, CanonicalBase64Error> {
+    let expected_len = canonical_base64_decoded_len(encoded)?;
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|_| CanonicalBase64Error::NotCanonical)?;
+    if decoded.len() != expected_len {
+        return Err(CanonicalBase64Error::NotCanonical);
+    }
+    Ok(decoded)
+}
+
+fn standard_base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
     }
 }

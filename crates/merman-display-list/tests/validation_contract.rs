@@ -382,6 +382,24 @@ fn media_type_validation_is_case_insensitive_and_parameter_tolerant() {
         .image
         .media_type = "text/plain".into();
     assert!(document.validate().is_err());
+
+    for media_type in ["IMAGE /PNG", "IMAGE/ PNG"] {
+        let mut document = extended_document();
+        document
+            .resources
+            .iter_mut()
+            .find_map(|resource| match resource {
+                DrawingResource::Image(image) => Some(image),
+                _ => None,
+            })
+            .expect("extended fixture has an image")
+            .image
+            .media_type = media_type.into();
+        assert!(
+            document.validate().is_err(),
+            "media type whitespace adjacent to '/' must be rejected: {media_type}"
+        );
+    }
 }
 
 #[test]
@@ -643,6 +661,84 @@ fn decoder_charges_encoded_assets_before_materializing_base64_payloads() {
         Err(DrawingListError::JsonDecode(message))
             if message.contains("must not use JSON escapes")
     ));
+}
+
+#[test]
+fn decoder_stops_at_wire_collection_and_nested_sequence_limits() {
+    let cases = [
+        (
+            "resources",
+            br#"{"resources":[{"kind":"pattern"},{"kind":"pattern"},{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_resources: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "commands",
+            br#"{"commands":[{"kind":"save"},{"kind":"save"},{"broken":}]}"#.as_slice(),
+            DrawingListLimits {
+                max_commands: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "fallbacks",
+            br#"{"fallbacks":[{}, {}, {"broken":}]}"#.as_slice(),
+            DrawingListLimits {
+                max_fallbacks: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "path_segments",
+            br#"{"resources":[{"kind":"path","segments":[{},{}]}]}"#.as_slice(),
+            DrawingListLimits {
+                max_path_segments: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "glyphs",
+            br#"{"commands":[{"kind":"draw_text","run":{"obligation":{"kind":"glyph_run","glyphs":[{},{}]}}}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_glyphs: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+    ];
+
+    for (resource, bytes, limits) in cases {
+        assert!(matches!(
+            merman_display_list::DrawingListDocument::from_json_bytes_with_limits(bytes, &limits),
+            Err(DrawingListError::ResourceLimit {
+                resource: actual_resource,
+                actual: 2,
+                maximum: 1,
+            }) if actual_resource == resource
+        ));
+    }
+}
+
+#[test]
+fn encoded_assets_require_canonical_base64_pad_bits() {
+    let canonical: EncodedAsset =
+        serde_json::from_str(r#"{"media_type":"font/woff2","data":"Zg=="}"#)
+            .expect("canonical Base64 decodes");
+    assert_eq!(canonical.data, b"f");
+    assert_eq!(
+        serde_json::to_string(&canonical).expect("canonical Base64 serializes"),
+        r#"{"media_type":"font/woff2","data":"Zg=="}"#
+    );
+
+    for non_canonical in ["Zh==", "Zm9="] {
+        let json = format!(r#"{{"media_type":"font/woff2","data":"{non_canonical}"}}"#);
+        let error = serde_json::from_str::<EncodedAsset>(&json)
+            .expect_err("non-zero Base64 pad bits must be rejected");
+        assert!(error.to_string().contains("not canonical Base64"));
+    }
 }
 
 #[test]
