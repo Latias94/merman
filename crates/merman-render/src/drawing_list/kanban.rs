@@ -5,6 +5,7 @@
 //! arbitrary CSS remain explicit structured failures instead of being flattened into a visibly
 //! different card.
 
+use super::builder::DrawingListBuilder;
 use super::{
     KanbanSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
@@ -26,10 +27,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -43,9 +44,10 @@ pub(crate) fn build_kanban_document(
     pair: &KanbanPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    KanbanBuilder::new(pair, metadata, policy, session)?.build()
+    KanbanBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +86,6 @@ struct TextEmitSpec {
 struct KanbanBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a KanbanDiagramRenderModel,
     layout: &'a KanbanDiagramLayout,
     prepared_sections: &'a [KanbanPreparedMarkdownLabel],
@@ -103,9 +104,7 @@ struct KanbanBuilder<'a> {
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
     ticket_links: BTreeMap<String, Option<String>>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
 }
 
 impl<'a> KanbanBuilder<'a> {
@@ -113,6 +112,7 @@ impl<'a> KanbanBuilder<'a> {
         pair: &'a KanbanPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -155,7 +155,6 @@ impl<'a> KanbanBuilder<'a> {
         Ok(Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             prepared_sections,
@@ -174,19 +173,17 @@ impl<'a> KanbanBuilder<'a> {
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
             ticket_links: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "kanban.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
+            output: DrawingListBuilder::new(policy, limits, session),
         })
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "kanban.document".to_string(),
+            })?;
+        self.output.push_semantic(SemanticAnnotation {
             id: "kanban.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -196,56 +193,50 @@ impl<'a> KanbanBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: None,
             link: None,
-        });
+        })?;
 
         self.emit_sections()?;
         self.emit_items()?;
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
         let bounds = self
             .layout
             .bounds
             .as_ref()
             .ok_or_else(|| invalid("Kanban layout did not provide root bounds"))?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x - bounds.min_x,
-                bounds.max_y - bounds.min_y,
-            )),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
-                "x-merman-kanban".to_string(),
-                json!({
-                    "diagram_type": self.metadata.diagram_type,
-                    "text_mode": "plain_host_text",
-                    "markdown": "plain_and_br_only",
-                    "icons": "unavailable",
-                    "look": self.look,
-                    "use_max_width": self.layout.use_max_width,
-                    "ticket_links": "safe_href_only",
-                }),
-            )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        let viewport = Viewport::new(Rect::new(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x - bounds.min_x,
+            bounds.max_y - bounds.min_y,
+        ));
+        let extensions = BTreeMap::from([(
+            "x-merman-kanban".to_string(),
+            json!({
+                "diagram_type": self.metadata.diagram_type,
+                "text_mode": "plain_host_text",
+                "markdown": "plain_and_br_only",
+                "icons": "unavailable",
+                "look": self.look,
+                "use_max_width": self.layout.use_max_width,
+                "ticket_links": "safe_href_only",
+            }),
+        )]);
+        let diagram_type = self.metadata.diagram_type.clone();
+        let use_max_width = self.layout.use_max_width;
+        let look = self.look.clone();
+        let document = self.output.finish(viewport, extensions)?;
 
         Ok(RenderDocument {
             public: document,
             svg: SvgStructureSidecar {
                 family: RenderFamilyKind::Kanban,
                 body: SvgStructureBody::Kanban(KanbanSvgBody {
-                    diagram_type: self.metadata.diagram_type.clone(),
-                    use_max_width: self.layout.use_max_width,
-                    look: self.look,
+                    diagram_type,
+                    use_max_width,
+                    look,
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
@@ -272,9 +263,10 @@ impl<'a> KanbanBuilder<'a> {
                 format!("cluster section-{}", section.index),
             );
             self.dom_ids.insert(semantic_id.clone(), section.id.clone());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.background"),
                 rounded_rect_path(
@@ -311,14 +303,14 @@ impl<'a> KanbanBuilder<'a> {
                 )?;
             }
 
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(plan_title(prepared)?),
                 description: Some("Kanban section".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -375,9 +367,10 @@ impl<'a> KanbanBuilder<'a> {
                 self.ticket_links
                     .insert(semantic_id.clone(), ticket_link.uri.clone());
             }
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.background"),
                 rounded_rect_path(
@@ -456,8 +449,8 @@ impl<'a> KanbanBuilder<'a> {
                 self.emit_priority_line(&semantic_id, item, priority)?;
             }
 
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id.clone(),
                 role: SemanticRole::Node,
                 title: Some(plan_title(&prepared.title)?),
@@ -466,13 +459,13 @@ impl<'a> KanbanBuilder<'a> {
                     .ticket_link
                     .as_ref()
                     .and_then(|link| link.uri.clone()),
-            });
+            })?;
             if item
                 .ticket
                 .as_deref()
                 .is_some_and(|value| !value.is_empty())
             {
-                self.semantics.push(SemanticAnnotation {
+                self.output.push_semantic(SemanticAnnotation {
                     id: format!("{semantic_id}.ticket"),
                     role: SemanticRole::Label,
                     title: item.ticket.clone(),
@@ -481,33 +474,33 @@ impl<'a> KanbanBuilder<'a> {
                         .ticket_link
                         .as_ref()
                         .and_then(|link| link.uri.clone()),
-                });
+                })?;
             }
             if item
                 .assigned
                 .as_deref()
                 .is_some_and(|value| !value.is_empty())
             {
-                self.semantics.push(SemanticAnnotation {
+                self.output.push_semantic(SemanticAnnotation {
                     id: format!("{semantic_id}.assigned"),
                     role: SemanticRole::Label,
                     title: item.assigned.clone(),
                     description: Some("Kanban assignee".to_string()),
                     link: None,
-                });
+                })?;
             }
             if item
                 .priority
                 .as_deref()
                 .is_some_and(|value| !value.is_empty())
             {
-                self.semantics.push(SemanticAnnotation {
+                self.output.push_semantic(SemanticAnnotation {
                     id: format!("{semantic_id}.priority"),
                     role: SemanticRole::Label,
                     title: item.priority.clone(),
                     description: Some("Kanban priority".to_string()),
                     link: None,
-                });
+                })?;
             }
         }
         Ok(())
@@ -744,15 +737,17 @@ impl<'a> KanbanBuilder<'a> {
             | TextBaseline::TextBeforeEdge
             | TextBaseline::TextAfterEdge => origin.y - height,
         };
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: value,
+        let line_height = self.line_height();
+        let obligation = self.text_obligation.clone();
+        self.output.draw_host_text(&value, |text| TextRun {
+            text,
             origin,
             bounds: Rect::new(left, top, width, height),
             style: DisplayTextStyle {
                 font: FontDescriptor { weight, ..font },
                 font_size,
                 letter_spacing: 0.0,
-                line_height: self.line_height(),
+                line_height,
                 fill: Paint::solid(color),
                 stroke: None,
                 paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
@@ -761,9 +756,8 @@ impl<'a> KanbanBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
+            obligation,
+        })
     }
 
     fn line_height(&self) -> f64 {
@@ -780,13 +774,7 @@ impl<'a> KanbanBuilder<'a> {
             return Err(invalid("Kanban path has no geometry"));
         }
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(id, segments, style)
     }
 }
 

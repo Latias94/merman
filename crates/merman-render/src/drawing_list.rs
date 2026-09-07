@@ -683,7 +683,7 @@ pub(crate) fn build_for_family(
             journey::build_journey_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Kanban(pair) => {
-            kanban::build_kanban_document(pair, metadata, policy, session)
+            kanban::build_kanban_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Mindmap(pair) => {
             mindmap::build_mindmap_document(pair, metadata, policy, limits, session)
@@ -704,7 +704,7 @@ pub(crate) fn build_for_family(
             railroad::build_railroad_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Requirement(pair) => {
-            requirement::build_requirement_document(pair, metadata, policy, session)
+            requirement::build_requirement_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Sankey(pair) => {
             sankey::build_sankey_document(pair, metadata, policy, session)

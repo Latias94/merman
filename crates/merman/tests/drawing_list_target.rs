@@ -216,6 +216,7 @@ fn bounded_families_fit_their_exact_document_budgets() {
         "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n",
         "timeline\ntitle Releases\nsection Planning\nPlan : Build\nShip : Done\n",
         "timeline TD\nsection Planning\nPlan : Build\nShip : Done\n",
+        "kanban\n  Todo\n    task[Task]\n",
         concat!(
             "C4Context\ntitle Context\n",
             "Person(user, \"User\")\n",
@@ -284,6 +285,33 @@ fn info_command_limit_reaches_the_bounded_document_builder() {
             request,
         ))
         .expect_err("the Info builder must reject its first command before returning output");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
+}
+
+#[test]
+fn kanban_command_limit_reaches_the_bounded_document_builder() {
+    let request = DrawingListRequest {
+        limits: DrawingListLimits {
+            max_commands: 0,
+            ..DrawingListLimits::default()
+        },
+        ..DrawingListRequest::default()
+    };
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "kanban\n  Todo\n    task[Task]\n",
+            OperationControl::new(),
+            request,
+        ))
+        .expect_err("the Kanban builder must reject its first command before returning output");
 
     assert!(matches!(
         error,
@@ -1189,6 +1217,35 @@ fn requirement_emits_typed_nodes_relationships_markers_labels_and_semantics() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("<<satisfies>>")
     }));
+}
+
+#[test]
+fn requirement_limits_reject_before_first_output_command() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "requirementDiagram\n  requirement req1 {\n    text: Login\n  }\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("Requirement must reject its first builder command");
+
+    assert!(
+        matches!(
+            &error,
+            RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "max_commands"
+                    && limit.phase == "drawing-list-validation"
+                    && limit.actual == 1
+                    && limit.maximum == 0
+        ),
+        "{error}"
+    );
 }
 
 #[test]

@@ -6,6 +6,7 @@
 //! ordinary path segments; browser HTML, hand-drawn styling, filters, and unsupported class
 //! declarations remain explicit failures instead of becoming silent omissions.
 
+use super::builder::DrawingListBuilder;
 use super::{
     RenderDocument, RequirementSvgBody, SvgStructureBody, SvgStructureSidecar,
     parse_font_families_for, theme_color,
@@ -18,7 +19,7 @@ use crate::drawing_list::support::{
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, RequirementDiagramLayout};
-use crate::render_geometry::{FlowchartCurveKind, flowchart_curve_segments};
+use crate::render_geometry::{FlowchartCurveKind, emit_flowchart_curve_segments};
 use crate::requirement::{
     RequirementEdgeLabelPlan, RequirementNodeLabelPlan, RequirementNodeRenderPlan,
     RequirementPreparedArtifact,
@@ -37,10 +38,10 @@ use merman_core::diagrams::requirement::{
 };
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -80,15 +81,15 @@ pub(crate) fn build_requirement_document(
     pair: &RequirementPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    RequirementBuilder::new(pair, metadata, policy, session)?.build()
+    RequirementBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct RequirementBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a RequirementDiagramRenderModel,
     layout: &'a RequirementDiagramLayout,
     prepared_nodes: &'a HashMap<String, RequirementNodeRenderPlan>,
@@ -106,9 +107,7 @@ struct RequirementBuilder<'a> {
     border_colors: Vec<String>,
     background_colors: Vec<String>,
     text_obligation: TextObligation,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -122,9 +121,15 @@ impl<'a> RequirementBuilder<'a> {
         pair: &'a RequirementPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "requirement.document".to_string(),
+        })?;
         let config = metadata.effective_config.as_value();
         let settings = crate::requirement::RequirementConfigView::new(config).render_settings();
         if settings.look.as_str().eq_ignore_ascii_case("handDrawn") {
@@ -180,7 +185,6 @@ impl<'a> RequirementBuilder<'a> {
         Ok(Self {
             metadata,
             session,
-            policy,
             model: pair.semantic(),
             layout,
             prepared_nodes,
@@ -202,14 +206,7 @@ impl<'a> RequirementBuilder<'a> {
             border_colors: config_string_vec(config, &["themeVariables", "borderColorArray"]),
             background_colors: config_string_vec(config, &["themeVariables", "bkgColorArray"]),
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "requirement.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
+            output,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -220,7 +217,7 @@ impl<'a> RequirementBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "requirement.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -231,7 +228,7 @@ impl<'a> RequirementBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
         self.semantic_looks
             .insert("requirement.document".to_string(), "classic".to_string());
 
@@ -249,20 +246,13 @@ impl<'a> RequirementBuilder<'a> {
             self.emit_title(title)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
         let viewport = self.viewport(title.as_deref())?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(viewport),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.output.finish(
+            Viewport::new(viewport),
+            BTreeMap::from([(
                 "x-merman-requirement".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -275,8 +265,7 @@ impl<'a> RequirementBuilder<'a> {
                     "use_max_width": crate::requirement::RequirementConfigView::new(self.metadata.effective_config.as_value()).render_settings().use_max_width,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -315,11 +304,10 @@ impl<'a> RequirementBuilder<'a> {
                 .insert(semantic_id.clone(), "edgePath".to_string());
             self.semantic_looks
                 .insert(semantic_id.clone(), "classic".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
-            let segments =
-                flowchart_curve_segments(&edge.points, FlowchartCurveKind::Basis, 0.0, false, None);
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let dash_array = if prepared.relationship_type == "contains" {
                 Vec::new()
             } else {
@@ -336,9 +324,8 @@ impl<'a> RequirementBuilder<'a> {
                     }
                 ),
             );
-            self.add_path(
-                format!("{semantic_id}.route"),
-                segments,
+            self.output.draw_path_with(
+                ResourceId::new(format!("{semantic_id}.route")),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: None,
@@ -347,6 +334,16 @@ impl<'a> RequirementBuilder<'a> {
                         ..stroke(self.relation_color, self.relation_width)
                     }),
                 },
+                |emit| {
+                    emit_flowchart_curve_segments(
+                        &edge.points,
+                        FlowchartCurveKind::Basis,
+                        0.0,
+                        false,
+                        None,
+                        emit,
+                    )
+                },
             )?;
             if prepared.marker_start {
                 self.emit_contains_marker(&semantic_id, edge)?;
@@ -354,8 +351,8 @@ impl<'a> RequirementBuilder<'a> {
             if prepared.marker_end {
                 self.emit_arrow_marker(&semantic_id, edge)?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Edge,
                 title: prepared
@@ -364,7 +361,7 @@ impl<'a> RequirementBuilder<'a> {
                     .transpose()?,
                 description: Some(format!("{} → {}", edge.from, edge.to)),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -394,9 +391,10 @@ impl<'a> RequirementBuilder<'a> {
                 .insert(format!("{semantic_id}.background"), "labelBkg".to_string());
             self.text_classes
                 .insert(semantic_id.clone(), "edgeLabel".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.background"),
                 rounded_rect_path(label.x, label.y, label.width, label.height, 0.0),
@@ -419,8 +417,8 @@ impl<'a> RequirementBuilder<'a> {
                     baseline: TextBaseline::Middle,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(text),
@@ -429,7 +427,7 @@ impl<'a> RequirementBuilder<'a> {
                     prepared.relationship_type
                 )),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -484,9 +482,10 @@ impl<'a> RequirementBuilder<'a> {
                     format!("color-{}", source_index % self.border_colors.len()),
                 );
             }
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let style = self.node_style(*source_index, source)?;
             let rough_shape = rough_rectangle_opsets(RoughRectangleSpec {
                 x: node.x,
@@ -549,14 +548,14 @@ impl<'a> RequirementBuilder<'a> {
                     },
                 )?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(source.name().to_string()),
                 description: Some(node_description(source)),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -791,13 +790,13 @@ impl<'a> RequirementBuilder<'a> {
             "requirement.title".to_string(),
             "requirementDiagramTitleText".to_string(),
         );
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "requirement.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -891,8 +890,8 @@ impl<'a> RequirementBuilder<'a> {
             | TextBaseline::TextBeforeEdge
             | TextBaseline::TextAfterEdge => origin.y - height,
         };
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: value,
+        self.output.draw_host_text(&value, |text| TextRun {
+            text,
             origin,
             bounds: Rect::new(left, top, width, height),
             style: DisplayTextStyle {
@@ -909,8 +908,7 @@ impl<'a> RequirementBuilder<'a> {
             direction: TextDirection::Auto,
             language: None,
             obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
+        })
     }
 
     fn add_path(
@@ -922,14 +920,8 @@ impl<'a> RequirementBuilder<'a> {
         if segments.is_empty() {
             return Err(invalid("Requirement path has no geometry"));
         }
-        let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output
+            .draw_path(ResourceId::new(id.into()), segments, style)
     }
 }
 
