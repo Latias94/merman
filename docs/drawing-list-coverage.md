@@ -14,7 +14,7 @@ inventory row fails at test time.  The current inventory is:
 
 | Family | Direct document adapter | SVG serializer |
 | --- | --- | --- |
-| Error | yes | legacy bridge |
+| Error | yes | canonical |
 | Mindmap | yes | legacy bridge |
 | State | yes | legacy bridge |
 | Sequence | yes | legacy bridge |

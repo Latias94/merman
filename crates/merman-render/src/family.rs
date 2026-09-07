@@ -1231,7 +1231,7 @@ fn render_legacy_family_artifact_svg(
 /// serializer.  The list is intentionally explicit: adding a family requires a focused SVG
 /// parity fixture and a review of every effect that the public document can carry.
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
-    matches!(family, RenderFamilyKind::Info)
+    matches!(family, RenderFamilyKind::Error | RenderFamilyKind::Info)
 }
 
 #[inline(never)]

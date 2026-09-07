@@ -1,6 +1,7 @@
 use base64::Engine as _;
 use merman_core::{
-    Engine, OperationControl, ParseOptions, baseline::PINNED_MERMAID_BASELINE_VERSION,
+    Engine, MermaidConfig, OperationControl, ParseOptions,
+    baseline::PINNED_MERMAID_BASELINE_VERSION,
 };
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
@@ -10,7 +11,15 @@ use merman_render::family::{
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_family_svg(source: &str, diagram_id: &str) -> RenderedFamilySvg {
-    let parsed = Engine::new()
+    render_family_svg_with_engine(Engine::new(), source, diagram_id)
+}
+
+fn render_family_svg_with_engine(
+    engine: Engine,
+    source: &str,
+    diagram_id: &str,
+) -> RenderedFamilySvg {
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::lenient())
         .expect("source parses")
         .expect("source detects a diagram");
@@ -80,15 +89,48 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
     let svg = render_svg("flowchart TD\nA -->\n", "error-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Error SVG is XML");
     let root = document.root_element();
 
-    assert_eq!(root.attribute("class"), Some("error"));
+    assert_eq!(root.attribute("class"), None);
+    assert_eq!(root.attribute("aria-labelledby"), None);
+    assert_eq!(root.attribute("aria-describedby"), None);
     assert_eq!(root.attribute("viewBox"), Some("0 0 2412 512"));
     assert_eq!(root.attribute("style"), Some("max-width: 512px;"));
+    let root_children = root
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        root_children
+            .iter()
+            .map(|node| node.tag_name().name())
+            .collect::<Vec<_>>(),
+        ["style", "g", "g"]
+    );
+    assert_eq!(
+        root_children[0].tag_name().namespace(),
+        Some("http://www.w3.org/2000/svg")
+    );
+    let body_children = root_children[2]
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
+    assert_eq!(body_children.len(), 8);
+    assert!(body_children[..6].iter().all(|node| {
+        node.has_tag_name("path")
+            && node.attributes().len() == 2
+            && node.attribute("class") == Some("error-icon")
+            && node.attribute("d").is_some()
+    }));
+    assert!(body_children[6..].iter().all(|node| {
+        node.has_tag_name("text")
+            && node.attributes().len() == 5
+            && node.attribute("class") == Some("error-text")
+            && node.attribute("style") == Some("text-anchor: middle;")
+    }));
     assert_eq!(
         document
             .descendants()
@@ -107,6 +149,28 @@ fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
     assert!(svg.contains(&format!(
         "mermaid version {PINNED_MERMAID_BASELINE_VERSION}"
     )));
+    assert!(!svg.contains("data-merman-"));
+    assert!(!svg.contains("<title"));
+    assert!(!svg.contains("<desc"));
+}
+
+#[test]
+fn error_theme_css_uses_an_explicit_effect_bridge() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeCSS": ".error-icon { opacity: 0.5; }"
+    })));
+    let output = render_family_svg_with_engine(engine, "flowchart TD\nA -->\n", "error-theme-css");
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::LegacyBridge
+    );
+    let Some(SvgSerializationBridgeReason::DrawingListUnavailable { family, reason }) =
+        output.serialization_bridge_reason()
+    else {
+        panic!("expected an effect-specific DrawingList bridge reason");
+    };
+    assert_eq!(family, "error");
+    assert!(reason.contains("themeCSS"));
 }
 
 #[test]

@@ -880,7 +880,7 @@ fn error_text_run(
     }
 }
 
-fn theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
+pub(crate) fn theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
     let value = config
         .get("themeVariables")
         .and_then(|variables| variables.get(key))
@@ -902,7 +902,7 @@ fn theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
     ))
 }
 
-fn parse_font_families(value: String) -> Vec<String> {
+pub(crate) fn parse_font_families(value: String) -> Vec<String> {
     let mut families = Vec::new();
     let mut current = String::new();
     let mut quote = None;
