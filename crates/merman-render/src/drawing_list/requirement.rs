@@ -1239,11 +1239,10 @@ mod tests {
     }
 
     #[test]
-    fn marker_directions_skip_coincident_endpoint_points() {
+    fn start_marker_direction_skips_coincident_endpoint_points() {
         let points = [
             layout_point(1.0, 2.0),
             layout_point(1.0, 2.0),
-            layout_point(4.0, 6.0),
             layout_point(4.0, 6.0),
         ];
 
@@ -1251,6 +1250,16 @@ mod tests {
             start_marker_direction(&points).expect("start marker direction"),
             Point::new(0.6, 0.8)
         );
+    }
+
+    #[test]
+    fn end_marker_direction_skips_coincident_endpoint_points() {
+        let points = [
+            layout_point(1.0, 2.0),
+            layout_point(4.0, 6.0),
+            layout_point(4.0, 6.0),
+        ];
+
         assert_eq!(
             end_marker_direction(&points).expect("end marker direction"),
             Point::new(0.6, 0.8)
