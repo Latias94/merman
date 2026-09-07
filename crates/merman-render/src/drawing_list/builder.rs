@@ -221,9 +221,23 @@ impl<'a> DrawingListBuilder<'a> {
         text: &str,
         make_run: impl FnOnce(String) -> TextRun,
     ) -> Result<()> {
+        self.draw_host_text_parts(&[text], |text| Ok(make_run(text)))
+    }
+
+    /// Admits borrowed text fragments before joining or measuring them. A fallible host
+    /// measurement callback cannot commit a command after cancellation or an invalid result.
+    pub(crate) fn draw_host_text_parts(
+        &mut self,
+        parts: &[&str],
+        make_run: impl FnOnce(String) -> Result<TextRun>,
+    ) -> Result<()> {
         let mut projected = self.usage;
         checked_increment(&mut projected.commands, 1, "command count")?;
-        checked_increment(&mut projected.text_bytes, text.len(), "text byte count")?;
+        let mut text_bytes = 0;
+        for part in parts {
+            checked_increment(&mut text_bytes, part.len(), "text byte count")?;
+        }
+        checked_increment(&mut projected.text_bytes, text_bytes, "text byte count")?;
         self.preflight(projected)?;
         self.commands
             .try_reserve(1)
@@ -231,11 +245,18 @@ impl<'a> DrawingListBuilder<'a> {
 
         let mut owned = String::new();
         owned
-            .try_reserve_exact(text.len())
+            .try_reserve_exact(text_bytes)
             .map_err(|_| allocation_failed("text"))?;
-        owned.push_str(text);
-        let run = make_run(owned);
-        if run.text != text {
+        for part in parts {
+            owned.push_str(part);
+        }
+        let run = make_run(owned)?;
+        self.session.checkpoint(OperationPhase::Emit)?;
+        if !run
+            .text
+            .bytes()
+            .eq(parts.iter().flat_map(|part| part.bytes()))
+        {
             return Err(contract_error(
                 "DrawingList host-text builder changed the admitted text payload",
             ));
@@ -634,6 +655,72 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, Error::Cancelled(_)));
         assert_eq!(builder.commands.len(), 1);
+    }
+
+    #[test]
+    fn text_fragments_are_admitted_before_the_fallible_callback() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits {
+                max_text_bytes: 6,
+                ..DrawingListLimits::default()
+            },
+            &session,
+        );
+        let parts = ["é", " [3]"];
+        let error = builder
+            .draw_host_text_parts(&parts, |_| Err(contract_error("measurement failed")))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::DrawingListContract(DrawingListError::InvalidDocument(_))
+        ));
+        assert_eq!(builder.usage, DrawingListFootprint::default());
+        assert!(builder.commands.is_empty());
+
+        builder
+            .draw_host_text_parts(&parts, |text| Ok(host_text_run(text)))
+            .unwrap();
+        assert_eq!(builder.usage.text_bytes, 6);
+        let DrawingCommand::DrawText { run } = &builder.commands[0] else {
+            panic!("expected text")
+        };
+        assert_eq!(run.text, "é [3]");
+        let error = builder
+            .draw_host_text_parts(&["x"], |_| {
+                panic!("over-budget text must not invoke measurement")
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::DrawingListContract(DrawingListError::ResourceLimit {
+                resource: "text_bytes",
+                actual: 7,
+                maximum: 6,
+            })
+        ));
+        assert_eq!(builder.commands.len(), 1);
+    }
+
+    #[test]
+    fn cancellation_in_host_text_callback_does_not_commit_text() {
+        let environment = RenderEnvironment::deterministic();
+        let control = OperationControl::new();
+        let session = make_session(&environment, control.clone());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &session,
+        );
+        let result = builder.draw_host_text("cancelled", |text| {
+            control.cancel();
+            host_text_run(text)
+        });
+        assert!(matches!(result, Err(Error::Cancelled(_))));
+        assert!(builder.commands.is_empty());
+        assert_eq!(builder.usage, DrawingListFootprint::default());
     }
 
     #[test]
