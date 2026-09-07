@@ -1059,10 +1059,16 @@ fn compile_timeline_family(
     let mut contributions = FamilyContributions::new();
     contributions.add_typography(reader);
     contributions.add_theme_variables(
-        "event.paint-text",
+        ThemeRouteCutoverProjection::TimelineEventFill.contribution_id(),
+        [("mainBkg", reader.fill(ThemeTarget::TimelineEvent))],
+    );
+    contributions.add_theme_variables(
+        "event.stroke",
+        [("nodeBorder", reader.stroke(ThemeTarget::TimelineEvent))],
+    );
+    contributions.add_theme_variables(
+        "event.text",
         [
-            ("mainBkg", reader.fill(ThemeTarget::TimelineEvent)),
-            ("nodeBorder", reader.stroke(ThemeTarget::TimelineEvent)),
             ("textColor", reader.text_fill(ThemeTarget::Text)),
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
@@ -2442,15 +2448,15 @@ mod tests {
 
         let status = legacy_family_theme_bridge_retirement_status();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 270);
+        assert_eq!(status.matrix_route_count(), 266);
         assert_eq!(status.matrix_family_count(), 16);
         assert_eq!(status.dispatched_family_count(), 16);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                0x06, 0xf4, 0xea, 0xe0, 0x71, 0x15, 0x5f, 0x45, 0x92, 0x4e, 0xc6, 0xe3, 0x2b, 0x6e,
-                0x9b, 0x32, 0x20, 0x1f, 0x75, 0x15, 0xac, 0x06, 0xf1, 0x77, 0x80, 0x99, 0xe8, 0x95,
-                0x96, 0x52, 0x60, 0xb5,
+                0x8f, 0xd4, 0xcd, 0x68, 0x8d, 0x87, 0xc3, 0xeb, 0xa8, 0x6a, 0xc2, 0x91, 0xa8, 0x9e,
+                0x35, 0xd5, 0x21, 0xea, 0x3e, 0x93, 0xee, 0xa3, 0xa9, 0x97, 0xf5, 0xc0, 0x08, 0xfc,
+                0x0b, 0x6c, 0x0c, 0x67,
             ]
         );
         assert_eq!(
@@ -5096,5 +5102,61 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.timeline.event.palette")
         );
+    }
+
+    #[test]
+    fn timeline_direct_fill_suppresses_only_the_property_local_bridge_projection() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default()
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::TimelineEvent,
+                        ThemeStylePatch::default()
+                            .with_fill(solid("#123456"))
+                            .with_stroke(solid("#654321")),
+                    )
+                    .for_family(DiagramFamilyId::TIMELINE),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(solid("#111827")),
+                    )
+                    .for_family(DiagramFamilyId::TIMELINE),
+                )
+                .with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(solid("#9333ea")),
+                    )
+                    .for_family(DiagramFamilyId::TIMELINE),
+                ),
+        );
+        let bridge = bridge(&spec);
+        let artifact = bridge.compile_for_family(DiagramFamilyId::TIMELINE);
+
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.event.fill")
+        );
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.event.stroke")
+        );
+        assert!(
+            artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.event.text")
+        );
+        assert!(
+            !artifact
+                .contribution_ids
+                .contains("merman.legacy-family-theme.v1.timeline.event.paint-text")
+        );
+        assert!(!bridge.owns_contribution_id(
+            ThemeRouteCutoverProjection::TimelineEventFill.contribution_id()
+        ));
     }
 }

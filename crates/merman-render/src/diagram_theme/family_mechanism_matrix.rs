@@ -461,6 +461,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
         }
+        (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL)
+        }
         (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_FILL)
         }
@@ -1856,6 +1859,23 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Radius | FamilyThemeRuleFacet::Opacity
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::TIMELINE
+        && target == ThemeTarget::TimelineEvent
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
@@ -3963,6 +3983,48 @@ mod tests {
     }
 
     #[test]
+    fn timeline_event_fill_owns_unqualified_and_explicit_default_scalar_routes() {
+        let fill = CanvasPaint::solid("#123456").expect("valid Timeline event fill");
+        for rule in [
+            ThemeRule::new(
+                ThemeTarget::TimelineEvent,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::TimelineEvent,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            )
+            .with_variant(ThemeVariant::Default),
+        ] {
+            let routes = compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &rule);
+            assert_eq!(routes.len(), 1);
+            assert_eq!(
+                routes[0].disposition(),
+                FamilyThemeDisposition::TypedAdapter
+            );
+        }
+
+        for rule in [
+            ThemeRule::new(
+                ThemeTarget::TimelineEvent,
+                ThemeStylePatch::default().with_fill(fill.clone()),
+            )
+            .with_variant(ThemeVariant::Active),
+            ThemeRule::new(
+                ThemeTarget::TimelineEvent,
+                ThemeStylePatch::default().with_fill(fill),
+            )
+            .with_ordinal(crate::diagram_theme::OrdinalSelector::exact(1).unwrap()),
+        ] {
+            assert!(
+                compile_rule_routes(DiagramFamilyId::TIMELINE, 0, &rule)
+                    .iter()
+                    .all(|route| route.disposition() == FamilyThemeDisposition::Unsupported)
+            );
+        }
+    }
+
+    #[test]
     fn tree_view_owns_only_unqualified_static_edge_stroke_width() {
         let edge_width = ThemeStylePatch::default()
             .with_stroke_width(6.0)
@@ -5847,6 +5909,20 @@ mod tests {
                 vec!["cluster.stroke"],
             ),
             (
+                DiagramFamilyId::TIMELINE,
+                ThemeTarget::TimelineEvent,
+                Fill,
+                Transparent,
+                vec!["event.fill"],
+            ),
+            (
+                DiagramFamilyId::TIMELINE,
+                ThemeTarget::TimelineEvent,
+                Fill,
+                Solid,
+                vec!["event.fill"],
+            ),
+            (
                 DiagramFamilyId::TREE_VIEW,
                 ThemeTarget::NodeLabel,
                 Fill,
@@ -6011,7 +6087,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 140);
+        assert_eq!(qualified.len(), 142);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6042,6 +6118,13 @@ mod tests {
                 .filter(|route| route.family_id() == DiagramFamilyId::REQUIREMENT)
                 .count(),
             4
+        );
+        assert_eq!(
+            qualified
+                .iter()
+                .filter(|route| route.family_id() == DiagramFamilyId::TIMELINE)
+                .count(),
+            2
         );
         assert_eq!(
             qualified
@@ -6279,6 +6362,18 @@ mod tests {
                     _ => panic!("unexpected Mindmap qualified route: {route:?}"),
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
+            } else if route.family_id() == DiagramFamilyId::TIMELINE {
+                assert_eq!(route.target(), ThemeTarget::TimelineEvent);
+                assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    route.selector(),
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                );
+                assert_eq!(
+                    projections,
+                    vec![ThemeRouteCutoverProjection::TimelineEventFill],
+                    "route={route:?}"
+                );
             } else if route.family_id() == DiagramFamilyId::PIE {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {

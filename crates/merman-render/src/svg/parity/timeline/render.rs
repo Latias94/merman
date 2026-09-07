@@ -321,6 +321,33 @@ fn observe_timeline_event_radius<'a>(
     }
 }
 
+fn observe_timeline_event_fill(output: &str, expected_fill: Option<&str>) -> bool {
+    let Some(path_opening) = output
+        .split_once("<path ")
+        .and_then(|(_, rest)| rest.split_once("/>").map(|(opening, _)| opening))
+        .filter(|opening| opening.contains("class=\"node-bkg node-undefined\""))
+    else {
+        return false;
+    };
+
+    let actual_style = path_opening
+        .split_once(" style=\"")
+        .and_then(|(_, rest)| rest.split_once('"').map(|(style, _)| style));
+    let actual_fill = actual_style.and_then(|style| {
+        style.split(';').find_map(|declaration| {
+            let (property, value) = declaration.split_once(':')?;
+            property
+                .trim()
+                .eq_ignore_ascii_case("fill")
+                .then_some(value.trim())
+        })
+    });
+    match expected_fill {
+        Some(fill) => actual_fill == Some(escape_attr(fill).as_ref()),
+        None => actual_fill.is_none(),
+    }
+}
+
 struct TimelineEventEmissionState<'a> {
     theme: &'a crate::timeline::TimelineEventTheme,
     next_event_index: usize,
@@ -408,6 +435,10 @@ impl<'a> TimelineEventEmissionState<'a> {
         self.theme.palette_fill_for_slot(slot)
     }
 
+    fn fill_for_event(&self, event_index: usize) -> Option<&str> {
+        self.theme.fill_for_event(event_index)
+    }
+
     fn palette_line_stroke_for_slot(&self, slot: usize) -> Option<&str> {
         self.theme.palette_line_stroke_for_slot(slot)
     }
@@ -430,6 +461,8 @@ impl<'a> TimelineEventEmissionState<'a> {
         emitted_opacity_matches: bool,
         emitted_radius_token: Option<&str>,
         emitted_radius_geometry_matches: bool,
+        emitted_fill: Option<&str>,
+        emitted_fill_matches: bool,
     ) {
         if let Some(receipt) = self.receipt.as_mut() {
             receipt.record_checkpointed_event(
@@ -438,6 +471,8 @@ impl<'a> TimelineEventEmissionState<'a> {
                 emitted_opacity_matches,
                 emitted_radius_token,
                 emitted_radius_geometry_matches,
+                emitted_fill,
+                emitted_fill_matches,
             );
         }
         self.next_event_index += 1;
@@ -512,6 +547,7 @@ fn render_timeline_diagram_svg_inner(
         n: &crate::model::TimelineNodeLayout,
         is_redux_theme: bool,
         is_event: bool,
+        event_index: Option<usize>,
         event_radius: Option<(&str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
@@ -560,7 +596,16 @@ fn render_timeline_diagram_svg_inner(
             .and_then(|slot| event_emission.palette_line_stroke_for_slot(slot))
             .map(str::to_owned);
         let emitted_palette_slot = palette_fill.as_ref().and(node_palette_slot);
-        let palette_style = palette_fill
+        let direct_fill = event_index
+            .and_then(|event_index| event_emission.fill_for_event(event_index))
+            .map(str::to_owned);
+        let effective_fill = direct_fill.as_deref().or(palette_fill.as_deref());
+        let emitted_palette_fill = if direct_fill.is_none() {
+            palette_fill.as_deref()
+        } else {
+            None
+        };
+        let fill_style = effective_fill
             .as_deref()
             .map(|fill| format!(r#" style="fill:{};""#, escape_attr(fill)))
             .unwrap_or_default();
@@ -575,10 +620,10 @@ fn render_timeline_diagram_svg_inner(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"{palette_style}/>"#,
+            r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"{fill_style}/>"#,
             node_id = escape_attr_display(node_id),
             d = escape_attr(&d),
-            palette_style = palette_style,
+            fill_style = fill_style,
         );
         out.checkpoint()?;
         let emitted_line_stroke = if !is_redux_theme {
@@ -636,7 +681,7 @@ fn render_timeline_diagram_svg_inner(
         out.checkpoint()?;
         event_emission.record_palette_node(
             emitted_palette_slot,
-            palette_fill.as_deref(),
+            emitted_palette_fill,
             emitted_line_stroke,
         );
         options.checkpoint_emit()
@@ -648,11 +693,13 @@ fn render_timeline_diagram_svg_inner(
         node_count: &mut usize,
         event: &TimelineNodeLayout,
         is_redux_theme: bool,
+        event_index: usize,
+        expected_effective_fill: Option<&str>,
         event_radius: Option<(&'a str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
         options: &SvgExecution<'_>,
-    ) -> Result<(Option<&'a str>, bool)> {
+    ) -> Result<(Option<&'a str>, bool, bool)> {
         let output_start = out.len();
         render_node(
             out,
@@ -661,17 +708,19 @@ fn render_timeline_diagram_svg_inner(
             event,
             is_redux_theme,
             true,
+            Some(event_index),
             event_radius,
             event_emission,
             typography_emission,
             options,
         )?;
         let output = out.as_str().get(output_start..).unwrap_or_default();
-        Ok(observe_timeline_event_radius(
-            output,
-            event,
-            event_radius,
-            is_redux_theme,
+        let radius_observation =
+            observe_timeline_event_radius(output, event, event_radius, is_redux_theme);
+        Ok((
+            radius_observation.0,
+            radius_observation.1,
+            observe_timeline_event_fill(output, expected_effective_fill),
         ))
     }
 
@@ -688,17 +737,29 @@ fn render_timeline_diagram_svg_inner(
         let (event_index, emitted_opacity_token, emitted_opacity_matches) =
             event_emission.write_event_wrapper_open(out, event)?;
         let event_radius = event_emission.theme.radius_for_event(event_index);
-        let (emitted_radius_token, emitted_radius_geometry_matches) = render_event_node(
-            out,
-            diagram_id,
-            node_count,
-            event,
-            is_redux_theme,
-            event_radius,
-            event_emission,
-            typography_emission,
-            options,
-        )?;
+        let event_fill = event_emission
+            .fill_for_event(event_index)
+            .map(str::to_owned);
+        let effective_fill = event_fill.clone().or_else(|| {
+            event_emission
+                .palette_slot_for_node(event)
+                .and_then(|slot| event_emission.palette_fill_for_slot(slot))
+                .map(str::to_owned)
+        });
+        let (emitted_radius_token, emitted_radius_geometry_matches, emitted_fill_matches) =
+            render_event_node(
+                out,
+                diagram_id,
+                node_count,
+                event,
+                is_redux_theme,
+                event_index,
+                effective_fill.as_deref(),
+                event_radius,
+                event_emission,
+                typography_emission,
+                options,
+            )?;
         out.push_str("</g>");
         out.checkpoint()?;
         event_emission.record_event_terminal(
@@ -707,6 +768,8 @@ fn render_timeline_diagram_svg_inner(
             emitted_opacity_matches,
             emitted_radius_token,
             emitted_radius_geometry_matches,
+            event_fill.as_deref(),
+            emitted_fill_matches,
         );
         Ok(())
     }
@@ -737,6 +800,7 @@ fn render_timeline_diagram_svg_inner(
             node,
             is_redux_theme,
             false,
+            None,
             None,
             event_emission,
             typography_emission,
@@ -881,6 +945,7 @@ fn render_timeline_diagram_svg_inner(
             node,
             is_redux_theme,
             false,
+            None,
             None,
             &mut event_emission,
             &mut typography_emission,

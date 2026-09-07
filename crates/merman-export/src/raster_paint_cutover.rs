@@ -305,7 +305,7 @@ impl RasterPaintCutoverReceipt {
 
     fn canonical_digest(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v8");
+        update_len_prefixed(&mut hasher, b"merman.raster-paint-cutover-receipt.v9");
         update_len_prefixed(&mut hasher, self.facet.id());
         hasher.update(self.control_rgb);
         hasher.update(self.solid_source_digest);
@@ -459,7 +459,6 @@ fn encode_pair_on_backend_stack(
         &solid_tree.requested_targets,
         terminal_bindings,
         solid_placement,
-        control_rgb,
     )?;
     drop(solid_pixmap);
 
@@ -948,6 +947,7 @@ struct PathObservation {
     semantic_paint_binding: RasterPaintSemanticBinding,
     terminal_id: Option<String>,
     selected_by_renderer: bool,
+    color_transfer: RasterPaintColorTransfer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -966,11 +966,52 @@ impl PaintObservation {
 struct TargetPath {
     terminal_id: Option<String>,
     region_bits: [u32; 4],
+    rendered_control_rgb: [u8; 3],
 }
 
 impl TargetPath {
     fn region(&self) -> [f32; 4] {
         self.region_bits.map(f32::from_bits)
+    }
+}
+
+/// The only SVG group effect that route-local raster paint proofs may model.
+///
+/// `brightness(120%)` lowers to a single sRGB `feComponentTransfer` in the finalized SVG.
+/// It changes paint values without changing geometry, alpha, or compositing. Everything else
+/// remains deliberately unsupported so this module does not become a general filter engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RasterPaintColorTransfer {
+    Identity,
+    Brightness120Srgb,
+}
+
+impl RasterPaintColorTransfer {
+    fn rendered_rgb(self, rgb: [u8; 3]) -> [u8; 3] {
+        match self {
+            Self::Identity => rgb,
+            Self::Brightness120Srgb => {
+                rgb.map(|channel| (f32::from(channel) * 1.2).clamp(0.0, f32::from(u8::MAX)) as u8)
+            }
+        }
+    }
+
+    const fn compose(self, child: Self) -> Option<Self> {
+        match (self, child) {
+            (Self::Identity, effect) | (effect, Self::Identity) => Some(effect),
+            (Self::Brightness120Srgb, Self::Brightness120Srgb) => None,
+        }
+    }
+
+    const fn is_identity(self) -> bool {
+        matches!(self, Self::Identity)
+    }
+
+    const fn digest_tag(self) -> u8 {
+        match self {
+            Self::Identity => 0,
+            Self::Brightness120Srgb => 1,
+        }
     }
 }
 
@@ -1030,7 +1071,7 @@ fn observe_paint_tree(
     let mut paths = Vec::new();
     let mut terminal_resolver = TerminalBindingResolver::new(terminal_bindings)?;
     let mut effect_hasher = Sha256::new();
-    update_len_prefixed(&mut effect_hasher, b"merman.raster-paint-effect-tree.v1");
+    update_len_prefixed(&mut effect_hasher, b"merman.raster-paint-effect-tree.v2");
     hash_tree_clip_paths(tree, &mut effect_hasher)?;
     collect_group_paths(
         tree.root(),
@@ -1060,7 +1101,7 @@ fn observe_paint_tree(
     let mut target_hasher = Sha256::new();
     update_len_prefixed(
         &mut target_hasher,
-        b"merman.raster-paint-target-geometry.v1",
+        b"merman.raster-paint-target-geometry.v2",
     );
     let mut requested_targets = Vec::new();
     for (path_index, path) in paths.iter().enumerate() {
@@ -1090,9 +1131,12 @@ fn observe_paint_tree(
         for coordinate in region_bits {
             target_hasher.update(coordinate.to_be_bytes());
         }
+        let rendered_control_rgb = path.color_transfer.rendered_rgb(control_rgb);
+        target_hasher.update(rendered_control_rgb);
         targets.push(TargetPath {
             terminal_id: path.terminal_id.clone(),
             region_bits,
+            rendered_control_rgb,
         });
         target_facets_by_path[path_index] = [fill_control, stroke_control];
 
@@ -1109,6 +1153,7 @@ fn observe_paint_tree(
             requested_targets.push(TargetPath {
                 terminal_id: path.terminal_id.clone(),
                 region_bits: requested_region_bits,
+                rendered_control_rgb,
             });
         }
     }
@@ -1421,6 +1466,7 @@ fn collect_group_paths(
         group,
         paths,
         None,
+        RasterPaintColorTransfer::Identity,
         RasterPaintSemanticBinding::Native,
         None,
         select_all,
@@ -1433,13 +1479,19 @@ fn collect_group_paths_with_transform(
     group: &usvg::Group,
     paths: &mut Vec<PathObservation>,
     extra_transform: Option<tiny_skia::Transform>,
+    inherited_color_transfer: RasterPaintColorTransfer,
     inherited_binding: RasterPaintSemanticBinding,
     inherited_terminal: Option<ResolvedTerminalBinding>,
     inherited_selection: bool,
     terminal_resolver: &mut TerminalBindingResolver,
     effect_hasher: &mut Sha256,
 ) -> Result<()> {
-    hash_group_effects(group, effect_hasher)?;
+    let group_color_transfer = hash_group_effects(group, effect_hasher)?;
+    let color_transfer = inherited_color_transfer
+        .compose(group_color_transfer)
+        .ok_or(ExportError::RasterPaintCutover(
+            "raster paint proof does not support nested SVG color-transfer effects",
+        ))?;
     let explicit_terminal = terminal_resolver.resolve(group.id())?;
     if inherited_selection
         && explicit_terminal.is_some()
@@ -1465,6 +1517,7 @@ fn collect_group_paths_with_transform(
                 child,
                 paths,
                 extra_transform,
+                color_transfer,
                 group_binding,
                 group_terminal.clone(),
                 group_selected,
@@ -1499,6 +1552,7 @@ fn collect_group_paths_with_transform(
                         .map(|terminal| terminal.terminal_id.clone()),
                     group_selected || explicit_terminal.is_some(),
                     path_terminal.map(|terminal| terminal.lifeline_geometry),
+                    color_transfer,
                 )?);
             }
             // `usvg` keeps the glyph paths in a text node's flattened group in local
@@ -1508,6 +1562,7 @@ fn collect_group_paths_with_transform(
                 text.flattened(),
                 paths,
                 Some(text.abs_transform()),
+                color_transfer,
                 group_binding,
                 group_terminal.clone(),
                 group_selected,
@@ -1524,8 +1579,11 @@ fn collect_group_paths_with_transform(
     Ok(())
 }
 
-fn hash_group_effects(group: &usvg::Group, hasher: &mut Sha256) -> Result<()> {
-    if group.mask().is_some() || !group.filters().is_empty() {
+fn hash_group_effects(
+    group: &usvg::Group,
+    hasher: &mut Sha256,
+) -> Result<RasterPaintColorTransfer> {
+    if group.mask().is_some() {
         return Err(ExportError::RasterPaintCutover(
             "raster paint proof does not support SVG group effects",
         ));
@@ -1543,6 +1601,104 @@ fn hash_group_effects(group: &usvg::Group, hasher: &mut Sha256) -> Result<()> {
     } else {
         update_len_prefixed(hasher, b"no-clip");
     }
+    let color_transfer = supported_group_color_transfer(group)?;
+    match color_transfer {
+        RasterPaintColorTransfer::Identity => update_len_prefixed(hasher, b"no-color-filter"),
+        RasterPaintColorTransfer::Brightness120Srgb => {
+            update_len_prefixed(hasher, b"brightness-120-srgb");
+            let filter = group
+                .filters()
+                .first()
+                .ok_or(ExportError::RasterPaintCutover(
+                    "raster paint proof lost its supported color-transfer filter",
+                ))?;
+            hash_supported_brightness_filter(filter, hasher)?;
+        }
+    }
+    Ok(color_transfer)
+}
+
+fn supported_group_color_transfer(group: &usvg::Group) -> Result<RasterPaintColorTransfer> {
+    match group.filters() {
+        [] => Ok(RasterPaintColorTransfer::Identity),
+        [filter] if is_brightness_120_srgb_filter(filter) => {
+            Ok(RasterPaintColorTransfer::Brightness120Srgb)
+        }
+        _ => Err(ExportError::RasterPaintCutover(
+            "raster paint proof does not support SVG group effects",
+        )),
+    }
+}
+
+fn is_brightness_120_srgb_filter(filter: &usvg::filter::Filter) -> bool {
+    let [primitive] = filter.primitives() else {
+        return false;
+    };
+    if primitive.color_interpolation() != usvg::filter::ColorInterpolation::SRGB {
+        return false;
+    }
+    let usvg::filter::Kind::ComponentTransfer(component_transfer) = primitive.kind() else {
+        return false;
+    };
+    matches!(
+        component_transfer.input(),
+        usvg::filter::Input::SourceGraphic
+    ) && is_brightness_120_channel(component_transfer.func_r())
+        && is_brightness_120_channel(component_transfer.func_g())
+        && is_brightness_120_channel(component_transfer.func_b())
+        && matches!(
+            component_transfer.func_a(),
+            usvg::filter::TransferFunction::Identity
+        )
+}
+
+fn is_brightness_120_channel(function: &usvg::filter::TransferFunction) -> bool {
+    matches!(
+        function,
+        usvg::filter::TransferFunction::Linear { slope, intercept }
+            if slope.to_bits() == 1.2_f32.to_bits() && intercept.to_bits() == 0.0_f32.to_bits()
+    )
+}
+
+fn hash_supported_brightness_filter(
+    filter: &usvg::filter::Filter,
+    hasher: &mut Sha256,
+) -> Result<()> {
+    if !is_brightness_120_srgb_filter(filter) {
+        return Err(ExportError::RasterPaintCutover(
+            "raster paint proof does not support SVG group effects",
+        ));
+    }
+    update_len_prefixed(hasher, filter.id().as_bytes());
+    hash_non_zero_rect(hasher, filter.rect());
+    let primitive = filter
+        .primitives()
+        .first()
+        .ok_or(ExportError::RasterPaintCutover(
+            "raster paint proof lost its supported color-transfer primitive",
+        ))?;
+    update_len_prefixed(hasher, primitive.result().as_bytes());
+    hash_non_zero_rect(hasher, primitive.rect());
+    update_len_prefixed(hasher, b"component-transfer/source-graphic/srgb");
+    let usvg::filter::Kind::ComponentTransfer(component_transfer) = primitive.kind() else {
+        return Err(ExportError::RasterPaintCutover(
+            "raster paint proof lost its supported color-transfer primitive",
+        ));
+    };
+    for function in [
+        component_transfer.func_r(),
+        component_transfer.func_g(),
+        component_transfer.func_b(),
+    ] {
+        let usvg::filter::TransferFunction::Linear { slope, intercept } = function else {
+            return Err(ExportError::RasterPaintCutover(
+                "raster paint proof lost its supported color-transfer channel",
+            ));
+        };
+        hasher.update(slope.to_bits().to_be_bytes());
+        hasher.update(intercept.to_bits().to_be_bytes());
+    }
+    update_len_prefixed(hasher, b"alpha-identity");
     Ok(())
 }
 
@@ -1580,7 +1736,11 @@ fn hash_clip_path(clip_path: &usvg::ClipPath, hasher: &mut Sha256) -> Result<()>
 }
 
 fn hash_group_tree(group: &usvg::Group, hasher: &mut Sha256) -> Result<()> {
-    hash_group_effects(group, hasher)?;
+    if !hash_group_effects(group, hasher)?.is_identity() {
+        return Err(ExportError::RasterPaintCutover(
+            "raster paint proof does not support color-transfer filters in clip paths",
+        ));
+    }
     for node in group.children() {
         match node {
             usvg::Node::Group(child) => {
@@ -1617,6 +1777,7 @@ fn observe_path(
         None,
         true,
         None,
+        RasterPaintColorTransfer::Identity,
     )
 }
 
@@ -1627,6 +1788,7 @@ fn observe_path_with_binding(
     terminal_id: Option<String>,
     selected_by_renderer: bool,
     expected_lifeline_geometry: Option<RasterPaintLifelineGeometry>,
+    color_transfer: RasterPaintColorTransfer,
 ) -> Result<PathObservation> {
     if let Some(expected_geometry) = expected_lifeline_geometry {
         validate_resolved_lifeline_path(path, extra_transform, expected_geometry)?;
@@ -1657,7 +1819,7 @@ fn observe_path_with_binding(
     let stroke_geometry_digest = stroke_geometry_digest(path.stroke(), stroke_bbox);
 
     let mut path_hasher = Sha256::new();
-    update_len_prefixed(&mut path_hasher, b"merman.raster-paint-path-structure.v2");
+    update_len_prefixed(&mut path_hasher, b"merman.raster-paint-path-structure.v3");
     path_hasher.update(shape_digest);
     path_hasher.update([u8::from(path.fill().is_some())]);
     path_hasher.update(fill_geometry_digest);
@@ -1675,6 +1837,7 @@ fn observe_path_with_binding(
         update_len_prefixed(&mut path_hasher, terminal_id.as_bytes());
     }
     path_hasher.update([u8::from(selected_by_renderer)]);
+    path_hasher.update([color_transfer.digest_tag()]);
 
     Ok(PathObservation {
         path_digest: path_hasher.finalize().into(),
@@ -1689,6 +1852,7 @@ fn observe_path_with_binding(
         semantic_paint_binding,
         terminal_id,
         selected_by_renderer,
+        color_transfer,
     })
 }
 
@@ -1957,7 +2121,6 @@ fn observe_solid_delta(
     requested_targets: &[TargetPath],
     terminal_bindings: &[RasterPaintTerminalBinding],
     placement: RasterPlacement,
-    control_rgb: [u8; 3],
 ) -> Result<SolidDeltaObservation> {
     if solid.width() != underlay.width() || solid.height() != underlay.height() {
         return Err(ExportError::RasterPaintCutover(
@@ -1965,7 +2128,8 @@ fn observe_solid_delta(
         ));
     }
     let regions = pixel_regions(targets, placement)?;
-    let requested_regions = pixel_regions(requested_targets, placement)?;
+    let control_regions = colored_pixel_regions(targets, placement)?;
+    let requested_control_regions = colored_pixel_regions(requested_targets, placement)?;
     let mut terminal_proofs =
         terminal_pixel_proofs(requested_targets, terminal_bindings, placement)?;
     let mut control_pixels = 0usize;
@@ -1980,14 +2144,24 @@ fn observe_solid_delta(
     {
         let x = (index % width) as u32;
         let y = (index / width) as u32;
-        let is_control = pixel_near_rgb(*solid_pixel, control_rgb, COLOR_TOLERANCE);
+        let is_control = control_regions.iter().any(|target| {
+            target.region.contains(x, y)
+                && pixel_near_rgb(*solid_pixel, target.rendered_control_rgb, COLOR_TOLERANCE)
+        });
         let changed = solid_pixel != underlay_pixel;
         let inside_any_region = regions.iter().any(|region| region.contains(x, y));
         if is_control {
             control_pixels = control_pixels.saturating_add(1);
             if changed {
                 changed_control_pixels = changed_control_pixels.saturating_add(1);
-                if requested_regions.iter().any(|region| region.contains(x, y)) {
+                if requested_control_regions.iter().any(|target| {
+                    target.region.contains(x, y)
+                        && pixel_near_rgb(
+                            *solid_pixel,
+                            target.rendered_control_rgb,
+                            COLOR_TOLERANCE,
+                        )
+                }) {
                     requested_changed_control_pixels =
                         requested_changed_control_pixels.saturating_add(1);
                 }
@@ -2121,6 +2295,27 @@ fn pixel_regions(targets: &[TargetPath], placement: RasterPlacement) -> Result<V
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct ColoredPixelRegion {
+    region: PixelRegion,
+    rendered_control_rgb: [u8; 3],
+}
+
+fn colored_pixel_regions(
+    targets: &[TargetPath],
+    placement: RasterPlacement,
+) -> Result<Vec<ColoredPixelRegion>> {
+    targets
+        .iter()
+        .map(|target| {
+            Ok(ColoredPixelRegion {
+                region: pixel_region(target.region(), placement)?,
+                rendered_control_rgb: target.rendered_control_rgb,
+            })
+        })
+        .collect()
+}
+
 fn pixel_region(region: [f32; 4], placement: RasterPlacement) -> Result<PixelRegion> {
     let [left, top, width, height] = region;
     if !region.into_iter().all(f32::is_finite) || width < 0.0 || height < 0.0 {
@@ -2207,6 +2402,12 @@ struct RasterPaintCutoverFacts {
 }
 
 fn hash_rect(hasher: &mut Sha256, rect: usvg::Rect) {
+    for value in [rect.x(), rect.y(), rect.width(), rect.height()] {
+        hasher.update(value.to_bits().to_be_bytes());
+    }
+}
+
+fn hash_non_zero_rect(hasher: &mut Sha256, rect: usvg::NonZeroRect) {
     for value in [rect.x(), rect.y(), rect.width(), rect.height()] {
         hasher.update(value.to_bits().to_be_bytes());
     }
@@ -2762,6 +2963,86 @@ mod tests {
     fn clip_path_geometry_drift_fails_closed() {
         let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="4" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="#dc2626"/></g></svg>"##;
         let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><clipPath id="clip"><rect x="5" y="4" width="8" height="8"/></clipPath></defs><g clip-path="url(#clip)"><rect width="20" height="20" fill="transparent"/></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn brightness_120_srgb_component_transfer_preserves_route_local_paint_proof() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
+
+        let pair = encode_pair(solid, transparent, RasterPaintCutoverFacet::Fill, "#dc2626")
+            .expect("the known geometry-preserving timeline brightness effect is supported");
+        assert!(pair.into_parts().2.proves_semantics());
+    }
+
+    #[test]
+    fn stylesheet_brightness_120_preserves_route_local_paint_proof() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>.eventWrapper{filter:brightness(120%)}</style><g class="eventWrapper"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><style>.eventWrapper{filter:brightness(120%)}</style><g class="eventWrapper"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
+
+        let pair = encode_pair(solid, transparent, RasterPaintCutoverFacet::Fill, "#dc2626")
+            .expect("the Timeline stylesheet brightness effect is supported");
+        assert!(pair.into_parts().2.proves_semantics());
+    }
+
+    #[test]
+    fn brightness_transfer_matches_resvg_component_transfer_quantization() {
+        assert_eq!(
+            RasterPaintColorTransfer::Brightness120Srgb.rendered_rgb([3, 127, 200]),
+            [3, 152, 240]
+        );
+    }
+
+    #[test]
+    fn unsupported_brightness_component_transfer_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(110%)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(110%)"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn masked_brightness_component_transfer_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><mask id="mask"><rect width="20" height="20" fill="white"/></mask></defs><g mask="url(#mask)" style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><defs><mask id="mask"><rect width="20" height="20" fill="white"/></mask></defs><g mask="url(#mask)" style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn nested_brightness_component_transfer_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(120%)"><g style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(120%)"><g style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></g></svg>"##;
+
+        assert_cutover_error(encode_pair(
+            solid,
+            transparent,
+            RasterPaintCutoverFacet::Fill,
+            "#dc2626",
+        ));
+    }
+
+    #[test]
+    fn mismatched_brightness_context_fails_closed() {
+        let solid = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g style="filter:brightness(120%)"><rect x="4" y="4" width="12" height="12" fill="#dc2626"/></g></svg>"##;
+        let transparent = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g><rect x="4" y="4" width="12" height="12" fill="transparent"/></g></svg>"##;
 
         assert_cutover_error(encode_pair(
             solid,

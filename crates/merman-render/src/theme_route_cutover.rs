@@ -370,11 +370,12 @@ pub enum ThemeRouteCutoverProjection {
     TreeViewMarkerPaint = 38,
     GitGraphCommitLabelBackgroundFill = 39,
     GanttTaskWarningStroke = 40,
+    TimelineEventFill = 41,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 41] = [
+    const ALL: [Self; 42] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -416,6 +417,7 @@ impl ThemeRouteCutoverProjection {
         Self::TreeViewMarkerPaint,
         Self::GitGraphCommitLabelBackgroundFill,
         Self::GanttTaskWarningStroke,
+        Self::TimelineEventFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -461,6 +463,7 @@ impl ThemeRouteCutoverProjection {
             Self::TreeViewMarkerPaint => "marker.paint",
             Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
             Self::GanttTaskWarningStroke => "task.warning.stroke",
+            Self::TimelineEventFill => "event.fill",
         }
     }
 
@@ -507,7 +510,9 @@ impl ThemeRouteCutoverProjection {
             | Self::JourneyTaskStroke
             | Self::TreeViewMarkerPaint
             | Self::GitGraphCommitLabelBackgroundFill => ThemeRouteCutoverProjectionAction::Replace,
-            Self::GanttTaskWarningStroke => ThemeRouteCutoverProjectionAction::Replace,
+            Self::GanttTaskWarningStroke | Self::TimelineEventFill => {
+                ThemeRouteCutoverProjectionAction::Replace
+            }
         }
     }
 
@@ -625,6 +630,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill);
     pub const REPLACE_GANTT_TASK_WARNING_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::GanttTaskWarningStroke);
+    pub const REPLACE_TIMELINE_EVENT_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::TimelineEventFill);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -1193,6 +1200,7 @@ mod tests {
             ThemeRouteCutoverProjection::GanttTaskWarningStroke as u8,
             40
         );
+        assert_eq!(ThemeRouteCutoverProjection::TimelineEventFill as u8, 41);
     }
 
     #[test]
@@ -1232,6 +1240,21 @@ mod tests {
             );
             assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
         }
+    }
+
+    #[test]
+    fn timeline_event_fill_projection_is_property_local() {
+        let projection = ThemeRouteCutoverProjection::TimelineEventFill;
+        let projections = ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL
+            .iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(projection.contribution_id(), "event.fill");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        assert_eq!(projections, vec![projection]);
     }
 
     #[test]

@@ -9,8 +9,8 @@ use crate::diagram_theme::{
     ThemeVariant,
 };
 use crate::family::{
-    FamilyThemeEvidence, FamilyThemeResidualReason, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -46,10 +46,18 @@ impl TimelineEventRadius {
 
 #[derive(Debug, Clone)]
 struct TimelineEventTerminalExpectation {
+    fill: Option<TimelineEventPaint>,
     radius: Option<TimelineEventRadius>,
     radius_rule_index: Option<usize>,
     opacity_token: Option<Box<str>>,
     opacity_rule_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct TimelineEventPaint {
+    css: Box<str>,
+    rule_index: usize,
+    capability: ThemeCapability,
 }
 
 #[derive(Debug, Clone)]
@@ -77,13 +85,14 @@ impl TimelinePalettePaint {
 #[derive(Debug, Clone)]
 struct TimelinePaletteNodeExpectation {
     slot: usize,
-    fill: TimelinePalettePaint,
+    fill: Option<TimelinePalettePaint>,
     classic_line_stroke: Option<Box<str>>,
 }
 
 impl TimelineEventTerminalExpectation {
     fn baseline() -> Self {
         Self {
+            fill: None,
             radius: None,
             radius_rule_index: None,
             opacity_token: None,
@@ -92,7 +101,7 @@ impl TimelineEventTerminalExpectation {
     }
 }
 
-/// Timeline event radius/opacity and evidence resolved in the exact terminal draw order.
+/// Timeline event paint/geometry and evidence resolved in the exact terminal draw order.
 #[derive(Debug)]
 pub(crate) struct TimelineEventTheme {
     events: Box<[TimelineEventTerminalExpectation]>,
@@ -122,7 +131,11 @@ impl TimelineEventTheme {
             target: ThemeTarget::TimelineEvent,
         };
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::TimelineEvent);
-        let palette_node_slots = timeline_palette_node_slots(layout);
+        let palette_node_occurrences = timeline_palette_node_occurrences(layout);
+        let palette_node_slots = palette_node_occurrences
+            .iter()
+            .map(|occurrence| timeline_section_slot(&occurrence.node.section_class))
+            .collect::<Vec<_>>();
         let active_palette_slot_limit =
             super::timeline_theme_color_limit(effective_config.as_value())
                 .min(TIMELINE_PALETTE_SLOT_COUNT);
@@ -130,7 +143,6 @@ impl TimelineEventTheme {
             std::array::from_fn(|_| None);
         let mut palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT] =
             std::array::from_fn(|_| None);
-        let mut palette_nodes = Vec::new();
         // Layout already applies Mermaid's modulo ring before it emits section classes. A valid
         // class therefore always maps into the active limit; only malformed classes or missing
         // colors are residuals here.
@@ -176,34 +188,12 @@ impl TimelineEventTheme {
                     missing_palette_slot = true;
                 }
             }
-
-            for slot in palette_node_slots
-                .iter()
-                .flatten()
-                .copied()
-                .filter(|slot| *slot < active_palette_slot_limit)
-            {
-                if let Some(fill) = palette_slots[slot].clone() {
-                    let line_stroke =
-                        timeline_classic_line_stroke(effective_config, slot, fill.css.as_ref());
-                    if line_stroke.is_none() {
-                        missing_palette_slot = true;
-                    }
-                    palette_line_strokes[slot] = line_stroke.clone();
-                    palette_nodes.push(TimelinePaletteNodeExpectation {
-                        slot,
-                        classic_line_stroke: line_stroke,
-                        fill,
-                    });
-                } else {
-                    missing_palette_slot = true;
-                }
-            }
         }
 
         let mut events = vec![TimelineEventTerminalExpectation::baseline(); event_count];
         let mut winner_counts =
             BTreeMap::<(usize, crate::diagram_theme::ResolvedStyleProperty), usize>::new();
+        let mut source_owned_fill_rule_occurrences = BTreeMap::<usize, usize>::new();
         let has_ordinal_event_rules = theme.family_rules().any(|(_, rule)| {
             rule.target() == ThemeTarget::TimelineEvent && rule.ordinal().is_some()
         });
@@ -216,7 +206,14 @@ impl TimelineEventTheme {
             )?;
             collect_winners(&style, event_count, &mut winner_counts);
             for (event, node) in events.iter_mut().zip(event_nodes.iter().copied()) {
-                apply_event_style(theme, &style, event, node);
+                apply_event_style(
+                    theme,
+                    &style,
+                    event,
+                    node,
+                    timeline_event_fill_source_owned(effective_config, node),
+                    &mut source_owned_fill_rule_occurrences,
+                );
             }
         } else {
             for (event_index, event) in events.iter_mut().enumerate() {
@@ -227,7 +224,46 @@ impl TimelineEventTheme {
                     work_meter,
                 )?;
                 collect_winners(&style, 1, &mut winner_counts);
-                apply_event_style(theme, &style, event, event_nodes[event_index]);
+                apply_event_style(
+                    theme,
+                    &style,
+                    event,
+                    event_nodes[event_index],
+                    timeline_event_fill_source_owned(effective_config, event_nodes[event_index]),
+                    &mut source_owned_fill_rule_occurrences,
+                );
+            }
+        }
+
+        let mut palette_nodes = Vec::new();
+        if palette_enabled {
+            for (occurrence, slot) in palette_node_occurrences
+                .iter()
+                .zip(palette_node_slots.iter().copied())
+            {
+                let Some(slot) = slot.filter(|slot| *slot < active_palette_slot_limit) else {
+                    missing_palette_slot = true;
+                    continue;
+                };
+                let Some(fill) = palette_slots[slot].clone() else {
+                    missing_palette_slot = true;
+                    continue;
+                };
+                let line_stroke =
+                    timeline_classic_line_stroke(effective_config, slot, fill.css.as_ref());
+                if line_stroke.is_none() {
+                    missing_palette_slot = true;
+                }
+                palette_line_strokes[slot] = line_stroke.clone();
+                let direct_fill_wins = occurrence
+                    .event_index
+                    .and_then(|event_index| events.get(event_index))
+                    .is_some_and(|event| event.fill.is_some());
+                palette_nodes.push(TimelinePaletteNodeExpectation {
+                    slot,
+                    fill: (!direct_fill_wins).then_some(fill),
+                    classic_line_stroke: line_stroke,
+                });
             }
         }
 
@@ -282,6 +318,33 @@ impl TimelineEventTheme {
                                     .all(|event| event.opacity_rule_index == Some(rule_index))
                             {
                                 observation.opacity_pending = true;
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        }
+                        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_)) => {
+                            let property = resolved_style_property_for_facet(facet);
+                            let wins = winner_counts.get(&(rule_index, property)).copied();
+                            let typed_count = events
+                                .iter()
+                                .filter(|event| {
+                                    event.fill.as_ref().map(|fill| fill.rule_index)
+                                        == Some(rule_index)
+                                })
+                                .count();
+                            let source_owned_count = source_owned_fill_rule_occurrences
+                                .get(&rule_index)
+                                .copied()
+                                .unwrap_or_default();
+                            if wins == Some(event_count)
+                                && typed_count.saturating_add(source_owned_count) == event_count
+                            {
+                                if typed_count != 0 {
+                                    observation.fill_pending = true;
+                                }
+                                if source_owned_count == event_count {
+                                    observation.suppressed = true;
+                                }
                             } else {
                                 observation.incomplete = true;
                             }
@@ -347,7 +410,10 @@ impl TimelineEventTheme {
                 evidence.mark_residual(key, reason);
             } else if observation.incomplete {
                 // A mixed rule cannot be signed Applied until every winning facet is accounted.
-            } else if observation.radius_pending || observation.opacity_pending {
+            } else if observation.radius_pending
+                || observation.opacity_pending
+                || observation.fill_pending
+            {
                 let mut capabilities = BTreeSet::new();
                 if observation.radius_pending {
                     capabilities.insert(ThemeCapability::RoundedGeometry);
@@ -355,14 +421,26 @@ impl TimelineEventTheme {
                 if observation.opacity_pending {
                     capabilities.insert(ThemeCapability::Opacity);
                 }
+                if observation.fill_pending {
+                    capabilities.extend(events.iter().filter_map(|event| {
+                        event
+                            .fill
+                            .as_ref()
+                            .filter(|fill| fill.rule_index == rule_index)
+                            .map(|fill| fill.capability)
+                    }));
+                }
                 pending.insert(
                     key,
                     TimelineEventPendingEvidence {
                         radius: observation.radius_pending,
                         opacity: observation.opacity_pending,
+                        fill: observation.fill_pending,
                         capabilities,
                     },
                 );
+            } else if observation.suppressed {
+                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -406,6 +484,13 @@ impl TimelineEventTheme {
             .get(event_index)
             .and_then(|event| event.radius.as_ref())
             .map(|radius| (radius.token.as_ref(), radius.value_px))
+    }
+
+    pub(crate) fn fill_for_event(&self, event_index: usize) -> Option<&str> {
+        self.events
+            .get(event_index)
+            .and_then(|event| event.fill.as_ref())
+            .map(|fill| fill.css.as_ref())
     }
 
     pub(crate) fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
@@ -485,10 +570,56 @@ fn timeline_event_nodes(layout: &TimelineDiagramLayout) -> Vec<&crate::model::Ti
         .collect()
 }
 
+#[derive(Clone, Copy)]
+struct TimelinePaletteNodeOccurrence<'a> {
+    node: &'a crate::model::TimelineNodeLayout,
+    event_index: Option<usize>,
+}
+
 fn timeline_is_redux_theme(config: &MermaidConfig) -> bool {
     config
         .get_str("theme")
         .is_some_and(|theme| theme.contains("redux"))
+}
+
+fn timeline_event_fill_source_owned(
+    config: &MermaidConfig,
+    event: &crate::model::TimelineNodeLayout,
+) -> bool {
+    let Some(slot) = timeline_section_slot(&event.section_class) else {
+        return false;
+    };
+    let theme = config.get_str("theme").unwrap_or_default();
+    if !theme.contains("redux") {
+        return merman_core::__private::config_path_overrides_typed_default(
+            config,
+            &format!("themeVariables.cScale{slot}"),
+        );
+    }
+
+    if theme.contains("color") && !theme.contains("dark") {
+        let border_colors = config
+            .as_value()
+            .get("themeVariables")
+            .and_then(|variables| variables.get("borderColorArray"))
+            .and_then(serde_json::Value::as_array);
+        if border_colors
+            .and_then(|colors| colors.get(slot))
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+        {
+            return merman_core::__private::config_path_overrides_typed_default(
+                config,
+                "themeVariables.borderColorArray",
+            );
+        }
+        return merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.nodeBorder",
+        );
+    }
+
+    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
 }
 
 fn timeline_classic_line_stroke(
@@ -518,23 +649,44 @@ fn timeline_section_slot(section_class: &str) -> Option<usize> {
         .filter(|slot| *slot < TIMELINE_PALETTE_SLOT_COUNT)
 }
 
-fn timeline_palette_node_slots(layout: &TimelineDiagramLayout) -> Vec<Option<usize>> {
+fn timeline_palette_node_occurrences(
+    layout: &TimelineDiagramLayout,
+) -> Vec<TimelinePaletteNodeOccurrence<'_>> {
     let mut nodes = Vec::new();
+    let mut event_index = 0usize;
     for section in &layout.sections {
-        nodes.push(&section.node);
+        nodes.push(TimelinePaletteNodeOccurrence {
+            node: &section.node,
+            event_index: None,
+        });
         for task in &section.tasks {
-            nodes.push(&task.node);
-            nodes.extend(task.events.iter());
+            nodes.push(TimelinePaletteNodeOccurrence {
+                node: &task.node,
+                event_index: None,
+            });
+            for event in &task.events {
+                nodes.push(TimelinePaletteNodeOccurrence {
+                    node: event,
+                    event_index: Some(event_index),
+                });
+                event_index += 1;
+            }
         }
     }
     for task in &layout.orphan_tasks {
-        nodes.push(&task.node);
-        nodes.extend(task.events.iter());
+        nodes.push(TimelinePaletteNodeOccurrence {
+            node: &task.node,
+            event_index: None,
+        });
+        for event in &task.events {
+            nodes.push(TimelinePaletteNodeOccurrence {
+                node: event,
+                event_index: Some(event_index),
+            });
+            event_index += 1;
+        }
     }
     nodes
-        .into_iter()
-        .map(|node| timeline_section_slot(&node.section_class))
-        .collect()
 }
 
 fn collect_winners(
@@ -553,7 +705,28 @@ fn apply_event_style(
     style: &crate::diagram_theme::ResolvedThemeStyle,
     event: &mut TimelineEventTerminalExpectation,
     node: &crate::model::TimelineNodeLayout,
+    source_owns_event_fill: bool,
+    source_owned_fill_rule_occurrences: &mut BTreeMap<usize, usize>,
 ) {
+    if let Some(fill) = resolve_direct_static_fill(
+        theme,
+        style,
+        &[ThemeTarget::TimelineEvent],
+        DirectStaticSelectorDomain::Default,
+    ) {
+        let (css, rule_index, capability) = fill.into_parts();
+        if source_owns_event_fill {
+            *source_owned_fill_rule_occurrences
+                .entry(rule_index)
+                .or_default() += 1;
+        } else {
+            event.fill = Some(TimelineEventPaint {
+                css,
+                rule_index,
+                capability,
+            });
+        }
+    }
     if let Some(origin) = style.radius_resolution().winner() {
         if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Radius)
             == Some(FamilyThemeDisposition::TypedAdapter)
@@ -591,12 +764,15 @@ struct TimelineEventRuleObservation {
     residual: Option<FamilyThemeResidualReason>,
     radius_pending: bool,
     opacity_pending: bool,
+    fill_pending: bool,
+    suppressed: bool,
 }
 
 #[derive(Debug, Default)]
 struct TimelineEventPendingEvidence {
     radius: bool,
     opacity: bool,
+    fill: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -613,6 +789,7 @@ pub(crate) struct TimelineEventThemeReceipt {
     palette_values_match: bool,
     radius_rules: BTreeSet<usize>,
     opacity_rules: BTreeSet<usize>,
+    fill_rules: BTreeSet<usize>,
     palette_capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -631,6 +808,7 @@ impl TimelineEventThemeReceipt {
         Self::from_expectations_with_baseline(expectations, None)
     }
 
+    #[cfg(test)]
     fn from_expectations_with_baseline(
         expectations: Box<[TimelineEventTerminalExpectation]>,
         baseline_radius_token: Option<&'static str>,
@@ -646,6 +824,7 @@ impl TimelineEventThemeReceipt {
             palette_values_match: true,
             radius_rules: BTreeSet::new(),
             opacity_rules: BTreeSet::new(),
+            fill_rules: BTreeSet::new(),
             palette_capabilities: BTreeSet::new(),
         }
     }
@@ -666,6 +845,7 @@ impl TimelineEventThemeReceipt {
             palette_values_match: true,
             radius_rules: BTreeSet::new(),
             opacity_rules: BTreeSet::new(),
+            fill_rules: BTreeSet::new(),
             palette_capabilities: BTreeSet::new(),
         }
     }
@@ -677,13 +857,22 @@ impl TimelineEventThemeReceipt {
         emitted_opacity_matches: bool,
         emitted_radius_token: Option<&str>,
         emitted_radius_geometry_matches: bool,
+        emitted_fill: Option<&str>,
+        emitted_fill_matches: bool,
     ) {
         if event_index != self.next_event_index || event_index >= self.expectations.len() {
             self.attributes_match = false;
             return;
         }
 
-        let (opacity_matches, radius_matches, opacity_rule_index, radius_rule_index) = {
+        let (
+            opacity_matches,
+            radius_matches,
+            fill_matches,
+            opacity_rule_index,
+            radius_rule_index,
+            fill_rule_index,
+        ) = {
             let expected = &self.expectations[event_index];
             let expected_opacity_token = expected.opacity_token.as_deref();
             let expected_radius_token = expected
@@ -697,12 +886,15 @@ impl TimelineEventThemeReceipt {
                     && expected_radius_token.map_or(emitted_radius_token.is_none(), |token| {
                         emitted_radius_token == Some(token)
                     }),
+                emitted_fill_matches
+                    && emitted_fill == expected.fill.as_ref().map(|fill| fill.css.as_ref()),
                 expected.opacity_rule_index,
                 expected.radius_rule_index,
+                expected.fill.as_ref().map(|fill| fill.rule_index),
             )
         };
         self.next_event_index += 1;
-        self.attributes_match &= opacity_matches && radius_matches;
+        self.attributes_match &= opacity_matches && radius_matches && fill_matches;
         if opacity_matches {
             if let Some(rule_index) = opacity_rule_index {
                 self.opacity_rules.insert(rule_index);
@@ -711,6 +903,11 @@ impl TimelineEventThemeReceipt {
         if radius_matches {
             if let Some(rule_index) = radius_rule_index {
                 self.radius_rules.insert(rule_index);
+            }
+        }
+        if fill_matches {
+            if let Some(rule_index) = fill_rule_index {
+                self.fill_rules.insert(rule_index);
             }
         }
     }
@@ -743,12 +940,12 @@ impl TimelineEventThemeReceipt {
             return;
         };
         self.next_palette_index += 1;
-        let fill_matches =
-            slot == expected.slot && emitted_fill == Some(expected.fill.css.as_ref());
+        let fill_matches = slot == expected.slot
+            && emitted_fill == expected.fill.as_ref().map(|fill| fill.css.as_ref());
         let line_matches = emitted_line_stroke == expected.classic_line_stroke.as_deref();
         self.palette_values_match &= fill_matches && line_matches;
         if fill_matches {
-            if let Some(capability) = expected.fill.capability {
+            if let Some(capability) = expected.fill.as_ref().and_then(|fill| fill.capability) {
                 self.palette_capabilities.insert(capability);
             }
         }
@@ -757,45 +954,48 @@ impl TimelineEventThemeReceipt {
     fn proves_rule(&self, rule_index: usize, pending: &TimelineEventPendingEvidence) -> bool {
         (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.opacity || self.opacity_rules.contains(&rule_index))
+            && (!pending.fill || self.fill_rules.contains(&rule_index))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        TimelineEventPendingEvidence, TimelineEventRadius, TimelineEventTerminalExpectation,
-        TimelineEventThemeReceipt, TimelinePaletteNodeExpectation, TimelinePalettePaint,
+        TimelineEventPaint, TimelineEventPendingEvidence, TimelineEventRadius,
+        TimelineEventTerminalExpectation, TimelineEventThemeReceipt,
+        TimelinePaletteNodeExpectation, TimelinePalettePaint,
     };
     use crate::diagram_theme::ThemeCapability;
 
     #[test]
     fn timeline_event_receipt_requires_each_terminal_event_once() {
         let mut complete = TimelineEventThemeReceipt::new(1);
-        complete.record_checkpointed_event(0, None, true, None, true);
+        complete.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(complete.proves(1));
 
         let mut incomplete = TimelineEventThemeReceipt::new(2);
-        incomplete.record_checkpointed_event(0, None, true, None, true);
+        incomplete.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(!incomplete.proves(2));
 
         let mut duplicate = TimelineEventThemeReceipt::new(1);
-        duplicate.record_checkpointed_event(0, None, true, None, true);
-        duplicate.record_checkpointed_event(0, None, true, None, true);
+        duplicate.record_checkpointed_event(0, None, true, None, true, None, true);
+        duplicate.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(!duplicate.proves(1));
 
         let mut out_of_order = TimelineEventThemeReceipt::new(2);
-        out_of_order.record_checkpointed_event(1, None, true, None, true);
-        out_of_order.record_checkpointed_event(0, None, true, None, true);
+        out_of_order.record_checkpointed_event(1, None, true, None, true, None, true);
+        out_of_order.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(!out_of_order.proves(2));
 
         let mut mismatch = TimelineEventThemeReceipt::new(1);
-        mismatch.record_checkpointed_event(0, Some("1"), true, None, true);
+        mismatch.record_checkpointed_event(0, Some("1"), true, None, true, None, true);
         assert!(!mismatch.proves(1));
     }
 
     #[test]
     fn timeline_event_receipt_tracks_matching_radius_rule() {
         let expectations = vec![TimelineEventTerminalExpectation {
+            fill: None,
             radius: Some(TimelineEventRadius {
                 token: "12".into(),
                 value_px: 12.0,
@@ -806,7 +1006,7 @@ mod tests {
         }]
         .into_boxed_slice();
         let mut receipt = TimelineEventThemeReceipt::from_expectations(expectations);
-        receipt.record_checkpointed_event(0, None, true, Some("12"), true);
+        receipt.record_checkpointed_event(0, None, true, Some("12"), true, None, true);
 
         assert!(receipt.proves(1));
         assert!(receipt.radius_rules.contains(&7));
@@ -815,6 +1015,7 @@ mod tests {
     #[test]
     fn timeline_event_receipt_requires_matching_radius_and_opacity_tokens() {
         let expectations = vec![TimelineEventTerminalExpectation {
+            fill: None,
             radius: Some(TimelineEventRadius {
                 token: "12".into(),
                 value_px: 12.0,
@@ -825,7 +1026,7 @@ mod tests {
         }]
         .into_boxed_slice();
         let mut receipt = TimelineEventThemeReceipt::from_expectations(expectations.clone());
-        receipt.record_checkpointed_event(0, Some("0.5"), true, Some("12"), true);
+        receipt.record_checkpointed_event(0, Some("0.5"), true, Some("12"), true, None, true);
 
         assert!(receipt.proves(1));
         assert!(receipt.proves_rule(
@@ -833,15 +1034,17 @@ mod tests {
             &TimelineEventPendingEvidence {
                 radius: true,
                 opacity: true,
+                fill: false,
                 capabilities: std::collections::BTreeSet::new(),
             }
         ));
 
         let mut mismatch = TimelineEventThemeReceipt::from_expectations(expectations);
-        mismatch.record_checkpointed_event(0, Some("0.5"), true, Some("13"), true);
+        mismatch.record_checkpointed_event(0, Some("0.5"), true, Some("13"), true, None, true);
         assert!(!mismatch.proves(1));
 
         let expectations = vec![TimelineEventTerminalExpectation {
+            fill: None,
             radius: None,
             radius_rule_index: None,
             opacity_token: Some("0.5".into()),
@@ -849,8 +1052,43 @@ mod tests {
         }]
         .into_boxed_slice();
         let mut unobserved_opacity = TimelineEventThemeReceipt::from_expectations(expectations);
-        unobserved_opacity.record_checkpointed_event(0, Some("0.5"), false, None, true);
+        unobserved_opacity.record_checkpointed_event(0, Some("0.5"), false, None, true, None, true);
         assert!(!unobserved_opacity.proves(1));
+    }
+
+    #[test]
+    fn timeline_event_receipt_requires_matching_direct_fill() {
+        let expectations = vec![TimelineEventTerminalExpectation {
+            fill: Some(TimelineEventPaint {
+                css: "#123456".into(),
+                rule_index: 9,
+                capability: ThemeCapability::SolidPaint,
+            }),
+            radius: None,
+            radius_rule_index: None,
+            opacity_token: None,
+            opacity_rule_index: None,
+        }]
+        .into_boxed_slice();
+        let pending = TimelineEventPendingEvidence {
+            radius: false,
+            opacity: false,
+            fill: true,
+            capabilities: [ThemeCapability::SolidPaint].into_iter().collect(),
+        };
+
+        let mut complete = TimelineEventThemeReceipt::from_expectations(expectations.clone());
+        complete.record_checkpointed_event(0, None, true, None, true, Some("#123456"), true);
+        assert!(complete.proves(1));
+        assert!(complete.proves_rule(9, &pending));
+
+        let mut wrong_value = TimelineEventThemeReceipt::from_expectations(expectations.clone());
+        wrong_value.record_checkpointed_event(0, None, true, None, true, Some("#654321"), true);
+        assert!(!wrong_value.proves(1));
+
+        let mut unobserved = TimelineEventThemeReceipt::from_expectations(expectations);
+        unobserved.record_checkpointed_event(0, None, true, None, true, Some("#123456"), false);
+        assert!(!unobserved.proves(1));
     }
 
     #[test]
@@ -860,16 +1098,16 @@ mod tests {
             expectations.clone(),
             Some(crate::timeline::MERMAID_EVENT_RADIUS_TOKEN),
         );
-        classic.record_checkpointed_event(0, None, true, None, true);
+        classic.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(!classic.proves(1));
 
         let mut redux =
             TimelineEventThemeReceipt::from_expectations_with_baseline(expectations, None);
-        redux.record_checkpointed_event(0, None, true, None, true);
+        redux.record_checkpointed_event(0, None, true, None, true, None, true);
         assert!(redux.proves(1));
 
         let mut malformed = TimelineEventThemeReceipt::new(1);
-        malformed.record_checkpointed_event(0, None, true, None, false);
+        malformed.record_checkpointed_event(0, None, true, None, false, None, true);
         assert!(!malformed.proves(1));
     }
 
@@ -878,12 +1116,18 @@ mod tests {
         let palette_expectations = vec![
             TimelinePaletteNodeExpectation {
                 slot: 0,
-                fill: TimelinePalettePaint::typed("#123456", ThemeCapability::SolidPaint),
+                fill: Some(TimelinePalettePaint::typed(
+                    "#123456",
+                    ThemeCapability::SolidPaint,
+                )),
                 classic_line_stroke: Some("#edcba9".into()),
             },
             TimelinePaletteNodeExpectation {
                 slot: 1,
-                fill: TimelinePalettePaint::typed("#654321", ThemeCapability::SolidPaint),
+                fill: Some(TimelinePalettePaint::typed(
+                    "#654321",
+                    ThemeCapability::SolidPaint,
+                )),
                 classic_line_stroke: Some("#9abcde".into()),
             },
         ]
@@ -924,12 +1168,18 @@ mod tests {
             vec![
                 TimelinePaletteNodeExpectation {
                     slot: 0,
-                    fill: TimelinePalettePaint::typed("#123456", ThemeCapability::SolidPaint),
+                    fill: Some(TimelinePalettePaint::typed(
+                        "#123456",
+                        ThemeCapability::SolidPaint,
+                    )),
                     classic_line_stroke: Some("#edcba9".into()),
                 },
                 TimelinePaletteNodeExpectation {
                     slot: 1,
-                    fill: TimelinePalettePaint::typed("#654321", ThemeCapability::SolidPaint),
+                    fill: Some(TimelinePalettePaint::typed(
+                        "#654321",
+                        ThemeCapability::SolidPaint,
+                    )),
                     classic_line_stroke: Some("#9abcde".into()),
                 },
             ]

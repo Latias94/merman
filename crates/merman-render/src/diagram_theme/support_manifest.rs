@@ -10,7 +10,7 @@ use merman_theme_contract::{ThemeRuleFacetV1, ThemeSupportBaseTypographyProperty
 ///
 /// Bump this revision whenever a claim row changes, even when the wire query/result schemas do
 /// not change. Public descriptor revisions follow this manifest revision.
-pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 43;
+pub(super) const SUPPORT_CLAIM_MANIFEST_REVISION: u32 = 44;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum SupportClaimKind {
@@ -742,7 +742,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "timeline",
         target: "timeline-event",
         kind: SupportClaimKind::TypedPartial,
-        facets: &["opacity", "radius"],
+        facets: &["fill", "opacity", "radius"],
     },
     RuleClaim {
         family: "treemap",
@@ -1178,12 +1178,6 @@ const RULE_CLAIMS: &[RuleClaim] = &[
     },
     RuleClaim {
         family: "requirement",
-        target: "table",
-        kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill"],
-    },
-    RuleClaim {
-        family: "requirement",
         target: "text",
         kind: SupportClaimKind::LegacyPartial,
         facets: &["fill"],
@@ -1258,7 +1252,7 @@ const RULE_CLAIMS: &[RuleClaim] = &[
         family: "timeline",
         target: "timeline-event",
         kind: SupportClaimKind::LegacyPartial,
-        facets: &["fill", "stroke-paint"],
+        facets: &["stroke-paint"],
     },
     RuleClaim {
         family: "timeline",
