@@ -1078,7 +1078,7 @@ struct EncodedCommandBudget<'a> {
 #[derive(Deserialize)]
 struct EncodedTextRunBudget<'a> {
     #[serde(borrow)]
-    text: Cow<'a, str>,
+    text: &'a RawValue,
     #[serde(default, borrow)]
     obligation: Option<&'a RawValue>,
 }
@@ -1398,10 +1398,11 @@ fn inspect_command_budget(
     };
     let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    let decoded_text_bytes = json_string_decoded_utf8_len(run.text.get())?;
     checked_accumulate(
         "text_bytes",
         &mut state.text_bytes,
-        run.text.len(),
+        decoded_text_bytes,
         state.limits.max_text_bytes,
     )?;
     let Some(obligation) = run.obligation else {
@@ -1438,6 +1439,111 @@ fn inspect_nested_sequence(
     deserializer
         .end()
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))
+}
+
+/// Counts the UTF-8 bytes produced by one already validated JSON string without materializing it.
+///
+/// `RawValue` has already checked JSON syntax before this function runs. Keeping the narrow scan
+/// here avoids asking `serde_json` to allocate its unescape buffer until the caller's cumulative
+/// text budget has been accepted.
+fn json_string_decoded_utf8_len(json: &str) -> Result<usize, DrawingListError> {
+    let bytes = json.as_bytes();
+    let encoded = bytes
+        .strip_prefix(b"\"")
+        .and_then(|bytes| bytes.strip_suffix(b"\""))
+        .ok_or_else(|| {
+            DrawingListError::JsonDecode("TextRun.text must be a JSON string".to_string())
+        })?;
+    let mut decoded_len = 0usize;
+    let mut index = 0usize;
+    while index < encoded.len() {
+        if encoded[index] != b'\\' {
+            decoded_len = decoded_len.checked_add(1).ok_or_else(|| {
+                DrawingListError::invalid("decoded text byte count overflows usize")
+            })?;
+            index += 1;
+            continue;
+        }
+
+        let escape = *encoded.get(index + 1).ok_or_else(|| {
+            DrawingListError::JsonDecode("TextRun.text ends with an incomplete escape".to_string())
+        })?;
+        match escape {
+            b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {
+                decoded_len = decoded_len.checked_add(1).ok_or_else(|| {
+                    DrawingListError::invalid("decoded text byte count overflows usize")
+                })?;
+                index += 2;
+            }
+            b'u' => {
+                let first = parse_json_hex_quad(encoded, index + 2)?;
+                index += 6;
+                let scalar = match first {
+                    0xd800..=0xdbff => {
+                        if encoded.get(index..index + 2) != Some(b"\\u") {
+                            return Err(DrawingListError::JsonDecode(
+                                "TextRun.text contains an unpaired high surrogate".to_string(),
+                            ));
+                        }
+                        let second = parse_json_hex_quad(encoded, index + 2)?;
+                        if !(0xdc00..=0xdfff).contains(&second) {
+                            return Err(DrawingListError::JsonDecode(
+                                "TextRun.text contains an unpaired high surrogate".to_string(),
+                            ));
+                        }
+                        index += 6;
+                        0x1_0000
+                            + ((u32::from(first) - 0xd800) << 10)
+                            + (u32::from(second) - 0xdc00)
+                    }
+                    0xdc00..=0xdfff => {
+                        return Err(DrawingListError::JsonDecode(
+                            "TextRun.text contains an unpaired low surrogate".to_string(),
+                        ));
+                    }
+                    _ => u32::from(first),
+                };
+                let utf8_len = char::from_u32(scalar).ok_or_else(|| {
+                    DrawingListError::JsonDecode(
+                        "TextRun.text contains an invalid Unicode scalar".to_string(),
+                    )
+                })?;
+                decoded_len = decoded_len
+                    .checked_add(utf8_len.len_utf8())
+                    .ok_or_else(|| {
+                        DrawingListError::invalid("decoded text byte count overflows usize")
+                    })?;
+            }
+            _ => {
+                return Err(DrawingListError::JsonDecode(
+                    "TextRun.text contains an invalid escape".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(decoded_len)
+}
+
+fn parse_json_hex_quad(bytes: &[u8], start: usize) -> Result<u16, DrawingListError> {
+    let end = start.checked_add(4).ok_or_else(|| {
+        DrawingListError::JsonDecode("TextRun.text Unicode escape is incomplete".to_string())
+    })?;
+    let digits = bytes.get(start..end).ok_or_else(|| {
+        DrawingListError::JsonDecode("TextRun.text Unicode escape is incomplete".to_string())
+    })?;
+    digits.iter().try_fold(0u16, |value, byte| {
+        let digit = match byte {
+            b'0'..=b'9' => u16::from(byte - b'0'),
+            b'a'..=b'f' => u16::from(byte - b'a' + 10),
+            b'A'..=b'F' => u16::from(byte - b'A' + 10),
+            _ => {
+                return Err(DrawingListError::JsonDecode(
+                    "TextRun.text Unicode escape contains a non-hex digit".to_string(),
+                ));
+            }
+        };
+        Ok((value << 4) | digit)
+    })
 }
 
 fn checked_accumulate(

@@ -822,6 +822,55 @@ fn decoder_stops_at_wire_collection_and_nested_sequence_limits() {
 }
 
 #[test]
+fn decoder_charges_json_escaped_text_before_owned_document_decode() {
+    let mut bytes = String::from(r#"{"commands":[{"kind":"draw_text","run":{"text":""#);
+    bytes.push_str(&r"\u0061".repeat(4096));
+    bytes.push_str(r#""}},{"broken":}]}"#);
+    let limits = DrawingListLimits {
+        max_text_bytes: 4095,
+        ..DrawingListLimits::default()
+    };
+
+    assert!(matches!(
+        merman_display_list::DrawingListDocument::from_json_bytes_with_limits(
+            bytes.as_bytes(),
+            &limits
+        ),
+        Err(DrawingListError::ResourceLimit {
+            resource: "text_bytes",
+            actual: 4096,
+            maximum: 4095,
+        })
+    ));
+}
+
+#[test]
+fn decoder_accepts_json_escaped_text_at_its_decoded_utf8_budget() {
+    let mut document = sample_document();
+    let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+        panic!("sample document command 5 is text");
+    };
+    run.text = "a😀".to_string();
+    let bytes = serde_json::to_string(&document)
+        .expect("fixture JSON")
+        .replacen("a😀", r"\u0061\uD83D\uDE00", 1);
+    let limits = DrawingListLimits {
+        max_text_bytes: 5,
+        ..DrawingListLimits::default()
+    };
+
+    let decoded = merman_display_list::DrawingListDocument::from_json_bytes_with_limits(
+        bytes.as_bytes(),
+        &limits,
+    )
+    .expect("escaped text fits its decoded UTF-8 budget");
+    let DrawingCommand::DrawText { run } = &decoded.commands[5] else {
+        panic!("decoded command 5 is text");
+    };
+    assert_eq!(run.text, "a😀");
+}
+
+#[test]
 fn encoded_assets_require_canonical_base64_pad_bits() {
     let canonical: EncodedAsset =
         serde_json::from_str(r#"{"media_type":"font/woff2","data":"Zg=="}"#)
