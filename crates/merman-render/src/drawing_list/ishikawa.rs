@@ -481,27 +481,25 @@ impl<'a> IshikawaBuilder<'a> {
             let bounds = self.measure_text_bounds(&line, origin, presentation)?;
             let mut font = self.font.clone();
             font.weight = presentation.font_weight;
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text: line,
-                    origin,
-                    bounds,
-                    style: TextStyle {
-                        font,
-                        font_size: presentation.font_size,
-                        letter_spacing: 0.0,
-                        line_height: text.line_height,
-                        fill: Paint::solid(fill),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                    },
-                    anchor: text_anchor(presentation.anchor),
-                    baseline: text_baseline(presentation.baseline),
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text: line,
+                origin,
+                bounds,
+                style: TextStyle {
+                    font,
+                    font_size: presentation.font_size,
+                    letter_spacing: 0.0,
+                    line_height: text.line_height,
+                    fill: Paint::solid(fill),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor: text_anchor(presentation.anchor),
+                baseline: text_baseline(presentation.baseline),
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
         }
         Ok(())
     }

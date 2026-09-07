@@ -169,7 +169,7 @@ impl<'a> DrawingListBuilder<'a> {
             ));
         }
         self.usage = projected;
-        self.commands.push(DrawingCommand::DrawText { run });
+        self.commands.push(DrawingCommand::draw_text(run));
         Ok(())
     }
 

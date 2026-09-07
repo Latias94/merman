@@ -553,32 +553,30 @@ impl<'a> BlockBuilder<'a> {
                 label_center.y - total_height / 2.0
                     + bounds_line_height * (line_index as f64 + 0.5),
             );
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text: line.clone(),
-                    origin,
-                    bounds: Rect::new(
-                        label_left,
-                        origin.y - bounds_line_height / 2.0,
-                        label_width,
-                        bounds_line_height,
-                    ),
-                    style: DisplayTextStyle {
-                        font: style.font.clone(),
-                        font_size: style.font_size,
-                        letter_spacing: 0.0,
-                        line_height: text_line_height,
-                        fill: Paint::solid(style.text),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                    },
-                    anchor: style.text_anchor,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text: line.clone(),
+                origin,
+                bounds: Rect::new(
+                    label_left,
+                    origin.y - bounds_line_height / 2.0,
+                    label_width,
+                    bounds_line_height,
+                ),
+                style: DisplayTextStyle {
+                    font: style.font.clone(),
+                    font_size: style.font_size,
+                    letter_spacing: 0.0,
+                    line_height: text_line_height,
+                    fill: Paint::solid(style.text),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor: style.text_anchor,
+                baseline: TextBaseline::Middle,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
         }
         if scoped_opacity {
             self.commands.push(DrawingCommand::Restore);

@@ -426,27 +426,25 @@ impl<'a> VennBuilder<'a> {
             return Ok(());
         }
         let bounds = self.measure_text_bounds(value, origin, font_size, anchor, baseline)?;
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: value.to_string(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height: font_size,
-                    fill: Paint::solid(fill),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: value.to_string(),
+            origin,
+            bounds,
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size,
+                letter_spacing: 0.0,
+                line_height: font_size,
+                fill: Paint::solid(fill),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         Ok(())
     }
 

@@ -253,35 +253,33 @@ impl<'a> EventModelingBuilder<'a> {
             ..Default::default()
         };
         let (label_width, label_height) = self.measure_text(&swimlane.label, &label_style);
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: swimlane.label.clone(),
-                origin: label_origin,
-                bounds: Rect::new(
-                    label_origin.x,
-                    label_origin.y - label_height,
-                    label_width.max(1.0),
-                    label_height.max(1.0),
-                ),
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight: 700,
-                        ..self.font.clone()
-                    },
-                    font_size: TEXT_FONT_SIZE,
-                    letter_spacing: 0.0,
-                    line_height: LABEL_LINE_HEIGHT,
-                    fill: Paint::solid(self.text_color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: swimlane.label.clone(),
+            origin: label_origin,
+            bounds: Rect::new(
+                label_origin.x,
+                label_origin.y - label_height,
+                label_width.max(1.0),
+                label_height.max(1.0),
+            ),
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight: 700,
+                    ..self.font.clone()
                 },
-                anchor: TextAnchor::Start,
-                baseline: TextBaseline::Alphabetic,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: TEXT_FONT_SIZE,
+                letter_spacing: 0.0,
+                line_height: LABEL_LINE_HEIGHT,
+                fill: Paint::solid(self.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Start,
+            baseline: TextBaseline::Alphabetic,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
@@ -378,35 +376,33 @@ impl<'a> EventModelingBuilder<'a> {
         let content_top = box_layout.y + box_layout.height / 2.0 - content_height / 2.0;
         let center_x = box_layout.x + box_layout.width / 2.0;
         let title_y = content_top + LABEL_LINE_HEIGHT / 2.0;
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: title,
-                origin: Point::new(center_x, title_y),
-                bounds: Rect::new(
-                    box_layout.x + BOX_TEXT_PADDING,
-                    title_y - title_metrics.1 / 2.0,
-                    (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
-                    title_metrics.1.max(1.0),
-                ),
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight: 700,
-                        ..self.font.clone()
-                    },
-                    font_size: TEXT_FONT_SIZE,
-                    letter_spacing: 0.0,
-                    line_height: LABEL_LINE_HEIGHT,
-                    fill: Paint::solid(self.text_color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: title,
+            origin: Point::new(center_x, title_y),
+            bounds: Rect::new(
+                box_layout.x + BOX_TEXT_PADDING,
+                title_y - title_metrics.1 / 2.0,
+                (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
+                title_metrics.1.max(1.0),
+            ),
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight: 700,
+                    ..self.font.clone()
                 },
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: TEXT_FONT_SIZE,
+                letter_spacing: 0.0,
+                line_height: LABEL_LINE_HEIGHT,
+                fill: Paint::solid(self.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Middle,
+            baseline: TextBaseline::Middle,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
 
         if has_data {
             let data_x = box_layout.x + BOX_TEXT_PADDING;
@@ -415,32 +411,30 @@ impl<'a> EventModelingBuilder<'a> {
             {
                 let y = content_top + (3 + line_index) as f64 * LABEL_LINE_HEIGHT
                     - LABEL_LINE_HEIGHT / 2.0;
-                self.commands.push(DrawingCommand::DrawText {
-                    run: TextRun {
-                        text: line.clone(),
-                        origin: Point::new(data_x, y),
-                        bounds: Rect::new(
-                            data_x,
-                            y - *line_height / 2.0,
-                            (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
-                            (*line_height).max(1.0),
-                        ),
-                        style: TextStyle {
-                            font: self.code_font.clone(),
-                            font_size: TEXT_FONT_SIZE,
-                            letter_spacing: 0.0,
-                            line_height: LABEL_LINE_HEIGHT,
-                            fill: Paint::solid(self.text_color),
-                            stroke: None,
-                            paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                        },
-                        anchor: TextAnchor::Start,
-                        baseline: TextBaseline::Middle,
-                        direction: TextDirection::Auto,
-                        language: None,
-                        obligation: self.text_obligation.clone(),
+                self.commands.push(DrawingCommand::draw_text(TextRun {
+                    text: line.clone(),
+                    origin: Point::new(data_x, y),
+                    bounds: Rect::new(
+                        data_x,
+                        y - *line_height / 2.0,
+                        (box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0),
+                        (*line_height).max(1.0),
+                    ),
+                    style: TextStyle {
+                        font: self.code_font.clone(),
+                        font_size: TEXT_FONT_SIZE,
+                        letter_spacing: 0.0,
+                        line_height: LABEL_LINE_HEIGHT,
+                        fill: Paint::solid(self.text_color),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
-                });
+                    anchor: TextAnchor::Start,
+                    baseline: TextBaseline::Middle,
+                    direction: TextDirection::Auto,
+                    language: None,
+                    obligation: self.text_obligation.clone(),
+                }));
             }
         }
         Ok(())

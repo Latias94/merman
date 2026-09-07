@@ -688,38 +688,36 @@ impl<'a> CynefinBuilder<'a> {
             width,
             height,
         );
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.to_string(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        style: if semantic_id.contains(".model")
-                            || semantic_id.contains(".practice")
-                            || semantic_id.ends_with(".subtitle")
-                        {
-                            FontStyle::Italic
-                        } else {
-                            FontStyle::Normal
-                        },
-                        ..self.font.clone()
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.to_string(),
+            origin,
+            bounds,
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight,
+                    style: if semantic_id.contains(".model")
+                        || semantic_id.contains(".practice")
+                        || semantic_id.ends_with(".subtitle")
+                    {
+                        FontStyle::Italic
+                    } else {
+                        FontStyle::Normal
                     },
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height: font_size,
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                    ..self.font.clone()
                 },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size,
+                letter_spacing: 0.0,
+                line_height: font_size,
+                fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         Ok(())
     }
 

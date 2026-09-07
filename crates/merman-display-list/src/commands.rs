@@ -140,7 +140,7 @@ pub enum DrawingCommand {
     },
     EndSemanticGroup,
     DrawText {
-        run: TextRun,
+        run: Box<TextRun>,
     },
     DrawRasterSubtree {
         fallback_id: String,
@@ -254,6 +254,11 @@ pub enum MeasurementProvenance {
 }
 
 impl DrawingCommand {
+    /// Creates a command that draws the provided text run.
+    pub fn draw_text(run: TextRun) -> Self {
+        Self::DrawText { run: Box::new(run) }
+    }
+
     pub(crate) fn validate_numbers(&self) -> Result<(), DrawingListError> {
         match self {
             Self::SetOpacity { opacity } => validate_unit(*opacity, "opacity"),

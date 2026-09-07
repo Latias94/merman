@@ -556,10 +556,10 @@ impl<'a> FlowchartBuilder<'a> {
                     self.commands.push(DrawingCommand::ConcatTransform {
                         transform: rotate_about(title_center, -std::f64::consts::FRAC_PI_2),
                     });
-                    self.commands.push(DrawingCommand::DrawText { run });
+                    self.commands.push(DrawingCommand::draw_text(run));
                     self.commands.push(DrawingCommand::Restore);
                 } else {
-                    self.commands.push(DrawingCommand::DrawText { run });
+                    self.commands.push(DrawingCommand::draw_text(run));
                 }
             }
             self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal);
@@ -824,7 +824,7 @@ impl<'a> FlowchartBuilder<'a> {
             ),
             &style,
         )?;
-        self.commands.push(DrawingCommand::DrawText { run: label });
+        self.commands.push(DrawingCommand::draw_text(label));
         self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
@@ -960,7 +960,7 @@ impl<'a> FlowchartBuilder<'a> {
                 ),
                 &label_style,
             )?;
-            self.commands.push(DrawingCommand::DrawText { run });
+            self.commands.push(DrawingCommand::draw_text(run));
         }
         self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal);
         self.semantics
@@ -1042,7 +1042,7 @@ impl<'a> FlowchartBuilder<'a> {
             &style,
         )?;
         if !label_text.is_empty() {
-            self.commands.push(DrawingCommand::DrawText { run });
+            self.commands.push(DrawingCommand::draw_text(run));
         }
         let target = self
             .security_level_loose

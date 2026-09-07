@@ -1190,19 +1190,17 @@ impl<'a> ErBuilder<'a> {
     }
 
     fn draw_text(&mut self, text: &str, spec: TextEmitSpec) {
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.to_string(),
-                origin: spec.origin,
-                bounds: spec.bounds,
-                style: spec.style,
-                anchor: spec.anchor,
-                baseline: spec.baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
-            },
-        });
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.to_string(),
+            origin: spec.origin,
+            bounds: spec.bounds,
+            style: spec.style,
+            anchor: spec.anchor,
+            baseline: spec.baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {

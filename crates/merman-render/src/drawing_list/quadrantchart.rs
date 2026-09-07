@@ -377,27 +377,25 @@ impl<'a> QuadrantChartBuilder<'a> {
         self.commands.push(DrawingCommand::ConcatTransform {
             transform: text_transform(text.x, text.y, text.rotation),
         });
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text_value,
-                origin: Point::new(0.0, 0.0),
-                bounds,
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size: text.font_size,
-                    letter_spacing: 0.0,
-                    line_height: text.font_size,
-                    fill: Paint::solid(fill),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text_value,
+            origin: Point::new(0.0, 0.0),
+            bounds,
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size: text.font_size,
+                letter_spacing: 0.0,
+                line_height: text.font_size,
+                fill: Paint::solid(fill),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.commands.push(DrawingCommand::Restore);
         Ok(())
     }

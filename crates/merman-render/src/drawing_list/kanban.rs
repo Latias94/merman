@@ -744,27 +744,25 @@ impl<'a> KanbanBuilder<'a> {
             | TextBaseline::TextBeforeEdge
             | TextBaseline::TextAfterEdge => origin.y - height,
         };
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: value,
-                origin,
-                bounds: Rect::new(left, top, width, height),
-                style: DisplayTextStyle {
-                    font: FontDescriptor { weight, ..font },
-                    font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.line_height(),
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: value,
+            origin,
+            bounds: Rect::new(left, top, width, height),
+            style: DisplayTextStyle {
+                font: FontDescriptor { weight, ..font },
+                font_size,
+                letter_spacing: 0.0,
+                line_height: self.line_height(),
+                fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         Ok(())
     }
 

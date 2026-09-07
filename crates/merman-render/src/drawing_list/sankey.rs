@@ -235,35 +235,33 @@ impl<'a> SankeyBuilder<'a> {
         let ascent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_ASCENT_EM;
         let descent = SANKEY_LABEL_FONT_SIZE_PX * SANKEY_LABEL_DESCENT_EM;
         let bounds = &self.plan.bounds;
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text,
-                origin: Point::new(label.x, baseline_y),
-                bounds: Rect::new(
-                    bounds.min_x,
-                    baseline_y - ascent,
-                    bounds.max_x - bounds.min_x,
-                    ascent + descent,
-                ),
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size: SANKEY_LABEL_FONT_SIZE_PX,
-                    letter_spacing: 0.0,
-                    line_height: SANKEY_LABEL_FONT_SIZE_PX,
-                    fill: Paint::solid(self.text_color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor: match label.anchor {
-                    SankeyLabelAnchor::Start => TextAnchor::Start,
-                    SankeyLabelAnchor::End => TextAnchor::End,
-                },
-                baseline: TextBaseline::Alphabetic,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text,
+            origin: Point::new(label.x, baseline_y),
+            bounds: Rect::new(
+                bounds.min_x,
+                baseline_y - ascent,
+                bounds.max_x - bounds.min_x,
+                ascent + descent,
+            ),
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size: SANKEY_LABEL_FONT_SIZE_PX,
+                letter_spacing: 0.0,
+                line_height: SANKEY_LABEL_FONT_SIZE_PX,
+                fill: Paint::solid(self.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: match label.anchor {
+                SankeyLabelAnchor::Start => TextAnchor::Start,
+                SankeyLabelAnchor::End => TextAnchor::End,
+            },
+            baseline: TextBaseline::Alphabetic,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         Ok(())
     }
 

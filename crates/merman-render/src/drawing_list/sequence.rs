@@ -1325,30 +1325,28 @@ impl<'a> SequenceBuilder<'a> {
                 TextAnchor::Middle => center.x - width / 2.0,
                 TextAnchor::End => center.x - width,
             };
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text: display,
-                    origin: Point::new(center.x, y),
-                    bounds: Rect::new(left, y - height / 2.0, width, height),
-                    style: DisplayTextStyle {
-                        font: FontDescriptor {
-                            weight,
-                            ..font.clone()
-                        },
-                        font_size,
-                        letter_spacing: 0.0,
-                        line_height: line_step,
-                        fill: Paint::solid(color),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text: display,
+                origin: Point::new(center.x, y),
+                bounds: Rect::new(left, y - height / 2.0, width, height),
+                style: DisplayTextStyle {
+                    font: FontDescriptor {
+                        weight,
+                        ..font.clone()
                     },
-                    anchor,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+                    font_size,
+                    letter_spacing: 0.0,
+                    line_height: line_step,
+                    fill: Paint::solid(color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor,
+                baseline: TextBaseline::Middle,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
         }
         Ok(())
     }

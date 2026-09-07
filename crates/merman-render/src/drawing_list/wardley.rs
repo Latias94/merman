@@ -914,30 +914,28 @@ impl<'a> WardleyBuilder<'a> {
                 transform: rotation_transform(rotation.degrees, rotation.cx, rotation.cy),
             });
         }
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.text.clone(),
-                origin: Point::new(text.x, text.y),
-                bounds,
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..self.font.clone()
-                    },
-                    font_size: text.font_size,
-                    letter_spacing: 0.0,
-                    line_height: text.font_size,
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.text.clone(),
+            origin: Point::new(text.x, text.y),
+            bounds,
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight,
+                    ..self.font.clone()
                 },
-                anchor: map_anchor(text.text_anchor),
-                baseline: map_baseline(text.dominant_baseline),
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: text.font_size,
+                letter_spacing: 0.0,
+                line_height: text.font_size,
+                fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: map_anchor(text.text_anchor),
+            baseline: map_baseline(text.dominant_baseline),
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         if text.rotation.is_some() {
             self.commands.push(DrawingCommand::Restore);
         }

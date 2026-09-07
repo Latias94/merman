@@ -413,30 +413,28 @@ impl<'a> TimelineBuilder<'a> {
                 .measure_svg_tspan_text_bbox_height_px(line, &measurement_style)
                 .max(1.0);
             let y = node.y + ty + self.font_size + line_index as f64 * self.font_size * 1.1;
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text: line.clone(),
-                    origin: Point::new(x, y),
-                    bounds: Rect::new(x - width / 2.0, y - height / 2.0, width, height),
-                    style: DisplayTextStyle {
-                        font: FontDescriptor {
-                            weight,
-                            ..self.font.clone()
-                        },
-                        font_size: self.font_size,
-                        letter_spacing: 0.0,
-                        line_height: self.font_size * 1.1,
-                        fill: Paint::solid(color),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text: line.clone(),
+                origin: Point::new(x, y),
+                bounds: Rect::new(x - width / 2.0, y - height / 2.0, width, height),
+                style: DisplayTextStyle {
+                    font: FontDescriptor {
+                        weight,
+                        ..self.font.clone()
                     },
-                    anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+                    font_size: self.font_size,
+                    letter_spacing: 0.0,
+                    line_height: self.font_size * 1.1,
+                    fill: Paint::solid(color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
             let _ = prefix;
         }
         Ok(())
@@ -551,35 +549,33 @@ impl<'a> TimelineBuilder<'a> {
         self.commands.push(DrawingCommand::BeginSemanticGroup {
             semantic_id: semantic_id.to_string(),
         });
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: title.to_string(),
-                origin: Point::new(self.layout.title_x, self.layout.title_y),
-                bounds: Rect::new(
-                    self.layout.title_x,
-                    self.layout.title_y - height,
-                    width,
-                    height,
-                ),
-                style: DisplayTextStyle {
-                    font: FontDescriptor {
-                        weight: 700,
-                        ..self.font.clone()
-                    },
-                    font_size: self.title_font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.title_font_size,
-                    fill: Paint::solid(self.text_color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: title.to_string(),
+            origin: Point::new(self.layout.title_x, self.layout.title_y),
+            bounds: Rect::new(
+                self.layout.title_x,
+                self.layout.title_y - height,
+                width,
+                height,
+            ),
+            style: DisplayTextStyle {
+                font: FontDescriptor {
+                    weight: 700,
+                    ..self.font.clone()
                 },
-                anchor: TextAnchor::Start,
-                baseline: TextBaseline::Alphabetic,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: self.title_font_size,
+                letter_spacing: 0.0,
+                line_height: self.title_font_size,
+                fill: Paint::solid(self.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Start,
+            baseline: TextBaseline::Alphabetic,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id.to_string(),

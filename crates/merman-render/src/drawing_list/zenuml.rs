@@ -1593,31 +1593,29 @@ impl<'a> ZenUmlBuilder<'a> {
             TextBaseline::Hanging => origin.y,
             _ => origin.y - spec.size,
         };
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.to_string(),
-                origin,
-                bounds: Rect::new(bounds_x, bounds_y, width, line_height),
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight: spec.weight.max(1),
-                        style: spec.style,
-                        ..self.font.clone()
-                    },
-                    font_size: spec.size,
-                    letter_spacing: letter_spacing.unwrap_or(0.0),
-                    line_height,
-                    fill: Paint::solid(with_alpha(spec.color, spec.opacity)),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.to_string(),
+            origin,
+            bounds: Rect::new(bounds_x, bounds_y, width, line_height),
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight: spec.weight.max(1),
+                    style: spec.style,
+                    ..self.font.clone()
                 },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: spec.size,
+                letter_spacing: letter_spacing.unwrap_or(0.0),
+                line_height,
+                fill: Paint::solid(with_alpha(spec.color, spec.opacity)),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.semantics.push(SemanticAnnotation {
             id,
             role: SemanticRole::Label,

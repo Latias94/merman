@@ -396,35 +396,31 @@ impl<'a> XyChartBuilder<'a> {
                 self.commands.push(DrawingCommand::ConcatTransform {
                     transform: text_transform(text.x, text.y, text.rotation),
                 });
-                self.commands.push(DrawingCommand::DrawText {
-                    run: self.text_run(
-                        text_value,
-                        TextRunSpec {
-                            origin: Point::new(0.0, 0.0),
-                            bounds: local_bounds,
-                            font_size: text.font_size,
-                            fill,
-                            anchor,
-                            baseline,
-                        },
-                    ),
-                });
+                self.commands.push(DrawingCommand::draw_text(self.text_run(
+                    text_value,
+                    TextRunSpec {
+                        origin: Point::new(0.0, 0.0),
+                        bounds: local_bounds,
+                        font_size: text.font_size,
+                        fill,
+                        anchor,
+                        baseline,
+                    },
+                )));
                 self.commands.push(DrawingCommand::Restore);
             }
             TextPlacement::Direct => {
-                self.commands.push(DrawingCommand::DrawText {
-                    run: self.text_run(
-                        text_value,
-                        TextRunSpec {
-                            origin: Point::new(text.x, text.y),
-                            bounds: translate_rect(local_bounds, text.x, text.y),
-                            font_size: text.font_size,
-                            fill,
-                            anchor,
-                            baseline,
-                        },
-                    ),
-                });
+                self.commands.push(DrawingCommand::draw_text(self.text_run(
+                    text_value,
+                    TextRunSpec {
+                        origin: Point::new(text.x, text.y),
+                        bounds: translate_rect(local_bounds, text.x, text.y),
+                        font_size: text.font_size,
+                        fill,
+                        anchor,
+                        baseline,
+                    },
+                )));
             }
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);

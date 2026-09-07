@@ -732,27 +732,25 @@ impl<'a> MindmapBuilder<'a> {
         let text = self.plain_label(node)?;
         if !text.is_empty() {
             let bounds = mindmap_label_bounds(node, layout_node);
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text,
-                    origin: Point::new(layout_node.x, layout_node.y),
-                    bounds,
-                    style: TextStyle {
-                        font: self.font.clone(),
-                        font_size: 16.0,
-                        letter_spacing: 0.0,
-                        line_height: 24.0,
-                        fill: Paint::solid(style.text),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                    },
-                    anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text,
+                origin: Point::new(layout_node.x, layout_node.y),
+                bounds,
+                style: TextStyle {
+                    font: self.font.clone(),
+                    font_size: 16.0,
+                    letter_spacing: 0.0,
+                    line_height: 24.0,
+                    fill: Paint::solid(style.text),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {

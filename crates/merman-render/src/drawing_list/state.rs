@@ -626,14 +626,12 @@ impl<'a> StateBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.commands.push(DrawingCommand::DrawText {
-            run: self.text_run(
-                text.clone(),
-                Point::new(label.x, label.y),
-                bounds,
-                self.transition_label,
-            ),
-        });
+        self.commands.push(DrawingCommand::draw_text(self.text_run(
+            text.clone(),
+            Point::new(label.x, label.y),
+            bounds,
+            self.transition_label,
+        )));
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: semantic_id,
@@ -717,19 +715,17 @@ impl<'a> StateBuilder<'a> {
                 };
                 let label_width = (layout.width - 2.0 * horizontal_padding).max(0.0);
                 let label_height = (layout.height - 2.0 * self.state_padding).max(0.0);
-                self.commands.push(DrawingCommand::DrawText {
-                    run: self.text_run(
-                        text.clone(),
-                        Point::new(layout.x, layout.y),
-                        Rect::new(
-                            layout.x - label_width / 2.0,
-                            layout.y - label_height / 2.0,
-                            label_width,
-                            label_height,
-                        ),
-                        self.state_label,
+                self.commands.push(DrawingCommand::draw_text(self.text_run(
+                    text.clone(),
+                    Point::new(layout.x, layout.y),
+                    Rect::new(
+                        layout.x - label_width / 2.0,
+                        layout.y - label_height / 2.0,
+                        label_width,
+                        label_height,
                     ),
-                });
+                    self.state_label,
+                )));
                 text
             }
             _ => unreachable!("unsupported shapes fail preflight"),

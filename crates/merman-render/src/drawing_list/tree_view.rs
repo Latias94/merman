@@ -475,27 +475,25 @@ impl<'a> TreeViewBuilder<'a> {
         font: FontDescriptor,
         fill: Color,
     ) {
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.to_string(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font,
-                    font_size: self.label_font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.label_font_size,
-                    fill: Paint::solid(fill),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor: TextAnchor::Start,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.to_string(),
+            origin,
+            bounds,
+            style: TextStyle {
+                font,
+                font_size: self.label_font_size,
+                letter_spacing: 0.0,
+                line_height: self.label_font_size,
+                fill: Paint::solid(fill),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Start,
+            baseline: TextBaseline::Middle,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
     }
 
     fn emit_line(&mut self, line_index: usize) -> Result<()> {

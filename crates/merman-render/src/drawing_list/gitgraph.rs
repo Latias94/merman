@@ -1388,30 +1388,28 @@ impl<'a> GitGraphBuilder<'a> {
             self.commands
                 .push(DrawingCommand::ConcatTransform { transform });
         }
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: text.into(),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font: FontDescriptor {
-                        weight,
-                        ..self.font.clone()
-                    },
-                    font_size: font_size.max(1.0),
-                    letter_spacing: 0.0,
-                    line_height: font_size.max(1.0),
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: text.into(),
+            origin,
+            bounds,
+            style: TextStyle {
+                font: FontDescriptor {
+                    weight,
+                    ..self.font.clone()
                 },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+                font_size: font_size.max(1.0),
+                letter_spacing: 0.0,
+                line_height: font_size.max(1.0),
+                fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         if rotation.is_some() {
             self.commands.push(DrawingCommand::Restore);
         }

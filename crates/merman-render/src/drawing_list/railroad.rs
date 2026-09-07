@@ -454,27 +454,25 @@ impl<'a> RailroadBuilder<'a> {
         if text.is_empty() || self.style.font_size == 0.0 {
             return Ok(());
         }
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text,
-                origin: Point::new(element.text_x, element.text_y),
-                bounds: Rect::new(0.0, 0.0, element.width, element.height),
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size: self.style.font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.style.font_size,
-                    fill: Paint::solid(color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text,
+            origin: Point::new(element.text_x, element.text_y),
+            bounds: Rect::new(0.0, 0.0, element.width, element.height),
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size: self.style.font_size,
+                letter_spacing: 0.0,
+                line_height: self.style.font_size,
+                fill: Paint::solid(color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Middle,
+            baseline: TextBaseline::Middle,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         Ok(())
     }
 
@@ -502,27 +500,25 @@ impl<'a> RailroadBuilder<'a> {
             )?;
             let mut font = self.font.clone();
             font.weight = 700;
-            self.commands.push(DrawingCommand::DrawText {
-                run: TextRun {
-                    text,
-                    origin,
-                    bounds,
-                    style: TextStyle {
-                        font,
-                        font_size: self.style.font_size,
-                        letter_spacing: 0.0,
-                        line_height: self.style.font_size,
-                        fill: Paint::solid(color),
-                        stroke: None,
-                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                    },
-                    anchor: TextAnchor::Start,
-                    baseline: TextBaseline::Alphabetic,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: self.text_obligation.clone(),
+            self.commands.push(DrawingCommand::draw_text(TextRun {
+                text,
+                origin,
+                bounds,
+                style: TextStyle {
+                    font,
+                    font_size: self.style.font_size,
+                    letter_spacing: 0.0,
+                    line_height: self.style.font_size,
+                    fill: Paint::solid(color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                 },
-            });
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: self.text_obligation.clone(),
+            }));
         }
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {

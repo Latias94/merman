@@ -667,11 +667,11 @@ impl<'a> TreemapBuilder<'a> {
                 fill_rule: FillRule::NonZero,
             });
             self.record_text_class(semantic_id, class);
-            self.commands.push(DrawingCommand::DrawText { run });
+            self.commands.push(DrawingCommand::draw_text(run));
             self.commands.push(DrawingCommand::Restore);
         } else {
             self.record_text_class(semantic_id, class);
-            self.commands.push(DrawingCommand::DrawText { run });
+            self.commands.push(DrawingCommand::draw_text(run));
         }
         Ok(())
     }

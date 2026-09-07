@@ -327,15 +327,13 @@ impl<'a> PieBuilder<'a> {
             self.commands.push(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
             });
-            self.commands.push(DrawingCommand::DrawText {
-                run: self.text_run(
-                    text.clone(),
-                    Point::new(slice.text_x, slice.text_y),
-                    self.section_font_size,
-                    self.section_color,
-                    TextAnchor::Middle,
-                )?,
-            });
+            self.commands.push(DrawingCommand::draw_text(self.text_run(
+                text.clone(),
+                Point::new(slice.text_x, slice.text_y),
+                self.section_font_size,
+                self.section_color,
+                TextAnchor::Middle,
+            )?));
             self.commands.push(DrawingCommand::EndSemanticGroup);
             self.semantics.push(SemanticAnnotation {
                 id: semantic_id,
@@ -367,15 +365,13 @@ impl<'a> PieBuilder<'a> {
         });
         self.text_classes
             .insert("pie.title".to_string(), "pieTitleText".to_string());
-        self.commands.push(DrawingCommand::DrawText {
-            run: self.text_run(
-                title.clone(),
-                Point::new(0.0, PIE_TITLE_Y),
-                self.title_font_size,
-                self.title_color,
-                TextAnchor::Middle,
-            )?,
-        });
+        self.commands.push(DrawingCommand::draw_text(self.text_run(
+            title.clone(),
+            Point::new(0.0, PIE_TITLE_Y),
+            self.title_font_size,
+            self.title_color,
+            TextAnchor::Middle,
+        )?));
         self.commands.push(DrawingCommand::EndSemanticGroup);
         self.semantics.push(SemanticAnnotation {
             id: "pie.title".to_string(),
@@ -423,18 +419,16 @@ impl<'a> PieBuilder<'a> {
                 )?;
             }
             if !text.is_empty() {
-                self.commands.push(DrawingCommand::DrawText {
-                    run: self.text_run(
-                        text.clone(),
-                        Point::new(
-                            PIE_LEGEND_RECT_SIZE_PX + PIE_LEGEND_SPACING_PX,
-                            LEGEND_TEXT_Y,
-                        ),
-                        self.legend_font_size,
-                        self.legend_color,
-                        TextAnchor::Start,
-                    )?,
-                });
+                self.commands.push(DrawingCommand::draw_text(self.text_run(
+                    text.clone(),
+                    Point::new(
+                        PIE_LEGEND_RECT_SIZE_PX + PIE_LEGEND_SPACING_PX,
+                        LEGEND_TEXT_Y,
+                    ),
+                    self.legend_font_size,
+                    self.legend_color,
+                    TextAnchor::Start,
+                )?));
             }
             self.commands.push(DrawingCommand::Restore);
             self.commands.push(DrawingCommand::EndSemanticGroup);

@@ -135,37 +135,35 @@ pub fn sample_document() -> DrawingListDocument {
             DrawingCommand::BeginSemanticGroup {
                 semantic_id: "node.a".into(),
             },
-            DrawingCommand::DrawText {
-                run: TextRun {
-                    text: "A node".into(),
-                    origin: Point::new(60.0, 42.0),
-                    bounds: Rect::new(24.0, 28.0, 72.0, 24.0),
-                    style: TextStyle {
-                        font: FontDescriptor {
-                            families: vec!["Arial".into(), "sans-serif".into()],
-                            weight: 400,
-                            style: FontStyle::Normal,
-                            postscript_name: None,
-                            resource: None,
-                        },
-                        font_size: 16.0,
-                        letter_spacing: 0.0,
-                        line_height: 19.2,
-                        fill: Paint::solid(Color::rgba(21, 52, 80, 255)),
-                        stroke: None,
-                        paint_order: TextPaintOrder::FillThenStroke,
+            DrawingCommand::draw_text(TextRun {
+                text: "A node".into(),
+                origin: Point::new(60.0, 42.0),
+                bounds: Rect::new(24.0, 28.0, 72.0, 24.0),
+                style: TextStyle {
+                    font: FontDescriptor {
+                        families: vec!["Arial".into(), "sans-serif".into()],
+                        weight: 400,
+                        style: FontStyle::Normal,
+                        postscript_name: None,
+                        resource: None,
                     },
-                    anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Middle,
-                    direction: TextDirection::Auto,
-                    language: None,
-                    obligation: TextObligation::HostText {
-                        measurement: MeasurementProvenance::HostCallback {
-                            profile: "fixture".into(),
-                        },
+                    font_size: 16.0,
+                    letter_spacing: 0.0,
+                    line_height: 19.2,
+                    fill: Paint::solid(Color::rgba(21, 52, 80, 255)),
+                    stroke: None,
+                    paint_order: TextPaintOrder::FillThenStroke,
+                },
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Middle,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: TextObligation::HostText {
+                    measurement: MeasurementProvenance::HostCallback {
+                        profile: "fixture".into(),
                     },
                 },
-            },
+            }),
             DrawingCommand::EndSemanticGroup,
             DrawingCommand::Restore,
         ],

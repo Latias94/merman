@@ -743,27 +743,25 @@ impl<'a> ArchitectureBuilder<'a> {
         self.commands.push(DrawingCommand::Save);
         self.commands
             .push(DrawingCommand::ConcatTransform { transform });
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: lines.join("\n"),
-                origin: Point::new(0.0, 0.0),
-                bounds: local_bounds,
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size: self.font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.font_size * 1.1,
-                    fill: Paint::solid(self.text_color),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Middle,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: lines.join("\n"),
+            origin: Point::new(0.0, 0.0),
+            bounds: local_bounds,
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size: self.font_size,
+                letter_spacing: 0.0,
+                line_height: self.font_size * 1.1,
+                fill: Paint::solid(self.text_color),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor: TextAnchor::Middle,
+            baseline: TextBaseline::Middle,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.commands.push(DrawingCommand::Restore);
         self.semantics.push(SemanticAnnotation {
             id: format!("{semantic_id}.label"),
@@ -823,27 +821,25 @@ impl<'a> ArchitectureBuilder<'a> {
         if include_in_root_bounds {
             self.extend_content_rect(bounds);
         }
-        self.commands.push(DrawingCommand::DrawText {
-            run: TextRun {
-                text: lines.join("\n"),
-                origin,
-                bounds,
-                style: TextStyle {
-                    font: self.font.clone(),
-                    font_size: self.font_size,
-                    letter_spacing: 0.0,
-                    line_height: self.font_size * 1.1,
-                    fill: Paint::solid(fill),
-                    stroke: None,
-                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                },
-                anchor,
-                baseline,
-                direction: TextDirection::Auto,
-                language: None,
-                obligation: self.text_obligation.clone(),
+        self.commands.push(DrawingCommand::draw_text(TextRun {
+            text: lines.join("\n"),
+            origin,
+            bounds,
+            style: TextStyle {
+                font: self.font.clone(),
+                font_size: self.font_size,
+                letter_spacing: 0.0,
+                line_height: self.font_size * 1.1,
+                fill: Paint::solid(fill),
+                stroke: None,
+                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
             },
-        });
+            anchor,
+            baseline,
+            direction: TextDirection::Auto,
+            language: None,
+            obligation: self.text_obligation.clone(),
+        }));
         self.semantics.push(SemanticAnnotation {
             id: id.to_string(),
             role: SemanticRole::Label,
@@ -1071,27 +1067,25 @@ impl<'a> ArchitectureBuilder<'a> {
                 )?;
             }
             "unknown" => {
-                self.commands.push(DrawingCommand::DrawText {
-                    run: TextRun {
-                        text: "?".to_string(),
-                        origin: Point::new(origin.x + size / 2.0, origin.y + size * 0.82),
-                        bounds: Rect::new(origin.x, origin.y, size, size),
-                        style: TextStyle {
-                            font: self.font.clone(),
-                            font_size: size * 0.7,
-                            letter_spacing: 0.0,
-                            line_height: size,
-                            fill: Paint::solid(white),
-                            stroke: None,
-                            paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-                        },
-                        anchor: TextAnchor::Middle,
-                        baseline: TextBaseline::Alphabetic,
-                        direction: TextDirection::Auto,
-                        language: None,
-                        obligation: self.text_obligation.clone(),
+                self.commands.push(DrawingCommand::draw_text(TextRun {
+                    text: "?".to_string(),
+                    origin: Point::new(origin.x + size / 2.0, origin.y + size * 0.82),
+                    bounds: Rect::new(origin.x, origin.y, size, size),
+                    style: TextStyle {
+                        font: self.font.clone(),
+                        font_size: size * 0.7,
+                        letter_spacing: 0.0,
+                        line_height: size,
+                        fill: Paint::solid(white),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
                     },
-                });
+                    anchor: TextAnchor::Middle,
+                    baseline: TextBaseline::Alphabetic,
+                    direction: TextDirection::Auto,
+                    language: None,
+                    obligation: self.text_obligation.clone(),
+                }));
             }
             "blank" => {}
             // `icon` is normalized to the built-in set above. Keep this arm defensive rather
