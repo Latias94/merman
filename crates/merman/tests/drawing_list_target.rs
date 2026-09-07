@@ -182,10 +182,11 @@ fn flowchart_and_swimlane_limits_stop_at_the_first_over_budget_item() {
 }
 
 #[test]
-fn flowchart_and_swimlane_fit_their_exact_document_budgets() {
+fn flowchart_swimlane_and_pie_fit_their_exact_document_budgets() {
     for source in [
         "flowchart TD\nA[Parse] -->|next| B{Layout}\nB --> C([Done])\n",
         "swimlane-beta LR\nsubgraph Lane\nA -->|next| B\nend\n",
+        "pie showData title Releases\n\"Stable\" : 3\n\"Alpha\" : 1\n",
     ] {
         let renderer = Renderer::new();
         let RenderOutput::DrawingList(Some(output)) = renderer
@@ -1159,6 +1160,76 @@ pie
         ))
         .expect_err("hover highlighting must not disappear from DrawingList output");
     assert!(error.to_string().contains("interaction state machine"));
+}
+
+#[test]
+fn pie_limits_stop_at_the_first_over_budget_item() {
+    let source = "pie showData title Releases\n\"Stable\" : 3\n\"Alpha\" : 1\n";
+    for (id, actual, maximum, limits) in [
+        (
+            "max_commands",
+            6,
+            5,
+            DrawingListLimits {
+                max_commands: 5,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_resources",
+            2,
+            1,
+            DrawingListLimits {
+                max_resources: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_path_segments",
+            5,
+            1,
+            DrawingListLimits {
+                max_path_segments: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_text_bytes",
+            6,
+            3,
+            DrawingListLimits {
+                max_text_bytes: 3,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_nesting_depth",
+            3,
+            2,
+            DrawingListLimits {
+                max_nesting_depth: 2,
+                ..DrawingListLimits::default()
+            },
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest {
+                    limits,
+                    ..DrawingListRequest::default()
+                },
+            ))
+            .expect_err("the Pie builder must reject the first over-budget item without output");
+        let RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a resource-limit error for {id}, got {error}");
+        };
+        assert_eq!(limit.id, id);
+        assert_eq!(limit.phase, "drawing-list-validation");
+        assert_eq!(limit.actual, actual, "first over-budget item for {id}");
+        assert_eq!(limit.maximum, maximum);
+    }
 }
 
 #[test]
