@@ -709,6 +709,43 @@ fn timeline_redux_color_border_array_owns_event_fill() {
 }
 
 #[test]
+fn timeline_redux_color_missing_border_array_slot_does_not_claim_node_border_as_event_fill() {
+    let theme = timeline_event_fill_theme(
+        CanvasPaint::solid("#123456").expect("valid Timeline event fill"),
+    );
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "theme": "redux-color",
+        "themeVariables": {
+            "borderColorArray": [],
+            "nodeBorder": "#abcdef"
+        }
+    })));
+    let rendered = try_render_timeline_with_theme_and_engine(
+        "timeline\n    section Release\n        Plan : Build\n",
+        &theme,
+        engine,
+    )
+    .expect("render Redux color Timeline event fill with missing border slot");
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Timeline SVG");
+    let event_path = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .flat_map(|wrapper| wrapper.descendants())
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .expect("Timeline event path");
+    assert_eq!(event_path.attribute("style"), Some("fill:#123456;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn timeline_event_palette_reaches_section_task_and_event_terminals() {
     let theme = timeline_event_palette_theme(&["#123456", "#654321"]);
     let rendered = try_render_timeline_with_theme(

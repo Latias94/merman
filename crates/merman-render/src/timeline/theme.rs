@@ -613,10 +613,11 @@ fn timeline_event_fill_source_owned(
                 "themeVariables.borderColorArray",
             );
         }
-        return merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.nodeBorder",
-        );
+        // A color theme owns an event fill only when the section has an actual
+        // border-color slot. An empty or short array cannot provide a fill
+        // terminal, so it must not suppress the typed event paint via the
+        // unrelated node-border token.
+        return false;
     }
 
     merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.mainBkg")
