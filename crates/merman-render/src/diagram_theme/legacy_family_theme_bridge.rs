@@ -255,7 +255,7 @@ enum LegacyFamilyDispatch {
 /// executable.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LegacyFamilyThemeBridgeRetirementStatus {
+pub struct LegacyFamilyThemeBridgeInventory {
     matrix_route_count: usize,
     matrix_family_count: usize,
     dispatched_family_count: usize,
@@ -268,7 +268,7 @@ pub struct LegacyFamilyThemeBridgeRetirementStatus {
 }
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-impl LegacyFamilyThemeBridgeRetirementStatus {
+impl LegacyFamilyThemeBridgeInventory {
     pub const fn matrix_route_count(self) -> usize {
         self.matrix_route_count
     }
@@ -338,7 +338,7 @@ impl LegacyFamilyThemeBridgeRetirementStatus {
 /// authorize deleting the bridge; the acceptance layer must also reconcile provider removal and
 /// the independent migration, support, and release ledgers.
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
-pub fn legacy_family_theme_bridge_retirement_status() -> LegacyFamilyThemeBridgeRetirementStatus {
+pub fn legacy_family_theme_bridge_inventory() -> LegacyFamilyThemeBridgeInventory {
     let matrix_routes = legacy_compatibility_route_inventory();
     let matrix_families = matrix_routes
         .iter()
@@ -363,7 +363,7 @@ pub fn legacy_family_theme_bridge_retirement_status() -> LegacyFamilyThemeBridge
     let matrix_only_family_count = matrix_families.difference(&dispatched_families).count();
     let dispatch_only_family_count = dispatched_families.difference(&matrix_families).count();
 
-    LegacyFamilyThemeBridgeRetirementStatus {
+    LegacyFamilyThemeBridgeInventory {
         matrix_route_count: matrix_routes.len(),
         matrix_family_count: matrix_families.len(),
         dispatched_family_count: dispatched_families.len(),
@@ -2437,14 +2437,14 @@ mod tests {
     }
 
     #[test]
-    fn bridge_retirement_status_is_derived_from_matrix_and_dispatch() {
+    fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
             0xcc, 0x78, 0xeb, 0xdd, 0x8d, 0x32, 0xee, 0xb6, 0x96, 0x5b, 0x1d, 0x94, 0x59, 0xb0,
             0xa2, 0xa1, 0xec, 0x28, 0x43, 0x86, 0x24, 0x88, 0x7d, 0x9c, 0x8f, 0x03, 0x3c, 0xdd,
             0xb9, 0x67, 0x5a, 0x61,
         ];
 
-        let status = legacy_family_theme_bridge_retirement_status();
+        let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
         assert_eq!(status.matrix_route_count(), 266);
         assert_eq!(status.matrix_family_count(), 16);
@@ -2478,7 +2478,7 @@ mod tests {
     fn bridge_route_dispatch_inventory_can_be_empty() {
         let empty_routes = digest_legacy_routes(&[]);
         let empty_families = BTreeSet::new();
-        let status = LegacyFamilyThemeBridgeRetirementStatus {
+        let status = LegacyFamilyThemeBridgeInventory {
             matrix_route_count: 0,
             matrix_family_count: 0,
             dispatched_family_count: 0,
@@ -2507,7 +2507,7 @@ mod tests {
 
     #[test]
     fn bridge_deletion_gate_rejects_missing_route_digests() {
-        let status = LegacyFamilyThemeBridgeRetirementStatus {
+        let status = LegacyFamilyThemeBridgeInventory {
             matrix_route_count: 0,
             matrix_family_count: 0,
             dispatched_family_count: 0,

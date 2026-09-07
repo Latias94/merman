@@ -113,7 +113,7 @@ pub mod __private {
     };
 
     #[cfg(feature = "internal-theme-acceptance")]
-    pub use crate::diagram_theme::LegacyFamilyThemeBridgeRetirementStatus;
+    pub use crate::diagram_theme::LegacyFamilyThemeBridgeInventory;
 
     #[cfg(feature = "internal-theme-acceptance")]
     pub use crate::diagram_theme::{
@@ -161,9 +161,9 @@ pub mod __private {
     /// These facts do not authorize bridge deletion. The acceptance layer must independently
     /// reconcile provider removal, migration ledgers, support claims, and release gates.
     #[cfg(feature = "internal-theme-acceptance")]
-    pub fn legacy_family_theme_bridge_retirement_status()
-    -> crate::diagram_theme::LegacyFamilyThemeBridgeRetirementStatus {
-        crate::diagram_theme::legacy_family_theme_bridge_retirement_status()
+    pub fn legacy_family_theme_bridge_inventory()
+    -> crate::diagram_theme::LegacyFamilyThemeBridgeInventory {
+        crate::diagram_theme::legacy_family_theme_bridge_inventory()
     }
 
     /// Seals renderer-owned route receipts against both finalized SVG representations.

@@ -19,7 +19,7 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 }
 
 #[test]
-fn bridge_retirement_gate_reports_live_legacy_routes_without_visual_proof() {
+fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
         0x8f, 0xd4, 0xcd, 0x68, 0x8d, 0x87, 0xc3, 0xeb, 0xa8, 0x6a, 0xc2, 0x91, 0xa8, 0x9e, 0x35,
         0xd5, 0x21, 0xea, 0x3e, 0x93, 0xee, 0xa3, 0xa9, 0x97, 0xf5, 0xc0, 0x08, 0xfc, 0x0b, 0x6c,
@@ -36,7 +36,7 @@ fn bridge_retirement_gate_reports_live_legacy_routes_without_visual_proof() {
         0x5a, 0x61,
     ];
 
-    let status = merman::__theme_acceptance::legacy_family_theme_bridge_retirement_status();
+    let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
     assert_eq!(status.matrix_route_count(), 266);

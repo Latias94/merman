@@ -183,9 +183,9 @@ pub mod __theme_acceptance {
 
     /// Returns the renderer-owned route and dispatch inventory for the legacy family bridge.
     #[cfg(feature = "internal-theme-acceptance")]
-    pub fn legacy_family_theme_bridge_retirement_status()
-    -> merman_render::__private::LegacyFamilyThemeBridgeRetirementStatus {
-        merman_render::__private::legacy_family_theme_bridge_retirement_status()
+    pub fn legacy_family_theme_bridge_inventory()
+    -> merman_render::__private::LegacyFamilyThemeBridgeInventory {
+        merman_render::__private::legacy_family_theme_bridge_inventory()
     }
 
     /// Borrowed production-owned artifact and its inseparable target admission receipt.

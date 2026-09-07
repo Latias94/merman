@@ -95,7 +95,7 @@ pub(crate) use family_mechanism_matrix::{
 };
 #[cfg(feature = "internal-theme-acceptance")]
 pub use legacy_family_theme_bridge::{
-    LegacyFamilyThemeBridgeRetirementStatus, legacy_family_theme_bridge_retirement_status,
+    LegacyFamilyThemeBridgeInventory, legacy_family_theme_bridge_inventory,
 };
 #[cfg(feature = "internal-theme-acceptance")]
 #[doc(hidden)]
