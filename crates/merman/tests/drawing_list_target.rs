@@ -182,11 +182,12 @@ fn flowchart_and_swimlane_limits_stop_at_the_first_over_budget_item() {
 }
 
 #[test]
-fn flowchart_swimlane_and_pie_fit_their_exact_document_budgets() {
+fn bounded_families_fit_their_exact_document_budgets() {
     for source in [
         "flowchart TD\nA[Parse] -->|next| B{Layout}\nB --> C([Done])\n",
         "swimlane-beta LR\nsubgraph Lane\nA -->|next| B\nend\n",
         "pie showData title Releases\n\"Stable\" : 3\n\"Alpha\" : 1\n",
+        "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n",
     ] {
         let renderer = Renderer::new();
         let RenderOutput::DrawingList(Some(output)) = renderer
@@ -2845,6 +2846,73 @@ fn gitgraph_emits_branches_commits_tags_and_parent_arrows() {
 }
 
 #[test]
+fn timeline_connectors_use_the_winning_line_wrapper_color() {
+    let config = MermaidConfig::from_value(serde_json::json!({
+        "theme": "base", "themeVariables": {
+            "THEME_COLOR_LIMIT": 2, "cScaleLabel1": "#123456", "cScaleInv1": "#abcdef"
+        }
+    }));
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config));
+    let RenderOutput::DrawingList(Some(output)) = renderer
+        .render(RenderRequest::drawing_list(
+            "timeline\nsection Work\nPlan : Build\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .unwrap()
+    else {
+        panic!("expected DrawingList")
+    };
+    for id in ["timeline.activity.line", "timeline.task.0.connector.0.line"] {
+        let style = output
+            .document()
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style } if path.as_str() == id => Some(style),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            style.stroke.as_ref().unwrap().paint,
+            Paint::solid(merman_display_list::Color::rgba(18, 52, 86, 255)),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn timeline_neo_effects_are_not_silently_dropped() {
+    for config in [
+        serde_json::json!({"look":"neo","theme":"base","themeVariables":{"useGradient":true}}),
+        serde_json::json!({"look":"neo","theme":"redux","themeVariables":{"useGradient":false}}),
+    ] {
+        let renderer = Renderer::new()
+            .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(config)));
+        for policy in [
+            DrawingListPolicy::VectorOnly,
+            DrawingListPolicy::AllowRasterSubtree,
+        ] {
+            let error = renderer
+                .render(RenderRequest::drawing_list(
+                    "timeline\nsection Work\nPlan : Build\n",
+                    OperationControl::new(),
+                    DrawingListRequest {
+                        policy,
+                        ..Default::default()
+                    },
+                ))
+                .expect_err("unrepresented neo effects must return no partial document");
+            assert!(
+                matches!(error, RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable { ref family, ref reason })
+                if family == "timeline" && reason.contains("neo")),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
 fn timeline_emits_sections_tasks_events_connectors_and_title() {
     let source = r#"timeline
         title Release history
@@ -2948,6 +3016,58 @@ fn vertical_timeline_emits_explicit_arrowhead_geometry() {
         );
     }
     assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn journey_limits_stop_at_the_first_over_budget_item() {
+    let source = "journey\nsection Checkout\nSign Up: 5: Alice\nPay: 3: Bob\n";
+    for (id, actual, maximum, limits) in [
+        (
+            "max_commands",
+            6,
+            5,
+            DrawingListLimits {
+                max_commands: 5,
+                ..Default::default()
+            },
+        ),
+        (
+            "max_text_bytes",
+            5,
+            3,
+            DrawingListLimits {
+                max_text_bytes: 3,
+                ..Default::default()
+            },
+        ),
+        (
+            "max_stroke_dash_entries",
+            2,
+            1,
+            DrawingListLimits {
+                max_stroke_dash_entries: 1,
+                ..Default::default()
+            },
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest {
+                    limits,
+                    ..Default::default()
+                },
+            ))
+            .expect_err("Journey must reject the first over-budget item without output");
+        let RenderError::ResourceLimitExceeded(limit) = error else {
+            panic!("expected resource limit {id}, got {error}");
+        };
+        assert_eq!(limit.id, id);
+        assert_eq!(limit.phase, "drawing-list-validation");
+        assert_eq!(limit.actual, actual, "first over-budget item for {id}");
+        assert_eq!(limit.maximum, maximum);
+    }
 }
 
 #[test]

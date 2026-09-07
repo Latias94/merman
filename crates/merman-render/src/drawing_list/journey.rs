@@ -8,6 +8,7 @@ use super::{
     JourneySvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::config::{config_font_family_css_raw, config_theme_font_size_css_or_root_number_px};
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
@@ -25,10 +26,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
     TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::json;
@@ -46,15 +46,16 @@ pub(crate) fn build_journey_document(
     pair: &JourneyPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    JourneyBuilder::new(pair, metadata, policy, session)?.build()
+    JourneyBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct JourneyBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a JourneyDiagramRenderModel,
     layout: &'a JourneyDiagramLayout,
     task_font: FontDescriptor,
@@ -73,9 +74,6 @@ struct JourneyBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 struct TextEmitSpec {
@@ -93,6 +91,7 @@ impl<'a> JourneyBuilder<'a> {
         pair: &'a JourneyPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -148,11 +147,16 @@ impl<'a> JourneyBuilder<'a> {
             })
             .collect::<Result<Vec<_>>>()?;
         let legend_font_family = raw_default_font_family;
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "journey.document".to_string(),
+        })?;
 
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             task_font: FontDescriptor {
@@ -189,14 +193,6 @@ impl<'a> JourneyBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "journey.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
@@ -204,33 +200,35 @@ impl<'a> JourneyBuilder<'a> {
         let title = self
             .layout
             .title
-            .clone()
-            .or_else(|| self.metadata.title.clone())
-            .map(|value| value.trim().to_string())
+            .as_deref()
+            .or(self.metadata.title.as_deref())
+            .map(str::trim)
             .filter(|value| !value.is_empty());
-        self.semantics.push(SemanticAnnotation {
+
+        self.emit_actor_legend()?;
+        self.emit_sections()?;
+        self.emit_tasks()?;
+        if let Some(title) = title {
+            self.emit_title(title)?;
+        }
+        self.emit_activity_line()?;
+
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
+        // Duplicate potentially large authored titles only after their visible text is admitted.
+        self.document.push_semantic(SemanticAnnotation {
             id: "journey.document".to_string(),
             role: SemanticRole::Document,
             title: self
                 .model
                 .acc_title
                 .clone()
-                .or_else(|| title.clone())
+                .or_else(|| title.map(str::to_string))
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
-
-        self.emit_actor_legend()?;
-        self.emit_sections()?;
-        self.emit_tasks()?;
-        if let Some(title) = title.as_deref() {
-            self.emit_title(title)?;
-        }
-        self.emit_activity_line()?;
-
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        })?;
 
         let bounds = self
             .layout
@@ -249,16 +247,9 @@ impl<'a> JourneyBuilder<'a> {
             bounds.max_x - bounds.min_x,
             max_y - bounds.min_y,
         );
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(viewport),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.document.finish(
+            Viewport::new(viewport),
+            BTreeMap::from([(
                 "x-merman-journey".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -269,8 +260,7 @@ impl<'a> JourneyBuilder<'a> {
                     "title_from_metadata": title_from_metadata,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -298,14 +288,17 @@ impl<'a> JourneyBuilder<'a> {
     fn emit_actor_legend(&mut self) -> Result<()> {
         let legend_font = self.legend_font.clone();
         for (index, item) in self.layout.actor_legend.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            validate_actor_legend(item)?;
             let semantic_id = format!("journey.actor.{index}");
             self.semantic_classes
                 .insert(semantic_id.clone(), "legend".to_string());
             self.text_classes
                 .insert(semantic_id.clone(), "legend".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.path_classes.insert(
                 format!("{semantic_id}.circle"),
                 format!("actor-{}", item.pos),
@@ -320,6 +313,13 @@ impl<'a> JourneyBuilder<'a> {
                 },
             )?;
             for (line_index, line) in item.label_lines.iter().enumerate() {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                if [line.x, line.y, line.tspan_x, line.text_margin]
+                    .iter()
+                    .any(|value| !value.is_finite())
+                {
+                    return Err(invalid("Journey actor legend label geometry is invalid"));
+                }
                 self.emit_text(
                     format!("{semantic_id}.label.{line_index}"),
                     &line.text,
@@ -334,14 +334,15 @@ impl<'a> JourneyBuilder<'a> {
                     },
                 )?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(item.actor.clone()),
                 description: Some("Journey actor".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -349,15 +350,17 @@ impl<'a> JourneyBuilder<'a> {
     fn emit_sections(&mut self) -> Result<()> {
         for (index, section) in self.layout.sections.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
+            validate_section(section)?;
             let semantic_id = format!("journey.section.{index}");
             let section_class = format!("journey-section section-type-{}", section.num);
             self.semantic_classes
                 .insert(semantic_id.clone(), section_class.clone());
             self.text_classes
                 .insert(semantic_id.clone(), section_class.clone());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let fill =
                 PortableStyleResolver::new("journey").color("section.fill", &section.fill)?;
             self.path_classes
@@ -385,14 +388,15 @@ impl<'a> JourneyBuilder<'a> {
                 section.width,
                 section.height,
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
-                title: Some(visible_journey_text(&section.section)),
+                title: Some(visible_journey_text(&section.section, self.session)?),
                 description: Some("Journey section".to_string()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -400,14 +404,16 @@ impl<'a> JourneyBuilder<'a> {
     fn emit_tasks(&mut self) -> Result<()> {
         for (index, task) in self.layout.tasks.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
+            validate_task(task)?;
             let semantic_id = format!("journey.task.{index}");
             self.semantic_classes
                 .insert(semantic_id.clone(), "task".to_string());
             self.text_classes
                 .insert(semantic_id.clone(), "task".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.dom_ids
                 .insert(format!("{semantic_id}.line"), task.line_id.clone());
             self.path_classes
@@ -515,17 +521,18 @@ impl<'a> JourneyBuilder<'a> {
                 task.height,
             )?;
 
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
-                title: Some(visible_journey_text(&task.task)),
+                title: Some(visible_journey_text(&task.task, self.session)?),
                 description: Some(format!(
                     "Journey task in {} with score {}",
                     task.section, task.score
                 )),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -536,6 +543,8 @@ impl<'a> JourneyBuilder<'a> {
         index: usize,
         actor: &JourneyTaskActorCircleLayout,
     ) -> Result<()> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        validate_task_actor(actor)?;
         let semantic_id = format!("{task_id}.actor.{index}");
         self.path_classes.insert(
             format!("{semantic_id}.circle"),
@@ -550,13 +559,13 @@ impl<'a> JourneyBuilder<'a> {
                 stroke: Some(stroke(BLACK, 1.0)),
             },
         )?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(actor.actor.clone()),
             description: Some("Journey task actor".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -606,11 +615,16 @@ impl<'a> JourneyBuilder<'a> {
         width: f64,
         height: f64,
     ) -> Result<()> {
-        let lines = split_journey_text(text)?;
-        let line_count = lines.len().max(1) as f64;
+        let mut line_count = 0usize;
+        for line in JourneyLines::new(text) {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            validate_journey_line(line)?;
+            line_count += 1;
+        }
+        let line_count = line_count.max(1) as f64;
         let center = Point::new(x + width / 2.0, y + height / 2.0);
         let task_font = self.task_font.clone();
-        for (index, line) in lines.iter().enumerate() {
+        for (index, line) in JourneyLines::new(text).enumerate() {
             let offset =
                 index as f64 * self.task_font_size - self.task_font_size * (line_count - 1.0) / 2.0;
             self.emit_text(
@@ -631,15 +645,14 @@ impl<'a> JourneyBuilder<'a> {
     }
 
     fn emit_title(&mut self, title: &str) -> Result<()> {
-        let title = svg_plain_text(title);
-        if title.is_empty() {
+        if normalized_text_parts(title).next().is_none() {
             return Ok(());
         }
         let title_font = self.title_font.clone();
         let title_origin = Point::new(self.layout.title_x, self.layout.title_y);
         self.emit_text(
             "journey.title",
-            &title,
+            title,
             TextEmitSpec {
                 origin: title_origin,
                 font_size: self.title_font_size,
@@ -650,21 +663,23 @@ impl<'a> JourneyBuilder<'a> {
                 baseline: TextBaseline::Alphabetic,
             },
         )?;
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "journey.title".to_string(),
             role: SemanticRole::Label,
-            title: Some(title),
+            title: Some(svg_plain_text(title)),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
     fn emit_activity_line(&mut self) -> Result<()> {
         let line = &self.layout.activity_line;
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "journey.activity".to_string(),
-        });
+        validate_line(line)?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "journey.activity".to_string(),
+            })?;
         self.add_path(
             "journey.activity.line",
             line_path(Point::new(line.x1, line.y1), Point::new(line.x2, line.y2)),
@@ -683,14 +698,15 @@ impl<'a> JourneyBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: "journey.activity".to_string(),
             role: SemanticRole::Edge,
             title: None,
             description: Some("Journey activity axis".to_string()),
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -704,58 +720,62 @@ impl<'a> JourneyBuilder<'a> {
             anchor,
             baseline,
         } = spec;
-        let value = svg_plain_text(value);
-        if value.is_empty() {
+        let parts = normalized_text_parts(value);
+        if parts.clone().next().is_none() {
             return Ok(());
         }
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(font.families.join(", ")),
-            font_size,
-            font_weight: Some(weight.to_string()),
-            font_style: None,
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer
-            .measure_svg_raw_text_bbox_width_px(&value, &measurement_style)
-            .max(1.0);
-        let height = measurer
-            .measure_svg_simple_text_bbox_height_px(&value, &measurement_style)
-            .max(1.0);
-        let left = match anchor {
-            TextAnchor::Start => origin.x,
-            TextAnchor::Middle => origin.x - width / 2.0,
-            TextAnchor::End => origin.x - width,
-        };
-        let top = match baseline {
-            TextBaseline::Alphabetic => origin.y - height,
-            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
-            TextBaseline::Hanging => origin.y,
-            TextBaseline::Ideographic
-            | TextBaseline::TextBeforeEdge
-            | TextBaseline::TextAfterEdge => origin.y - height,
-        };
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: value,
-            origin,
-            bounds: Rect::new(left, top, width, height),
-            style: DisplayTextStyle {
-                font: FontDescriptor { weight, ..font },
+        let session = self.session;
+        let obligation = &self.text_obligation;
+        self.document.draw_host_text_iter(parts, |text| {
+            let measurement_style = MeasurementTextStyle {
+                font_family: Some(font.families.join(", ")),
                 font_size,
-                letter_spacing: 0.0,
-                line_height: font_size,
-                fill: Paint::solid(color),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
-            },
-            anchor,
-            baseline,
-            direction: TextDirection::Auto,
-            language: None,
-            obligation: self.text_obligation.clone(),
-        }));
-        Ok(())
+                font_weight: Some(weight.to_string()),
+                font_style: None,
+            };
+            let measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let width = measurer.measure_svg_raw_text_bbox_width_px(&text, &measurement_style);
+            let height = measurer.measure_svg_simple_text_bbox_height_px(&text, &measurement_style);
+            session.checkpoint(OperationPhase::Emit)?;
+            if !width.is_finite() || width < 0.0 || !height.is_finite() || height < 0.0 {
+                return Err(invalid("Journey text measurement returned invalid bounds"));
+            }
+            let width = width.max(1.0);
+            let height = height.max(1.0);
+            let left = match anchor {
+                TextAnchor::Start => origin.x,
+                TextAnchor::Middle => origin.x - width / 2.0,
+                TextAnchor::End => origin.x - width,
+            };
+            let top = match baseline {
+                TextBaseline::Alphabetic => origin.y - height,
+                TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
+                TextBaseline::Hanging => origin.y,
+                TextBaseline::Ideographic
+                | TextBaseline::TextBeforeEdge
+                | TextBaseline::TextAfterEdge => origin.y - height,
+            };
+            Ok(TextRun {
+                text,
+                origin,
+                bounds: Rect::new(left, top, width, height),
+                style: DisplayTextStyle {
+                    font: FontDescriptor { weight, ..font },
+                    font_size,
+                    letter_spacing: 0.0,
+                    line_height: font_size,
+                    fill: Paint::solid(color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor,
+                baseline,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation: obligation.clone(),
+            })
+        })
     }
 
     fn actor_color(&self, pos: i64, layout_color: &str) -> Result<Color> {
@@ -780,50 +800,82 @@ impl<'a> JourneyBuilder<'a> {
         if segments.is_empty() {
             return Err(invalid("Journey path has no geometry"));
         }
-        let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        // Journey primitives have fixed segment counts; no input-sized route is collected here.
+        self.document
+            .draw_path(ResourceId::new(id.into()), segments, style)
     }
 }
 
-fn split_journey_text(text: &str) -> Result<Vec<String>> {
-    let bytes = text.as_bytes();
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if bytes[index] == b'<'
-            && let Some(end) = journey_break_tag_end(bytes, index)
-        {
-            lines.push(svg_plain_text(&current));
-            current.clear();
-            index = end;
-            continue;
+/// Splits authored breaks without materializing all labels before their text budgets are checked.
+struct JourneyLines<'a> {
+    remaining: Option<&'a str>,
+}
+
+impl<'a> JourneyLines<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            remaining: Some(text),
         }
-        let Some(character) = text.get(index..).and_then(|rest| rest.chars().next()) else {
-            break;
-        };
-        current.push(character);
-        index += character.len_utf8();
     }
-    lines.push(svg_plain_text(&current));
-    if lines.iter().any(|line| line.contains(['<', '>'])) {
+}
+
+impl<'a> Iterator for JourneyLines<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let text = self.remaining.take()?;
+        for (start, _) in text.match_indices('<') {
+            if let Some(end) = journey_break_tag_end(text.as_bytes(), start) {
+                self.remaining = Some(&text[end..]);
+                return Some(&text[..start]);
+            }
+        }
+        Some(text)
+    }
+}
+
+fn normalized_text_parts(text: &str) -> impl Iterator<Item = &str> + Clone {
+    text.split(crate::text::is_html_collapsible_ascii_whitespace)
+        .filter(|word| !word.is_empty())
+        .enumerate()
+        .flat_map(|(index, word)| {
+            [(index > 0).then_some(" "), Some(word)]
+                .into_iter()
+                .flatten()
+        })
+}
+
+fn validate_journey_line(line: &str) -> Result<()> {
+    if line.contains(['<', '>']) {
         return Err(unavailable(
             "Journey labels contain HTML markup other than <br>, which DrawingList v1 cannot preserve",
         ));
     }
-    Ok(lines)
+    Ok(())
 }
 
-fn visible_journey_text(text: &str) -> String {
-    split_journey_text(text)
-        .map(|lines| lines.join(" "))
-        .unwrap_or_else(|_| svg_plain_text(text))
+fn visible_journey_text(text: &str, session: &RenderSession) -> Result<String> {
+    let mut visible = String::new();
+    for (index, line) in JourneyLines::new(text).enumerate() {
+        session.checkpoint(OperationPhase::Emit)?;
+        if index > 0 {
+            visible
+                .try_reserve(1)
+                .map_err(|_| Error::DrawingListAllocationFailed {
+                    collection: "Journey semantic text",
+                })?;
+            visible.push(' ');
+        }
+        for part in normalized_text_parts(line) {
+            visible
+                .try_reserve(part.len())
+                .map_err(|_| Error::DrawingListAllocationFailed {
+                    collection: "Journey semantic text",
+                })?;
+            visible.push_str(part);
+        }
+    }
+    Ok(visible)
 }
 
 fn journey_break_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -967,16 +1019,8 @@ fn validate_layout(layout: &JourneyDiagramLayout) -> Result<()> {
     {
         return Err(invalid("Journey root metrics are invalid"));
     }
-    for actor in &layout.actor_legend {
-        validate_actor_legend(actor)?;
-    }
-    for section in &layout.sections {
-        validate_section(section)?;
-    }
-    for task in &layout.tasks {
-        validate_task(task)?;
-    }
-    validate_line(&layout.activity_line)
+    // Variable-sized collections are validated as they are emitted under operation checkpoints.
+    Ok(())
 }
 
 fn validate_actor_legend(actor: &JourneyActorLegendItemLayout) -> Result<()> {
@@ -987,14 +1031,6 @@ fn validate_actor_legend(actor: &JourneyActorLegendItemLayout) -> Result<()> {
         || actor.circle_r <= 0.0
     {
         return Err(invalid("Journey actor legend geometry is invalid"));
-    }
-    for line in &actor.label_lines {
-        if [line.x, line.y, line.tspan_x, line.text_margin]
-            .iter()
-            .any(|value| !value.is_finite())
-        {
-            return Err(invalid("Journey actor legend label geometry is invalid"));
-        }
     }
     Ok(())
 }
@@ -1047,15 +1083,17 @@ fn validate_task(task: &JourneyTaskLayout) -> Result<()> {
     if !face_y.is_finite() {
         return Err(invalid("Journey task face geometry is invalid"));
     }
-    for actor in &task.actor_circles {
-        if actor.pos < 0
-            || [actor.cx, actor.cy, actor.r]
-                .iter()
-                .any(|value| !value.is_finite())
-            || actor.r <= 0.0
-        {
-            return Err(invalid("Journey task actor geometry is invalid"));
-        }
+    Ok(())
+}
+
+fn validate_task_actor(actor: &JourneyTaskActorCircleLayout) -> Result<()> {
+    if actor.pos < 0
+        || [actor.cx, actor.cy, actor.r]
+            .iter()
+            .any(|value| !value.is_finite())
+        || actor.r <= 0.0
+    {
+        return Err(invalid("Journey task actor geometry is invalid"));
     }
     Ok(())
 }
@@ -1092,5 +1130,21 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "journey".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn borrowed_lines_and_parts_preserve_journey_text_rules() {
+        let lines = JourneyLines::new("  A\tB <BR />\n C\u{00a0}D </br><br> ")
+            .map(|line| normalized_text_parts(line).collect::<String>())
+            .collect::<Vec<_>>();
+        assert_eq!(lines, ["A B", "C\u{00a0}D", "", ""]);
+        assert!(JourneyLines::new("A<br/>B").all(|line| validate_journey_line(line).is_ok()));
+        assert!(JourneyLines::new("A<b>B</b>").any(|line| validate_journey_line(line).is_err()));
+        assert_eq!(JourneyLines::new("").collect::<Vec<_>>(), [""]);
     }
 }

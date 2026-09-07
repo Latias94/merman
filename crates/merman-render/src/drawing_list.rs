@@ -676,7 +676,7 @@ pub(crate) fn build_for_family(
             ishikawa::build_ishikawa_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Journey(pair) => {
-            journey::build_journey_document(pair, metadata, policy, session)
+            journey::build_journey_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Kanban(pair) => {
             kanban::build_kanban_document(pair, metadata, policy, session)

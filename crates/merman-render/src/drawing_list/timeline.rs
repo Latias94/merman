@@ -7,7 +7,7 @@
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, TimelineSvgBody, parse_font_families_for,
 };
-use crate::config::config_font_family_css_raw;
+use crate::config::{config_bool, config_diagram_look, config_font_family_css_raw};
 use crate::drawing_list::flowchart::polygon_path;
 use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
@@ -86,6 +86,17 @@ impl<'a> TimelineBuilder<'a> {
         validate_layout(layout)?;
 
         let theme = crate::svg::render_theme::PresentationTheme::new(config).timeline();
+        // svgDraw.js creates a real Redux shadow; styles.js applies the neo gradient to
+        // non-neutral nodes. Neither effect may disappear from a successful DrawingList.
+        if config_diagram_look(config).is_neo()
+            && (theme.is_redux_theme
+                || (config.get("theme").and_then(serde_json::Value::as_str) != Some("neutral")
+                    && config_bool(config, &["themeVariables", "useGradient"]).unwrap_or(false)))
+        {
+            return Err(unavailable(
+                "Timeline neo gradient or drop-shadow effects are not yet represented by portable commands or a bounded raster subtree",
+            ));
+        }
         let styles = PortableStyleResolver::new("timeline");
         let text_color = styles.color("textColor", &theme.text_color)?;
         let line_color = styles.color("lineColor", &theme.line_color)?;
@@ -96,7 +107,8 @@ impl<'a> TimelineBuilder<'a> {
             theme
                 .sections
                 .last()
-                .map(|section| styles.color("cScaleInv", &section.c_scale_inv))
+                // Equal-specificity .lineWrapper line rules use the final section label color.
+                .map(|section| styles.color("cScaleLabel", &section.c_scale_label))
                 .transpose()?
                 .unwrap_or(line_color)
         };
@@ -774,16 +786,21 @@ fn arrowhead_path(
     if !length.is_finite() || length <= f64::EPSILON {
         return Err(invalid("Timeline line has no arrowhead tangent"));
     }
+    if !stroke_width.is_finite() || stroke_width <= 0.0 {
+        return Err(invalid(
+            "Timeline arrowhead stroke width must be positive and finite",
+        ));
+    }
     let ux = dx / length;
     let uy = dy / length;
     let nx = -uy;
     let ny = ux;
-    let scale = stroke_width.max(0.1);
-    let base_x = x2 - ux * 6.0 * scale;
-    let base_y = y2 - uy * 6.0 * scale;
+    let scale = stroke_width;
+    let base_x = x2 - ux * 5.0 * scale;
+    let base_y = y2 - uy * 5.0 * scale;
     let half_width = 2.0 * scale;
     Ok(polygon_path(&[
-        Point::new(x2, y2),
+        Point::new(x2 + ux * scale, y2 + uy * scale),
         Point::new(base_x + nx * half_width, base_y + ny * half_width),
         Point::new(base_x - nx * half_width, base_y - ny * half_width),
     ]))
@@ -916,5 +933,38 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "timeline".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expanded_arrowhead_preserves_mermaid_marker_reference_point() {
+        // svgDraw.js: refX=5, refY=2, markerUnits=strokeWidth; local triangle
+        // (0,0), (0,4), (6,2). The tip lies one stroke width past the line endpoint.
+        assert_eq!(
+            arrowhead_path(0.0, 10.0, 20.0, 10.0, 2.0).unwrap(),
+            polygon_path(&[
+                Point::new(22.0, 10.0),
+                Point::new(10.0, 14.0),
+                Point::new(10.0, 6.0)
+            ])
+        );
+        assert_eq!(
+            arrowhead_path(10.0, 0.0, 10.0, 20.0, 2.0).unwrap(),
+            polygon_path(&[
+                Point::new(10.0, 22.0),
+                Point::new(6.0, 10.0),
+                Point::new(14.0, 10.0)
+            ])
+        );
+        assert_eq!(
+            arrowhead_path(0.0, 10.0, 20.0, 10.0, 0.05).unwrap()[0],
+            PathSegment::MoveTo {
+                to: Point::new(20.05, 10.0)
+            }
+        );
     }
 }
