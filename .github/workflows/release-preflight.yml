@@ -283,6 +283,64 @@ jobs:
           name: crate-package-lists
           path: target/package-lists/*.txt
 
+  mermaid-reference-materialized:
+    needs: validate-inputs
+    name: mermaid-reference-materialized
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup Node for selected Mermaid graph
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.13.1"
+          cache: npm
+          cache-dependency-path: |
+            playground/package-lock.json
+            tools/mermaid-cli/package-lock.json
+
+      - name: Materialize locked Mermaid source checkouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > "$RUNNER_TEMP/mermaid-reference.env"
+          import json
+          from pathlib import Path
+
+          lock = json.loads(Path("tools/upstreams/REPOS.lock.json").read_text())
+          for name in ("mermaid", "zenuml-core"):
+              repo = lock["repos"][name]
+              prefix = name.upper().replace("-", "_")
+              print(f"{prefix}_URL={repo['url']}")
+              print(f"{prefix}_COMMIT={repo['commit']}")
+          PY
+          source "$RUNNER_TEMP/mermaid-reference.env"
+          git clone --no-checkout --filter=blob:none "$MERMAID_URL" repo-ref/mermaid
+          git -C repo-ref/mermaid fetch --no-tags origin "$MERMAID_COMMIT"
+          git -C repo-ref/mermaid checkout --detach "$MERMAID_COMMIT"
+          test "$(git -C repo-ref/mermaid rev-parse HEAD)" = "$MERMAID_COMMIT"
+
+          git clone --no-checkout --filter=blob:none "$ZENUML_CORE_URL" repo-ref/zenuml-core
+          git -C repo-ref/zenuml-core fetch --no-tags origin "$ZENUML_CORE_COMMIT"
+          git -C repo-ref/zenuml-core checkout --detach "$ZENUML_CORE_COMMIT"
+          test "$(git -C repo-ref/zenuml-core rev-parse HEAD)" = "$ZENUML_CORE_COMMIT"
+
+      - name: Install selected npm graphs without lifecycle scripts
+        run: |
+          npm ci --ignore-scripts --prefix playground
+          npm ci --ignore-scripts --prefix tools/mermaid-cli
+
+      - name: Verify materialized Mermaid reference graph
+        run: cargo run --locked -p xtask -- verify-mermaid-reference --materialized
+
+      - name: Verify installed npm graph closure
+        run: |
+          npm ls --all --prefix playground
+          npm ls --all --prefix tools/mermaid-cli
+
   python-wheel:
     needs: validate-inputs
     name: python-wheel (${{ matrix.os }})
