@@ -231,14 +231,25 @@ impl<'a> DrawingListBuilder<'a> {
         parts: &[&str],
         make_run: impl FnOnce(String) -> Result<TextRun>,
     ) -> Result<()> {
+        self.draw_host_text_iter(parts.iter().copied(), make_run)
+    }
+
+    /// Streams repeatable borrowed fragments without materializing a fragment array. This
+    /// keeps whitespace-normalized labels bounded before either joining or host measurement.
+    pub(crate) fn draw_host_text_iter<'s>(
+        &mut self,
+        parts: impl Iterator<Item = &'s str> + Clone,
+        make_run: impl FnOnce(String) -> Result<TextRun>,
+    ) -> Result<()> {
         let mut projected = self.usage;
         checked_increment(&mut projected.commands, 1, "command count")?;
-        let mut text_bytes = 0;
-        for part in parts {
-            checked_increment(&mut text_bytes, part.len(), "text byte count")?;
-        }
-        checked_increment(&mut projected.text_bytes, text_bytes, "text byte count")?;
         self.preflight(projected)?;
+        let mut text_bytes = 0;
+        for part in parts.clone() {
+            checked_increment(&mut text_bytes, part.len(), "text byte count")?;
+            checked_increment(&mut projected.text_bytes, part.len(), "text byte count")?;
+            self.preflight(projected)?;
+        }
         self.commands
             .try_reserve(1)
             .map_err(|_| allocation_failed("commands"))?;
@@ -247,16 +258,12 @@ impl<'a> DrawingListBuilder<'a> {
         owned
             .try_reserve_exact(text_bytes)
             .map_err(|_| allocation_failed("text"))?;
-        for part in parts {
+        for part in parts.clone() {
             owned.push_str(part);
         }
         let run = make_run(owned)?;
         self.session.checkpoint(OperationPhase::Emit)?;
-        if !run
-            .text
-            .bytes()
-            .eq(parts.iter().flat_map(|part| part.bytes()))
-        {
+        if !run.text.bytes().eq(parts.flat_map(|part| part.bytes())) {
             return Err(contract_error(
                 "DrawingList host-text builder changed the admitted text payload",
             ));
@@ -655,6 +662,47 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, Error::Cancelled(_)));
         assert_eq!(builder.commands.len(), 1);
+    }
+
+    #[test]
+    fn borrowed_text_iterator_stops_before_scanning_the_remaining_fragments() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits {
+                max_text_bytes: 3,
+                ..Default::default()
+            },
+            &session,
+        );
+        let visited = std::cell::Cell::new(0);
+        let parts = ["ab"; 100]
+            .into_iter()
+            .inspect(|_| visited.set(visited.get() + 1));
+        let error = builder
+            .draw_host_text_iter(parts, |_| panic!("must reject before measurement"))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::DrawingListContract(DrawingListError::ResourceLimit {
+                resource: "text_bytes",
+                actual: 4,
+                maximum: 3,
+            })
+        ));
+        assert_eq!(visited.get(), 2);
+        assert!(builder.commands.is_empty());
+
+        builder.limits.max_commands = 0;
+        let parts = ["unused"]
+            .into_iter()
+            .inspect(|_| panic!("command budget must precede text scanning"));
+        assert!(
+            builder
+                .draw_host_text_iter(parts, |text| Ok(host_text_run(text)))
+                .is_err()
+        );
     }
 
     #[test]
