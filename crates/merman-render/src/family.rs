@@ -1243,6 +1243,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::EventModeling
             | RenderFamilyKind::Ishikawa
             | RenderFamilyKind::Radar
+            | RenderFamilyKind::XyChart
     )
 }
 

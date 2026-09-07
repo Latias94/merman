@@ -773,7 +773,6 @@ fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
     let svg = render_svg(
         "xychart\n  title Sales\n  x-axis [A, B]\n  y-axis 0 --> 100\n  bar [40, 60]\n  line [30, 70]\n",

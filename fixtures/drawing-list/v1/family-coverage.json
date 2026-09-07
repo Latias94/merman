@@ -28,7 +28,7 @@
     { "id": "block", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "er", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "quadrantChart", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
-    { "id": "xychart", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "xychart", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "gitGraph", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "treeView", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "ishikawa", "document_adapter": "direct", "svg_serializer": "canonical" },
