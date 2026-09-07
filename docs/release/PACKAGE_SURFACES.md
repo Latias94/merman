@@ -4,6 +4,10 @@ This guide describes the supported package and artifact choices. It is not a liv
 database; verify a specific version at its owning registry or GitHub Release before recommending an
 installation command.
 
+No immutable `0.8.0-alpha.6` artifact includes DrawingList. DrawingList rows below describe current
+unreleased source profiles; use a source build or wait for a later matching release before relying
+on that capability.
+
 ## Choose A Surface
 
 | Need | Entry point | Delivery |
@@ -17,7 +21,7 @@ installation command.
 | Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
-| Native Node.js / static-site SVG or DrawingList rendering | `@mermanjs/node` | npm package group (alpha) |
+| Native Node.js / static-site SVG rendering; DrawingList in the current unreleased profile | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
@@ -29,15 +33,16 @@ installation command.
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
 publication; this repository only validates the external formula after a stable release.
 
-Android, Apple, Python, and Flutter share one default prebuilt native capability SKU: SVG,
-DrawingList, semantic and layout operations, both supported layout engines, ASCII, analysis,
-validation, and document analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain
-available to custom source builds but are not bundled in the default packages. These platform
-artifacts intentionally include ELK and therefore ship under an artifact-specific notice closure;
-they are not equivalent to the default `merman` Cargo feature. The C ABI crate has no default
-features, so custom embedders can select semantic-only, SVG-only, DrawingList-capable,
-export-capable, or complete builds. LSP remains a separate executable product and is not linked
-into any native binding artifact.
+Current unreleased Android, Apple, Python, and Flutter profiles share one default native capability
+SKU: SVG, DrawingList, semantic and layout operations, both supported layout engines, ASCII,
+analysis, validation, and document analysis. Their immutable alpha.6 artifacts retain the earlier
+SKU without DrawingList. Math, PNG, JPEG, PDF, and native runtime adapters remain available to
+custom source builds but are not bundled in the default packages. These platform artifacts
+intentionally include ELK and therefore ship under an artifact-specific notice closure; they are
+not equivalent to the default `merman` Cargo feature. The C ABI crate has no default features, so
+custom embedders can select semantic-only, SVG-only, DrawingList-capable, export-capable, or
+complete builds. LSP remains a separate executable product and is not linked into any native
+binding artifact.
 
 ## Rustdoc Documentation
 
@@ -154,13 +159,13 @@ provide cross-package transactions, so the root package is deliberately publishe
 
 ## Compatibility And Migration Notes
 
-Current release semantics are intentionally explicit:
+Current source and profile semantics are intentionally explicit:
 
 - Cargo features describe positive capabilities; the source of truth for an exact shipped artifact
   is the artifact profile catalog, not historical `full`, `tiny`, or per-diagram feature aliases.
-  The Rust facade keeps the result-named `complete-svg` convenience aggregate (`svg`, Cytoscape,
-  and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles select direct
-  leaf features when they need an artifact-specific closure.
+  The Rust facade keeps the result-named `complete-svg` convenience aggregate (SVG, DrawingList,
+  Cytoscape, and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles
+  select direct leaf features when they need an artifact-specific closure.
 - Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.
@@ -175,12 +180,13 @@ Current release semantics are intentionally explicit:
 
 ## Native Prebuilt SKU Policy
 
-Python, Apple, Android, and Flutter releases ship the same default native prebuilt SKU through
-surface-owned transports. Its direct features are `analysis`, `ascii`, `drawing-list`,
-`layout-cytoscape`, `layout-elk`, and `svg`; its outputs are ASCII, DrawingList, and SVG. It omits
-math, binary export, and native runtime adapters to keep common downloads materially smaller. The
-generated wrappers still expose the complete operation vocabulary, while runtime discovery and
-typed missing-capability errors describe the loaded artifact precisely.
+Current unreleased Python, Apple, Android, and Flutter profiles select the same default native SKU
+through surface-owned transports. Its direct features are `analysis`, `ascii`, `drawing-list`,
+`layout-cytoscape`, `layout-elk`, and `svg`; its outputs are ASCII, DrawingList, and SVG. The
+immutable alpha.6 artifacts use the prior SKU without DrawingList. Both generations omit math,
+binary export, and native runtime adapters to keep common downloads materially smaller. Generated
+wrappers and runtime discovery describe the exact release-matched operation vocabulary and loaded
+artifact capabilities.
 
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
@@ -193,10 +199,10 @@ differ:
 
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
-| Android, Apple, Python, Flutter | analysis, ASCII, DrawingList, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
+| Current unreleased Android, Apple, Python, Flutter profiles | analysis, ASCII, DrawingList, SVG, Cytoscape, ELK | Shared default native SKU; immutable alpha.6 omits DrawingList. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the five-function Typst ABI; no callable ASCII or binary-export operation, and no admitted math backend. |
-| Node alpha package group | DrawingList, SVG, Cytoscape, ELK | Matches the deterministic rendering interface; specialist capabilities remain out of the prebuilt download. |
-| Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
+| Current unreleased Node profile | DrawingList, SVG, Cytoscape, ELK | Immutable alpha.6 omits DrawingList; specialist capabilities remain out of the prebuilt download. |
+| Current unreleased browser profiles | package-specific | `web-full` and `web-render` include DrawingList and math, while dedicated packages own analysis, editor, and ASCII workflows; immutable alpha.6 omits DrawingList. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
 Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU

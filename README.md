@@ -19,8 +19,9 @@ sanitization, and SVG structure are checked against pinned Mermaid source and fi
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
-> introduced in the published `0.8.0-alpha.6` release. If you depend on `0.8.0-alpha.5`, use its
-> [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
+> introduced in the published `0.8.0-alpha.6` release, but DrawingList is an unreleased addition on
+> current `main` and is absent from immutable alpha.6 artifacts. If you depend on `0.8.0-alpha.5`, use
+> its [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 

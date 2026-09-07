@@ -9,6 +9,8 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 
 ## Choose a package
 
+The table describes the current unreleased package profiles.
+
 | Need | Package | Includes |
 | --- | --- | --- |
 | A complete SDK or a starting point | [`@mermanjs/web`](packages/full/README.md) | SVG, DrawingList, analysis, ASCII, and editor APIs |
@@ -19,6 +21,10 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 
 All public browser packages use one lockstep version. The npm `alpha` channel includes
 `0.8.0-alpha.6`; pin that exact version when reproducible installs matter.
+
+The immutable `0.8.0-alpha.6` Web package group does not include DrawingList. The DrawingList
+entries and APIs below require packages built from current unreleased source or a later matching
+release.
 
 Prefer one Merman package per browser realm. Combining the complete package with a focused package
 creates another WASM runtime unless that duplication has been measured and is intentional.
@@ -85,8 +91,9 @@ need host-level timeout, memory, concurrency, and process isolation around the `
 profile. See the [binding options guide](../../docs/bindings/OPTIONS_JSON.md) for the full resource
 contract.
 
-Canvas and WebGL hosts can call `renderDrawingList(source, options)` from `@mermanjs/web` or
-`@mermanjs/web-render` to receive the renderer-neutral v1 JSON document instead of parsing SVG.
+With current unreleased packages, Canvas and WebGL hosts can call
+`renderDrawingList(source, options)` from `@mermanjs/web` or `@mermanjs/web-render` to receive the
+renderer-neutral v1 JSON document instead of parsing SVG.
 
 ## Deadlines and cancellation
 

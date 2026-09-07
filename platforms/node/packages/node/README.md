@@ -1,10 +1,15 @@
 # @mermanjs/node
 
-Native Mermaid-compatible SVG and DrawingList rendering for Node.js 22+ and static-site build pipelines, without
-Chromium, a browser-WASM fallback, or a postinstall binary download.
+Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
+Chromium, a browser-WASM fallback, or a postinstall binary download. Current unreleased source also
+adds renderer-neutral DrawingList output.
 
 This package is experimental and published on npm's `alpha` dist-tag. Pin an exact version when
 reproducible installs matter.
+
+The `alpha` tag currently resolves to immutable `0.8.0-alpha.6`, which does not include DrawingList.
+The DrawingList API below requires packages built from current unreleased source or a later matching
+release.
 
 ## Quick start
 
@@ -29,7 +34,8 @@ try {
 
 Create an engine once, reuse it for related work, and dispose it during teardown.
 
-For a native graphics host, request the renderer-neutral document instead:
+With a build from current unreleased source, a native graphics host can request the
+renderer-neutral document instead:
 
 ```js
 const drawingListJson = await engine.renderDrawingList("flowchart TD\nA --> B");
@@ -74,11 +80,11 @@ transports.
 
 ## Capability boundary
 
-The shipped recipe provides deterministic SVG and DrawingList, Cytoscape and ELK layouts, metadata, layout
-plans, runtime-catalog inspection, and generic admitted operations. Math, binary export, analysis,
-ASCII, text-measurement callbacks, browser fallback, and runtime downloads are outside this package
-surface. Requests for unavailable optional capabilities return Merman's typed
-missing-capability error.
+The published alpha.6 recipe provides deterministic SVG, Cytoscape and ELK layouts, metadata,
+layout plans, runtime-catalog inspection, and generic admitted operations. Current unreleased
+profiles additionally provide DrawingList. Math, binary export, analysis, ASCII, text-measurement
+callbacks, browser fallback, and runtime downloads are outside this package surface. Requests for
+unavailable optional capabilities return Merman's typed missing-capability error.
 
 ## Lifecycle and concurrency
 

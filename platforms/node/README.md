@@ -1,8 +1,9 @@
 # Merman for Node.js
 
-`@mermanjs/node` is Merman's experimental native package for deterministic SVG and DrawingList
-rendering in Node.js 22+ and static-site builds. A small loader selects one exact-version native
-package for the current host; it has no browser-WASM fallback or postinstall downloader.
+`@mermanjs/node` is Merman's experimental native package for deterministic SVG rendering in
+Node.js 22+ and static-site builds. Current unreleased source also adds renderer-neutral
+DrawingList output. A small loader selects one exact-version native package for the current host;
+it has no browser-WASM fallback or postinstall downloader.
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
@@ -11,6 +12,9 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 The npm `alpha` dist-tag resolves to the published alpha.6 group, including
 `@mermanjs/node-wasm`. Pin `@mermanjs/node@0.8.0-alpha.6` when reproducible installs matter;
 alpha releases remain intentionally experimental.
+
+The immutable `0.8.0-alpha.6` npm group does not include DrawingList. The DrawingList APIs below
+require packages built from current unreleased source or a later matching release.
 
 ```sh
 npm install @mermanjs/node@alpha
@@ -37,9 +41,10 @@ try {
 Mermaid-compatible SVG structure and is the right choice for trusted input or parity-sensitive
 consumers. `parity` is not a browser DOM-admission or sanitization check.
 
-`renderDrawingList()` and `renderDrawingListSync()` return validated DrawingList v1 JSON for native
-graphics hosts that do not want an SVG interpreter. They use the same parsed semantics, layout,
-resource policy, and cancellation boundary as SVG, but never silently substitute SVG output.
+In current unreleased source, `renderDrawingList()` and `renderDrawingListSync()` return validated
+DrawingList v1 JSON for native graphics hosts that do not want an SVG interpreter. They use the
+same parsed semantics, layout, resource policy, and cancellation boundary as SVG, but never
+silently substitute SVG output.
 
 For SVG that will be embedded directly into HTML, or when the Mermaid source is not fully trusted,
 select the sealed `resvg-safe` pipeline explicitly:
@@ -56,10 +61,10 @@ remove browser-only SVG features such as active content and `foreignObject` labe
 provide browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for browser DOM
 mounting.
 
-The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. Its shipped
-recipe includes deterministic SVG and DrawingList plus Cytoscape and ELK layouts. Math, binary
-export, analysis, ASCII, text-measurement callbacks, browser fallback, and runtime downloads remain
-outside this surface.
+The package supports macOS arm64/x64, Linux x64 glibc/musl, and Windows x64 MSVC. The published
+alpha.6 recipe includes deterministic SVG plus Cytoscape and ELK layouts; the current unreleased
+recipe additionally includes DrawingList. Math, binary export, analysis, ASCII, text-measurement
+callbacks, browser fallback, and runtime downloads remain outside this surface.
 
 ## Package layout
 

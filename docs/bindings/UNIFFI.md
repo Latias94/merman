@@ -8,6 +8,10 @@ library build.
 The current direct binding API is `6`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` Python and Apple
+artifacts do not include DrawingList or the named `render_drawing_list` method; DrawingList examples
+require a source build or a later matching release.
+
 API 6 expands `MermanAsciiCapability` with `layout_profiles`, `width_profiles`, `encodings`, and
 `fallback_encodings`. It also adds `encoding` to `MermanAsciiOutputPlan`, whose ASCII result schema is
 now `2`. Regenerate Swift and Python projections with the matching native library; do not decode
@@ -49,8 +53,8 @@ limitation applies to the newly expanded `MermanAsciiCapability` and `MermanAsci
 so API `5` generated source fails before decoding an API `6` value. The version probe, generated
 projection, and native library are one deployment unit.
 
-Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
-owns the generic operation's options. Named methods such as
+In current unreleased source, every operation is available through `execute(request)`, and
+`MermanOperationRequestV4.options_json` owns the generic operation's options. Named methods such as
 `render_svg`, `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
@@ -102,9 +106,10 @@ reference cycle.
 
 ## Build Profiles
 
-`merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
-analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF,
-RaTeX math, and the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
+`merman-uniffi` has no default features. The current unreleased Python and Apple profiles select
+analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts; immutable alpha.6 artifacts
+use the earlier profile without DrawingList. Both generations omit PNG, JPEG, PDF, RaTeX math, and
+the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash

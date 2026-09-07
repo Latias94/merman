@@ -7,6 +7,10 @@ workflow.
 This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
 matter.
 
+The `alpha` tag currently resolves to immutable `0.8.0-alpha.6`, which does not include DrawingList.
+The DrawingList API below requires a package built from current unreleased source or a later
+matching release.
+
 ## Quick start
 
 ```sh
@@ -26,8 +30,8 @@ renderSvgToElement(target, `flowchart TD
 ```
 
 Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
-Use `renderDrawingList()` when a Canvas, WebGL, or other graphics host wants the renderer-neutral
-v1 document instead of SVG.
+In current unreleased source, use `renderDrawingList()` when a Canvas, WebGL, or other graphics host
+wants the renderer-neutral v1 document instead of SVG.
 
 ## Runtime boundary
 
