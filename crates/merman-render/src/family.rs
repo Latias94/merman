@@ -2047,6 +2047,48 @@ mod tests {
     }
 
     #[test]
+    fn drawing_list_cancellation_during_family_emit_returns_no_output() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"flowchart LR
+subgraph service[Service]
+  A[Parse] --> B[Layout]
+end
+B --> C[Emit]
+"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse flowchart")
+            .expect("detect flowchart");
+        let control = OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .expect("begin render session");
+        let artifact = prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare flowchart artifact");
+        let BuiltinFamilyArtifact::Flowchart(flowchart) = &artifact.family else {
+            panic!("expected Flowchart family artifact");
+        };
+        assert_eq!(flowchart.pair().layout().clusters.len(), 1);
+        assert!(flowchart.pair().layout().edges.len() >= 2);
+
+        // Arm cancellation only after parsing and layout. The four successful Emit checkpoints
+        // cover the public render entry, builder construction, builder start, and cluster emit;
+        // cancellation therefore occurs before the first edge is appended to the local document.
+        control.cancel_after_checkpoints(4);
+        let result = artifact.render_drawing_list(
+            DrawingListPolicy::AllowRasterSubtree,
+            DrawingListLimits::default(),
+        );
+
+        let Err(Error::Cancelled(cancelled)) = result else {
+            panic!("mid-build cancellation must return a structured error without output");
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Emit);
+        assert_eq!(cancelled.reason, merman_core::CancelReason::Requested);
+    }
+
+    #[test]
     fn final_svg_resource_terminal_replays_before_later_cancellation() {
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(crate::resources::ResourceLimitId::MaxSvgBytes, 1)

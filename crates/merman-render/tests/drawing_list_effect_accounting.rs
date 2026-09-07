@@ -1,6 +1,6 @@
 use merman_core::{Engine, OperationControl, ParseOptions};
 use merman_display_list::{
-    DrawingCommand, DrawingListDocument, DrawingListPolicy, DrawingResource,
+    DrawingCommand, DrawingListDocument, DrawingListPolicy, DrawingResource, Paint, ResourceId,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::{LayoutOptions, family};
@@ -387,18 +387,20 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
             "{id} must retain a host-text obligation"
         ),
         EffectAssertion::LinearGradient => assert!(
-            document
-                .resources
-                .iter()
-                .any(|resource| matches!(resource, DrawingResource::LinearGradient(_))),
-            "{id} must retain a linear-gradient resource"
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                DrawingResource::LinearGradient(gradient)
+                    if path_paint_references_resource(document, &gradient.id)
+            )),
+            "{id} must retain a linear-gradient resource referenced by a path paint"
         ),
         EffectAssertion::RadialGradient => assert!(
-            document
-                .resources
-                .iter()
-                .any(|resource| matches!(resource, DrawingResource::RadialGradient(_))),
-            "{id} must retain a radial-gradient resource"
+            document.resources.iter().any(|resource| matches!(
+                resource,
+                DrawingResource::RadialGradient(gradient)
+                    if path_paint_references_resource(document, &gradient.id)
+            )),
+            "{id} must retain a radial-gradient resource referenced by a path paint"
         ),
         EffectAssertion::ImageResource => assert!(
             document
@@ -514,6 +516,62 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
             panic!("{id} is an error assertion but was rendered as a document")
         }
     }
+}
+
+fn path_paint_references_resource(
+    document: &DrawingListDocument,
+    resource_id: &ResourceId,
+) -> bool {
+    document.commands.iter().any(|command| {
+        let DrawingCommand::DrawPath { style, .. } = command else {
+            return false;
+        };
+        style
+            .fill
+            .as_ref()
+            .is_some_and(|paint| paint_references_resource(paint, resource_id))
+            || style
+                .stroke
+                .as_ref()
+                .is_some_and(|stroke| paint_references_resource(&stroke.paint, resource_id))
+    })
+}
+
+fn paint_references_resource(paint: &Paint, resource_id: &ResourceId) -> bool {
+    matches!(paint, Paint::Resource { id } if id == resource_id)
+}
+
+#[test]
+fn gradient_reference_check_rejects_an_orphaned_resource() {
+    let (_, rendered) = render_drawing_list("sankey\nSource,Target,10\n");
+    let mut document = rendered.expect("Sankey gradient fixture must render");
+    let gradient_id = document
+        .resources
+        .iter()
+        .find_map(|resource| match resource {
+            DrawingResource::LinearGradient(gradient) => Some(gradient.id.clone()),
+            _ => None,
+        })
+        .expect("Sankey gradient fixture must contain a linear-gradient resource");
+    assert!(path_paint_references_resource(&document, &gradient_id));
+
+    let gradient_stroke = document
+        .commands
+        .iter_mut()
+        .find_map(|command| {
+            let DrawingCommand::DrawPath { style, .. } = command else {
+                return None;
+            };
+            let stroke = style.stroke.as_mut()?;
+            paint_references_resource(&stroke.paint, &gradient_id).then_some(stroke)
+        })
+        .expect("Sankey link path must reference its gradient resource");
+    gradient_stroke.paint = Paint::solid(merman_display_list::Color::rgba(0, 0, 0, 255));
+
+    document
+        .validate()
+        .expect("an orphaned gradient is currently protocol-valid");
+    assert!(!path_paint_references_resource(&document, &gradient_id));
 }
 
 fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'static str> {
