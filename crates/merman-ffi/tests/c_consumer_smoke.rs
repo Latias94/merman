@@ -9,6 +9,9 @@ type NativeGetApi = unsafe extern "C" fn(
     *mut merman_ffi::MermanNativeApi,
 ) -> merman_ffi::MermanNativeStatus;
 
+const DRAWING_LIST_FIXTURE: &[u8] =
+    include_bytes!("../../../fixtures/bindings/drawing-list-v1-smoke.mmd");
+
 #[test]
 fn c_consumer_smoke() {
     let library_path = compile_c_consumer();
@@ -20,13 +23,17 @@ fn c_consumer_smoke() {
                 library_path.display()
             )
         });
-        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi, i32) -> i32> = library
+        let smoke: libloading::Symbol<
+            unsafe extern "C" fn(NativeGetApi, i32, *const u8, usize) -> i32,
+        > = library
             .get(b"merman_c_consumer_smoke")
             .expect("load merman_c_consumer_smoke symbol");
 
         let result = smoke(
             merman_ffi::merman_get_native_api,
             i32::from(has_native_sdk_operation_features()),
+            DRAWING_LIST_FIXTURE.as_ptr(),
+            DRAWING_LIST_FIXTURE.len(),
         );
         assert_eq!(result, 0, "C consumer smoke returned {result}");
 
@@ -71,6 +78,7 @@ fn alpha5_consumer_smoke() {
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",
+        feature = "drawing-list",
         feature = "analysis",
         feature = "ascii",
         feature = "png",

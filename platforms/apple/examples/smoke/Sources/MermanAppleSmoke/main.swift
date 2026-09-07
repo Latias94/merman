@@ -34,6 +34,25 @@ struct MermanAppleSmoke {
         guard !(try engine.analyzeJson(source: basicSource, optionsJson: nil)).isEmpty else {
             throw SmokeError.failed("analysis smoke failed")
         }
+        let drawingListResult = try engine.execute(
+            request: MermanOperationRequestV4(
+                operationId: "drawing-list-json",
+                source: "info",
+                uri: nil,
+                optionsJson: nil,
+                control: nil
+            )
+        )
+        let drawingList = try JSONSerialization.jsonObject(with: drawingListResult.data)
+        guard drawingListResult.mediaType ==
+                "application/vnd.merman.drawing-list+json;version=1",
+              let document = drawingList as? [String: Any],
+              document["version"] as? Int == 1,
+              document["coordinate_system"] as? String == "logical_pixels_y_down",
+              let commands = document["commands"] as? [Any],
+              !commands.isEmpty else {
+            throw SmokeError.failed("DrawingList smoke failed")
+        }
         try requireMissingCapability("png") {
             _ = try engine.renderPng(source: basicSource, optionsJson: nil)
         }

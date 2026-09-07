@@ -1363,6 +1363,40 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_generic_operation_matches_the_public_schema() {
+        let source = include_bytes!("../../../fixtures/bindings/drawing-list-v1-smoke.mmd");
+        let result = BindingEngine::new(b"")
+            .expect("DrawingList binding engine")
+            .execute(BindingOperationRequest::new("drawing-list-json", source))
+            .expect("shared DrawingList fixture should render through the generic operation");
+
+        assert_eq!(result.operation().operation_id(), "drawing-list-json");
+        assert_eq!(
+            result.media_type(),
+            "application/vnd.merman.drawing-list+json;version=1"
+        );
+
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../../../contracts/drawing-list-v1.json"))
+                .expect("published DrawingList schema is valid JSON");
+        let validator = jsonschema::options()
+            .with_draft(jsonschema::Draft::Draft202012)
+            .build(&schema)
+            .expect("published DrawingList schema is valid Draft 2020-12");
+        let value: serde_json::Value = serde_json::from_slice(result.data())
+            .expect("generic DrawingList output is valid JSON");
+        assert!(
+            validator.is_valid(&value),
+            "published schema rejected generic DrawingList output: {value}"
+        );
+
+        let document = merman_display_list::DrawingListDocument::from_json_bytes(result.data())
+            .expect("generic DrawingList output satisfies runtime protocol validation");
+        assert!(!document.commands.is_empty());
+    }
+
     #[test]
     fn svg_capability_planning_is_a_descriptor_owned_operation() {
         let operation = BindingOperationKind::from_id("svg-plan-json").unwrap();

@@ -100,6 +100,10 @@ await assertNoDeprecatedWasmBindgenInitWarning(() =>
 );
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
+const drawingListFixtureSource = await readFile(
+  path.join(repoRoot, "fixtures", "bindings", "drawing-list-v1-smoke.mmd"),
+  "utf8",
+);
 const deterministicTime = {
   fixed_today: "2026-06-10",
   fixed_local_offset_minutes: 0,
@@ -246,6 +250,13 @@ const presentationCatalog = api.presentationCatalog();
 const capabilities = runtimeCatalog.capabilities;
 const hasCapability = (id) => capabilities.capability_ids.includes(id);
 const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
+if (hasCapability("drawing-list")) {
+  assert.equal(typeof api.renderDrawingList, "function");
+  const drawingList = JSON.parse(api.renderDrawingList(drawingListFixtureSource));
+  assert.equal(drawingList.version, 1);
+  assert.equal(drawingList.coordinate_system, "logical_pixels_y_down");
+  assert.ok(Array.isArray(drawingList.commands) && drawingList.commands.length > 0);
+}
 if (hasCapability("svg")) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
   assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");

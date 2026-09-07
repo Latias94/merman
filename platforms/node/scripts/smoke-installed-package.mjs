@@ -20,6 +20,11 @@ async function main() {
   }
 
   const packageName = expectedTarget === "node-wasm" ? "@mermanjs/node-wasm" : "@mermanjs/node";
+  const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  const drawingListFixtureSource = await readFile(
+    path.join(repositoryRoot, "fixtures", "bindings", "drawing-list-v1-smoke.mmd"),
+    "utf8",
+  );
   const entrypoint = resolveInstalledEntrypoint(project, packageName);
   const packageManifest = JSON.parse(
     await readFile(path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8"),
@@ -33,6 +38,16 @@ async function main() {
     const svg = await engine.renderSvg("flowchart TD\nA --> B");
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
+    const drawingListResult = await engine.executeOperation({
+      operationId: "drawing-list-json",
+      source: drawingListFixtureSource,
+    });
+    assert.equal(drawingListResult.operation_id, "drawing-list-json");
+    assert.equal(
+      drawingListResult.media_type,
+      "application/vnd.merman.drawing-list+json;version=1",
+    );
+    assertDrawingListDocument(JSON.parse(drawingListResult.data));
     console.log(
       JSON.stringify({
         package: packageName,
@@ -44,6 +59,12 @@ async function main() {
   } finally {
     await engine.dispose();
   }
+}
+
+function assertDrawingListDocument(value) {
+  assert.equal(value.version, 1);
+  assert.equal(value.coordinate_system, "logical_pixels_y_down");
+  assert.ok(Array.isArray(value.commands) && value.commands.length > 0);
 }
 
 export function resolveInstalledEntrypoint(project, packageName = "@mermanjs/node") {

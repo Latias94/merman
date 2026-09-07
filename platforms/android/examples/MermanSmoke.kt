@@ -4,6 +4,7 @@ import io.merman.MermanEngine
 import io.merman.MermanEngineServices
 import io.merman.MermanIconPack
 import io.merman.MermanIconPackSet
+import org.json.JSONObject
 
 fun runMermanSmoke() {
     val iconPackSet = MermanIconPackSet.fromPacks(
@@ -44,6 +45,17 @@ fun runMermanSmoke() {
     }
     check(engine.analyzeJson("flowchart TD\nA --> B").isNotEmpty()) {
         "analysis smoke failed"
+    }
+    val drawingListResult = engine.execute("drawing-list-json", "info")
+    val drawingList = JSONObject(drawingListResult.utf8Text)
+    check(
+        drawingListResult.mediaType ==
+            "application/vnd.merman.drawing-list+json;version=1" &&
+            drawingList.getInt("version") == 1 &&
+            drawingList.getString("coordinate_system") == "logical_pixels_y_down" &&
+            drawingList.getJSONArray("commands").length() > 0,
+    ) {
+        "DrawingList smoke failed"
     }
     listOf(
         "png" to { engine.renderPng("flowchart TD\nA --> B") },

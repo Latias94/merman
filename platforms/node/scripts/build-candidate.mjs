@@ -35,6 +35,10 @@ const capabilityDescriptorPath = path.join(
 const capabilitySurface = readJson(capabilityDescriptorPath);
 const artifactsRoot = path.join(nodeRoot, "artifacts");
 const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
+const drawingListFixtureSource = readFileSync(
+  path.join(repositoryRoot, "fixtures", "bindings", "drawing-list-v1-smoke.mmd"),
+  "utf8",
+);
 const requireFromBuild = createRequire(import.meta.url);
 const WINDOWS_MSVC_REPRODUCIBLE_LINK_CONFIG =
   'target.x86_64-pc-windows-msvc.rustflags=["-C","link-arg=/Brepro"]';
@@ -372,6 +376,24 @@ export function probeCandidateRuntime(stage, recipe) {
       throw new Error(`${recipe.candidate} runtime semantic JSON probe failed.`);
     }
     JSON.parse(semantic.result.data);
+    const drawingList = parseWireResponse(engine.executeSync(JSON.stringify({
+      operation_id: "drawing-list-json",
+      source: drawingListFixtureSource,
+      uri: null,
+    })));
+    if (
+      drawingList.ok !== true ||
+      drawingList.result?.operation_id !== "drawing-list-json" ||
+      drawingList.result?.media_type !==
+        "application/vnd.merman.drawing-list+json;version=1" ||
+      typeof drawingList.result?.data !== "string"
+    ) {
+      throw new Error(`${recipe.candidate} runtime DrawingList probe failed.`);
+    }
+    assertDrawingListDocument(
+      JSON.parse(drawingList.result.data),
+      `${recipe.candidate} runtime`,
+    );
     const asyncProbe = probeCandidateAsyncLifecycle(artifact, recipe, semanticRequest);
     const svgPlan = parseWireResponse(engine.executeSync(JSON.stringify({
       operation_id: "svg-plan-json",
@@ -545,6 +567,20 @@ function parseWireResponse(value) {
     return parsed;
   } catch {
     throw new Error("Node candidate returned an invalid wire response.");
+  }
+}
+
+function assertDrawingListDocument(value, label) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    value.version !== 1 ||
+    value.coordinate_system !== "logical_pixels_y_down" ||
+    !Array.isArray(value.commands) ||
+    value.commands.length === 0
+  ) {
+    throw new Error(`${label} returned an invalid DrawingList v1 document.`);
   }
 }
 
