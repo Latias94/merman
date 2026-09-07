@@ -558,7 +558,7 @@ jobs:
         run: |
           cargo nextest run --locked -p merman-bindings-core \
             --no-default-features --features drawing-list --lib \
-            -E 'test(drawing_list_generic_operation_matches_the_public_schema)' \
+            -E 'test(drawing_list_generic_operation_returns_a_valid_v1_document)' \
             --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
           cargo nextest run --locked -p merman-ffi --no-default-features \
