@@ -17,7 +17,7 @@ For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-
 
 Check out the source tree at the same release tag as the archive, then extract `Merman.xcframework-<tag>.zip` from [GitHub Releases](https://github.com/Latias94/merman/releases) so the framework is located at `platforms/apple/Merman.xcframework`. Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product.
 
-The release archive contains the binary XCFramework and legal material. The matching checkout supplies the generated Swift facade and `Package.swift`; mixing tags is unsupported. The immutable `v0.8.0-alpha.6` XCFramework predates DrawingList and must not be paired with the current post-alpha.6 generated facade.
+The release archive contains the binary XCFramework and legal material. The matching checkout supplies the generated Swift facade and `Package.swift`; mixing tags is unsupported. The immutable `v0.8.0-alpha.6` XCFramework does not include DrawingList and must not be paired with the current unreleased generated facade.
 
 ## Build The Local Package
 
@@ -39,8 +39,8 @@ let svg = try client.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
-Native canvas hosts using an XCFramework built from current post-alpha.6 source can request the
-renderer-neutral contract directly:
+The following DrawingList API is currently unreleased and requires an XCFramework built from
+current source:
 
 ```swift
 let drawingListJson = try client.renderDrawingList(source: source, optionsJson: nil)
@@ -73,7 +73,7 @@ evidence, diagnostic failures preserve their stable code and optional source pro
 registry failures preserve their structured registration evidence, and cancellation preserves its
 reason and checkpoint phase without message parsing.
 
-An XCFramework built from current source with the default profile includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts. The published alpha.6 XCFramework retains the earlier profile without DrawingList. The current default profile omits math, PNG, JPEG, and PDF. Generated helpers remain available for custom current-contract libraries; a default-profile artifact returns `.missingCapability` with the absent capability ID as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
+An XCFramework built from current unreleased source with the default profile includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts. The published alpha.6 XCFramework retains the earlier profile without DrawingList. The current default profile omits math, PNG, JPEG, and PDF. Generated helpers remain available for custom current-contract libraries; a default-profile artifact returns `.missingCapability` with the absent capability ID as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
 
 ## Text Measurement
 
