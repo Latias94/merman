@@ -5,6 +5,7 @@
 //! (CSS classes, marker-like commit symbols, and label polygons) into ordinary DrawingList
 //! resources and commands. Unsupported CSS effects fail closed instead of disappearing.
 
+use super::builder::DrawingListBuilder;
 use super::{
     GitGraphSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
     parse_font_families_for, parse_svg_path,
@@ -24,11 +25,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::git_graph::GitGraphRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, GradientSpread,
-    GradientStop, LineCap, LineJoin, Paint, PathResource, PathSegment, PathStyle, Point, Rect,
-    ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline,
-    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, GradientSpread, GradientStop, LineCap, LineJoin, Paint, PathSegment, PathStyle,
+    Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -45,9 +45,10 @@ pub(crate) fn build_gitgraph_document(
     pair: &GitGraphPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    GitGraphBuilder::new(pair, metadata, policy, session)?.build()
+    GitGraphBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 #[derive(Debug, Clone)]
@@ -335,15 +336,12 @@ impl GitGraphTheme {
 struct GitGraphBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
     model: &'a GitGraphRenderModel,
     layout: &'a GitGraphDiagramLayout,
     theme: GitGraphTheme,
     font: FontDescriptor,
     text_obligation: TextObligation,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
+    output: DrawingListBuilder<'a>,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -367,6 +365,7 @@ impl<'a> GitGraphBuilder<'a> {
         pair: &'a GitGraphPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -385,23 +384,20 @@ impl<'a> GitGraphBuilder<'a> {
             postscript_name: None,
             resource: None,
         };
+        let mut output = DrawingListBuilder::new(policy, limits, session);
+        output.push_control(DrawingCommand::Save)?;
+        output.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "gitgraph.document".into(),
+        })?;
         Ok(Self {
             metadata,
             session,
-            policy,
             model,
             layout,
             theme,
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "gitgraph.document".into(),
-                },
-            ],
-            semantics: Vec::new(),
+            output,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -415,7 +411,7 @@ impl<'a> GitGraphBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_semantic(SemanticAnnotation {
             id: "gitgraph.document".into(),
             role: SemanticRole::Document,
             title: self
@@ -426,7 +422,7 @@ impl<'a> GitGraphBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_branches()?;
         self.emit_arrows()?;
@@ -434,20 +430,13 @@ impl<'a> GitGraphBuilder<'a> {
         if let Some(title) = title.as_deref().filter(|title| !title.trim().is_empty()) {
             self.emit_title(title)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
 
         let viewport_bounds = self.viewport_bounds(title.as_ref())?;
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(viewport_bounds),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.output.finish(
+            Viewport::new(viewport_bounds),
+            BTreeMap::from([(
                 "x-merman-gitgraph".into(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -460,8 +449,7 @@ impl<'a> GitGraphBuilder<'a> {
                     "theme": self.theme.theme_name,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -708,9 +696,10 @@ impl<'a> GitGraphBuilder<'a> {
             let branch_class_index = theme_class_index(branch.index);
             self.semantic_classes
                 .insert(semantic_id.clone(), "branchLabel".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let branch_line = branch_line(self.layout, branch, self.theme.use_redux_geometry);
             let branch_line_id = format!("{semantic_id}.line");
             self.path_classes.insert(
@@ -758,13 +747,12 @@ impl<'a> GitGraphBuilder<'a> {
                 } else {
                     ResourceId::new(format!("gitgraph.gradient.{index}"))
                 };
-                self.resources
-                    .push(DrawingResource::LinearGradient(gradient_resource(
-                        gradient_id.clone(),
-                        rect,
-                        self.theme.gradient_start,
-                        self.theme.gradient_stop,
-                    )));
+                self.output.push_linear_gradient(gradient_resource(
+                    gradient_id.clone(),
+                    rect,
+                    self.theme.gradient_start,
+                    self.theme.gradient_stop,
+                ))?;
                 Some(gradient_id)
             } else {
                 None
@@ -823,14 +811,14 @@ impl<'a> GitGraphBuilder<'a> {
                 format!("{semantic_id}.label"),
                 format!("label branch-label{branch_class_index}"),
             );
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(branch.name.clone()),
                 description: Some("Git branch".into()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -841,9 +829,10 @@ impl<'a> GitGraphBuilder<'a> {
             let arrow_class_index = theme_class_index(arrow.class_index);
             self.semantic_classes
                 .insert(semantic_id.clone(), "commit-arrows".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let segments = parse_svg_path(&arrow.d)?;
             let arrow_path_id = format!("{semantic_id}.path");
             self.path_classes.insert(
@@ -867,14 +856,14 @@ impl<'a> GitGraphBuilder<'a> {
                     }),
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Edge,
                 title: Some(format!("{} → {}", arrow.from, arrow.to)),
                 description: Some("Git parent relationship".into()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -884,22 +873,23 @@ impl<'a> GitGraphBuilder<'a> {
             let semantic_id = format!("gitgraph.commit.{index}");
             self.semantic_classes
                 .insert(semantic_id.clone(), "commit-bullets".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             self.emit_commit_symbol(&semantic_id, commit)?;
             if should_show_commit_label(commit, self.layout.show_commit_label) {
                 self.emit_commit_label(&semantic_id, commit)?;
             }
             self.emit_commit_tags(&semantic_id, commit)?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(commit.id.clone()),
                 description: (!commit.message.is_empty()).then(|| commit.message.clone()),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -1231,13 +1221,14 @@ impl<'a> GitGraphBuilder<'a> {
             let tag_id = format!("{semantic_id}.tag.{index}");
             self.semantic_classes
                 .insert(tag_id.clone(), "tag".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: tag_id.clone(),
-            });
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: tag_id.clone(),
+                })?;
             if let Some(transform) = geometry.shape_transform {
-                self.commands.push(DrawingCommand::Save);
-                self.commands
-                    .push(DrawingCommand::ConcatTransform { transform });
+                self.output.push_control(DrawingCommand::Save)?;
+                self.output
+                    .push_control(DrawingCommand::ConcatTransform { transform })?;
             }
             let background_id = format!("{tag_id}.background");
             self.path_classes
@@ -1262,7 +1253,7 @@ impl<'a> GitGraphBuilder<'a> {
                 None,
             )?;
             if geometry.shape_transform.is_some() {
-                self.commands.push(DrawingCommand::Restore);
+                self.output.push_control(DrawingCommand::Restore)?;
             }
             let label_id = format!("{tag_id}.label");
             self.text_classes
@@ -1281,14 +1272,14 @@ impl<'a> GitGraphBuilder<'a> {
                     rotation: geometry.text_transform,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
                 id: tag_id,
                 role: SemanticRole::Label,
                 title: Some(tag.clone()),
                 description: Some(format!("Tag for {}", commit.id)),
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -1331,12 +1322,13 @@ impl<'a> GitGraphBuilder<'a> {
         if opacity <= 0.0 {
             return Ok(());
         }
-        self.commands.push(DrawingCommand::Save);
+        self.output.push_control(DrawingCommand::Save)?;
         if let Some(transform) = rotation {
-            self.commands
-                .push(DrawingCommand::ConcatTransform { transform });
+            self.output
+                .push_control(DrawingCommand::ConcatTransform { transform })?;
         }
-        self.commands.push(DrawingCommand::SetOpacity { opacity });
+        self.output
+            .push_control(DrawingCommand::SetOpacity { opacity })?;
         self.add_path(
             id.to_string(),
             rounded_rect_path(
@@ -1352,7 +1344,7 @@ impl<'a> GitGraphBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.commands.push(DrawingCommand::Restore);
+        self.output.push_control(DrawingCommand::Restore)?;
         Ok(())
     }
 
@@ -1383,23 +1375,26 @@ impl<'a> GitGraphBuilder<'a> {
             .measure_svg_raw_text_bbox_width_px(text, &style)
             .max(1.0);
         let bounds = text_bounds(origin, width, bounds_height.max(1.0), anchor, baseline);
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: id.into(),
-        });
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: id.into(),
+            })?;
         if let Some(transform) = rotation {
-            self.commands.push(DrawingCommand::Save);
-            self.commands
-                .push(DrawingCommand::ConcatTransform { transform });
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output
+                .push_control(DrawingCommand::ConcatTransform { transform })?;
         }
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.into(),
+        let font = FontDescriptor {
+            weight,
+            ..self.font.clone()
+        };
+        let text_obligation = self.text_obligation.clone();
+        self.output.draw_host_text(text, |text| TextRun {
+            text,
             origin,
             bounds,
             style: TextStyle {
-                font: FontDescriptor {
-                    weight,
-                    ..self.font.clone()
-                },
+                font,
                 font_size: font_size.max(1.0),
                 letter_spacing: 0.0,
                 line_height: font_size.max(1.0),
@@ -1411,19 +1406,19 @@ impl<'a> GitGraphBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+            obligation: text_obligation,
+        })?;
         if rotation.is_some() {
-            self.commands.push(DrawingCommand::Restore);
+            self.output.push_control(DrawingCommand::Restore)?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_semantic(SemanticAnnotation {
             id: id.into(),
             role: SemanticRole::Label,
             title: Some(text.into()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -1474,14 +1469,7 @@ impl<'a> GitGraphBuilder<'a> {
         if segments.is_empty() {
             return Err(invalid("GitGraph path has no geometry"));
         }
-        let id = ResourceId::new(id);
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.output.draw_path(ResourceId::new(id), segments, style)
     }
 }
 

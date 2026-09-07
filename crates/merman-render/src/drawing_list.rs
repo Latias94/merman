@@ -734,10 +734,10 @@ pub(crate) fn build_for_family(
             cynefin::build_cynefin_document(pair, metadata, policy, session)
         }
         BuiltinFamilyArtifact::Gantt(pair) => {
-            gantt::build_gantt_document(pair, metadata, policy, session)
+            gantt::build_gantt_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::GitGraph(pair) => {
-            gitgraph::build_gitgraph_document(pair, metadata, policy, session)
+            gitgraph::build_gitgraph_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Timeline(pair) => {
             timeline::build_timeline_document(pair, metadata, policy, limits, session)

@@ -8,6 +8,7 @@ use super::{
     GanttSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar, parse_font_families_for,
 };
 use crate::config::config_font_family_css_raw;
+use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::rounded_rect_path;
 use crate::drawing_list::support::{
     PortableStyleResolver, navigation_security, portable_navigation_uri, stroke, text_obligation,
@@ -22,10 +23,10 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument,
-    DrawingListPolicy, DrawingResource, FillRule, FontDescriptor, FontStyle, Paint, PathResource,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
+    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -36,15 +37,16 @@ pub(crate) fn build_gantt_document(
     pair: &GanttPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
+    limits: DrawingListLimits,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    GanttBuilder::new(pair, metadata, policy, session)?.build()
+    GanttBuilder::new(pair, metadata, policy, limits, session)?.build()
 }
 
 struct GanttBuilder<'a> {
     metadata: &'a ParseMetadata,
     session: &'a RenderSession,
-    policy: DrawingListPolicy,
+    document: DrawingListBuilder<'a>,
     model: &'a GanttDiagramRenderModel,
     layout: &'a GanttDiagramLayout,
     theme: GanttTheme,
@@ -77,9 +79,6 @@ struct GanttBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
-    resources: Vec<DrawingResource>,
-    commands: Vec<DrawingCommand>,
-    semantics: Vec<SemanticAnnotation>,
 }
 
 #[derive(Clone, Copy)]
@@ -98,6 +97,7 @@ impl<'a> GanttBuilder<'a> {
         pair: &'a GanttPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
+        limits: DrawingListLimits,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -121,10 +121,16 @@ impl<'a> GanttBuilder<'a> {
             resource: None,
         };
 
+        let mut document = DrawingListBuilder::new(policy, limits, session);
+        document.push_control(DrawingCommand::Save)?;
+        document.push_control(DrawingCommand::BeginSemanticGroup {
+            semantic_id: "gantt.document".to_string(),
+        })?;
+
         Ok(Self {
             metadata,
             session,
-            policy,
+            document,
             model,
             layout,
             exclude_fill: color("excludeBkgColor", &theme.exclude_bkg_color)?,
@@ -160,14 +166,6 @@ impl<'a> GanttBuilder<'a> {
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             navigation_security,
-            resources: Vec::new(),
-            commands: vec![
-                DrawingCommand::Save,
-                DrawingCommand::BeginSemanticGroup {
-                    semantic_id: "gantt.document".to_string(),
-                },
-            ],
-            semantics: Vec::new(),
         })
     }
 
@@ -177,7 +175,7 @@ impl<'a> GanttBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "gantt.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -188,7 +186,7 @@ impl<'a> GanttBuilder<'a> {
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
             description: self.model.acc_descr.clone(),
             link: None,
-        });
+        })?;
 
         self.emit_background()?;
         self.emit_excludes()?;
@@ -208,8 +206,9 @@ impl<'a> GanttBuilder<'a> {
             self.emit_title(title)?;
         }
 
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.commands.push(DrawingCommand::Restore);
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
 
         let links = self
             .model
@@ -224,16 +223,9 @@ impl<'a> GanttBuilder<'a> {
             .map(|(id, event)| (id.clone(), event.clone()))
             .collect::<BTreeMap<_, _>>();
 
-        let document = DrawingListDocument {
-            version: DRAWING_LIST_VERSION,
-            coordinate_system: CoordinateSystem::LogicalPixelsYDown,
-            viewport: Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
-            policy: self.policy,
-            resources: self.resources,
-            commands: self.commands,
-            semantics: self.semantics,
-            fallbacks: Vec::new(),
-            extensions: BTreeMap::from([(
+        let document = self.document.finish(
+            Viewport::new(Rect::new(0.0, 0.0, self.layout.width, self.layout.height)),
+            BTreeMap::from([(
                 "x-merman-gantt".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
@@ -246,8 +238,7 @@ impl<'a> GanttBuilder<'a> {
                     "click_events": click_events,
                 }),
             )]),
-        };
-        document.validate().map_err(Error::DrawingListContract)?;
+        )?;
 
         Ok(RenderDocument {
             public: document,
@@ -303,9 +294,10 @@ impl<'a> GanttBuilder<'a> {
         let axis_semantic_id = format!("gantt.axis.{axis_name}");
         self.semantic_classes
             .insert(axis_semantic_id.clone(), "grid".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: axis_semantic_id.clone(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: axis_semantic_id.clone(),
+            })?;
         let range =
             (self.layout.width - self.layout.left_padding - self.layout.right_padding).max(1.0);
         let tick_size = if bottom {
@@ -345,12 +337,13 @@ impl<'a> GanttBuilder<'a> {
             let tick_semantic_id = format!("{axis_semantic_id}.tick.{index}");
             self.semantic_classes
                 .insert(tick_semantic_id.clone(), "tick".to_string());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: tick_semantic_id.clone(),
-            });
-            self.commands.push(DrawingCommand::Save);
-            self.commands
-                .push(DrawingCommand::SetOpacity { opacity: 0.8 });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: tick_semantic_id.clone(),
+                })?;
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::SetOpacity { opacity: 0.8 })?;
             let tick_path_id = format!("gantt.axis.{axis_name}.tick.{index}");
             self.add_path(
                 tick_path_id,
@@ -368,7 +361,7 @@ impl<'a> GanttBuilder<'a> {
                     stroke: Some(stroke(self.grid_fill, 1.0)),
                 },
             )?;
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
 
             let text_y = if bottom { y + 13.0 } else { y - 3.0 };
             self.emit_text(
@@ -384,23 +377,25 @@ impl<'a> GanttBuilder<'a> {
                     italic: false,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: tick_semantic_id,
                 role: SemanticRole::Label,
                 title: Some(tick.label.clone()),
                 description: None,
                 link: None,
-            });
+            })?;
         }
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: axis_semantic_id,
             role: SemanticRole::Group,
             title: Some(format!("{} axis", if bottom { "Bottom" } else { "Top" })),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -409,9 +404,9 @@ impl<'a> GanttBuilder<'a> {
             let fill = self.row_fill(row);
             self.path_classes
                 .insert(format!("gantt.row.{index}"), row.class.clone());
-            self.commands.push(DrawingCommand::Save);
-            self.commands
-                .push(DrawingCommand::SetOpacity { opacity: 0.2 });
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::SetOpacity { opacity: 0.2 })?;
             self.add_path(
                 format!("gantt.row.{index}"),
                 rect_path(row.x, row.y, row.width, row.height, 0.0),
@@ -421,7 +416,7 @@ impl<'a> GanttBuilder<'a> {
                     stroke: None,
                 },
             )?;
-            self.commands.push(DrawingCommand::Restore);
+            self.document.push_control(DrawingCommand::Restore)?;
         }
         Ok(())
     }
@@ -435,9 +430,10 @@ impl<'a> GanttBuilder<'a> {
                 ))
             })?;
             let semantic_id = format!("gantt.task.{index}");
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let (fill, border, stroke_width) = self.task_style(source);
             let bar_id = format!("{semantic_id}.bar");
             self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
@@ -499,8 +495,9 @@ impl<'a> GanttBuilder<'a> {
                     italic: source.milestone,
                 },
             )?;
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(source.task.clone()),
@@ -510,7 +507,7 @@ impl<'a> GanttBuilder<'a> {
                     self.model.links.get(&source.id).map(String::as_str),
                     self.navigation_security,
                 ),
-            });
+            })?;
         }
         Ok(())
     }
@@ -520,9 +517,10 @@ impl<'a> GanttBuilder<'a> {
             let semantic_id = format!("gantt.section.{index}");
             self.text_classes
                 .insert(semantic_id.clone(), section.class.clone());
-            self.commands.push(DrawingCommand::BeginSemanticGroup {
-                semantic_id: semantic_id.clone(),
-            });
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             for (line_index, line) in section.lines.iter().enumerate() {
                 let y = section.y
                     + section.dy_em * self.layout.section_font_size
@@ -541,14 +539,15 @@ impl<'a> GanttBuilder<'a> {
                     },
                 )?;
             }
-            self.commands.push(DrawingCommand::EndSemanticGroup);
-            self.semantics.push(SemanticAnnotation {
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(section.section.clone()),
                 description: None,
                 link: None,
-            });
+            })?;
         }
         Ok(())
     }
@@ -577,15 +576,17 @@ impl<'a> GanttBuilder<'a> {
             (self.layout.width - self.layout.left_padding - self.layout.right_padding).max(1.0);
         let x = scale_time(self.session.unix_millis(), min_ms, max_ms, range)
             + self.layout.left_padding;
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "gantt.today".to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "gantt.today".to_string(),
+            })?;
         self.semantic_classes
             .insert("gantt.today".to_string(), "today".to_string());
         self.path_classes
             .insert("gantt.today.line".to_string(), "today".to_string());
-        self.commands.push(DrawingCommand::Save);
-        self.commands.push(DrawingCommand::SetOpacity { opacity });
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::SetOpacity { opacity })?;
         self.add_path(
             "gantt.today.line",
             vec![
@@ -602,24 +603,26 @@ impl<'a> GanttBuilder<'a> {
                 stroke: Some(stroke(color, width)),
             },
         )?;
-        self.commands.push(DrawingCommand::Restore);
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document.push_control(DrawingCommand::Restore)?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: "gantt.today".to_string(),
             role: SemanticRole::Label,
             title: Some("Today".to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
     fn emit_title(&mut self, title: &str) -> Result<()> {
         self.text_classes
             .insert("gantt.title".to_string(), "titleText".to_string());
-        self.commands.push(DrawingCommand::BeginSemanticGroup {
-            semantic_id: "gantt.title".to_string(),
-        });
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "gantt.title".to_string(),
+            })?;
         self.emit_text(
             "gantt.title",
             title,
@@ -633,14 +636,15 @@ impl<'a> GanttBuilder<'a> {
                 italic: false,
             },
         )?;
-        self.commands.push(DrawingCommand::EndSemanticGroup);
-        self.semantics.push(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
             id: "gantt.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
             description: None,
             link: None,
-        });
+        })?;
         Ok(())
     }
 
@@ -682,8 +686,10 @@ impl<'a> GanttBuilder<'a> {
             width,
             height,
         );
-        self.commands.push(DrawingCommand::draw_text(TextRun {
-            text: text.to_string(),
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
+        self.document.draw_host_text(text, move |owned| TextRun {
+            text: owned,
             origin,
             bounds,
             style: TextStyle {
@@ -694,7 +700,7 @@ impl<'a> GanttBuilder<'a> {
                     } else {
                         FontStyle::Normal
                     },
-                    ..self.font.clone()
+                    ..font
                 },
                 font_size,
                 letter_spacing: 0.0,
@@ -707,8 +713,8 @@ impl<'a> GanttBuilder<'a> {
             baseline,
             direction: TextDirection::Auto,
             language: None,
-            obligation: self.text_obligation.clone(),
-        }));
+            obligation,
+        })?;
         let _ = semantic_id;
         Ok(())
     }
@@ -819,13 +825,7 @@ impl<'a> GanttBuilder<'a> {
             return Err(invalid("Gantt path has no geometry"));
         }
         let id = ResourceId::new(id.into());
-        self.resources.push(DrawingResource::Path(PathResource {
-            id: id.clone(),
-            segments,
-        }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
-        Ok(())
+        self.document.draw_path(id, segments, style)
     }
 }
 

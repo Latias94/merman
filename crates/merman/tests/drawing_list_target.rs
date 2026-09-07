@@ -2933,6 +2933,32 @@ fn gantt_emits_axes_rows_task_states_and_semantics() {
 }
 
 #[test]
+fn gantt_command_limit_reaches_the_bounded_document_builder() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "gantt\n  section Delivery\n  Task :task, 2026-01-01, 1d\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 0,
+                    ..DrawingListLimits::default()
+                },
+                ..DrawingListRequest::default()
+            },
+        ))
+        .expect_err("the Gantt builder must reject its first command before returning output");
+
+    assert!(matches!(
+        error,
+        RenderError::ResourceLimitExceeded(limit)
+            if limit.id == "max_commands"
+                && limit.phase == "drawing-list-validation"
+                && limit.actual == 1
+                && limit.maximum == 0
+    ));
+}
+
+#[test]
 fn wardley_emits_axes_pipeline_markers_overlays_and_semantics() {
     let source = r#"---
 config:
@@ -3081,6 +3107,30 @@ fn gitgraph_emits_branches_commits_tags_and_parent_arrows() {
             && semantic.title.as_deref() == Some("base → highlight")
     }));
     assert!(document.fallbacks.is_empty());
+}
+
+#[test]
+fn gitgraph_command_limit_reaches_the_bounded_document_builder() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "gitGraph\n  commit id: \"base\"\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_commands: 2,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .expect_err("GitGraph must reject the first command beyond the caller limit");
+    let RenderError::ResourceLimitExceeded(limit) = error else {
+        panic!("expected resource limit, got {error}");
+    };
+    assert_eq!(limit.id, "max_commands");
+    assert_eq!(limit.phase, "drawing-list-validation");
+    assert_eq!(limit.actual, 3);
+    assert_eq!(limit.maximum, 2);
 }
 
 #[test]
