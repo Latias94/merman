@@ -120,6 +120,13 @@ impl<'a> DrawingListBuilder<'a> {
             segments.len(),
             "path segment count",
         )?;
+        if let Some(stroke) = &style.stroke {
+            checked_increment(
+                &mut next.stroke_dash_entries,
+                stroke.dash_array.len(),
+                "stroke dash entry count",
+            )?;
+        }
         self.preflight(next)?;
 
         self.resources
@@ -167,6 +174,16 @@ impl<'a> DrawingListBuilder<'a> {
             return Err(contract_error(
                 "DrawingList host-text builder received a non-host text obligation",
             ));
+        }
+        if let Some(stroke) = &run.style.stroke
+            && !stroke.dash_array.is_empty()
+        {
+            checked_increment(
+                &mut projected.stroke_dash_entries,
+                stroke.dash_array.len(),
+                "stroke dash entry count",
+            )?;
+            self.preflight(projected)?;
         }
         self.usage = projected;
         self.commands.push(DrawingCommand::draw_text(run));

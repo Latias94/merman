@@ -23,10 +23,10 @@ The intended host flow is:
 5. reject an unmet text/effect obligation instead of substituting a different visual silently.
 
 Before bytes are exposed, the renderer computes a document-wide footprint (commands, resources,
-path segments, text/glyph work, inline assets, pixels, and maximum state nesting) and charges it to
-the existing operation work budget. Protocol limits still validate the exact document counts and
-serialized byte ceiling; the footprint is an additional admission/accounting signal, not a second
-wire contract.
+path segments, stroke dash entries, text/glyph work, inline assets, pixels, and maximum state
+nesting) and charges it to the existing operation work budget. Protocol limits still validate the
+exact document counts and serialized byte ceiling; the footprint is an additional
+admission/accounting signal, not a second wire contract.
 
 ## Requirements mapped to the current contract
 

@@ -2,8 +2,8 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::{
-    DrawingCommand, DrawingListDocument, Paint, ResourceId, StrokeStyle, TextBaseline,
-    TextPaintOrder,
+    DrawingCommand, DrawingListDocument, DrawingListLimits, Paint, ResourceId, StrokeStyle,
+    TextBaseline, TextPaintOrder,
 };
 use serde_json::{Map, Value, json};
 
@@ -59,6 +59,11 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
     let schema: Value =
         serde_json::from_str(include_str!("../../../contracts/drawing-list-v1.json"))
             .expect("DrawingList schema is valid JSON");
+    assert_eq!(
+        schema["$defs"]["stroke_style"]["properties"]["dash_array"]["maxItems"],
+        json!(DrawingListLimits::default().max_stroke_dash_entries),
+        "the schema must publish the protocol hard maximum for one dash array"
+    );
     let validator = jsonschema::options()
         .with_draft(jsonschema::Draft::Draft202012)
         .build(&schema)

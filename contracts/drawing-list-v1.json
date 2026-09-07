@@ -385,6 +385,8 @@
         "width": { "type": "number", "minimum": 0 },
         "dash_array": {
           "type": "array",
+          "maxItems": 2000000,
+          "$comment": "The runtime enforces this protocol hard maximum cumulatively through max_stroke_dash_entries before materializing owned dash arrays.",
           "items": { "type": "number", "minimum": 0 }
         },
         "dash_offset": { "type": "number" },

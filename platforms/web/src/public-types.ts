@@ -56,6 +56,7 @@ export interface DrawingListLimitsOptions {
   max_commands?: number;
   max_resources?: number;
   max_path_segments?: number;
+  max_stroke_dash_entries?: number;
   max_image_bytes?: number;
   max_image_pixels?: number;
   max_fallback_pixels?: number;

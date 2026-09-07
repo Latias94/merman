@@ -674,6 +674,7 @@ returned renderer-neutral document. These limits are independent from the artifa
 | `drawing_list.limits.max_commands` | positive integer | `1000000` | Maximum command count. |
 | `drawing_list.limits.max_resources` | positive integer | `100000` | Maximum resource count. |
 | `drawing_list.limits.max_path_segments` | positive integer | `2000000` | Aggregate path segment count. |
+| `drawing_list.limits.max_stroke_dash_entries` | positive integer | `2000000` | Aggregate stroke dash entry count. |
 | `drawing_list.limits.max_image_bytes` | positive integer | `67108864` | Aggregate encoded image bytes. |
 | `drawing_list.limits.max_image_pixels` | positive integer | `67108864` | Aggregate image pixels. |
 | `drawing_list.limits.max_fallback_pixels` | positive integer | `67108864` | Aggregate raster-fallback pixels. |

@@ -428,7 +428,7 @@ impl From<merman_render::Error> for RenderError {
                 actual,
                 maximum,
             }) => Self::ResourceLimitExceeded(ResourceLimitExceeded {
-                id: resource,
+                id: drawing_list_public_limit_id(resource),
                 phase: "drawing-list-validation",
                 actual: actual as u64,
                 maximum: maximum as u64,
@@ -441,6 +441,27 @@ impl From<merman_render::Error> for RenderError {
             | merman_render::Error::DrawingListContract(_)) => Self::DrawingList(error),
             other => Self::Svg(other),
         }
+    }
+}
+
+#[cfg(feature = "drawing-list")]
+fn drawing_list_public_limit_id(resource: &'static str) -> &'static str {
+    match resource {
+        "serialized_bytes" => "max_serialized_bytes",
+        "commands" => "max_commands",
+        "resources" => "max_resources",
+        "path_segments" => "max_path_segments",
+        "stroke_dash_entries" => "max_stroke_dash_entries",
+        "image_bytes" => "max_image_bytes",
+        "image_pixels" => "max_image_pixels",
+        "fallback_pixels" => "max_fallback_pixels",
+        "font_bytes" => "max_font_bytes",
+        "nesting_depth" => "max_nesting_depth",
+        "fallbacks" => "max_fallbacks",
+        "text_bytes" => "max_text_bytes",
+        "glyphs" => "max_glyphs",
+        // Preserve an unknown future protocol label instead of misreporting it as another limit.
+        unknown => unknown,
     }
 }
 

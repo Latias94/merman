@@ -934,6 +934,7 @@ pub(crate) struct DrawingListLimitsJson {
     pub(crate) max_commands: Option<usize>,
     pub(crate) max_resources: Option<usize>,
     pub(crate) max_path_segments: Option<usize>,
+    pub(crate) max_stroke_dash_entries: Option<usize>,
     pub(crate) max_image_bytes: Option<usize>,
     pub(crate) max_image_pixels: Option<usize>,
     pub(crate) max_fallback_pixels: Option<usize>,
@@ -1026,6 +1027,7 @@ pub(crate) fn compile_drawing_list_options(
     apply_limit!(max_commands);
     apply_limit!(max_resources);
     apply_limit!(max_path_segments);
+    apply_limit!(max_stroke_dash_entries);
     apply_limit!(max_image_bytes);
     apply_limit!(max_image_pixels);
     apply_limit!(max_fallback_pixels);
@@ -1091,6 +1093,7 @@ pub(crate) fn validate_drawing_list_tightening(
     check_limit!(max_commands);
     check_limit!(max_resources);
     check_limit!(max_path_segments);
+    check_limit!(max_stroke_dash_entries);
     check_limit!(max_image_bytes);
     check_limit!(max_image_pixels);
     check_limit!(max_fallback_pixels);
@@ -3140,6 +3143,7 @@ mod tests {
             "max_commands",
             "max_resources",
             "max_path_segments",
+            "max_stroke_dash_entries",
             "max_image_bytes",
             "max_image_pixels",
             "max_fallback_pixels",

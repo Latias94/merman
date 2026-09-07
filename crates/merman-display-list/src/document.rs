@@ -130,6 +130,7 @@ pub struct DrawingListLimits {
     pub max_commands: usize,
     pub max_resources: usize,
     pub max_path_segments: usize,
+    pub max_stroke_dash_entries: usize,
     pub max_image_bytes: usize,
     pub max_image_pixels: usize,
     pub max_fallback_pixels: usize,
@@ -152,6 +153,7 @@ pub struct DrawingListFootprint {
     pub semantics: usize,
     pub fallbacks: usize,
     pub path_segments: usize,
+    pub stroke_dash_entries: usize,
     pub gradient_stops: usize,
     pub image_bytes: usize,
     pub image_pixels: usize,
@@ -185,6 +187,11 @@ impl DrawingListFootprint {
             self.path_segments,
             limits.max_path_segments,
         )?;
+        validate_count(
+            "stroke_dash_entries",
+            self.stroke_dash_entries,
+            limits.max_stroke_dash_entries,
+        )?;
         validate_count("image_bytes", self.image_bytes, limits.max_image_bytes)?;
         validate_count("image_pixels", self.image_pixels, limits.max_image_pixels)?;
         validate_count(
@@ -205,9 +212,10 @@ impl DrawingListFootprint {
 
     /// Converts the footprint to conservative operation work units.
     ///
-    /// Structural items, path segments, and glyphs cost one unit each.  Inline bytes and pixels
-    /// cost one unit per started KiB; their exact safety ceilings remain enforced by the protocol
-    /// validator.  Checked arithmetic keeps hostile or corrupted documents fail-closed.
+    /// Structural items, path segments, stroke dash entries, and glyphs cost one unit each.
+    /// Inline bytes and pixels cost one unit per started KiB; their exact safety ceilings remain
+    /// enforced by the protocol validator. Checked arithmetic keeps hostile or corrupted
+    /// documents fail-closed.
     pub fn work_units(self) -> Result<usize, DrawingListError> {
         let mut units = 0usize;
         for value in [
@@ -216,6 +224,7 @@ impl DrawingListFootprint {
             self.semantics,
             self.fallbacks,
             self.path_segments,
+            self.stroke_dash_entries,
             self.gradient_stops,
             self.glyphs,
             self.max_nesting_depth,
@@ -247,6 +256,7 @@ impl Default for DrawingListLimits {
             max_commands: 1_000_000,
             max_resources: 100_000,
             max_path_segments: 2_000_000,
+            max_stroke_dash_entries: 2_000_000,
             max_image_bytes: 64 * 1024 * 1024,
             max_image_pixels: 64 * 1024 * 1024,
             max_fallback_pixels: 64 * 1024 * 1024,
@@ -448,6 +458,16 @@ impl DrawingListDocument {
                     })?;
                 }
                 DrawingCommand::DrawText { run } => {
+                    if let Some(stroke) = &run.style.stroke {
+                        footprint.stroke_dash_entries = footprint
+                            .stroke_dash_entries
+                            .checked_add(stroke.dash_array.len())
+                            .ok_or_else(|| {
+                                DrawingListError::invalid(
+                                    "DrawingList stroke-dash footprint overflows usize",
+                                )
+                            })?;
+                    }
                     footprint.text_bytes = footprint
                         .text_bytes
                         .checked_add(run.text.len())
@@ -468,9 +488,20 @@ impl DrawingListDocument {
                 DrawingCommand::SetOpacity { .. }
                 | DrawingCommand::SetBlendMode { .. }
                 | DrawingCommand::ConcatTransform { .. }
-                | DrawingCommand::DrawPath { .. }
                 | DrawingCommand::DrawImage { .. }
                 | DrawingCommand::DrawRasterSubtree { .. } => {}
+                DrawingCommand::DrawPath { style, .. } => {
+                    if let Some(stroke) = &style.stroke {
+                        footprint.stroke_dash_entries = footprint
+                            .stroke_dash_entries
+                            .checked_add(stroke.dash_array.len())
+                            .ok_or_else(|| {
+                                DrawingListError::invalid(
+                                    "DrawingList stroke-dash footprint overflows usize",
+                                )
+                            })?;
+                    }
+                }
             }
             let nesting = state_depth
                 .checked_add(semantic_depth)
@@ -525,6 +556,7 @@ impl DrawingListDocument {
         let mut image_pixels = 0usize;
         let mut font_bytes = 0usize;
         let mut path_segments = 0usize;
+        let mut stroke_dash_entries = 0usize;
         for resource in &self.resources {
             if !resource_ids.insert(resource.id().clone()) {
                 return Err(DrawingListError::invalid(format!(
@@ -747,6 +779,12 @@ impl DrawingListDocument {
                     validate_paint(style.fill.as_ref(), &paint_ids)?;
                     if let Some(stroke) = &style.stroke {
                         validate_paint(Some(&stroke.paint), &paint_ids)?;
+                        checked_accumulate(
+                            "stroke_dash_entries",
+                            &mut stroke_dash_entries,
+                            stroke.dash_array.len(),
+                            limits.max_stroke_dash_entries,
+                        )?;
                     }
                 }
                 DrawingCommand::ClipPath { path, .. } => {
@@ -813,6 +851,12 @@ impl DrawingListDocument {
                     validate_paint(Some(&run.style.fill), &paint_ids)?;
                     if let Some(stroke) = &run.style.stroke {
                         validate_paint(Some(&stroke.paint), &paint_ids)?;
+                        checked_accumulate(
+                            "stroke_dash_entries",
+                            &mut stroke_dash_entries,
+                            stroke.dash_array.len(),
+                            limits.max_stroke_dash_entries,
+                        )?;
                     }
                     if let Some(font) = &run.style.font.resource
                         && !font_ids.contains(font)
@@ -1072,6 +1116,8 @@ struct EncodedCommandBudget<'a> {
     #[serde(borrow)]
     kind: Cow<'a, str>,
     #[serde(default, borrow)]
+    style: Option<&'a RawValue>,
+    #[serde(default, borrow)]
     run: Option<&'a RawValue>,
 }
 
@@ -1080,7 +1126,21 @@ struct EncodedTextRunBudget<'a> {
     #[serde(borrow)]
     text: &'a RawValue,
     #[serde(default, borrow)]
+    style: Option<&'a RawValue>,
+    #[serde(default, borrow)]
     obligation: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct EncodedStrokeOwnerBudget<'a> {
+    #[serde(default, borrow)]
+    stroke: Option<&'a RawValue>,
+}
+
+#[derive(Deserialize)]
+struct EncodedStrokeBudget<'a> {
+    #[serde(default, borrow)]
+    dash_array: Option<&'a RawValue>,
 }
 
 #[derive(Deserialize)]
@@ -1097,6 +1157,7 @@ enum WireSequenceKind {
     Commands,
     Fallbacks,
     PathSegments,
+    StrokeDashEntries,
     Glyphs,
 }
 
@@ -1106,6 +1167,7 @@ struct WireBudgetState<'a> {
     commands: usize,
     fallbacks: usize,
     path_segments: usize,
+    stroke_dash_entries: usize,
     glyphs: usize,
     image_bytes: usize,
     font_bytes: usize,
@@ -1121,6 +1183,7 @@ impl<'a> WireBudgetState<'a> {
             commands: 0,
             fallbacks: 0,
             path_segments: 0,
+            stroke_dash_entries: 0,
             glyphs: 0,
             image_bytes: 0,
             font_bytes: 0,
@@ -1257,6 +1320,16 @@ impl<'de> Visitor<'de> for WireSequenceVisitor<'_, '_> {
                     &mut self.state.failure,
                 );
             }
+            WireSequenceKind::StrokeDashEntries => {
+                let maximum = self.state.limits.max_stroke_dash_entries;
+                return count_ignored_sequence(
+                    &mut sequence,
+                    "stroke_dash_entries",
+                    &mut self.state.stroke_dash_entries,
+                    maximum,
+                    &mut self.state.failure,
+                );
+            }
             WireSequenceKind::Glyphs => {
                 let maximum = self.state.limits.max_glyphs;
                 return count_ignored_sequence(
@@ -1288,9 +1361,11 @@ impl<'de> Visitor<'de> for WireSequenceVisitor<'_, '_> {
                     let maximum = self.state.limits.max_fallbacks;
                     checked_accumulate("fallbacks", &mut self.state.fallbacks, 1, maximum)
                 }
-                WireSequenceKind::PathSegments | WireSequenceKind::Glyphs => Err(
-                    DrawingListError::invalid("invalid nested wire-budget dispatch"),
-                ),
+                WireSequenceKind::PathSegments
+                | WireSequenceKind::StrokeDashEntries
+                | WireSequenceKind::Glyphs => Err(DrawingListError::invalid(
+                    "invalid nested wire-budget dispatch",
+                )),
             };
             if let Err(error) = result {
                 return Err(self.state.record_failure(error));
@@ -1390,30 +1465,55 @@ fn inspect_command_budget(
 ) -> Result<(), DrawingListError> {
     let command = serde_json::from_str::<EncodedCommandBudget<'_>>(raw.get())
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-    if command.kind != "draw_text" {
-        return Ok(());
+    match command.kind.as_ref() {
+        "draw_path" => inspect_stroke_owner_budget(command.style, state)?,
+        "draw_text" => {
+            let Some(run) = command.run else {
+                return Ok(());
+            };
+            let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
+                .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+            let decoded_text_bytes = json_string_decoded_utf8_len(run.text.get())?;
+            checked_accumulate(
+                "text_bytes",
+                &mut state.text_bytes,
+                decoded_text_bytes,
+                state.limits.max_text_bytes,
+            )?;
+            inspect_stroke_owner_budget(run.style, state)?;
+            let Some(obligation) = run.obligation else {
+                return Ok(());
+            };
+            let obligation =
+                serde_json::from_str::<EncodedTextObligationBudget<'_>>(obligation.get())
+                    .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+            if obligation.kind == "glyph_run"
+                && let Some(glyphs) = obligation.glyphs
+            {
+                inspect_nested_sequence(glyphs, state, WireSequenceKind::Glyphs)?;
+            }
+        }
+        _ => {}
     }
-    let Some(run) = command.run else {
+    Ok(())
+}
+
+fn inspect_stroke_owner_budget(
+    owner: Option<&RawValue>,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    let Some(owner) = owner else {
         return Ok(());
     };
-    let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
+    let owner = serde_json::from_str::<EncodedStrokeOwnerBudget<'_>>(owner.get())
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-    let decoded_text_bytes = json_string_decoded_utf8_len(run.text.get())?;
-    checked_accumulate(
-        "text_bytes",
-        &mut state.text_bytes,
-        decoded_text_bytes,
-        state.limits.max_text_bytes,
-    )?;
-    let Some(obligation) = run.obligation else {
+    let Some(stroke) = owner.stroke else {
         return Ok(());
     };
-    let obligation = serde_json::from_str::<EncodedTextObligationBudget<'_>>(obligation.get())
+    let stroke = serde_json::from_str::<EncodedStrokeBudget<'_>>(stroke.get())
         .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-    if obligation.kind == "glyph_run"
-        && let Some(glyphs) = obligation.glyphs
-    {
-        inspect_nested_sequence(glyphs, state, WireSequenceKind::Glyphs)?;
+    if let Some(dash_array) = stroke.dash_array {
+        inspect_nested_sequence(dash_array, state, WireSequenceKind::StrokeDashEntries)?;
     }
     Ok(())
 }

@@ -131,7 +131,7 @@ fn drawing_list_footprint_limit_is_reported_as_a_resource_limit() {
     assert!(matches!(
         error,
         RenderError::ResourceLimitExceeded(limit)
-            if limit.id == "commands"
+            if limit.id == "max_commands"
                 && limit.phase == "drawing-list-validation"
                 && limit.actual > limit.maximum
     ));
@@ -157,7 +157,7 @@ fn info_command_limit_reaches_the_bounded_document_builder() {
     assert!(matches!(
         error,
         RenderError::ResourceLimitExceeded(limit)
-            if limit.id == "commands"
+            if limit.id == "max_commands"
                 && limit.phase == "drawing-list-validation"
                 && limit.actual == 1
                 && limit.maximum == 0
@@ -1071,7 +1071,7 @@ fn packet_resource_limit_reaches_the_bounded_document_builder() {
     assert!(matches!(
         error,
         RenderError::ResourceLimitExceeded(limit)
-            if limit.id == "resources"
+            if limit.id == "max_resources"
                 && limit.phase == "drawing-list-validation"
                 && limit.actual == 2
                 && limit.maximum == 1

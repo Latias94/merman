@@ -253,7 +253,25 @@ fn validator_enforces_cumulative_nesting_across_scope_kinds() {
 
 #[test]
 fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
-    let document = common::extended_document();
+    let mut document = common::extended_document();
+    let baseline_work_units = document
+        .footprint()
+        .expect("fixture scopes are balanced")
+        .work_units()
+        .expect("fixture work units fit usize");
+    let style = document
+        .commands
+        .iter_mut()
+        .find_map(|command| match command {
+            DrawingCommand::DrawPath { style, .. } => Some(style),
+            _ => None,
+        })
+        .expect("extended fixture has a path command");
+    style
+        .stroke
+        .as_mut()
+        .expect("extended fixture path has a stroke")
+        .dash_array = vec![3.0, 1.0];
     let footprint = document.footprint().expect("fixture scopes are balanced");
     let image = document
         .resources
@@ -268,6 +286,7 @@ fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
     assert_eq!(footprint.resources, document.resources.len());
     assert_eq!(footprint.semantics, document.semantics.len());
     assert_eq!(footprint.path_segments, 5);
+    assert_eq!(footprint.stroke_dash_entries, 2);
     assert_eq!(footprint.gradient_stops, 4);
     assert_eq!(footprint.image_bytes, image.image.data.len());
     assert_eq!(footprint.image_pixels, 1);
@@ -275,7 +294,10 @@ fn document_footprint_reports_cumulative_geometry_and_asset_cost() {
     assert_eq!(footprint.text_bytes, "A node".len());
     assert_eq!(footprint.glyphs, 1);
     assert_eq!(footprint.max_nesting_depth, 5);
-    assert!(footprint.work_units().unwrap() > footprint.commands);
+    assert_eq!(
+        footprint.work_units().unwrap(),
+        baseline_work_units + footprint.stroke_dash_entries
+    );
 }
 
 #[test]
@@ -284,6 +306,7 @@ fn footprint_checks_cumulative_limits_before_serialization() {
     let footprint = document.footprint().expect("fixture scopes are balanced");
     let exact = DrawingListLimits {
         max_path_segments: footprint.path_segments,
+        max_stroke_dash_entries: footprint.stroke_dash_entries,
         max_image_bytes: footprint.image_bytes,
         max_image_pixels: footprint.image_pixels,
         max_fallback_pixels: footprint.fallback_pixels,
@@ -343,6 +366,35 @@ fn validator_enforces_document_wide_path_segment_budget() {
         ..DrawingListLimits::default()
     };
     assert!(document.validate_with_limits(&limits).is_err());
+}
+
+#[test]
+fn validator_enforces_document_wide_stroke_dash_budget() {
+    let mut document = sample_document();
+    let DrawingCommand::DrawPath { style, .. } = &mut document.commands[3] else {
+        panic!("sample document command 3 is a path");
+    };
+    style
+        .stroke
+        .as_mut()
+        .expect("sample document path has a stroke")
+        .dash_array = vec![3.0, 1.0];
+    let footprint = document.footprint().expect("fixture scopes are balanced");
+    assert_eq!(footprint.path_segments, 5);
+    assert_eq!(footprint.stroke_dash_entries, 2);
+
+    let limits = DrawingListLimits {
+        max_stroke_dash_entries: 1,
+        ..DrawingListLimits::default()
+    };
+    assert!(matches!(
+        document.validate_with_limits(&limits),
+        Err(DrawingListError::ResourceLimit {
+            resource: "stroke_dash_entries",
+            actual: 2,
+            maximum: 1,
+        })
+    ));
 }
 
 #[test]
@@ -786,6 +838,15 @@ fn decoder_stops_at_wire_collection_and_nested_sequence_limits() {
             br#"{"resources":[{"kind":"path","segments":[{},{}]}]}"#.as_slice(),
             DrawingListLimits {
                 max_path_segments: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "stroke_dash_entries",
+            br#"{"commands":[{"kind":"draw_path","style":{"stroke":{"dash_array":[1]}}},{"kind":"draw_text","run":{"text":"","style":{"stroke":{"dash_array":[2]}}}},{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_stroke_dash_entries: 1,
                 ..DrawingListLimits::default()
             },
         ),
