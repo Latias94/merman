@@ -497,6 +497,15 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
         EffectAssertion::Opacity => assert!(
             document.commands.iter().any(|command| {
                 matches!(command, DrawingCommand::SetOpacity { opacity } if *opacity < 1.0)
+                    || matches!(
+                        command,
+                        DrawingCommand::DrawPath { style, .. }
+                            if style.fill.as_ref().is_some_and(paint_has_transparency)
+                                || style
+                                    .stroke
+                                    .as_ref()
+                                    .is_some_and(|stroke| paint_has_transparency(&stroke.paint))
+                    )
             }),
             "{id} must retain a non-default opacity command"
         ),
@@ -669,7 +678,16 @@ fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'stati
                 effects.insert("layer");
             }
             DrawingCommand::EndLayer => {}
-            DrawingCommand::DrawPath { .. } => {}
+            DrawingCommand::DrawPath { style, .. } => {
+                if style.fill.as_ref().is_some_and(paint_has_transparency)
+                    || style
+                        .stroke
+                        .as_ref()
+                        .is_some_and(|stroke| paint_has_transparency(&stroke.paint))
+                {
+                    effects.insert("opacity");
+                }
+            }
             DrawingCommand::ClipPath { .. } => {
                 effects.insert("clip_path");
             }
@@ -716,6 +734,10 @@ fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'stati
         effects.insert("expanded_marker");
     }
     effects
+}
+
+fn paint_has_transparency(paint: &Paint) -> bool {
+    matches!(paint, Paint::Solid { color } if color.alpha < u8::MAX)
 }
 
 fn has_expanded_marker(document: &DrawingListDocument) -> bool {

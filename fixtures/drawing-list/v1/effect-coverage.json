@@ -15,7 +15,7 @@
     {
       "family": "state",
       "source": "stateDiagram-v2\n  A --> B: next\n",
-      "expected_effects": ["expanded_marker", "host_text", "path"]
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
     },
     {
       "family": "sequence",
@@ -46,7 +46,7 @@
     {
       "family": "class",
       "source": "classDiagram\n  class A\n  class B\n  A --> B : uses\n",
-      "expected_effects": ["expanded_marker", "host_text", "path"]
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
     },
     {
       "family": "c4",
@@ -101,7 +101,7 @@
     {
       "family": "requirement",
       "source": "requirementDiagram\n  requirement req1 {\n    id: REQ-1\n    text: Login\n    risk: high\n    verifymethod: test\n  }\n  element system {\n    type: service\n    docref: docs\n  }\n  system - satisfies -> req1\n",
-      "expected_effects": ["expanded_marker", "host_text", "path"]
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
     },
     {
       "family": "sankey",
@@ -121,7 +121,7 @@
     {
       "family": "treemap",
       "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
-      "expected_effects": ["clip_path", "host_text", "path", "transform"]
+      "expected_effects": ["clip_path", "host_text", "opacity", "path", "transform"]
     },
     {
       "family": "block",
@@ -131,7 +131,7 @@
     {
       "family": "er",
       "source": "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
-      "expected_effects": ["expanded_marker", "host_text", "path"]
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
     },
     {
       "family": "quadrantChart",
@@ -212,7 +212,7 @@
       "family": "treemap",
       "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
       "assertion": "clip_path",
-      "expected_effects": ["clip_path", "host_text", "path", "transform"],
+      "expected_effects": ["clip_path", "host_text", "opacity", "path", "transform"],
       "evidence": "DrawingCommand::ClipPath scopes a section paint"
     },
     {
