@@ -1067,7 +1067,6 @@ fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
     let svg = render_svg(
         "railroad-beta\naccTitle: Railroad parity\nexpr = sequence(nonterminal(\"term\"), terminal(\"+\"), special(\"guard\")) ;\n",
