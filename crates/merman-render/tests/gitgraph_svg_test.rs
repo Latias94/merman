@@ -998,6 +998,41 @@ fn gitgraph_edge_label_background_fill_is_typed_and_reaches_commit_label_rects()
 }
 
 #[test]
+fn gitgraph_edge_label_background_is_not_applicable_without_visible_commit_labels() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::EdgeLabelBackground,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").expect("valid GitGraph label background")),
+    )
+    .for_family(DiagramFamilyId::GIT_GRAPH)]);
+
+    let rendered = render_gitgraph_with_theme_and_engine(
+        r#"gitGraph
+  commit id: "1"
+"#,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "showCommitLabel": false }
+        }))),
+        "git-edge-label-background-hidden",
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "commit-label-bkg")),
+        "a hidden commit label must not emit a background terminal"
+    );
+    assert!(!rendered.svg().contains("#123456"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
 fn gitgraph_edge_label_background_yields_to_color_generated_theme_ownership() {
     let theme = gitgraph_edge_rules_theme([ThemeRule::new(
         ThemeTarget::EdgeLabelBackground,

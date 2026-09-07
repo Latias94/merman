@@ -70,7 +70,12 @@ impl GitGraphStaticPaintPlan {
         let mermaid_owns_commit_label_background = effective_config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
-        let assignment = (!mermaid_owns_commit_label_background
+        let has_visible_commit_label = layout.commits.iter().any(|commit| {
+            crate::gitgraph::gitgraph_commit_label_is_visible(layout, commit)
+                && !commit.id.trim().is_empty()
+        });
+        let assignment = (has_visible_commit_label
+            && !mermaid_owns_commit_label_background
             && !merman_core::__private::config_path_overrides_typed_default(
                 effective_config,
                 COMMIT_LABEL_BACKGROUND_PATH,
@@ -106,6 +111,10 @@ impl GitGraphStaticPaintPlan {
                 index: rule_index,
                 target: ThemeTarget::EdgeLabelBackground,
             };
+            if !has_visible_commit_label {
+                plan.evidence.mark_not_applicable(key);
+                continue;
+            }
             let route_won = winner_key.as_ref() == Some(&key);
             if !route_won {
                 plan.evidence.mark_not_applicable(key);
@@ -137,19 +146,6 @@ impl GitGraphStaticPaintPlan {
                     .route_key
                     .clone(),
             );
-        }
-
-        // A commit label background cannot reach a terminal without a visible commit label. The
-        // receipt performs the final occurrence check, but this early guard keeps an empty
-        // GitGraph document from claiming an applied paint route.
-        if layout
-            .commits
-            .iter()
-            .all(|commit| !crate::gitgraph::gitgraph_commit_label_is_visible(layout, commit))
-        {
-            if let Some(key) = plan.pending_key.take() {
-                plan.evidence.mark_not_applicable(key);
-            }
         }
 
         Ok(plan)
@@ -293,7 +289,7 @@ mod tests {
         }
     }
 
-    fn plan() -> GitGraphStaticPaintPlan {
+    fn plan_with_layout(layout: &GitGraphDiagramLayout) -> GitGraphStaticPaintPlan {
         let paint = CanvasPaint::solid("#123456").expect("valid paint");
         let theme = DiagramThemeCompiler::new()
             .compile(
@@ -312,10 +308,14 @@ mod tests {
         GitGraphStaticPaintPlan::resolve(
             Some(&theme),
             &MermaidConfig::default(),
-            &layout_with_label(),
+            layout,
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve static paint")
+    }
+
+    fn plan() -> GitGraphStaticPaintPlan {
+        plan_with_layout(&layout_with_label())
     }
 
     #[test]
@@ -326,5 +326,31 @@ mod tests {
         // The production writer records this occurrence after emitting the rect.
         receipt.record_commit_label_background();
         assert!(receipt.proves(&plan));
+    }
+
+    #[test]
+    fn static_paint_is_not_applicable_without_a_visible_commit_label() {
+        for (case, show_commit_label, id) in [("hidden", false, "1"), ("empty", true, "")] {
+            let mut layout = layout_with_label();
+            layout.show_commit_label = show_commit_label;
+            layout.commits[0].id = id.to_string();
+
+            let plan = plan_with_layout(&layout);
+
+            assert!(
+                plan.assignment.is_none(),
+                "{case}: hidden or empty labels must not retain a static paint assignment"
+            );
+            assert!(
+                plan.begin_terminal_receipt().is_none(),
+                "{case}: hidden or empty labels must not create a terminal receipt"
+            );
+            assert_eq!(plan.commit_label_background_css(), None, "{case}");
+
+            let evidence = plan.finish_evidence();
+            assert_eq!(evidence.applied().len(), 0, "{case}");
+            assert_eq!(evidence.not_applicable_mechanisms().len(), 1, "{case}");
+            assert!(evidence.residuals().is_empty(), "{case}");
+        }
     }
 }
