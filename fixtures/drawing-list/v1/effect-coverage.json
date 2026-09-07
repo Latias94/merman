@@ -4,7 +4,7 @@
     {
       "family": "error",
       "source": "flowchart TD\nA -->\n",
-      "expected_effects": ["host_text", "path"]
+      "expected_effects": ["host_text", "path", "text_stroke"]
     },
     {
       "family": "mindmap",
@@ -187,6 +187,15 @@
       "assertion": "host_text",
       "expected_effects": ["host_text"],
       "evidence": "DrawingCommand::DrawText with TextObligation::HostText"
+    },
+    {
+      "id": "error-text-stroke",
+      "disposition": "vector",
+      "family": "error",
+      "source": "flowchart TD\nA -->\n",
+      "assertion": "text_stroke",
+      "expected_effects": ["host_text", "path", "text_stroke"],
+      "evidence": "Error DrawText commands retain the resolved text stroke and SVG default fill-then-stroke order"
     },
     {
       "id": "linear-gradient",

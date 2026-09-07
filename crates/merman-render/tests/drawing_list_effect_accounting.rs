@@ -70,6 +70,7 @@ enum EffectDisposition {
 enum EffectAssertion {
     PathFillStroke,
     HostText,
+    TextStroke,
     LinearGradient,
     RadialGradient,
     ImageResource,
@@ -95,6 +96,7 @@ impl EffectAssertion {
         match self {
             Self::PathFillStroke => "path",
             Self::HostText => "host_text",
+            Self::TextStroke => "text_stroke",
             Self::LinearGradient => "linear_gradient",
             Self::RadialGradient => "radial_gradient",
             Self::ImageResource => "image_resource",
@@ -386,6 +388,16 @@ fn assert_effect_construct(id: &str, assertion: EffectAssertion, document: &Draw
             )),
             "{id} must retain a host-text obligation"
         ),
+        EffectAssertion::TextStroke => assert!(
+            document.commands.iter().any(|command| matches!(
+                command,
+                DrawingCommand::DrawText { run }
+                    if run.style.stroke.as_ref().is_some_and(|stroke| stroke.paint == run.style.fill)
+                        && run.style.paint_order
+                            == merman_display_list::TextPaintOrder::FillThenStroke
+            )),
+            "{id} must retain a text stroke used by DrawText"
+        ),
         EffectAssertion::LinearGradient => assert!(
             document.resources.iter().any(|resource| matches!(
                 resource,
@@ -671,20 +683,25 @@ fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'stati
             DrawingCommand::DrawRasterSubtree { .. } => {
                 effects.insert("raster_subtree");
             }
-            DrawingCommand::DrawText { run } => match &run.obligation {
-                merman_display_list::TextObligation::HostText { .. } => {
-                    effects.insert("host_text");
+            DrawingCommand::DrawText { run } => {
+                if run.style.stroke.is_some() {
+                    effects.insert("text_stroke");
                 }
-                merman_display_list::TextObligation::GlyphRun { .. } => {
-                    effects.insert("glyph_run");
+                match &run.obligation {
+                    merman_display_list::TextObligation::HostText { .. } => {
+                        effects.insert("host_text");
+                    }
+                    merman_display_list::TextObligation::GlyphRun { .. } => {
+                        effects.insert("glyph_run");
+                    }
+                    merman_display_list::TextObligation::Outline { .. } => {
+                        effects.insert("text_outline");
+                    }
+                    merman_display_list::TextObligation::RasterFallback { .. } => {
+                        effects.insert("text_raster_fallback");
+                    }
                 }
-                merman_display_list::TextObligation::Outline { .. } => {
-                    effects.insert("text_outline");
-                }
-                merman_display_list::TextObligation::RasterFallback { .. } => {
-                    effects.insert("text_raster_fallback");
-                }
-            },
+            }
         }
     }
 

@@ -8,9 +8,7 @@
 use super::root_svg;
 use super::util::{escape_attr_into, escape_xml_into, fmt};
 use super::{SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
-use crate::drawing_list::{
-    BlockInlinePathProperty, ERROR_ICON_PATHS, RenderDocument, SvgStructureBody,
-};
+use crate::drawing_list::{BlockInlinePathProperty, RenderDocument, SvgStructureBody};
 use crate::environment::RenderSession;
 use crate::family::RenderFamilyKind;
 use crate::wardley::WardleyTheme;
@@ -58,6 +56,7 @@ struct DocumentSvgEncoder<'a> {
     semantics: BTreeMap<String, &'a SemanticAnnotation>,
     semantic_svg_ids: BTreeMap<String, String>,
     fallbacks: BTreeMap<String, &'a merman_display_list::RasterFallback>,
+    error_projection: Option<super::error::ErrorProjection<'a>>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -111,6 +110,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             .public
             .validate()
             .map_err(Error::DrawingListContract)?;
+        let error_projection = match &document.svg.body {
+            SvgStructureBody::Error(body) => Some(
+                super::error::validate_error_projection_contract(&document.public, body)?,
+            ),
+            _ => None,
+        };
 
         let family = document.svg.family;
         let diagram_id = options
@@ -163,6 +168,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             semantics,
             semantic_svg_ids,
             fallbacks,
+            error_projection,
             state: GraphicsState::default(),
             saves: Vec::new(),
             groups: Vec::new(),
@@ -548,7 +554,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             )),
             SvgStructureBody::Error(_) => Some((
                 false,
-                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
+                super::error::canonical_error_css(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                    self.error_projection.as_ref().ok_or_else(|| {
+                        invalid("Error SVG is missing its validated document projection")
+                    })?,
+                )?,
             )),
             SvgStructureBody::Packet(_) => Some((
                 false,
@@ -1739,7 +1751,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
         if matches!(self.svg_body, SvgStructureBody::Error(_)) {
-            return self.emit_error_path(path_id, style);
+            return super::error::write_error_path(&mut self.output, path_id);
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.emit_mindmap_path(path_id, style);
@@ -2440,53 +2452,6 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
-    fn emit_error_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
-        let raw_index = path_id
-            .as_str()
-            .strip_prefix("error.icon.")
-            .ok_or_else(|| {
-                invalid(format!(
-                    "unexpected Error path resource {}",
-                    path_id.as_str()
-                ))
-            })?;
-        let index = raw_index
-            .parse::<usize>()
-            .ok()
-            .filter(|index| *index < ERROR_ICON_PATHS.len())
-            .ok_or_else(|| invalid(format!("unexpected Error icon index {raw_index}")))?;
-        let source = ERROR_ICON_PATHS[index];
-        let path = self.path_resource(path_id)?;
-        let expected = crate::drawing_list::parse_svg_path(source)?;
-        let expected_color =
-            crate::drawing_list::theme_color(self.effective_config, "errorBkgColor", "#552222")?;
-        let actual_color = match style.fill.as_ref() {
-            Some(Paint::Solid { color }) => Some(*color),
-            _ => None,
-        };
-        if path.segments != expected {
-            return Err(invalid(format!(
-                "Error icon {index} no longer matches its source-backed path spelling"
-            )));
-        }
-        if style.fill_rule != FillRule::NonZero
-            || actual_color != Some(expected_color)
-            || style.stroke.is_some()
-            || self.state.transform != Transform::IDENTITY
-            || self.state.opacity != 1.0
-            || self.state.blend_mode != BlendMode::Normal
-        {
-            return Err(invalid(format!(
-                "Error icon {index} no longer matches the source-backed paint contract"
-            )));
-        }
-
-        self.output.push_str(r#"<path class="error-icon" d=""#);
-        escape_attr_into(&mut self.output, source);
-        self.output.push_str("\"/>");
-        Ok(())
-    }
-
     fn emit_xychart_background(&mut self, bounds: Rect, style: &PathStyle) -> Result<()> {
         let Some(fill) = style.fill.as_ref() else {
             return Err(invalid("XYChart background is missing its fill"));
@@ -2845,6 +2810,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_host_text(&mut self, run: &TextRun) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Error(_)) {
+            return super::error::write_error_text(&mut self.output, run);
+        }
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
@@ -2859,9 +2827,6 @@ impl<'a> DocumentSvgEncoder<'a> {
             escape_xml_into(&mut self.output, run.text.as_str());
             self.output.push_str("</text>");
             return Ok(());
-        }
-        if matches!(self.svg_body, SvgStructureBody::Error(_)) {
-            return self.emit_error_text(run, semantic_id.as_deref(), text_index);
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.emit_mindmap_html_text(run, semantic_id.as_deref());
@@ -3017,74 +2982,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.output.push_str("</tspan>");
             }
         }
-        self.output.push_str("</text>");
-        Ok(())
-    }
-
-    fn emit_error_text(
-        &mut self,
-        run: &TextRun,
-        semantic_id: Option<&str>,
-        text_index: Option<usize>,
-    ) -> Result<()> {
-        let SvgStructureBody::Error(body) = self.svg_body else {
-            return Err(invalid("Error text projection requires an Error sidecar"));
-        };
-        if semantic_id != Some("error.document") {
-            return Err(invalid("Error text is outside the document semantic scope"));
-        }
-        let (expected_text, expected_origin, expected_font_size) = match text_index {
-            Some(0) => ("Syntax error in text", Point::new(1440.0, 250.0), 150.0),
-            Some(1) => (body.version_text.as_str(), Point::new(1250.0, 400.0), 100.0),
-            _ => return Err(invalid("Error SVG has an unexpected text command")),
-        };
-        let expected_font = crate::drawing_list::parse_font_families(
-            crate::config::config_font_family_css(self.effective_config),
-        );
-        let expected_color =
-            crate::drawing_list::theme_color(self.effective_config, "errorTextColor", "#552222")?;
-        let actual_color = match &run.style.fill {
-            Paint::Solid { color } => *color,
-            Paint::Resource { .. } => {
-                return Err(invalid(
-                    "Error text cannot preserve a resource-backed paint through Mermaid CSS",
-                ));
-            }
-        };
-        if run.text != expected_text
-            || run.origin != expected_origin
-            || run.style.font_size != expected_font_size
-            || run.style.font.families != expected_font
-            || run.style.font.weight != 400
-            || run.style.font.style != FontStyle::Normal
-            || run.style.font.postscript_name.is_some()
-            || run.style.font.resource.is_some()
-            || run.style.letter_spacing != 0.0
-            || run.style.line_height != expected_font_size
-            || actual_color != expected_color
-            || run.anchor != TextAnchor::Middle
-            || run.baseline != TextBaseline::Alphabetic
-            || run.direction != TextDirection::Auto
-            || run.language.is_some()
-            || !matches!(&run.obligation, TextObligation::HostText { .. })
-            || self.state.transform != Transform::IDENTITY
-            || self.state.opacity != 1.0
-            || self.state.blend_mode != BlendMode::Normal
-        {
-            return Err(invalid(
-                "Error text no longer matches the source-backed SVG contract",
-            ));
-        }
-
-        write!(
-            self.output,
-            r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">"#,
-            fmt(run.origin.x),
-            fmt(run.origin.y),
-            fmt(run.style.font_size),
-        )
-        .map_err(|_| invalid("failed to write Error text"))?;
-        escape_xml_into(&mut self.output, run.text.as_str());
         self.output.push_str("</text>");
         Ok(())
     }

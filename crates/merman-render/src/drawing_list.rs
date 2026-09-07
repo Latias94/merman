@@ -48,9 +48,9 @@ use merman_core::ParseMetadata;
 use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_display_list::{
     Color, DrawingCommand, DrawingListDocument, DrawingListLimits, DrawingListPolicy, FillRule,
-    FontDescriptor, FontStyle, MeasurementProvenance, Paint, PathSegment, PathStyle, Point, Rect,
-    ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle, Viewport,
+    FontDescriptor, FontStyle, LineCap, LineJoin, MeasurementProvenance, Paint, PathSegment,
+    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextPaintOrder, TextRun, TextStyle, Viewport,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -128,7 +128,7 @@ impl RenderDocument {
         let SvgStructureSidecar { family, body } = &self.svg;
         debug_assert!(match (family, body) {
             (RenderFamilyKind::Error, SvgStructureBody::Error(error)) => {
-                !error.version_text.is_empty()
+                error.max_width_px.is_finite() && error.max_width_px > 0.0
             }
             (RenderFamilyKind::Flowchart, SvgStructureBody::Flowchart(flowchart)) => {
                 !flowchart.diagram_type.is_empty()
@@ -230,13 +230,13 @@ impl RenderDocument {
     }
 }
 
-/// Source-backed body data for Mermaid's suppressed-error SVG.
+/// SVG-only root sizing retained beside the renderer-neutral Error document.
 ///
-/// The path data remains in the SVG sidecar so the parity serializer can preserve upstream
-/// spelling, while the same path data is converted into typed public geometry for native hosts.
+/// `max_width_px` is a typed SVG host-policy input, not drawing geometry or portable protocol
+/// state. Keeping it in the private sidecar prevents browser responsiveness from leaking into the
+/// public DrawingList contract.
 #[derive(Debug, Clone)]
 pub(crate) struct ErrorSvgBody {
-    pub(crate) version_text: String,
     pub(crate) max_width_px: f64,
 }
 
@@ -600,7 +600,6 @@ pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
 impl ErrorSvgBody {
     pub(crate) fn new() -> Self {
         Self {
-            version_text: format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION),
             max_width_px: 512.0,
         }
     }
@@ -612,6 +611,7 @@ impl ErrorSvgBody {
 
     /// Writes the source-backed body shape used by the existing SVG parity renderer.
     pub(crate) fn write_into(&self, out: &mut String) {
+        let version_text = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
         out.push_str(r#"<g/>"#);
         out.push_str(r#"<g>"#);
         for path in ERROR_ICON_PATHS {
@@ -623,7 +623,7 @@ impl ErrorSvgBody {
         let _ = write!(
             out,
             r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">{}</text>"#,
-            self.version_text
+            version_text
         );
         out.push_str(r#"</g>"#);
     }
@@ -761,33 +761,32 @@ fn build_error_document(
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     session.checkpoint(OperationPhase::Emit)?;
-    let background = theme_color(
+    let background = error_theme_color(
         metadata.effective_config.as_value(),
         "errorBkgColor",
         "#552222",
     )?;
-    let text_color = theme_color(
+    let text_color = error_theme_color(
         metadata.effective_config.as_value(),
         "errorTextColor",
         "#552222",
     )?;
     let font = FontDescriptor {
-        families: parse_font_families(crate::config::config_font_family_css(
-            metadata.effective_config.as_value(),
-        )),
+        families: error_font_families(metadata.effective_config.as_value())?,
         weight: 400,
         style: FontStyle::Normal,
         postscript_name: None,
         resource: None,
     };
     let body = ErrorSvgBody::new().with_max_width(layout.max_width_px);
+    let version_text = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
 
     let mut builder = DrawingListBuilder::new(policy, limits, session);
     builder.push_semantic(SemanticAnnotation {
         id: "error.document".to_string(),
         role: SemanticRole::Document,
         title: Some("Syntax error in text".to_string()),
-        description: Some(body.version_text.clone()),
+        description: Some(version_text.clone()),
         link: None,
     })?;
     builder.push_control(DrawingCommand::Save)?;
@@ -817,7 +816,7 @@ fn build_error_document(
             text_color,
         )
     })?;
-    builder.draw_host_text(&body.version_text, |text| {
+    builder.draw_host_text(&version_text, |text| {
         error_text_run(
             text,
             Point::new(1250.0, 400.0),
@@ -867,8 +866,16 @@ fn error_text_run(
             letter_spacing: 0.0,
             line_height: font_size,
             fill: Paint::solid(fill),
-            stroke: None,
-            paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+            stroke: Some(StrokeStyle {
+                paint: Paint::solid(fill),
+                width: 1.0,
+                dash_array: Vec::new(),
+                dash_offset: 0.0,
+                line_cap: LineCap::Butt,
+                line_join: LineJoin::Miter,
+                miter_limit: 4.0,
+            }),
+            paint_order: TextPaintOrder::FillThenStroke,
         },
         anchor: TextAnchor::Middle,
         baseline: TextBaseline::Alphabetic,
@@ -879,6 +886,151 @@ fn error_text_run(
                 profile: "error-fixed-text".to_string(),
             },
         },
+    }
+}
+
+pub(crate) fn error_theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
+    theme_color(config, key, fallback).map_err(|error| match error {
+        Error::InvalidModel { message } => Error::DrawingListUnavailable {
+            family: RenderFamilyKind::Error.as_str().to_string(),
+            reason: format!(
+                "visual effect `{key}` requires CSS color resolution that DrawingList cannot preserve: {message}"
+            ),
+        },
+        other => other,
+    })
+}
+
+pub(crate) fn error_font_families(config: &Value) -> Result<Vec<String>> {
+    let raw = config
+        .get("themeVariables")
+        .and_then(|variables| variables.get("fontFamily"))
+        .and_then(Value::as_str)
+        .or_else(|| config.get("fontFamily").and_then(Value::as_str))
+        .unwrap_or(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS);
+    parse_error_font_family_list(raw)
+}
+
+fn parse_error_font_family_list(raw: &str) -> Result<Vec<String>> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Err(error_font_effect_unavailable("is empty"));
+    }
+    let lowercase = value.to_ascii_lowercase();
+    let forbidden = [
+        (lowercase.contains("var("), "uses CSS var() resolution"),
+        (lowercase.contains("env("), "uses CSS env() resolution"),
+        (lowercase.contains("!important"), "uses !important"),
+        (value.contains('\\'), "uses CSS escapes"),
+        (
+            value.contains("/*") || value.contains("*/"),
+            "uses CSS comments",
+        ),
+        (
+            value.chars().any(char::is_control),
+            "contains control characters",
+        ),
+    ];
+    if let Some((_, reason)) = forbidden.into_iter().find(|(rejected, _)| *rejected) {
+        return Err(error_font_effect_unavailable(reason));
+    }
+
+    let mut families = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    for character in value.chars() {
+        match character {
+            '\'' | '"' if quote == Some(character) => {
+                quote = None;
+                current.push(character);
+            }
+            '\'' | '"' if quote.is_none() => {
+                quote = Some(character);
+                current.push(character);
+            }
+            ',' if quote.is_none() => {
+                push_error_font_family(&mut families, &current)?;
+                current.clear();
+            }
+            _ => current.push(character),
+        }
+    }
+    if quote.is_some() {
+        return Err(error_font_effect_unavailable(
+            "contains an unterminated quoted family",
+        ));
+    }
+    push_error_font_family(&mut families, &current)?;
+    Ok(families)
+}
+
+fn push_error_font_family(families: &mut Vec<String>, raw: &str) -> Result<()> {
+    let token = raw.trim();
+    if token.is_empty() {
+        return Err(error_font_effect_unavailable(
+            "contains an empty family entry",
+        ));
+    }
+    let (family, quoted) = match (token.chars().next(), token.chars().last()) {
+        (Some(open @ ('\'' | '"')), Some(close)) if open == close => {
+            let inner = &token[open.len_utf8()..token.len() - close.len_utf8()];
+            if inner.is_empty()
+                || inner
+                    .chars()
+                    .any(|character| matches!(character, '\'' | '"'))
+            {
+                return Err(error_font_effect_unavailable(
+                    "contains an empty or nested quoted family",
+                ));
+            }
+            (inner.to_string(), true)
+        }
+        _ if token
+            .chars()
+            .any(|character| matches!(character, '\'' | '"')) =>
+        {
+            return Err(error_font_effect_unavailable(
+                "contains quotes outside a complete family token",
+            ));
+        }
+        _ => {
+            if token.chars().any(|character| {
+                matches!(
+                    character,
+                    '(' | ')' | '{' | '}' | '[' | ']' | ':' | ';' | '!'
+                )
+            }) {
+                return Err(error_font_effect_unavailable(
+                    "contains unsupported CSS syntax",
+                ));
+            }
+            (
+                token.split_ascii_whitespace().collect::<Vec<_>>().join(" "),
+                false,
+            )
+        }
+    };
+    if !quoted && is_css_wide_font_keyword(&family) {
+        return Err(error_font_effect_unavailable(&format!(
+            "uses the CSS-wide keyword `{family}`"
+        )));
+    }
+    families.push(family);
+    Ok(())
+}
+
+fn is_css_wide_font_keyword(value: &str) -> bool {
+    ["inherit", "initial", "revert", "revert-layer", "unset"]
+        .into_iter()
+        .any(|keyword| value.eq_ignore_ascii_case(keyword))
+}
+
+fn error_font_effect_unavailable(reason: &str) -> Error {
+    Error::DrawingListUnavailable {
+        family: RenderFamilyKind::Error.as_str().to_string(),
+        reason: format!(
+            "visual effect `fontFamily` {reason} and cannot be preserved by renderer-neutral host text"
+        ),
     }
 }
 

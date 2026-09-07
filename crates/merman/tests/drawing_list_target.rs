@@ -4,7 +4,9 @@ use merman::{
     DrawingListRequest, Engine, MermaidConfig, OperationControl, RenderError, RenderOutput,
     RenderRequest, Renderer,
 };
-use merman_display_list::{DrawingListLimits, DrawingListPolicy};
+use merman_display_list::{
+    DrawingCommand, DrawingListLimits, DrawingListPolicy, LineCap, LineJoin, Paint, TextPaintOrder,
+};
 
 #[test]
 fn error_diagram_has_a_complete_renderer_neutral_output() {
@@ -31,6 +33,32 @@ fn error_diagram_has_a_complete_renderer_neutral_output() {
         merman_display_list::DRAWING_LIST_VERSION
     );
     assert!(!output.document().commands.is_empty());
+    let text_runs = output
+        .document()
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DrawingCommand::DrawText { run } => Some(run),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(text_runs.len(), 2);
+    for run in text_runs {
+        let stroke = run
+            .style
+            .stroke
+            .as_ref()
+            .expect("Error text must retain Mermaid's text stroke");
+        assert_eq!(stroke.paint, run.style.fill);
+        assert_eq!(stroke.width, 1.0);
+        assert!(stroke.dash_array.is_empty());
+        assert_eq!(stroke.dash_offset, 0.0);
+        assert_eq!(stroke.line_cap, LineCap::Butt);
+        assert_eq!(stroke.line_join, LineJoin::Miter);
+        assert_eq!(stroke.miter_limit, 4.0);
+        assert_eq!(run.style.paint_order, TextPaintOrder::FillThenStroke);
+        assert!(matches!(run.style.fill, Paint::Solid { .. }));
+    }
     assert_eq!(
         output.json(),
         output.document().canonical_json_bytes().unwrap()

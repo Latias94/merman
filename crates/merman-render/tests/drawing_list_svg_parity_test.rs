@@ -131,6 +131,15 @@ fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
             && node.attribute("class") == Some("error-text")
             && node.attribute("style") == Some("text-anchor: middle;")
     }));
+    assert_eq!(body_children[6].attribute("x"), Some("1440"));
+    assert_eq!(body_children[6].attribute("y"), Some("250"));
+    assert_eq!(body_children[6].attribute("font-size"), Some("150px"));
+    assert_eq!(body_children[6].text(), Some("Syntax error in text"));
+    assert_eq!(body_children[7].attribute("x"), Some("1250"));
+    assert_eq!(body_children[7].attribute("y"), Some("400"));
+    assert_eq!(body_children[7].attribute("font-size"), Some("100px"));
+    let expected_version = format!("mermaid version {PINNED_MERMAID_BASELINE_VERSION}");
+    assert_eq!(body_children[7].text(), Some(expected_version.as_str()));
     assert_eq!(
         document
             .descendants()
@@ -155,22 +164,126 @@ fn error_canonical_svg_keeps_source_backed_icon_and_text_classes() {
 }
 
 #[test]
-fn error_theme_css_uses_an_explicit_effect_bridge() {
+fn error_canonical_svg_projects_active_css_from_the_document() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-        "themeCSS": ".error-icon { opacity: 0.5; }"
+        "themeVariables": {
+            "errorBkgColor": "#AABBCC",
+            "errorTextColor": "#DDEEFF",
+            "fontFamily": "'IBM Plex Sans', Arial, sans-serif"
+        }
     })));
-    let output = render_family_svg_with_engine(engine, "flowchart TD\nA -->\n", "error-theme-css");
+    let output =
+        render_family_svg_with_engine(engine, "flowchart TD\nA -->\n", "error-document-style");
     assert_eq!(
         output.serialization_route(),
-        SvgSerializationRoute::LegacyBridge
+        SvgSerializationRoute::CanonicalDocument
     );
-    let Some(SvgSerializationBridgeReason::DrawingListUnavailable { family, reason }) =
-        output.serialization_bridge_reason()
-    else {
-        panic!("expected an effect-specific DrawingList bridge reason");
-    };
-    assert_eq!(family, "error");
-    assert!(reason.contains("themeCSS"));
+    let svg = output.svg();
+    // These are the only stylesheet declarations that can match Error DOM visual properties;
+    // their active font, fill, and stroke tokens must all come from the validated document.
+    assert!(svg.contains(r#"#error-document-style{font-family:"IBM Plex Sans",Arial,sans-serif;"#));
+    assert!(svg.contains("#error-document-style .error-icon{fill:#aabbcc;}"));
+    assert!(svg.contains("#error-document-style .error-text{fill:#ddeeff;stroke:#ddeeff;}"));
+    assert!(!svg.contains("#AABBCC"));
+    assert!(!svg.contains("#DDEEFF"));
+
+    let quoted_keyword = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"themeVariables": {"fontFamily": "'inherit', sans-serif"}}),
+    ));
+    let quoted_keyword_output = render_family_svg_with_engine(
+        quoted_keyword,
+        "flowchart TD\nA -->\n",
+        "error-quoted-keyword",
+    );
+    assert_eq!(
+        quoted_keyword_output.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+    assert!(
+        quoted_keyword_output
+            .svg()
+            .contains(r#"#error-quoted-keyword{font-family:"inherit",sans-serif;"#)
+    );
+}
+
+#[test]
+fn error_nonportable_css_effects_use_an_explicit_effect_bridge() {
+    let cases = [
+        (
+            "theme-css",
+            serde_json::json!({"themeCSS": ".error-icon { opacity: 0.5; }"}),
+            "themeCSS",
+        ),
+        (
+            "current-color",
+            serde_json::json!({"themeVariables": {"errorBkgColor": "currentColor"}}),
+            "errorBkgColor",
+        ),
+        (
+            "variable-color",
+            serde_json::json!({"themeVariables": {"errorTextColor": "var(--error-text)"}}),
+            "errorTextColor",
+        ),
+        (
+            "variable-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "var(--host-font), sans-serif"}}),
+            "fontFamily",
+        ),
+        (
+            "environment-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "env(--host-font), sans-serif"}}),
+            "fontFamily",
+        ),
+        (
+            "important-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "Arial !important"}}),
+            "fontFamily",
+        ),
+        (
+            "escaped-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "Arial\\ Black"}}),
+            "fontFamily",
+        ),
+        (
+            "commented-font",
+            serde_json::json!({"themeVariables": {"fontFamily": "Arial/**/, sans-serif"}}),
+            "fontFamily",
+        ),
+        (
+            "font-wide-keyword",
+            serde_json::json!({"themeVariables": {"fontFamily": "inherit"}}),
+            "fontFamily",
+        ),
+        (
+            "font-control-character",
+            serde_json::json!({"themeVariables": {"fontFamily": "Arial\nsans-serif"}}),
+            "fontFamily",
+        ),
+    ];
+
+    for (name, config, expected_effect) in cases {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let output = render_family_svg_with_engine(
+            engine,
+            "flowchart TD\nA -->\n",
+            &format!("error-{name}"),
+        );
+        assert_eq!(
+            output.serialization_route(),
+            SvgSerializationRoute::LegacyBridge,
+            "{name} must use an explicit bridge"
+        );
+        let Some(SvgSerializationBridgeReason::DrawingListUnavailable { family, reason }) =
+            output.serialization_bridge_reason()
+        else {
+            panic!("expected an effect-specific DrawingList bridge reason for {name}");
+        };
+        assert_eq!(family, "error");
+        assert!(
+            reason.contains(expected_effect),
+            "{name} bridge reason must name {expected_effect}: {reason}"
+        );
+    }
 }
 
 #[test]
