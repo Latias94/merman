@@ -112,6 +112,45 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
+fn flowchart_neo_effects_fail_closed_in_the_public_target() {
+    for (source, effect) in [
+        (
+            r##"%%{init: {"look":"neo","theme":"neutral","themeVariables":{"useGradient":true,"dropShadow":"none"}}}%%
+flowchart TD
+  A --> B
+"##,
+            "gradient",
+        ),
+        (
+            r##"%%{init: {"look":"neo","themeVariables":{"dropShadow":"drop-shadow(1px 2px 2px #000)"}}}%%
+flowchart TD
+  A --> B
+"##,
+            "drop-shadow",
+        ),
+    ] {
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect_err("unrepresented neo effects must not be silently dropped");
+
+        assert!(
+            matches!(
+                error,
+                RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+                    ref family,
+                    ref reason,
+                }) if family == "flowchart" && reason.contains(effect)
+            ),
+            "expected a structured Flowchart capability error for {effect}, got {error}"
+        );
+    }
+}
+
+#[test]
 fn flowchart_and_swimlane_limits_stop_at_the_first_over_budget_item() {
     for (source, first_text_bytes, first_path_segments) in [
         ("flowchart TD\nA --> B\n", 1, 2),

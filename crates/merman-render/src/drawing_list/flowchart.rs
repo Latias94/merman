@@ -202,7 +202,7 @@ impl<'a> FlowchartBuilder<'a> {
                 "Math labels require a math renderer or an explicit raster fallback; DrawingList v1 will not replace them with plain text",
             ));
         }
-        if look.is_neo() {
+        if look.as_str().eq_ignore_ascii_case("neo") {
             reject_unportable_neo_effects(metadata.effective_config.as_value(), family_kind)?;
         }
 
@@ -2123,9 +2123,10 @@ fn reject_unportable_neo_effects(config: &Value, family: RenderFamilyKind) -> Re
 
     Err(Error::DrawingListUnavailable {
         family: family.as_str().to_string(),
-        reason:
-            "neo Flowchart output uses a CSS drop-shadow filter that DrawingList v1 cannot preserve"
-                .to_string(),
+        reason: format!(
+            "neo {} output uses a CSS drop-shadow filter that DrawingList v1 cannot preserve",
+            family.as_str()
+        ),
     })
 }
 
