@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 mod cynefin;
+mod info;
 mod pie;
 mod sankey;
 
@@ -45,7 +46,8 @@ pub(crate) fn render_document_svg(
     let svg = encoder.render()?;
     if matches!(
         document.svg.body,
-        SvgStructureBody::Packet(_)
+        SvgStructureBody::Info(_)
+            | SvgStructureBody::Packet(_)
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::Sankey(_)
@@ -82,6 +84,7 @@ struct DocumentSvgEncoder<'a> {
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
+    info_text_style: Option<&'a merman_display_list::TextStyle>,
     sankey_links: Option<sankey::LinkProjection>,
     command_index: usize,
     state: GraphicsState,
@@ -254,6 +257,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 None
             },
             command_index: 0,
+            info_text_style: if matches!(document.svg.body, SvgStructureBody::Info(_)) {
+                info::shared_text_style(&document.public, session)?
+            } else {
+                None
+            },
             sankey_label_style: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
                 sankey::shared_label_style(&document.public, session)?
             } else {
@@ -517,9 +525,15 @@ impl<'a> DocumentSvgEncoder<'a> {
         padded_bounds: root_svg::DiagramBounds,
     ) -> Result<root_svg::RootViewportSpec> {
         match self.svg_body {
-            SvgStructureBody::Info(_) => Ok(
-                root_svg::RootViewportSpec::responsive_without_view_box(400.0),
-            ),
+            SvgStructureBody::Info(_) => {
+                let spec =
+                    root_svg::RootViewportSpec::responsive_without_view_box(viewport_bounds.width);
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Error(body) => {
                 if !body.max_width_px.is_finite() || body.max_width_px <= 0.0 {
                     return Err(invalid("canonical error SVG max-width is invalid"));
@@ -705,6 +719,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     /// ordinary path and a transparent root instead.
     fn document_background_is_root_paint(&self) -> bool {
         let (document_id, background_id) = match self.svg_body {
+            SvgStructureBody::Info(_) => ("info.document", "info.background"),
             SvgStructureBody::Packet(_) => ("packet.document", "packet.background"),
             SvgStructureBody::Pie(_) => ("pie.document", "pie.background"),
             SvgStructureBody::Cynefin(_) => ("cynefin.document", "cynefin.background"),
@@ -732,11 +747,10 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_family_style(&mut self) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Info(_)) {
+            return self.write_info_style();
+        }
         let css = match self.svg_body {
-            SvgStructureBody::Info(_) => Some((
-                false,
-                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
-            )),
             SvgStructureBody::Error(_) => Some((
                 false,
                 super::error::canonical_error_css(
@@ -3130,16 +3144,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("</text>")?;
             return Ok(());
         }
-        if matches!(self.svg_body, SvgStructureBody::Info(_)) {
-            write!(
-                self.output,
-                r#"<text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">"#,
-                fmt(run.origin.x),
-                fmt(run.origin.y),
-                fmt(run.style.font_size),
-            )?;
-            output::escape_xml(&mut self.output, run.text.as_str())?;
-            self.output.push_str("</text>")?;
+        if self.emit_compact_info_text(run)? {
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {

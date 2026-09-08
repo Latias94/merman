@@ -250,9 +250,7 @@ impl RenderDocument {
             (RenderFamilyKind::Er, SvgStructureBody::Er(er)) => {
                 !er.diagram_type.is_empty()
             }
-            (RenderFamilyKind::Info, SvgStructureBody::Info(info)) => {
-                !info.version.is_empty()
-            }
+            (RenderFamilyKind::Info, SvgStructureBody::Info(_)) => true,
             (RenderFamilyKind::Ishikawa, SvgStructureBody::Ishikawa(ishikawa)) => {
                 !ishikawa.diagram_type.is_empty()
             }
@@ -375,11 +373,9 @@ pub(crate) struct MindmapSvgEdge {
     pub(crate) points: Vec<Point>,
 }
 
-/// SVG-only metadata retained beside the public Info document.
+/// Info's SVG family marker; version text lives only in the public command stream.
 #[derive(Debug, Clone)]
-pub(crate) struct InfoSvgBody {
-    pub(crate) version: String,
-}
+pub(crate) struct InfoSvgBody;
 
 /// SVG-only metadata retained beside the public Ishikawa document.
 #[derive(Debug, Clone)]

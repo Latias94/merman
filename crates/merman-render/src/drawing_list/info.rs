@@ -159,9 +159,7 @@ pub(crate) fn build_info_document(
         public: document,
         svg: SvgStructureSidecar {
             family: RenderFamilyKind::Info,
-            body: SvgStructureBody::Info(InfoSvgBody {
-                version: layout.version.clone(),
-            }),
+            body: SvgStructureBody::Info(InfoSvgBody),
         },
     })
 }

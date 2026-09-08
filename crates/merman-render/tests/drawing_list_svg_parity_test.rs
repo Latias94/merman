@@ -51,7 +51,10 @@ fn render_svg(source: &str, diagram_id: &str) -> String {
 #[test]
 fn unadmitted_svg_families_report_compatibility_routes() {
     for (source, family) in [
-        ("info", family::RenderFamilyKind::Info),
+        (
+            "sequenceDiagram\nA->>B: message",
+            family::RenderFamilyKind::Sequence,
+        ),
         (
             "railroad-beta\nexpr = terminal(\"a\") ;\n",
             family::RenderFamilyKind::Railroad,
@@ -71,7 +74,6 @@ fn unadmitted_svg_families_report_compatibility_routes() {
 }
 
 #[test]
-#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn info_canonical_svg_keeps_document_root_and_version_structure() {
     let svg = render_svg("info", "info-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Info SVG is XML");
@@ -91,15 +93,41 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
             .any(|node| node.has_tag_name("text") && node.attribute("class") == Some("version"))
     );
     assert!(svg.contains("<style>"));
-    assert!(svg.contains("</style><g/><g><path"));
-    assert!(svg.contains(r#"data-merman-resource="info.background""#));
+    assert_eq!(
+        root.children()
+            .filter(|node| node.is_element())
+            .map(|node| node.tag_name().name())
+            .collect::<Vec<_>>(),
+        ["style", "g", "g"]
+    );
+    let body = root.last_element_child().unwrap();
+    assert_eq!(
+        body.children()
+            .filter(|node| node.is_element())
+            .map(|node| node.tag_name().name())
+            .collect::<Vec<_>>(),
+        ["text"]
+    );
+    assert!(!svg.contains(r#"data-merman-resource="info.background""#));
     assert!(!svg.contains("aria-labelledby="));
     assert!(!svg.contains("merman-semantic-info-"));
     assert!(svg.contains(&format!(">v{PINNED_MERMAID_BASELINE_VERSION}</text>")));
+
+    let courier = render_family_svg_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "fontFamily": "courier"
+        }))),
+        "info",
+        "info-courier",
+    );
+    assert_eq!(
+        courier.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+    assert!(courier.svg().contains("font-family:courier;"));
 }
 
 #[test]
-#[ignore = "Info currently reports LegacyFamily before candidate effect resolution"]
 fn info_nonportable_css_values_use_an_explicit_effect_bridge() {
     let cases = [
         (

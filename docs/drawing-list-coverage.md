@@ -36,7 +36,7 @@ inventory row fails at test time.  The current inventory is:
 | Requirement | yes | legacy bridge |
 | Sankey | yes | canonical |
 | Radar | yes | legacy bridge |
-| Info | yes | legacy bridge |
+| Info | yes | canonical |
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
@@ -117,6 +117,32 @@ formatting share the same segment traversal; exact spelling tests retain their d
 policies, and a rejecting sink checks that formatting stops at the first failed write. The nested
 formatter resource-error test also exercises Pie geometry. The remaining component-string caveat
 above still applies to stylesheets and other family projections.
+
+### Info migration evidence
+
+The Info candidate now projects its initial full-viewport white command into the source root
+background style, without adding a path or deleting the public DrawingList background. Modified
+or removed background commands retain their ordinary paint or transparent root, respectively.
+The version label and its resolved font, color, alpha, and position live only in public commands;
+the redundant sidecar version string and external-config stylesheet interpretation are removed.
+Shared text styles are emitted from those commands. Noncompact text/state edits retain the full
+command serializer instead of losing direction, baseline, language, stroke, or graphics state.
+
+`info_document_owns_background_and_text_styles` directly exercises the candidate serializer,
+including conflicting external CSS/config, modified and removed paints, font/color/position edits,
+and a noncompact baseline/opacity edit. The public-route test checks `CanonicalDocument`, the exact
+source child-element structure, and the Courier fixture's font projection. Dynamic colors and
+fonts continue to report an explicit effect-specific bridge rather than silent substitution.
+
+Info is admitted after the September 8, 2026 complete structure and parity-root runs, each selecting
+and rendering all 15 pinned fixtures with zero skips and no accepted residual policy. Reports are
+`target/compare/info_canonical_structure.md` and `target/compare/info_canonical_parity_root.md`.
+The latter checks all 15 root viewports. Stylesheet text is outside those comparators' scope, so
+the font/color/alpha mutation assertions remain necessary evidence; these runs do not establish
+browser-computed-style equivalence. This advances default canonical admission to five families,
+not completion of the remaining 28 family migrations.
+The existing `boundary_fixtures_render_typed_resvg_safe` test also passed with `png`, covering
+the boundary corpus (Error, Info, ZenUML) through terminal SVG validation and nonblank raster output.
 
 ### Journey color correction
 

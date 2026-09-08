@@ -1225,6 +1225,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
         RenderFamilyKind::Error
+            | RenderFamilyKind::Info
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie
             | RenderFamilyKind::Sankey
@@ -2637,6 +2638,99 @@ mod tests {
                 assert_eq!(text.attribute("fill"), Some("#123456"));
             }
         }
+    }
+
+    #[test]
+    fn info_document_owns_background_and_text_styles() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument,
+                      config: &serde_json::Value| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                config,
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let config = artifact.metadata.effective_config.as_value();
+        let svg = render(&document, config);
+        assert!(svg.contains("background-color: white;"));
+        assert!(!svg.contains("data-merman-resource=\"info.background\""));
+        assert_eq!(
+            svg,
+            render(
+                &document,
+                &serde_json::json!({
+                    "themeVariables": {"textColor": "#ff0000", "fontFamily": "monospace"},
+                    "themeCSS": ".version { opacity: 0; }"
+                })
+            ),
+            "resolved Info commands must be independent of external CSS/config"
+        );
+
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } => {
+                    run.style.fill = Paint::solid(Color::rgba(1, 2, 3, 128));
+                    run.style.font.families = vec!["serif".into()];
+                    run.origin.x = 125.0;
+                }
+                DrawingCommand::DrawPath { path, style } if path.as_str() == "info.background" => {
+                    style.fill = Some(Paint::solid(Color::rgba(12, 34, 56, 255)));
+                }
+                _ => {}
+            }
+        }
+        let edited = render(&document, config);
+        assert!(!edited.contains("background-color: white;"));
+        assert!(edited.contains("data-merman-resource=\"info.background\""));
+        assert!(edited.contains("#0c2238"));
+        assert!(edited.contains("#010203"));
+        assert!(edited.contains("font-family:serif;"));
+        assert!(edited.contains("fill-opacity:0.5019607843137255;"));
+        assert!(edited.contains("<text x=\"125\""));
+
+        document.public.commands.retain(|command| {
+            !matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "info.background")
+        });
+        let removed = render(&document, config);
+        assert!(!removed.contains("background-color:"));
+        assert!(!removed.contains("#0c2238"));
+
+        let text_index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| matches!(command, DrawingCommand::DrawText { .. }))
+            .unwrap();
+        let DrawingCommand::DrawText { run } = &mut document.public.commands[text_index] else {
+            unreachable!();
+        };
+        run.baseline = merman_display_list::TextBaseline::Hanging;
+        document
+            .public
+            .commands
+            .insert(text_index, DrawingCommand::SetOpacity { opacity: 0.25 });
+        let expanded = render(&document, config);
+        assert!(expanded.contains("dominant-baseline=\"hanging\""));
+        assert!(expanded.contains("opacity=\"0.25\""));
     }
 
     #[test]
