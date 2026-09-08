@@ -3079,6 +3079,12 @@ mod tests {
                     Some(baseline),
                     "{label}"
                 );
+                assert_eq!(
+                    text.attribute("font-family"),
+                    None,
+                    "source text inherits its resolved class style"
+                );
+                assert_eq!(text.attribute("data-merman-bounds"), None);
             }
             let items = xml
                 .descendants()
@@ -3086,6 +3092,17 @@ mod tests {
                     node.has_tag_name("g") && node.attribute("class") == Some("cynefin-items")
                 })
                 .unwrap();
+            let boundaries = xml
+                .descendants()
+                .find(|node| node.attribute("class") == Some("cynefin-boundaries"))
+                .unwrap();
+            let confusion = boundaries.next_sibling_element().unwrap();
+            assert_eq!(confusion.attribute("class"), Some("cynefinConfusion"));
+            assert!(confusion.has_tag_name("path"));
+            assert_eq!(
+                confusion.next_sibling_element().unwrap().attribute("class"),
+                Some("cynefin-labels")
+            );
             let item = items
                 .children()
                 .find(|node| node.has_tag_name("g"))
@@ -3174,6 +3191,25 @@ mod tests {
                     .descendants()
                     .find(|node| node.attribute("class") == Some(class))
                     .unwrap();
+                if class == "cynefinItemText" {
+                    let css = modified_xml
+                        .descendants()
+                        .find(|node| node.has_tag_name("style"))
+                        .and_then(|node| node.text())
+                        .unwrap();
+                    let rule = css
+                        .split(".cynefinItemText{")
+                        .nth(1)
+                        .unwrap()
+                        .split('}')
+                        .next()
+                        .unwrap();
+                    assert!(rule.contains("fill:#123456;"));
+                    assert!(rule.contains("fill-opacity:0.5019607843137255;"));
+                    assert!(rule.contains("font-size:27px;"));
+                    assert_eq!(node.attribute("fill"), None);
+                    continue;
+                }
                 assert_eq!(node.attribute("fill"), Some("#123456"));
                 let alpha = node
                     .attribute("fill-opacity")
@@ -3181,9 +3217,33 @@ mod tests {
                     .parse::<f64>()
                     .unwrap();
                 assert!((alpha - 128.0 / 255.0).abs() < 0.001);
-                if class == "cynefinItemText" {
-                    assert_eq!(node.attribute("font-size"), Some("27"));
-                }
+            }
+            let index = document
+                .public
+                .commands
+                .iter()
+                .position(|command| {
+                    matches!(command,
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == "Observe")
+                })
+                .unwrap();
+            let mut extra = document.public.commands[index].clone();
+            let merman_display_list::DrawingCommand::DrawText { run } = &mut extra else {
+                unreachable!();
+            };
+            run.text = "Different style".into();
+            run.style.font_size = 14.0;
+            document.public.commands.insert(index + 1, extra);
+            let heterogeneous = render(&document, &conflicting_config);
+            let heterogeneous_xml = roxmltree::Document::parse(&heterogeneous).unwrap();
+            assert!(!heterogeneous.contains(".cynefinItemText{"));
+            for (label, size) in [("Observe", "27"), ("Different style", "14")] {
+                let node = heterogeneous_xml
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+                    .unwrap();
+                assert_eq!(node.attribute("font-size"), Some(size));
+                assert_eq!(node.attribute("fill"), Some("#123456"));
             }
         }
     }

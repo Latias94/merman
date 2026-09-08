@@ -2,8 +2,126 @@
 
 use super::*;
 use crate::render_geometry::cynefin::{MARKER_SIZE, REF_X, REF_Y, VIEW_BOX_SIZE, marker_transform};
+use merman_display_list::TextStyle;
+
+/// Only identical resolved styles may move into a shared class rule. Edited heterogeneous
+/// commands retain explicit attributes, so class projection never invents a visual default.
+pub(super) fn shared_text_styles<'a>(
+    document: &'a DrawingListDocument,
+    body: &crate::drawing_list::CynefinSvgBody,
+    session: &RenderSession,
+) -> Result<BTreeMap<String, Option<&'a TextStyle>>> {
+    let mut styles = BTreeMap::new();
+    let mut groups = Vec::new();
+    for command in &document.commands {
+        session.checkpoint(OperationPhase::Emit)?;
+        match command {
+            DrawingCommand::BeginSemanticGroup { semantic_id } => groups.push(semantic_id.as_str()),
+            DrawingCommand::EndSemanticGroup => {
+                groups.pop();
+            }
+            DrawingCommand::DrawText { run } => {
+                let Some(class) = groups.last().and_then(|id| body.text_classes.get(*id)) else {
+                    continue;
+                };
+                // Class selectors are structural metadata, not executable source CSS.
+                if !matches!(
+                    class.as_str(),
+                    "cynefinDomainLabel"
+                        | "cynefinSubtitle"
+                        | "cynefinItemText"
+                        | "cynefinArrowLabel"
+                        | "cynefinTitle"
+                ) {
+                    continue;
+                }
+                let candidate = (run.style.font.resource.is_none()
+                    && run.style.stroke.is_none()
+                    && matches!(run.style.fill, Paint::Solid { .. }))
+                .then_some(&run.style);
+                styles
+                    .entry(class.clone())
+                    .and_modify(|shared| {
+                        if *shared != candidate {
+                            *shared = None;
+                        }
+                    })
+                    .or_insert(candidate);
+            }
+            _ => {}
+        }
+    }
+    Ok(styles)
+}
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_cynefin_text_styles(&mut self) -> Result<()> {
+        self.output.push_str("<style>")?;
+        for (class, style) in &self.cynefin_text_styles {
+            let Some(style) = style else {
+                continue;
+            };
+            let Paint::Solid { color } = style.fill else {
+                return Err(invalid("Cynefin shared text paint must be solid"));
+            };
+            let font = self.font_families(&style.font)?;
+            write!(
+                self.output,
+                "#{} .{}{{font-family:{};font-size:{}px;font-weight:{};font-style:{};letter-spacing:{}px;fill:{};fill-opacity:{};}}",
+                self.diagram_id,
+                class,
+                font,
+                fmt(style.font_size),
+                style.font.weight,
+                font_style(style.font.style),
+                fmt(style.letter_spacing),
+                color_css(color),
+                fmt(f64::from(color.alpha) / 255.0)
+            )?;
+        }
+        self.output.push_str("</style>")
+    }
+
+    pub(super) fn emit_compact_cynefin_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+    ) -> Result<bool> {
+        let SvgStructureBody::Cynefin(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(class) = semantic_id.and_then(|id| body.text_classes.get(id)) else {
+            return Ok(false);
+        };
+        if self.cynefin_text_styles.get(class).copied().flatten() != Some(&run.style)
+            || run.direction != TextDirection::Auto
+            || run.language.is_some()
+            || run.text.contains(['\n', '\r'])
+            || self.state.transform != Transform::IDENTITY
+            || self.state.opacity != 1.0
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let baseline = match run.baseline {
+            TextBaseline::Middle => "middle",
+            TextBaseline::Alphabetic => "auto",
+            other => text_baseline(other),
+        };
+        write!(
+            self.output,
+            "<text class=\"{}\" x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"{}\">",
+            escaped_attr(class),
+            fmt(run.origin.x),
+            fmt(run.origin.y),
+            text_anchor(run.anchor),
+            baseline
+        )?;
+        output::escape_xml(&mut self.output, run.text.as_str())?;
+        self.output.push_str("</text>")?;
+        Ok(true)
+    }
+
     pub(super) fn emit_cynefin_marked_edge(&mut self, index: usize) -> Result<bool> {
         // Element opacity/blending composites the edge and its SVG marker together, whereas the
         // public commands paint them separately. Keep ordinary paths when that distinction matters.

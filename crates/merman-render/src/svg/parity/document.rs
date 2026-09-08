@@ -81,6 +81,7 @@ struct DocumentSvgEncoder<'a> {
     packet_styles: Option<super::packet::PacketSvgStyles<'a>>,
     pie_styles: Option<super::pie::PieSvgStyles<'a>>,
     cynefin_marker_definitions: BTreeMap<String, String>,
+    cynefin_text_styles: BTreeMap<String, Option<&'a merman_display_list::TextStyle>>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -249,6 +250,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             state: GraphicsState::default(),
             cynefin_marker_definitions: BTreeMap::new(),
+            cynefin_text_styles: if let SvgStructureBody::Cynefin(body) = &document.svg.body {
+                cynefin::shared_text_styles(&document.public, body, session)?
+            } else {
+                BTreeMap::new()
+            },
             sankey_inline_gradients,
             emitted_sankey_gradients: BTreeSet::new(),
             sankey_links: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
@@ -750,6 +756,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
             return self.write_info_style();
         }
+        if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            return self.write_cynefin_text_styles();
+        }
         let css = match self.svg_body {
             SvgStructureBody::Error(_) => Some((
                 false,
@@ -849,9 +858,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
-            // Every Cynefin element has resolved paint/font attributes. Retain the source style
-            // element as DOM structure, without a second cascade that overrides those attributes.
-            SvgStructureBody::Cynefin(_) => Some((false, String::new())),
             SvgStructureBody::TreeView(_) => Some((
                 false,
                 super::tree_view::canonical_tree_view_css(
@@ -3145,6 +3151,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         }
         if self.emit_compact_info_text(run)? {
+            return Ok(());
+        }
+        if self.emit_compact_cynefin_text(run, semantic_id.as_deref())? {
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {

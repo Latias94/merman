@@ -170,6 +170,7 @@ impl<'a> CynefinBuilder<'a> {
         self.begin_container("cynefin.content", "")?;
         self.emit_section("backgrounds", Self::emit_domain_backgrounds)?;
         self.emit_section("boundaries", Self::emit_boundaries)?;
+        self.emit_confusion()?;
         self.emit_section("labels", Self::emit_labels)?;
         if self.layout.show_domain_descriptions {
             self.emit_section("subtitles", Self::emit_subtitles)?;
@@ -352,7 +353,10 @@ impl<'a> CynefinBuilder<'a> {
                 fill: None,
                 stroke: Some(stroke(self.cliff_color, self.theme.cliff_width)),
             },
-        )?;
+        )
+    }
+
+    fn emit_confusion(&mut self) -> Result<()> {
         self.path_classes.insert(
             "cynefin.domain.confusion.background".to_string(),
             "cynefinConfusion".to_string(),
@@ -376,8 +380,7 @@ impl<'a> CynefinBuilder<'a> {
                     ..stroke(self.boundary_color, 1.5)
                 }),
             },
-        )?;
-        Ok(())
+        )
     }
 
     fn emit_labels(&mut self) -> Result<()> {

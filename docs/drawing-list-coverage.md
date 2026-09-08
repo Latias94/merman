@@ -241,9 +241,19 @@ regression compares DrawingList resources against the source-shaped SVG path seg
 Cynefin remains bridged. The September 8, 2026 candidate structure run selected and rendered all
 13 fixtures with canonical route evidence, zero skips, and no residual policy, but all 13 still
 had structural differences. The temporary admission was removed. The report is
-`target/compare/cynefin_identity_structure.md`; remaining work includes domain-background order,
-source-shaped text and default attributes, marker attributes, and framework/overlay ordering.
+`target/compare/cynefin_identity_structure.md`; remaining work includes source-shaped default
+attributes and marker attributes. Direct source/local DOM inspection confirmed that quadrant
+background order was already correct; attribute differences affected comparator node pairing.
 No comparator normalization was changed to accept these differences.
+
+The Confusion overlay is now a direct child of the translated content group, immediately after
+the boundaries group and before labels, matching the pinned renderer. Geometry and paint order
+are unchanged. Identical public text styles may project into source class CSS; heterogeneous
+styles, strokes, resource fonts/paints, or noncompact state retain explicit command serialization.
+The existing candidate regression checks this overlay placement, source text attributes, distinct
+middle/central baselines, mutated class color/alpha/font size, and heterogeneous-style fallback.
+It still proves that changing external config cannot reinterpret the resolved document. These
+local corrections do not establish complete family parity or admit Cynefin's public SVG route.
 The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
 it is not evidence for the candidate serializer.
 
