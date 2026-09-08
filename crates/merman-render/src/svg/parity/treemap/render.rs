@@ -1372,7 +1372,13 @@ pub(crate) fn render_treemap_diagram_svg(
             message: "Treemap title theme receipt did not match the terminal SVG".to_string(),
         });
     }
-    if typography_theme_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
+    if let Some(receipt) = typography_theme_receipt
+        && !typography_theme.record_terminal(
+            receipt,
+            options.resolved_theme(),
+            options.work_meter(),
+        )?
+    {
         return Err(crate::Error::InvalidModel {
             message: "Treemap typography receipt did not match the terminal SVG".to_string(),
         });

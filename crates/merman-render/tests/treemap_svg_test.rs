@@ -1,8 +1,8 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, Specified,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
@@ -770,6 +770,188 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
             "{name}"
         );
         assert_eq!(evidence.theme_residual_count(), 0, "{name}");
+    }
+}
+
+#[test]
+fn treemap_text_palette_uses_final_fill_ownership() {
+    for (fill, source_owned, residual_count, not_applicable_count) in [
+        (
+            Some(Specified::Value(CanvasPaint::solid("#123456").unwrap())),
+            false,
+            0,
+            1,
+        ),
+        // Clear shadows the palette but the Clear rule itself remains unsupported.
+        (Some(Specified::Clear), false, 1, 1),
+        (None, true, 0, 1),
+        (None, false, 1, 0),
+    ] {
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Text,
+            OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap(),
+        );
+        let case = format!("fill={fill:?}, source_owned={source_owned}");
+        if let Some(fill) = fill {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = fill;
+            styles = styles.with_rule(ThemeRule::new(ThemeTarget::Text, patch));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let source = if source_owned {
+            "treemap\nclassDef owned color:#fedcba;\n\"Leaf\": 12:::owned\n"
+        } else {
+            "treemap\n\"Leaf\": 12\n"
+        };
+        let rendered = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            residual_count,
+            "{case}: {evidence:?}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            not_applicable_count,
+            "{case}: {evidence:?}"
+        );
+        let strict = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if residual_count == 0 {
+            strict.expect("shadowed palette must not prevent portable rendering");
+        } else {
+            assert_eq!(
+                strict.err().unwrap().unverified_family_theme(),
+                Some((DiagramFamilyId::TREEMAP, 1))
+            );
+        }
+    }
+}
+
+#[test]
+fn treemap_text_palette_respects_visible_roles_and_config_owners() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_ordinal_palette(
+                ThemeTarget::Text,
+                OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap(),
+            )),
+        )
+        .unwrap();
+    for (config, portable) in [
+        (
+            serde_json::json!({"treemap": {"nodeWidth": 1, "nodeHeight": 1}}),
+            true,
+        ),
+        (
+            serde_json::json!({"treemap": {"labelColor": "#123456", "showValues": false}}),
+            true,
+        ),
+        (
+            serde_json::json!({"treemap": {"labelColor": "#123456", "showValues": true}}),
+            false,
+        ),
+        (
+            serde_json::json!({"themeVariables": {"textColor": "#123456"}}),
+            true,
+        ),
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let rendered = try_render_treemap_with_theme_requirement(
+            "treemap\n\"Leaf\": 12\n",
+            &theme,
+            engine,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("Leaf"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(portable),
+            "{config}"
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(!portable),
+            "{config}"
+        );
+    }
+}
+
+#[test]
+fn treemap_text_effect_binding_accounts_only_visible_terminals() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                "blur",
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .with_binding(EffectBinding::new(ThemeTarget::Text, "blur").unwrap())
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .unwrap();
+    for (source, visible) in [
+        ("treemap\n\"Leaf\": 12\n", true),
+        (
+            "---\nconfig:\n  treemap:\n    nodeWidth: 1\n    nodeHeight: 1\n---\ntreemap\n\"Leaf\": 12\n",
+            false,
+        ),
+    ] {
+        let rendered = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+        assert_eq!(evidence.theme_residual_count(), usize::from(visible));
+        let strict = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if visible {
+            assert_eq!(
+                strict.err().unwrap().unverified_family_theme(),
+                Some((DiagramFamilyId::TREEMAP, 1))
+            );
+        } else {
+            strict.expect("hidden text has no active effect binding");
+        }
     }
 }
 

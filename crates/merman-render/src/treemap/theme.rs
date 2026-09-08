@@ -177,6 +177,7 @@ pub(crate) struct TreemapTypographyThemePlan {
     section_source_styles: Box<[TreemapSourceTextStyle]>,
     leaf_source_styles: Box<[TreemapSourceTextStyle]>,
     possible_participating_text_count: usize,
+    text_fallback_terminal_capacity: Option<usize>,
     evidence: FamilyThemeEvidence,
     terminal_receipt: OnceLock<TreemapTypographyTerminalSeal>,
     _retained_reservation: PreparedTextRetainedReservation,
@@ -269,11 +270,39 @@ impl TreemapTypographyThemePlan {
             effective_config.as_value(),
             16.0,
         );
+        let text_fallback_terminal_capacity = theme
+            .is_some_and(|theme| {
+                theme.family_mechanism_routes().iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::OrdinalPalette {
+                            target: ThemeTarget::Text
+                        } | FamilyThemeMechanism::EffectBinding {
+                            target: ThemeTarget::Text,
+                            ..
+                        }
+                    )
+                })
+            })
+            .then(|| {
+                layout
+                    .sections
+                    .len()
+                    .checked_add(layout.leaves.len())?
+                    .checked_mul(1 + usize::from(layout.show_values))
+            })
+            .map(|capacity| {
+                capacity.ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))
+            })
+            .transpose()?;
+        let fallback_retained_bytes = text_fallback_terminal_capacity.unwrap_or(0);
         let retained_upper_bound = treemap_source_style_retained_upper_bound(
             layout,
             inherited_font_stack.font_family_css().len(),
             work_meter.as_ref(),
-        )?;
+        )?
+        .checked_add(fallback_retained_bytes)
+        .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
         let mut retained_reservation = work_meter
             .reserve_prepared_text_retained_bytes(retained_upper_bound)
             .map_err(crate::Error::from)?;
@@ -313,7 +342,10 @@ impl TreemapTypographyThemePlan {
             .iter()
             .chain(&leaf_source_styles)
             .try_fold(
-                inherited_font_stack.font_family_css().len(),
+                inherited_font_stack
+                    .font_family_css()
+                    .len()
+                    .saturating_add(fallback_retained_bytes),
                 |retained, style| retained.checked_add(style.retained_bytes()?),
             )
             .ok_or_else(|| crate::Error::from(work_meter.arithmetic_overflow()))?;
@@ -329,6 +361,7 @@ impl TreemapTypographyThemePlan {
             section_source_styles: section_source_styles.into_boxed_slice(),
             leaf_source_styles: leaf_source_styles.into_boxed_slice(),
             possible_participating_text_count,
+            text_fallback_terminal_capacity,
             evidence: FamilyThemeEvidence::from_theme(theme),
             terminal_receipt: OnceLock::new(),
             _retained_reservation: retained_reservation,
@@ -439,19 +472,45 @@ impl TreemapTypographyThemePlan {
         &self,
         layout: &TreemapDiagramLayout,
     ) -> Option<TreemapTypographyThemeReceipt<'_>> {
-        (self.inherited_font_stack.typography_requested() || !self.text_rules.is_empty())
-            .then(|| TreemapTypographyThemeReceipt::new(self, layout))
+        (self.inherited_font_stack.typography_requested()
+            || !self.text_rules.is_empty()
+            || self.text_fallback_terminal_capacity.is_some())
+        .then(|| TreemapTypographyThemeReceipt::new(self, layout))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: TreemapTypographyThemeReceipt<'_>) -> bool {
-        receipt
-            .seal()
-            .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
+    pub(crate) fn record_terminal(
+        &self,
+        mut receipt: TreemapTypographyThemeReceipt<'_>,
+        theme: Option<&ResolvedDiagramTheme>,
+        work_meter: &OperationWorkMeter,
+    ) -> crate::Result<bool> {
+        let source_owned_fill = receipt.text_fill_source_owners.take();
+        let Some(mut seal) = receipt.seal() else {
+            return Ok(false);
+        };
+        if let Some(source_owned_fill) = source_owned_fill {
+            let Some(theme) = theme else {
+                return Ok(false);
+            };
+            let mut fallback_evidence = FamilyThemeEvidence::from_theme(Some(theme));
+            reconcile_unsupported_terminal_domains(
+                theme,
+                &mut fallback_evidence,
+                &[UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Text,
+                    TerminalVariantDomain::uniform(source_owned_fill.len(), ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned_fill)],
+                work_meter,
+            )?;
+            seal.fallback_evidence = Some(fallback_evidence);
+        }
+        Ok(self.terminal_receipt.set(seal).is_ok())
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
         let Some(receipt) = self.terminal_receipt.get() else {
+            let mut evidence = self.evidence.clone();
             self.inherited_font_stack
                 .mark_unsupported_typography_evidence(
                     &mut evidence,
@@ -486,6 +545,11 @@ impl TreemapTypographyThemePlan {
             return evidence;
         };
 
+        let mut evidence = receipt
+            .fallback_evidence
+            .as_ref()
+            .unwrap_or(&self.evidence)
+            .clone();
         if self.inherited_font_stack.typography_requested() {
             self.inherited_font_stack
                 .mark_unsupported_typography_evidence(
@@ -678,12 +742,15 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
     participating_count: usize,
     text_participating_count: usize,
     text_fill_unverified: bool,
+    text_fill_source_owners: Option<Vec<bool>>,
+    config_owned_text_fill: [bool; 2],
     source_owned_count: usize,
     unverified_count: usize,
 }
 
 #[derive(Debug)]
 struct TreemapTypographyTerminalSeal {
+    fallback_evidence: Option<FamilyThemeEvidence>,
     participating_count: usize,
     text_participating_count: usize,
     source_owned_count: usize,
@@ -717,6 +784,13 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             participating_count: 0,
             text_participating_count: 0,
             text_fill_unverified: false,
+            // Only fallback requests retain per-visible-terminal ownership. The plan has
+            // reserved this capacity before emission; ordinary typed text needs no mask.
+            text_fill_source_owners: plan.text_fallback_terminal_capacity.map(Vec::with_capacity),
+            config_owned_text_fill: [
+                plan.label_config_owns_text_fill,
+                plan.value_config_owns_text_fill,
+            ],
             source_owned_count: 0,
             unverified_count: 0,
         }
@@ -790,6 +864,16 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
         self.participating_count = self.participating_count.saturating_add(1);
         if role != TreemapTextRole::Title {
             self.text_participating_count = self.text_participating_count.saturating_add(1);
+            if let Some(owners) = &mut self.text_fill_source_owners {
+                let value_role = matches!(
+                    role,
+                    TreemapTextRole::SectionValue | TreemapTextRole::LeafValue
+                );
+                owners.push(
+                    self.config_owned_text_fill[usize::from(value_role)]
+                        || fill_ownership == TreemapTextFillOwnership::SourceOwned,
+                );
+            }
         }
         match role {
             TreemapTextRole::SectionLabel | TreemapTextRole::LeafLabel
@@ -842,6 +926,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             && self.terminal_matches
             && self.next_role == self.expected_terminal_count())
         .then_some(TreemapTypographyTerminalSeal {
+            fallback_evidence: None,
             participating_count: self.participating_count,
             text_participating_count: self.text_participating_count,
             text_fill_unverified: self.text_fill_unverified,
