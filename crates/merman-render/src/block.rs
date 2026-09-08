@@ -23,6 +23,9 @@ pub use geometry::{
 
 pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
 
+// Mermaid createFormattedText pads the SVG edge label's background on all four sides.
+pub(crate) const SVG_EDGE_LABEL_BACKGROUND_PADDING: f64 = 2.0;
+
 #[derive(Debug, Clone)]
 struct SizedBlock {
     id: String,
@@ -1080,11 +1083,16 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
             let edge_label = decode_block_label_html(&e.label);
             let (label_width, label_height) =
                 block_html_label_metrics_px(&edge_label, measurer, &text_style, html_labels);
+            let background_padding = if html_labels {
+                0.0
+            } else {
+                2.0 * SVG_EDGE_LABEL_BACKGROUND_PADDING
+            };
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
-                width: label_width.max(1.0),
-                height: label_height.max(1.0),
+                width: label_width.max(1.0) + background_padding,
+                height: label_height.max(1.0) + background_padding,
             })
         };
 

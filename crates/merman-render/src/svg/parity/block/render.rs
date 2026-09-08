@@ -594,6 +594,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     struct CompiledBlockInlineStyles {
         box_style: String,
         text_style: String,
+        svg_text_style: String,
         div_style_prefix: String,
         owns_fill: bool,
         owns_stroke: bool,
@@ -634,9 +635,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         };
 
         let mut div_prefix = String::new();
+        let mut svg_text_style = String::new();
         for (key, raw) in &text_decls {
             if key == "color" {
                 let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
+                let _ = write!(&mut svg_text_style, "fill:{value};");
                 if !value.is_empty() {
                     let _ = write!(
                         &mut div_prefix,
@@ -645,6 +648,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     );
                 }
             } else {
+                svg_text_style.push_str(raw);
+                svg_text_style.push(';');
                 div_prefix.push_str(raw);
                 div_prefix.push_str("; ");
             }
@@ -653,6 +658,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         CompiledBlockInlineStyles {
             box_style: style_attr(&box_decls),
             text_style: style_attr(&text_decls),
+            svg_text_style,
             div_style_prefix: div_prefix,
             owns_fill,
             owns_stroke,
@@ -954,6 +960,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         };
         let mut node_box_style = compiled_styles.box_style;
         let node_text_style = compiled_styles.text_style;
+        let node_svg_text_style = compiled_styles.svg_text_style;
         let node_div_style_prefix = compiled_styles.div_style_prefix;
         if let Some((_, css)) = typed_fill {
             node_box_style.push_str("fill:");
@@ -1222,10 +1229,14 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
                 escape_attr(&node_text_style),
-                fmt(label_tx),
+                fmt(label_tx + label_w / 2.0),
                 fmt(label_ty),
             );
-            crate::svg::parity::label::write_svg_text_centered(&mut out, &label_text, true);
+            crate::svg::parity::label::write_svg_text_centered_with_style(
+                &mut out,
+                &label_text,
+                &node_svg_text_style,
+            );
             out.push_str("</g>");
         }
 
@@ -1332,14 +1343,29 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 "text",
                 false,
             );
+            options
+                .work_meter()
+                .charge_emit_work(1usize.saturating_add(label_text.len().div_ceil(64)))?;
+            let text_y = options
+                .text_measurer()
+                .measure_svg_create_text_bbox_y_offset_px(
+                    &label_text,
+                    typography_theme.text_style(),
+                );
+            let padding = crate::block::SVG_EDGE_LABEL_BACKGROUND_PADDING;
+            let text_width = (lbl.width - 2.0 * padding).max(0.0);
+            let text_height = (lbl.height - 2.0 * padding).max(0.0);
             let _ = write!(
                 &mut out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><rect class="background" style="stroke: none"/>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate(0, {})"><rect class="background" style="stroke: none" x="{}" y="{}" width="{}" height="{}"/>"#,
                 fmt(lbl.x),
                 fmt(lbl.y),
                 escape_attr(&e.id),
-                fmt(-lbl.width / 2.0),
-                fmt(-lbl.height / 2.0),
+                fmt(-text_y - text_height / 2.0),
+                fmt(-text_width / 2.0 - padding),
+                fmt(text_y - padding),
+                fmt(lbl.width),
+                fmt(lbl.height),
             );
             crate::svg::parity::label::write_svg_text_centered(&mut out, &label_text, true);
             out.push_str("</g></g>");

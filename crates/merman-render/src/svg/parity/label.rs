@@ -47,7 +47,22 @@ pub(in crate::svg::parity) fn write_svg_text_centered(
     write_svg_text_impl(
         out,
         text,
-        include_style,
+        include_style.then_some(""),
+        true,
+        true,
+        SvgTextEntityMode::DecodedModel,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_centered_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    text: &str,
+    style: &str,
+) {
+    write_svg_text_impl(
+        out,
+        text,
+        Some(style),
         true,
         true,
         SvgTextEntityMode::DecodedModel,
@@ -62,7 +77,7 @@ pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source(
     write_svg_text_impl(
         out,
         text,
-        include_style,
+        include_style.then_some(""),
         true,
         true,
         SvgTextEntityMode::CreateTextSource,
@@ -267,12 +282,12 @@ fn open_tspan(
 fn write_svg_text_impl(
     out: &mut impl crate::svg::parity::SvgOutput,
     text: &str,
-    include_style: bool,
+    style: Option<&str>,
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) {
-    open_svg_text(out, include_style.then_some(""), center_text, None);
+    open_svg_text(out, style, center_text, None);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {

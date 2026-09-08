@@ -1439,6 +1439,134 @@ block
             && text_content.contains("Edge label"),
         "htmlLabels:false must preserve node and edge label text in SVG text terminals: {svg}"
     );
+
+    for label in document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("label"))
+    {
+        let (x, _) = translated_center(label);
+        assert_eq!(x, 0.0, "SVG text is already horizontally centered: {svg}");
+    }
+    let background = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("background"))
+        .expect("edge label background");
+    for attribute in ["width", "height"] {
+        assert!(
+            background
+                .attribute(attribute)
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                > 0.0
+        );
+    }
+}
+
+#[test]
+fn block_svg_labels_preserve_inline_text_color() {
+    let svg = render_block_svg_from_text(
+        r#"%%{init: {"htmlLabels": false}}%%
+block
+  A["Alpha"] B["Beta"] C["Variable"]
+  style A fill:#eee,color:#123456,color:#abcdef
+  style B color:hsl(80 100% 96%)
+  style C color:var(--MyColor)
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for (id, expected) in [
+        ("merman-A", "fill:#abcdef;"),
+        ("merman-B", "fill:hsl(80 100% 96%);"),
+        ("merman-C", "fill:var(--MyColor);"),
+    ] {
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        let text = node
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(text.attribute("style"), Some(expected), "{id}: {svg}");
+    }
+}
+
+#[test]
+fn block_svg_edge_background_uses_operation_text_bounds() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::TextMetrics;
+    use std::sync::Arc;
+
+    struct LabelHost(f64);
+    impl HostTextMeasurer for LabelHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(match request.operation {
+                TextMeasurementOperation::Wrapped => {
+                    Some(HostTextMeasurement::Metrics(TextMetrics {
+                        width: 80.0,
+                        height: 40.0,
+                        line_count: 2,
+                    }))
+                }
+                TextMeasurementOperation::CreateTextBBoxYOffset => {
+                    assert_eq!(request.text, "First\nSecond");
+                    assert_eq!(request.style.font_size, 16.0);
+                    Some(HostTextMeasurement::Length(self.0))
+                }
+                _ => None,
+            })
+        }
+    }
+    for bbox_y in [-7.5, 9.0] {
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "%%{init: {\"htmlLabels\": false}}%%\nblock\n A[\"Alpha<br/>line\"] -- \"First<br/>Second\" --> B[\"Beta\"]\n",
+            ParseOptions::default(),
+        ).unwrap().unwrap();
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.block-svg-label").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(LabelHost(bbox_y)),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session()
+            .unwrap();
+        let rendered = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("background"))
+            .unwrap();
+        let number = |name| rect.attribute(name).unwrap().parse::<f64>().unwrap();
+        assert_eq!((number("width"), number("height")), (84.0, 44.0));
+        assert_eq!((number("x"), number("y")), (-42.0, bbox_y - 2.0));
+        let label = rect.parent().unwrap();
+        let (tx, ty) = translated_center(label);
+        assert_eq!((tx, ty), (0.0, -bbox_y - 20.0));
+        assert_eq!(tx + number("x") + number("width") / 2.0, 0.0);
+        assert_eq!(ty + number("y") + number("height") / 2.0, 0.0);
+        let (edge_x, edge_y) = translated_center(label.parent().unwrap());
+        let (view_x, view_y, view_w, view_h) = root_view_box(&document);
+        assert!(edge_x - 42.0 >= view_x && edge_x + 42.0 <= view_x + view_w);
+        assert!(edge_y - 22.0 >= view_y && edge_y + 22.0 <= view_y + view_h);
+        let rows = label
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("row text-outer-tspan"))
+            .count();
+        assert_eq!(rows, 2);
+    }
 }
 
 #[test]
