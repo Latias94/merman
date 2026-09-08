@@ -71,7 +71,7 @@ class PublicContractTests(unittest.TestCase):
                 release_process.target_matches_host("x86_64-pc-windows-gnu")
             )
 
-    def test_only_admitted_architectures_match(self) -> None:
+    def test_linux_arm64_gnu_is_admitted(self) -> None:
         with (
             mock.patch.object(release_process.platform, "system", return_value="Linux"),
             mock.patch.object(release_process.platform, "machine", return_value="aarch64"),
@@ -81,8 +81,28 @@ class PublicContractTests(unittest.TestCase):
                 return_value=("glibc", "2.39"),
             ),
         ):
-            self.assertFalse(
+            self.assertTrue(
                 release_process.target_matches_host("aarch64-unknown-linux-gnu")
+            )
+            self.assertFalse(
+                release_process.target_matches_host("aarch64-unknown-linux-musl")
+            )
+            self.assertFalse(
+                release_process.target_matches_host("x86_64-unknown-linux-gnu")
+            )
+
+    def test_only_admitted_architectures_match(self) -> None:
+        with (
+            mock.patch.object(release_process.platform, "system", return_value="Linux"),
+            mock.patch.object(release_process.platform, "machine", return_value="riscv64"),
+            mock.patch.object(
+                release_process.platform,
+                "libc_ver",
+                return_value=("glibc", "2.39"),
+            ),
+        ):
+            self.assertFalse(
+                release_process.target_matches_host("riscv64gc-unknown-linux-gnu")
             )
 
 

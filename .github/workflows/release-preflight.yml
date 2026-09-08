@@ -196,45 +196,6 @@ jobs:
       - name: Validate CLI distribution assets
         run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
 
-      - name: Install pinned cargo-dist
-        env:
-          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
-        run: |
-          set -euo pipefail
-          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
-          curl --proto '=https' --tlsv1.2 -LsSf \
-            -o "$installer" \
-            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
-          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
-          sh "$installer"
-
-      - name: Build and verify host cargo-dist archives
-        env:
-          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
-          VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: |
-          set -euo pipefail
-          target=x86_64-unknown-linux-gnu
-          mkdir -p target/distrib
-          dist build \
-            "--tag=$RELEASE_TAG" \
-            --artifacts=local \
-            "--target=$target"
-          python3 scripts/verify_cli_release_archive.py \
-            "target/distrib/merman-cli-$target.tar.xz" \
-            --checksum "target/distrib/merman-cli-$target.tar.xz.sha256" \
-            --target "$target" \
-            --version "$VERSION" \
-            --repo-root . \
-            --execute
-          python3 scripts/verify_lsp_release_archive.py \
-            "target/distrib/merman-lsp-$target.tar.xz" \
-            --checksum "target/distrib/merman-lsp-$target.tar.xz.sha256" \
-            --target "$target" \
-            --version "$VERSION" \
-            --repo-root . \
-            --execute
-
       - name: Verify CLI installation metadata
         run: python3 scripts/cli_installation_contract.py
 
@@ -267,6 +228,108 @@ jobs:
         with:
           name: crate-package-lists
           path: target/package-lists/*.txt
+
+  cli-and-lsp-archives:
+    needs: validate-inputs
+    name: cli-and-lsp-archives (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    env:
+      RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+      VERSION: ${{ needs.validate-inputs.outputs.version }}
+      TARGET: ${{ matrix.target }}
+      NATIVE_RUNNER: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Verify release versions and installation metadata
+        run: |
+          set -euo pipefail
+          python3 scripts/release-version.py check --version "$VERSION"
+          python3 scripts/cli_installation_contract.py
+
+      - name: Install pinned cargo-dist
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          sh "$installer"
+
+      - name: Verify non-publishing cargo-dist plan
+        run: |
+          set -euo pipefail
+          dist plan "--tag=$RELEASE_TAG" --output-format=json > plan-dist-manifest.json
+          python3 scripts/release_artifact_bundle.py verify-plan plan-dist-manifest.json \
+            --tag "$RELEASE_TAG" \
+            --version "$VERSION" \
+            --target "$TARGET" \
+            --runner "$NATIVE_RUNNER"
+
+      - name: Build and execute final native archives
+        run: |
+          set -euo pipefail
+          mkdir -p target/distrib
+          dist build \
+            "--tag=$RELEASE_TAG" \
+            --artifacts=local \
+            --target="$TARGET" \
+            --output-format=json > native-dist-manifest.json
+          python3 scripts/verify_cli_release_archive.py \
+            "target/distrib/merman-cli-$TARGET.tar.xz" \
+            --checksum "target/distrib/merman-cli-$TARGET.tar.xz.sha256" \
+            --target "$TARGET" \
+            --version "$VERSION" \
+            --repo-root . \
+            --execute
+          python3 scripts/verify_lsp_release_archive.py \
+            "target/distrib/merman-lsp-$TARGET.tar.xz" \
+            --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \
+            --target "$TARGET" \
+            --version "$VERSION" \
+            --repo-root . \
+            --execute
+
+      - name: Upload native archive evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preflight-cli-lsp-${{ matrix.target }}
+          path: |
+            plan-dist-manifest.json
+            native-dist-manifest.json
+            target/distrib/merman-*-${{ matrix.target }}.tar.xz
+            target/distrib/merman-*-${{ matrix.target }}.tar.xz.sha256
+          if-no-files-found: error
 
   python-wheel:
     needs: validate-inputs

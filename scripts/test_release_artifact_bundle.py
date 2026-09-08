@@ -24,6 +24,7 @@ VERSION = "0.8.0-alpha.4"
 TAG = f"v{VERSION}"
 TARGETS = (
     "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
     "x86_64-apple-darwin",
     "x86_64-pc-windows-msvc",
     "x86_64-unknown-linux-gnu",
@@ -231,6 +232,7 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                 "assemble_bundle",
                 "harden_installers",
                 "prepare_global_inputs",
+                "verify_plan",
                 "verify_bundle",
             },
         )
@@ -283,6 +285,67 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             self.assertTrue(
                 all(Path(call.args[0]).parent == verified for call in copyfile.call_args_list)
             )
+
+    def test_verify_plan_accepts_native_linux_routes(self) -> None:
+        for target, runner in (
+            ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
+            ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+        ):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temp_dir:
+                plan = plan_document()
+                plan["ci"] = {"github": {"artifacts_matrix": {"include": [
+                    {"targets": [target], "runner": runner, "host": target},
+                ]}}}
+                path = Path(temp_dir) / "plan.json"
+                path.write_text(json.dumps(plan), encoding="utf-8")
+                self.assertEqual(bundle.main([
+                    "verify-plan", str(path), "--tag", TAG, "--version", VERSION,
+                    "--target", target, "--runner", runner,
+                ]), 0)
+
+    def test_verify_plan_rejects_missing_or_non_native_routes(self) -> None:
+        target = "aarch64-unknown-linux-gnu"
+        native = {"targets": [target], "runner": "ubuntu-24.04-arm", "host": target}
+        for label, rows in (
+            ("missing", []),
+            ("duplicate", [native, native]),
+            ("wrong-runner", [{**native, "runner": "ubuntu-24.04"}]),
+            ("cross-host", [{**native, "host": "x86_64-unknown-linux-gnu"}]),
+            ("container", [{**native, "container": {"image": "custom"}}]),
+            ("wrong-target", [{**native, "targets": ["x86_64-unknown-linux-gnu"]}]),
+            ("combined-targets", [{**native, "targets": [target, "x86_64-unknown-linux-gnu"]}]),
+        ):
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as temp_dir:
+                plan = plan_document()
+                plan["ci"] = {"github": {"artifacts_matrix": {"include": rows}}}
+                path = Path(temp_dir) / "plan.json"
+                path.write_text(json.dumps(plan), encoding="utf-8")
+                with self.assertRaises(bundle.ReleaseArtifactError):
+                    bundle.verify_plan(
+                        path, tag=TAG, version=VERSION, target=target,
+                        runner="ubuntu-24.04-arm",
+                    )
+
+    def test_verify_plan_requires_candidate_archives_and_full_asset_contract(self) -> None:
+        target = "aarch64-unknown-linux-gnu"
+        omitted_sets = (
+            {archive_name("merman-lsp", target)},
+            {name for name in release_names() if target in name},
+            {"merman-cli-installer.sh"},
+        )
+        for omitted in omitted_sets:
+            with self.subTest(omitted=omitted), tempfile.TemporaryDirectory() as temp_dir:
+                plan = plan_document(release_names() - omitted)
+                plan["ci"] = {"github": {"artifacts_matrix": {"include": [
+                    {"targets": [target], "runner": "ubuntu-24.04-arm", "host": target},
+                ]}}}
+                path = Path(temp_dir) / "plan.json"
+                path.write_text(json.dumps(plan), encoding="utf-8")
+                with self.assertRaises(bundle.ReleaseArtifactError):
+                    bundle.verify_plan(
+                        path, tag=TAG, version=VERSION, target=target,
+                        runner="ubuntu-24.04-arm",
+                    )
 
     def test_prepare_rejects_missing_verified_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

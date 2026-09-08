@@ -365,6 +365,33 @@ jobs:
             text,
         )
 
+    def test_release_preflight_executes_linux_archives_before_publication(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-preflight.yml")
+        native = workflow_job(text, "cli-and-lsp-archives")
+        for capability in WRITE_CAPABILITIES:
+            self.assertNotIn(capability, native)
+        self.assertNotIn("environment:", native)
+        self.assertNotIn("continue-on-error:", native)
+        self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}", native)
+        for target, runner in (
+            ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
+            ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+        ):
+            self.assertIn(f"- target: {target}\n            runner: {runner}", native)
+        self.assertIn("runs-on: ${{ matrix.runner }}", native)
+        self.assertIn('dist plan "--tag=$RELEASE_TAG" --output-format=json', native)
+        self.assertIn("scripts/release_artifact_bundle.py verify-plan", native)
+        self.assertIn('--runner "$NATIVE_RUNNER"', native)
+        self.assertIn('--target="$TARGET"', native)
+        self.assertIn("--artifacts=local", native)
+        self.assertLess(native.index("verify-plan"), native.index("dist build"))
+        self.assertIn("scripts/verify_cli_release_archive.py", native)
+        self.assertIn("scripts/verify_lsp_release_archive.py", native)
+        self.assertEqual(native.count("--execute"), 2)
+        self.assertIn("if-no-files-found: error", native)
+        self.assertNotIn("dist host", native)
+        self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
+
     def test_npm_publish_provenance_cannot_be_disabled_by_repository_config(self) -> None:
         paths = [
             ROOT / ".npmrc",

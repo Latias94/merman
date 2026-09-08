@@ -35,6 +35,7 @@ __all__ = (
     "assemble_bundle",
     "harden_installers",
     "prepare_global_inputs",
+    "verify_plan",
     "verify_bundle",
 )
 
@@ -338,6 +339,46 @@ def _validate_plan_manifest(
                 raise ReleaseArtifactError(f"cargo-dist target mismatch: {name}")
         typed[name] = entry
     return tuple(sorted(names)), typed
+
+
+def verify_plan(
+    path: Path,
+    *,
+    tag: str,
+    version: str,
+    target: str,
+    runner: str,
+) -> None:
+    """Verify the full asset plan and one native, non-container build route."""
+    manifest = _read_json_object(path)
+    names, _ = _validate_plan_manifest(manifest, tag=tag, version=version)
+    for package in PACKAGES:
+        if release_archive_name_for(package, target) not in names:
+            raise ReleaseArtifactError(f"cargo-dist plan omits {package} for {target}")
+
+    matrix: object = manifest
+    for key in ("ci", "github", "artifacts_matrix", "include"):
+        if not isinstance(matrix, dict) or key not in matrix:
+            raise ReleaseArtifactError("cargo-dist plan has no GitHub artifact matrix")
+        matrix = matrix[key]
+    if not isinstance(matrix, list) or any(not isinstance(row, dict) for row in matrix):
+        raise ReleaseArtifactError("cargo-dist artifact matrix must contain job objects")
+    matches = [
+        row for row in matrix
+        if isinstance(row.get("targets"), list) and target in row["targets"]
+    ]
+    if len(matches) != 1:
+        raise ReleaseArtifactError(f"cargo-dist plan must route {target} exactly once")
+    job = matches[0]
+    if (
+        job.get("targets") != [target]
+        or job.get("runner") != runner
+        or job.get("host") != target
+        or job.get("container") is not None
+    ):
+        raise ReleaseArtifactError(
+            f"cargo-dist plan must build {target} natively on {runner} without a container"
+        )
 
 
 def _staged_plan_asset_names(root: Path, *, version: str) -> tuple[str, ...]:
@@ -764,6 +805,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
 
+    plan = commands.add_parser("verify-plan")
+    plan.add_argument("path", type=Path)
+    plan.add_argument("--tag", required=True)
+    plan.add_argument("--version", required=True)
+    plan.add_argument("--target", required=True)
+    plan.add_argument("--runner", required=True)
+
     prepare = commands.add_parser("prepare-global")
     prepare.add_argument("local_producers", type=Path)
     prepare.add_argument("verified_archives", type=Path)
@@ -792,7 +840,15 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    if args.command == "prepare-global":
+    if args.command == "verify-plan":
+        verify_plan(
+            args.path,
+            tag=args.tag,
+            version=args.version,
+            target=args.target,
+            runner=args.runner,
+        )
+    elif args.command == "prepare-global":
         prepare_global_inputs(
             args.local_producers,
             args.verified_archives,

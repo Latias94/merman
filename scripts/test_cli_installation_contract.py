@@ -30,6 +30,7 @@ class CliInstallationContractTests(unittest.TestCase):
             {artifact.target for artifact in artifacts},
             {
                 "aarch64-apple-darwin",
+                "aarch64-unknown-linux-gnu",
                 "x86_64-apple-darwin",
                 "x86_64-pc-windows-msvc",
                 "x86_64-unknown-linux-gnu",
@@ -108,7 +109,7 @@ class CliInstallationContractTests(unittest.TestCase):
     def test_dist_and_profile_target_sets_cannot_diverge(self) -> None:
         with self.mutated_repository(
             "dist-workspace.toml",
-            ', "x86_64-pc-windows-msvc"',
+            '    "x86_64-pc-windows-msvc",\n',
             "",
         ) as root:
             with self.assertRaisesRegex(
