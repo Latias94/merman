@@ -80,6 +80,8 @@ struct DocumentSvgEncoder<'a> {
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
+    sankey_links: Option<sankey::LinkProjection>,
+    command_index: usize,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -247,6 +249,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             cynefin_marker_definitions: BTreeMap::new(),
             sankey_inline_gradients,
             emitted_sankey_gradients: BTreeSet::new(),
+            sankey_links: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
+                sankey::LinkProjection::new(&document.public, session)?
+            } else {
+                None
+            },
+            command_index: 0,
             sankey_label_style: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
                 sankey::shared_label_style(&document.public, session)?
             } else {
@@ -464,6 +472,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let mut consumed_until = 0;
         for (index, command) in self.document.commands.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
+            self.command_index = index;
             if index < consumed_until {
                 continue;
             }
@@ -793,7 +802,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 )?,
             )),
-            SvgStructureBody::Sankey(_) => Some((false, self.sankey_label_css()?)),
+            SvgStructureBody::Sankey(_) => Some((false, self.sankey_css()?)),
             SvgStructureBody::Requirement(_) => Some((
                 false,
                 super::requirement_css(self.diagram_id.as_str(), self.effective_config),
@@ -2038,6 +2047,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             self.write_sankey_referenced_gradient(style)?;
+            if self.emit_compact_sankey_link(path_id, style)? {
+                return Ok(());
+            }
         }
         if matches!(self.svg_body, SvgStructureBody::Error(_)) {
             return super::error::write_error_path(&mut self.output, path_id);

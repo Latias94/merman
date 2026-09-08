@@ -52,7 +52,6 @@ fn render_svg(source: &str, diagram_id: &str) -> String {
 fn unadmitted_svg_families_report_compatibility_routes() {
     for (source, family) in [
         ("info", family::RenderFamilyKind::Info),
-        ("sankey-beta\nA,B,10\n", family::RenderFamilyKind::Sankey),
         (
             "railroad-beta\nexpr = terminal(\"a\") ;\n",
             family::RenderFamilyKind::Railroad,
@@ -997,7 +996,6 @@ fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
 }
 
 #[test]
-#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
     let svg = render_svg("sankey-beta\nA,B,10\n", "sankey-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Sankey SVG is XML");
@@ -1008,26 +1006,49 @@ fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
         root.attribute("style"),
         Some("max-width: 600px; background-color: white;")
     );
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("g")
-            && node
-                .attribute("class")
-                .is_some_and(|class| class.split_whitespace().any(|token| token == "node"))
-    }));
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("rect") && node.attribute("data-merman-resource").is_some()
-    }));
-    assert!(
-        document
-            .descendants()
-            .any(|node| node.has_tag_name("linearGradient"))
+    let layers = root
+        .children()
+        .filter_map(|node| node.attribute("class"))
+        .collect::<Vec<_>>();
+    assert_eq!(layers, ["nodes", "node-labels", "links"]);
+    let nodes = root
+        .children()
+        .find(|node| node.attribute("class") == Some("nodes"))
+        .unwrap();
+    let groups = nodes
+        .children()
+        .filter(|node| node.is_element())
+        .collect::<Vec<_>>();
+    assert_eq!(groups.len(), 2);
+    for (index, node) in groups.iter().enumerate() {
+        assert_eq!(node.attribute("class"), Some("node"));
+        assert_eq!(
+            node.attribute("id"),
+            Some(format!("sankey-parity-node-{}", index + 1).as_str())
+        );
+        let rect = node.first_element_child().unwrap();
+        assert!(rect.has_tag_name("rect"));
+        assert!(rect.attribute("width").is_some() && rect.attribute("fill").is_some());
+        assert!(rect.attribute("data-merman-resource").is_none());
+    }
+    let links = root
+        .children()
+        .find(|node| node.attribute("class") == Some("links"))
+        .unwrap();
+    assert_eq!(links.attribute("fill"), Some("none"));
+    assert_eq!(links.attribute("stroke-opacity"), Some("0.5"));
+    let link = links.first_element_child().unwrap();
+    assert_eq!(link.attribute("class"), Some("link"));
+    assert_eq!(link.attribute("style"), Some("mix-blend-mode: multiply;"));
+    let gradient = link.first_element_child().unwrap();
+    assert!(gradient.has_tag_name("linearGradient"));
+    let path = gradient.next_sibling_element().unwrap();
+    assert!(path.has_tag_name("path"));
+    assert_eq!(
+        path.attribute("stroke"),
+        Some(format!("url(#{})", gradient.attribute("id").unwrap()).as_str())
     );
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("path")
-            && node
-                .attribute("class")
-                .is_some_and(|class| class.split_whitespace().any(|token| token == "link-path"))
-    }));
+    assert!(path.attribute("class").is_none() && path.attribute("opacity").is_none());
     assert!(document.descendants().any(|node| {
         node.has_tag_name("text") && node.text().is_some_and(|text| text.contains("A"))
     }));

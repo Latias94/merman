@@ -1219,7 +1219,10 @@ fn render_legacy_family_artifact_svg(
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
-        RenderFamilyKind::Error | RenderFamilyKind::Packet | RenderFamilyKind::Pie
+        RenderFamilyKind::Error
+            | RenderFamilyKind::Packet
+            | RenderFamilyKind::Pie
+            | RenderFamilyKind::Sankey
     )
 }
 
@@ -2321,7 +2324,9 @@ mod tests {
                 .unwrap();
             assert!(rect.attribute("x").is_none() && rect.attribute("y").is_none());
             assert!(rect.attribute("class").is_none());
-            assert_eq!(rect.attribute("shape-rendering"), Some("crispEdges"));
+            assert!(rect.attribute("shape-rendering").is_none());
+            assert!(rect.attribute("stroke").is_none());
+            assert!(svg.contains(".node rect{shape-rendering:crispEdges;}"));
         }
         let index = document.public.commands.iter().position(|command| matches!(command,
             DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "sankey.node.1"
@@ -2342,6 +2347,146 @@ mod tests {
         assert_eq!(node.attribute("transform"), Some("translate(42,19)"));
         assert_eq!(node.attribute("x"), Some("42"));
         assert_eq!(node.attribute("y"), Some("19"));
+    }
+
+    #[test]
+    fn sankey_link_svg_projects_only_equivalent_single_strokes() {
+        use merman_display_list::{BlendMode, Color, DrawingCommand, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("sankey\nA,B,10\nB,C,5\n", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let original = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        for case in [
+            "default",
+            "state",
+            "alpha",
+            "fill",
+            "extra",
+            "mixed-opacity",
+            "stroke",
+        ] {
+            let mut document = original.clone();
+            let mut first = true;
+            for command in &mut document.public.commands {
+                match command {
+                    DrawingCommand::SetOpacity { opacity } if case == "state" => *opacity = 0.25,
+                    DrawingCommand::SetOpacity { opacity } if case == "mixed-opacity" && first => {
+                        *opacity = 0.25;
+                        first = false;
+                    }
+                    DrawingCommand::SetBlendMode { blend_mode } if case == "state" => {
+                        *blend_mode = BlendMode::Screen
+                    }
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str().starts_with("sankey.link.") =>
+                    {
+                        if case == "alpha" {
+                            style.stroke.as_mut().unwrap().paint =
+                                Paint::solid(Color::rgba(12, 34, 56, 128));
+                        } else if case == "fill" {
+                            style.fill = Some(Paint::solid(Color::rgba(12, 34, 56, 255)));
+                        } else if case == "stroke" {
+                            let stroke = style.stroke.as_mut().unwrap();
+                            stroke.line_cap = merman_display_list::LineCap::Round;
+                            stroke.dash_array = vec![2.0, 3.0];
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if case == "extra" {
+                let index = document.public.commands.iter().position(|command| matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == "sankey.link.0.path"
+                )).unwrap();
+                document
+                    .public
+                    .commands
+                    .insert(index, document.public.commands[index].clone());
+            }
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let links = xml
+                .descendants()
+                .find(|node| node.attribute("class") == Some("links"))
+                .unwrap();
+            let groups = links
+                .children()
+                .filter(|node| node.has_tag_name("g"))
+                .collect::<Vec<_>>();
+            let paths = links
+                .descendants()
+                .filter(|node| node.has_tag_name("path"))
+                .collect::<Vec<_>>();
+            assert_eq!(paths.len(), if case == "extra" { 3 } else { 2 });
+            if matches!(case, "default" | "state") {
+                assert_eq!(links.attribute("fill"), Some("none"));
+                assert_eq!(
+                    links.attribute("stroke-opacity"),
+                    Some(if case == "state" { "0.25" } else { "0.5" })
+                );
+                for group in groups {
+                    assert_eq!(
+                        group.attribute("style"),
+                        Some(if case == "state" {
+                            "mix-blend-mode: screen;"
+                        } else {
+                            "mix-blend-mode: multiply;"
+                        })
+                    );
+                }
+                for path in paths {
+                    for attribute in [
+                        "opacity",
+                        "stroke-opacity",
+                        "fill",
+                        "class",
+                        "data-merman-resource",
+                        "style",
+                        "stroke-linecap",
+                    ] {
+                        assert!(
+                            path.attribute(attribute).is_none(),
+                            "{case}: extra {attribute}"
+                        );
+                    }
+                }
+            } else {
+                assert!(links.attribute("stroke-opacity").is_none());
+                assert!(
+                    groups
+                        .iter()
+                        .all(|group| group.attribute("style").is_none())
+                );
+                for path in paths {
+                    assert!(path.attribute("opacity").is_some());
+                    if case == "alpha" {
+                        let alpha: f64 = path.attribute("stroke-opacity").unwrap().parse().unwrap();
+                        assert!((alpha - 128.0 / 255.0).abs() < 0.001);
+                    } else if case == "fill" {
+                        assert_eq!(path.attribute("fill"), Some("#0c2238"));
+                    } else if case == "stroke" {
+                        assert_eq!(path.attribute("stroke-linecap"), Some("round"));
+                        assert_eq!(path.attribute("stroke-dasharray"), Some("2,3"));
+                    }
+                }
+            }
+        }
     }
 
     #[test]

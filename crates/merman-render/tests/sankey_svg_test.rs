@@ -42,7 +42,7 @@ A,B,10
         "expected node A to use configured fill: {svg}"
     );
     assert!(
-        svg.contains(r#"fill="rebeccapurple""#),
+        svg.contains(r##"fill="#663399""##),
         "expected node B to use configured fill: {svg}"
     );
     assert!(
@@ -50,7 +50,7 @@ A,B,10
         "expected source gradient stop to use configured color: {svg}"
     );
     assert!(
-        svg.contains(r#"stop-color="rebeccapurple""#),
+        svg.contains(r##"stop-color="#663399""##),
         "expected target gradient stop to use configured color: {svg}"
     );
     assert!(
@@ -61,9 +61,26 @@ A,B,10
         svg.contains(r#"class="sankey-label-fg""#),
         "expected outlined label foreground text: {svg}"
     );
+    let document = Document::parse(&svg).unwrap();
+    let backgrounds = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("sankey-label-bg"))
+        .collect::<Vec<_>>();
+    assert_eq!(backgrounds.len(), 2);
+    for label in backgrounds {
+        assert_eq!(label.attribute("stroke-width"), Some("4"));
+        assert_eq!(label.attribute("stroke-linejoin"), Some("round"));
+        assert_eq!(label.attribute("paint-order"), Some("stroke fill"));
+    }
+    let foregrounds = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("sankey-label-fg"))
+        .collect::<Vec<_>>();
+    assert_eq!(foregrounds.len(), 2);
     assert!(
-        svg.contains(".sankey-label-bg"),
-        "expected outlined label CSS: {svg}"
+        foregrounds
+            .iter()
+            .all(|node| node.attribute("stroke").is_none())
     );
 }
 

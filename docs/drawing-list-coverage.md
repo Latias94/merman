@@ -34,7 +34,7 @@ inventory row fails at test time.  The current inventory is:
 | Timeline | yes | legacy bridge |
 | Journey | yes | legacy bridge |
 | Requirement | yes | legacy bridge |
-| Sankey | yes | legacy bridge |
+| Sankey | yes | canonical |
 | Radar | yes | legacy bridge |
 | Info | yes | legacy bridge |
 | Treemap | yes | legacy bridge |
@@ -82,6 +82,13 @@ background alpha, rather than being rejected for a protocol feature that now exi
 Node geometry now uses public local rectangles and transforms; the SVG node group projects those
 transforms into source-shaped translation/x/y attributes and source-numbered, diagram-scoped IDs.
 The node mutation regression checks that moving a public transform moves the serialized node.
+The backend-local crisp-edge hint uses the source `.node rect` stylesheet selector; a missing
+public stroke uses SVG's default, while an explicit stroke remains on the rectangle.
+
+Single-stroke link scopes project their common public opacity into the links collection and
+their public blend mode into the individual link group. The encoder leaves its drawing state
+intact. Nonuniform opacity, translucent solid strokes, added fill/draws, or nondefault stroke
+styles use the full command serializer instead, without falling back to the legacy renderer.
 
 Referenced linear gradients are now placed with their link paint, retain source numbering, and
 project edited public colors/transforms without copying them into the sidecar. Unreferenced
@@ -100,13 +107,22 @@ styles agree. Inherited CSS is derived only from those commands; outlined stroke
 text. SVG y/dy decomposes the public baseline without adding an offset, including after public
 font-size or position edits. Heterogeneous styles retain explicit per-command text attributes.
 
-Sankey remains bridged pending complete family comparison. The focused tests are not full-family
-parity proof.
+Sankey is admitted after its 2026-09-08 complete structure and parity-root comparisons: each
+selected and rendered all 33 fixtures, with zero skips and no accepted residual policy. The
+parity-root run checked all 33 root viewports. Reports are
+`target/compare/sankey_compact_candidate_structure.md` and
+`target/compare/sankey_compact_candidate_parity_root.md`. These are source-SVG/DOM results, not a
+claim of separate browser-computed-style validation. The public-route regression
+requires `CanonicalDocument` and checks source-shaped nodes, labels, link groups, and live
+gradient references. Public-command mutations cover the projection's noncompact cases.
+The separate `all_supported_fixtures_render_typed_resvg_safe_audit` also passed with
+`MERMAN_RESVG_SAFE_AUDIT_FAMILY=sankey` and the `png` feature: terminal SVG validation, PNG
+rasterization, decoding, and nonblank-ink checks ran on the supported Sankey fixture corpus.
 
 The 2026-09-08 candidate check at `47831d275` temporarily enabled the canonical route and ran
 `compare-sankey-svgs --check-dom --dom-mode structure --dom-decimals 3`. All 33 fixtures rendered
 with route evidence; all 33 still failed structural comparison. The temporary admission change
-was removed. Remaining differences include link-layer fill/stroke-opacity attributes, per-path
+was removed. That run's differences included link-layer fill/stroke-opacity attributes, per-path
 generic attributes, gradient default attributes and percentage stop spelling, and rectangle
 stroke/rasterization-hint attributes. The local diagnostic report is
 `target/compare/sankey_label_candidate_structure.md`; no comparator normalization was changed.

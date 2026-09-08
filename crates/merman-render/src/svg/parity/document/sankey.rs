@@ -3,6 +3,95 @@
 use super::*;
 use merman_display_list::TextStyle;
 
+/// An exact single-stroke projection, not a second drawing-state interpreter.
+/// Any other command shape uses the ordinary serializer with all state intact.
+pub(super) struct LinkProjection {
+    pub(super) collection: usize,
+    pub(super) opacity: f64,
+    groups: Vec<BlendMode>,
+}
+
+impl LinkProjection {
+    pub(super) fn new(
+        document: &DrawingListDocument,
+        session: &RenderSession,
+    ) -> Result<Option<Self>> {
+        let mut collection = None;
+        for (index, command) in document.commands.iter().enumerate() {
+            session.checkpoint(OperationPhase::Emit)?;
+            if matches!(command, DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "sankey.links")
+                && collection.replace(index).is_some()
+            {
+                return Ok(None);
+            }
+        }
+        let Some(collection) = collection else {
+            return Ok(None);
+        };
+        let mut cursor = collection + 1;
+        let mut opacity = None;
+        let mut groups = Vec::new();
+        loop {
+            session.checkpoint(OperationPhase::Emit)?;
+            let remaining = &document.commands[cursor..];
+            if matches!(remaining.first(), Some(DrawingCommand::EndSemanticGroup)) {
+                return Ok(opacity.map(|opacity| Self {
+                    collection,
+                    opacity,
+                    groups,
+                }));
+            }
+            let [
+                DrawingCommand::Save,
+                DrawingCommand::BeginSemanticGroup { semantic_id },
+                DrawingCommand::SetOpacity {
+                    opacity: current_opacity,
+                },
+                DrawingCommand::SetBlendMode { blend_mode },
+                DrawingCommand::DrawPath { style, .. },
+                DrawingCommand::EndSemanticGroup,
+                DrawingCommand::Restore,
+                ..,
+            ] = remaining
+            else {
+                return Ok(None);
+            };
+            let Some(stroke) = style.stroke.as_ref() else {
+                return Ok(None);
+            };
+            if !semantic_id.starts_with("sankey.link.")
+                || style.fill.is_some()
+                || stroke.line_cap != LineCap::Butt
+                || stroke.line_join != LineJoin::Miter
+                || stroke.miter_limit != 4.0
+                || !stroke.dash_array.is_empty()
+                || stroke.dash_offset != 0.0
+                || matches!(stroke.paint, Paint::Solid { color } if color.alpha != 255)
+                || opacity.is_some_and(|previous| previous != *current_opacity)
+            {
+                return Ok(None);
+            }
+            opacity = Some(*current_opacity);
+            groups.push(*blend_mode);
+            cursor += 7;
+        }
+    }
+
+    pub(super) fn contains_path(&self, command_index: usize) -> bool {
+        command_index
+            .checked_sub(3)
+            .is_some_and(|index| self.group_blend(index).is_some())
+    }
+
+    fn group_blend(&self, command_index: usize) -> Option<BlendMode> {
+        let relative = command_index.checked_sub(self.collection + 2)?;
+        if !relative.is_multiple_of(7) {
+            return None;
+        }
+        self.groups.get(relative / 7).copied()
+    }
+}
+
 // Only properties inherited by the shared label group belong here. Outline strokes remain
 // on their individual text commands, so the foreground/background layers cannot double-paint.
 fn same_inherited_style(left: &TextStyle, right: &TextStyle) -> bool {
@@ -36,15 +125,54 @@ pub(super) fn shared_label_style<'a>(
 }
 
 impl DocumentSvgEncoder<'_> {
-    pub(super) fn sankey_label_css(&self) -> Result<String> {
+    pub(super) fn emit_compact_sankey_link(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !self
+            .sankey_links
+            .as_ref()
+            .is_some_and(|projection| projection.contains_path(self.command_index))
+        {
+            return Ok(false);
+        }
+        let stroke = style
+            .stroke
+            .as_ref()
+            .ok_or_else(|| invalid("projected Sankey link has no stroke"))?;
+        let path = self.path_resource(path_id)?;
+        write!(self.output, "<path d=\"{}\"", path_d(&path.segments))
+            .map_err(|_| invalid("Sankey link geometry"))?;
+        self.write_paint("stroke", &stroke.paint)?;
+        write!(self.output, " stroke-width=\"{}\"", fmt(stroke.width))
+            .map_err(|_| invalid("Sankey link width"))?;
+        if self.state.transform != Transform::IDENTITY {
+            write!(
+                self.output,
+                " transform=\"matrix({})\"",
+                matrix_attr(self.state.transform)
+            )
+            .map_err(|_| invalid("Sankey link transform"))?;
+        }
+        self.output.push_str("/>");
+        Ok(true)
+    }
+
+    pub(super) fn sankey_css(&self) -> Result<String> {
+        // Rasterization is backend-local; geometry and paint remain public commands.
+        let mut css = format!(
+            "#{} .node rect{{shape-rendering:crispEdges;}}",
+            self.diagram_id
+        );
         let Some(style) = self.sankey_label_style else {
-            return Ok(String::new());
+            return Ok(css);
         };
         let Paint::Solid { color } = style.fill else {
             return Err(invalid("Sankey shared text paint must be solid"));
         };
         let font = self.font_families(&style.font)?;
-        Ok(format!(
+        write!(css,
             "#{} .node-labels{{font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;fill:{};fill-opacity:{};}}",
             self.diagram_id,
             font,
@@ -53,7 +181,8 @@ impl DocumentSvgEncoder<'_> {
             fmt(style.letter_spacing),
             color_css(color),
             fmt(f64::from(color.alpha) / 255.0),
-        ))
+        ).map_err(|_| invalid("Sankey label stylesheet"))?;
+        Ok(css)
     }
 
     pub(super) fn emit_compact_sankey_text(
@@ -130,7 +259,8 @@ impl DocumentSvgEncoder<'_> {
 
     pub(super) fn begin_sankey_semantic_group(&mut self, semantic_id: &str) -> Result<()> {
         // Labels stay in their shared source layer; individual logical label and document
-        // scopes do not introduce DOM wrappers. Paint and compositing stay on drawing commands.
+        // scopes do not introduce DOM wrappers. Only the verified single-stroke projection
+        // moves equivalent paint/compositing attributes from public commands onto SVG groups.
         let class = (!semantic_id.starts_with("sankey.label."))
             .then(|| self.semantic_extra_class(semantic_id).map(str::to_owned))
             .flatten();
@@ -139,6 +269,19 @@ impl DocumentSvgEncoder<'_> {
         if let Some(class) = class {
             write!(self.output, "<g class=\"{}\"", escaped_attr(&class))
                 .map_err(|_| invalid("Sankey semantic group"))?;
+            if let Some(projection) = &self.sankey_links {
+                if self.command_index == projection.collection {
+                    write!(
+                        self.output,
+                        " fill=\"none\" stroke-opacity=\"{}\"",
+                        fmt(projection.opacity)
+                    )
+                    .map_err(|_| invalid("Sankey shared link paint"))?;
+                }
+                if let Some(blend) = projection.group_blend(self.command_index) {
+                    write_blend_style(&mut self.output, blend);
+                }
+            }
             if semantic_id == "sankey.labels"
                 && let Some(style) = self.sankey_label_style
             {
@@ -211,8 +354,14 @@ impl DocumentSvgEncoder<'_> {
             )
             .map_err(|_| invalid("Sankey edited rectangle origin"))?;
         }
-        self.output.push_str(" shape-rendering=\"crispEdges\"");
-        self.write_fill_stroke_style(style)?;
+        if let Some(fill) = &style.fill {
+            self.write_paint("fill", fill)?;
+        } else {
+            self.output.push_str(" fill=\"none\"");
+        }
+        if style.stroke.is_some() {
+            self.write_stroke_style(style.stroke.as_ref())?;
+        }
         self.write_state_attrs();
         self.output.push_str("/>");
         Ok(())

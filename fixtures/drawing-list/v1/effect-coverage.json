@@ -106,7 +106,7 @@
     {
       "family": "sankey",
       "source": "sankey\nSource,Target,10\nTarget,Done,4\n",
-      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"]
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"]
     },
     {
       "family": "radar",
@@ -203,7 +203,7 @@
       "family": "sankey",
       "source": "sankey\nSource,Target,10\n",
       "assertion": "linear_gradient",
-      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"],
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"],
       "evidence": "DrawingResource::LinearGradient referenced by a link paint"
     },
     {
@@ -239,7 +239,7 @@
       "family": "sankey",
       "source": "sankey-beta\nA,B,10\n",
       "assertion": "blend_mode",
-      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path"],
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"],
       "evidence": "SetBlendMode retains the link compositing mode"
     },
     {
