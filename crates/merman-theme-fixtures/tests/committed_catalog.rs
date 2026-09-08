@@ -85,10 +85,9 @@ fn mermaid_style_precedence_tracks_selected_upstream_revision() {
         .join("tools")
         .join("upstreams")
         .join("REPOS.lock.json");
-    let lock: Value = serde_json::from_str(
-        &std::fs::read_to_string(lock_path).expect("read upstream lock"),
-    )
-    .expect("parse upstream lock");
+    let lock: Value =
+        serde_json::from_str(&std::fs::read_to_string(lock_path).expect("read upstream lock"))
+            .expect("parse upstream lock");
     let selected_revision = lock
         .get("repos")
         .and_then(Value::as_object)

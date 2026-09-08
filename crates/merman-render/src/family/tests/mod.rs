@@ -110,9 +110,7 @@ fn flowchart_edge_stroke_theme_with_variant(
         rule = rule.with_variant(variant);
     }
     DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
-        )
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
         .expect("compile Flowchart Edge stroke theme")
 }
 
@@ -6557,7 +6555,10 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
         ),
     ] {
         for (paint, expected_css) in [
-            (CanvasPaint::solid("#ef4444").unwrap(), "stroke:#ef4444 !important"),
+            (
+                CanvasPaint::solid("#ef4444").unwrap(),
+                "stroke:#ef4444 !important",
+            ),
             (CanvasPaint::Transparent, "stroke:none !important"),
         ] {
             let theme = flowchart_edge_stroke_theme_with_variant(
@@ -6574,7 +6575,9 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
                 parsed,
                 &LayoutOptions::default(),
                 crate::environment::RenderEnvironment::deterministic()
-                    .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                    .with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    )
                     .begin_session_with_theme(&theme)
                     .expect("begin strict explicit Default edge session"),
             )
@@ -6585,7 +6588,11 @@ fn require_portable_accepts_explicit_default_flowchart_and_swimlane_edge_stroke(
             assert_eq!(rendered.family_id(), family);
             assert!(flowchart_edge_path_style(rendered.svg()).contains(expected_css));
             let marker_id = flowchart_edge_marker_id(rendered.svg());
-            assert!(!flowchart_marker_contains(rendered.svg(), &marker_id, expected_css));
+            assert!(!flowchart_marker_contains(
+                rendered.svg(),
+                &marker_id,
+                expected_css
+            ));
             assert_eq!(
                 rendered.style_report().theme_applied_mechanisms(),
                 &[FamilyThemeMechanismKey::Rule {

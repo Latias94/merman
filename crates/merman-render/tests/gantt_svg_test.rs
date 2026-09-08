@@ -1,4 +1,5 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, GradientStop,
     InsetsPx, LinearGradient, OrdinalSelector, PatternKind, PatternSpec, Specified,
@@ -16,9 +17,8 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_render::LayoutOptions;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
@@ -535,9 +535,11 @@ fn gantt_warning_stroke_reaches_today_and_vertical_terminals() {
                 })
         })
         .expect("today line terminal");
-    assert!(!today
-        .attribute("style")
-        .is_some_and(|style| style.contains("stroke:")));
+    assert!(
+        !today
+            .attribute("style")
+            .is_some_and(|style| style.contains("stroke:"))
+    );
 
     let vertical_task = document
         .descendants()
@@ -728,9 +730,11 @@ fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
                 && node.attribute("id") == Some("gantt-warning-source-owned-vertical-marker")
         })
         .expect("source-owned vertical terminal");
-    assert!(!vertical
-        .attribute("style")
-        .is_some_and(|style| style_property(style, "stroke").is_some()));
+    assert!(
+        !vertical
+            .attribute("style")
+            .is_some_and(|style| style_property(style, "stroke").is_some())
+    );
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());

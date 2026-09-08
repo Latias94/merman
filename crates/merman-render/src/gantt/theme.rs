@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use merman_core::diagrams::gantt::GanttRenderTask;
 use merman_core::MermaidConfig;
+use merman_core::diagrams::gantt::GanttRenderTask;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
@@ -10,10 +10,10 @@ use crate::diagram_theme::{
     Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
-    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet, DirectStaticSelectorDomain, FamilyThemeEvidence,
-    FamilyThemeResidualReason, TerminalVariantDomain, UnsupportedTerminalDomain,
+    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
 
@@ -1745,9 +1745,11 @@ mod tests {
 
         assert!(task_theme.typed_font_stack_requested);
         assert!(task_theme.typed_font_stack_active);
-        assert!(task_theme
-            .unsupported_typography_properties
-            .contains(&ThemeTypographyProperty::FontWeight));
+        assert!(
+            task_theme
+                .unsupported_typography_properties
+                .contains(&ThemeTypographyProperty::FontWeight)
+        );
         assert!(task_theme.bind_layout_occurrences(vec![0]));
         let mut receipt = task_theme
             .begin_terminal_receipt()
@@ -1758,11 +1760,13 @@ mod tests {
         assert!(task_theme.record_terminal(receipt));
 
         let evidence = task_theme.finish_evidence();
-        assert!(evidence
-            .applied()
-            .contains(&FamilyThemeMechanismKey::Typography(
-                ThemeTypographyProperty::FontStack
-            )));
+        assert!(
+            evidence
+                .applied()
+                .contains(&FamilyThemeMechanismKey::Typography(
+                    ThemeTypographyProperty::FontStack
+                ))
+        );
         assert!(evidence.residuals().iter().any(|residual| {
             residual.key()
                 == &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontWeight)
@@ -1986,9 +1990,11 @@ mod tests {
         };
         assert!(!evidence.applied().contains(&unqualified));
         assert!(evidence.not_applicable_mechanisms().contains(&unqualified));
-        assert!(evidence
-            .residuals()
-            .iter()
-            .any(|residual| residual.key() == &active));
+        assert!(
+            evidence
+                .residuals()
+                .iter()
+                .any(|residual| residual.key() == &active)
+        );
     }
 }

@@ -371,8 +371,7 @@ mod tests {
                 "rankSpacing": 12
             }
         });
-        let settings =
-            StateConfigView::new(&cfg).layout_settings("TB", &compatibility(&cfg));
+        let settings = StateConfigView::new(&cfg).layout_settings("TB", &compatibility(&cfg));
 
         assert_eq!(settings.graph.nodesep, 90.0);
         assert_eq!(settings.graph.ranksep, 91.0);
