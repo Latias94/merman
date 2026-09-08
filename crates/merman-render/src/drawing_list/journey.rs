@@ -68,6 +68,7 @@ struct JourneyBuilder<'a> {
     line_color: Color,
     face_color: Color,
     title_color: Color,
+    fill_types: Vec<String>,
     actor_color_overrides: Vec<Option<Color>>,
     text_obligation: TextObligation,
     semantic_classes: BTreeMap<String, String>,
@@ -187,6 +188,7 @@ impl<'a> JourneyBuilder<'a> {
             line_color,
             face_color,
             title_color,
+            fill_types: theme.fill_types,
             actor_color_overrides,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             semantic_classes: BTreeMap::new(),
@@ -361,8 +363,7 @@ impl<'a> JourneyBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            let fill =
-                PortableStyleResolver::new("journey").color("section.fill", &section.fill)?;
+            let fill = self.background_color(section.num, &section.fill)?;
             self.path_classes
                 .insert(format!("{semantic_id}.background"), section_class);
             self.add_path(
@@ -488,7 +489,7 @@ impl<'a> JourneyBuilder<'a> {
                 face_y,
             )?;
 
-            let fill = PortableStyleResolver::new("journey").color("task.fill", &task.fill)?;
+            let fill = self.background_color(task.num, &task.fill)?;
             self.path_classes.insert(
                 format!("{semantic_id}.background"),
                 format!("task task-type-{}", task.num),
@@ -604,6 +605,16 @@ impl<'a> JourneyBuilder<'a> {
                 },
             ),
         }
+    }
+
+    fn background_color(&self, index: i64, layout_fill: &str) -> Result<Color> {
+        // Mermaid's section/task class rules override the layout's presentation attribute.
+        let fill = usize::try_from(index)
+            .ok()
+            .and_then(|index| self.fill_types.get(index))
+            .map(String::as_str)
+            .unwrap_or(layout_fill);
+        PortableStyleResolver::new("journey").color("background.fill", fill)
     }
 
     fn emit_box_text(

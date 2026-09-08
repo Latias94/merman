@@ -70,6 +70,18 @@ were not bound to a commit, and earlier root reports predate later migration cha
 tests that require withdrawn public routes are explicitly ignored pending migration; ignored tests
 are not admission evidence. Live route tests check the explicit compatibility result separately.
 
+### Journey color correction
+
+The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
+falling back to the layout fill only when that class has no theme entry. Default visible HTML
+labels use `textColor`, independently of those background fills. The candidate SVG serializer
+no longer injects Journey's legacy stylesheet or external theme CSS over the resolved commands.
+`journey_document_owns_visible_label_and_background_colors` checks distinct text, theme-background,
+and layout-background colors under default and dark themes, then exercises the candidate serializer
+directly with conflicting external configuration. This is color regression evidence, not complete
+DOM or browser parity: the source HTML shell, non-default `textPlacement` behavior, and full-family
+comparison remain migration work. Journey remains on the public legacy SVG route.
+
 ### Sankey migration evidence
 
 `sankey_document_owns_paint_order_and_svg_styles` exercises the candidate serializer directly,

@@ -2490,6 +2490,100 @@ mod tests {
     }
 
     #[test]
+    fn journey_document_owns_visible_label_and_background_colors() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+
+        for theme in ["default", "dark"] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": {"textColor": "#123456", "fillType0": "#abcdef"},
+                    "journey": {"sectionFills": ["#fedcba"]}
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "journey\nsection Documentation\nRead: 5: Alice\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            for id in ["journey.section.0.background", "journey.task.0.background"] {
+                let style = document
+                    .public
+                    .commands
+                    .iter()
+                    .find_map(|command| match command {
+                        DrawingCommand::DrawPath { path, style } if path.as_str() == id => {
+                            Some(style)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    style.fill,
+                    Some(Paint::solid(Color::rgba(171, 205, 239, 255))),
+                    "{theme}: the theme's class fill overrides sectionFills for {id}"
+                );
+            }
+            for label in ["Documentation", "Read"] {
+                let run = document
+                    .public
+                    .commands
+                    .iter()
+                    .find_map(|command| match command {
+                        DrawingCommand::DrawText { run } if run.text == label => Some(run),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    run.style.fill,
+                    Paint::solid(Color::rgba(18, 52, 86, 255)),
+                    "the visible HTML label uses textColor, not the section's fill"
+                );
+            }
+            let render = |config: &serde_json::Value| {
+                crate::svg::render_document_svg(
+                    &document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    config,
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let svg = render(artifact.metadata.effective_config.as_value());
+            assert_eq!(
+                svg,
+                render(&serde_json::json!({
+                    "themeVariables": {"textColor": "red", "fillType0": "black"},
+                    "themeCSS": "text { fill: transparent; }"
+                })),
+                "SVG must not reinterpret the resolved Journey colors"
+            );
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert!(
+                !xml.descendants().any(|node| node.has_tag_name("style")),
+                "legacy CSS must not override the document's explicit paints"
+            );
+            for label in ["Documentation", "Read"] {
+                let text = xml
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+                    .unwrap();
+                assert_eq!(text.attribute("fill"), Some("#123456"));
+            }
+        }
+    }
+
+    #[test]
     fn sankey_document_owns_paint_order_and_svg_styles() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 

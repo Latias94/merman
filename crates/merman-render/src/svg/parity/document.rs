@@ -48,6 +48,7 @@ pub(crate) fn render_document_svg(
             | SvgStructureBody::Pie(_)
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::Sankey(_)
+            | SvgStructureBody::Journey(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
@@ -780,13 +781,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
-            SvgStructureBody::Journey(_) => Some((
-                false,
-                super::journey::canonical_journey_css(
-                    self.diagram_id.as_str(),
-                    self.effective_config,
-                ),
-            )),
+            // Journey commands already resolve the theme's paints and fonts. Replaying the
+            // legacy CSS would apply section background fills to the visible text as well.
+            SvgStructureBody::Journey(_) => None,
             SvgStructureBody::Treemap(_) => Some((
                 false,
                 super::treemap::canonical_treemap_css(
