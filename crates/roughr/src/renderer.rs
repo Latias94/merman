@@ -15,6 +15,9 @@ use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
 use crate::svg_path::{absolutize, normalize};
 use crate::SvgPathSegment;
 
+mod ellipse_stream;
+pub use ellipse_stream::try_ellipse_with_params;
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct EllipseParams<F: Float> {
     pub rx: F,

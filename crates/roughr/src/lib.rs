@@ -164,6 +164,7 @@ mod svg_path;
 
 pub mod core;
 pub mod filler;
+pub mod generation;
 pub mod generator;
 pub mod geometry;
 mod path_segment;

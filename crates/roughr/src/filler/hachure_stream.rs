@@ -1,6 +1,6 @@
 //! Fallible hachure/crosshatch operation production.
 
-use crate::core::{FillStyle, Op, Options};
+use crate::core::{FillStyle, Options};
 use crate::geometry::Line;
 use euclid::{default::Point2D, Angle, Translation2D, Trig, Vector2D};
 use num_traits::{Float, FromPrimitive};
@@ -9,45 +9,7 @@ use std::cmp::Ordering;
 /// A polygon in Rough.js's unitless coordinate system.
 pub type HachurePolygon<F> = Vec<Point2D<F>>;
 
-/// Work admission precedes scratch growth and scan steps; operations are delivered individually.
-#[derive(Debug)]
-pub enum HachureEvent<F: Float + Trig> {
-    Work(usize),
-    Op(Op<F>),
-}
-
-#[derive(Debug)]
-pub enum HachureError<E> {
-    Consumer(E),
-    Allocation(std::collections::TryReserveError),
-    InvalidGeometry,
-    UnsupportedFillStyle,
-}
-
-impl<E: std::fmt::Display> std::fmt::Display for HachureError<E> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Consumer(error) => {
-                write!(formatter, "hachure consumer rejected generation: {error}")
-            }
-            Self::Allocation(error) => write!(formatter, "hachure allocation failed: {error}"),
-            Self::InvalidGeometry => formatter.write_str("invalid hachure geometry"),
-            Self::UnsupportedFillStyle => {
-                formatter.write_str("expected hachure or crosshatch fill")
-            }
-        }
-    }
-}
-
-impl<E: std::error::Error + 'static> std::error::Error for HachureError<E> {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Consumer(error) => Some(error),
-            Self::Allocation(error) => Some(error),
-            Self::InvalidGeometry | Self::UnsupportedFillStyle => None,
-        }
-    }
-}
+pub use crate::generation::{GenerationError as HachureError, GenerationEvent as HachureEvent};
 
 /// Produces hachure operations without owning the output collection.
 ///

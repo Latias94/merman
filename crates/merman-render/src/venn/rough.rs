@@ -1,16 +1,15 @@
 //! Typed Venn Rough.js geometry, independent of SVG serialization.
 //!
-//! Scanline work is cancellable and charged during production. These collecting entry points
-//! still need bounded ellipse/curve sampling before use by the DrawingList builder.
+//! Ellipse and scanline work are cancellable and charged during production. Intersection curve
+//! sampling still needs bounded production before use by the DrawingList builder.
 
 use crate::model::VennCircleLayout;
 use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
 use roughr::core::{FillStyle, OpSet, OpSetType, OptionsBuilder, RoughRandomness};
-use roughr::filler::hachure_stream::{
-    HachureError, HachureEvent, HachurePolygon, try_hachure_fill,
-};
+use roughr::filler::hachure_stream::{HachurePolygon, try_hachure_fill};
+use roughr::generation::{GenerationError, GenerationEvent};
 
 pub(crate) struct RoughCircleGeometry {
     pub(crate) fill: OpSet<f64>,
@@ -48,11 +47,24 @@ pub(crate) fn circle_geometry(
     );
     // Match Generator::ellipse's outline-before-fill order, without Drawable's complete
     // operation-set clone. Hachure fill owns the estimated points after outline generation.
-    let ellipse = roughr::renderer::ellipse_with_params(circle.x, circle.y, &mut options, &params);
-    let fill = collect_hachure(&mut [ellipse.estimated_points], &mut options, work_meter)?;
+    let mut outline = Vec::new();
+    let estimated = roughr::renderer::try_ellipse_with_params(
+        circle.x,
+        circle.y,
+        &mut options,
+        &params,
+        |event| collect_operation(event, &mut outline, work_meter),
+    )
+    .map_err(generation_error)?;
+    let fill = collect_hachure(&mut [estimated], &mut options, work_meter)?;
     Ok(RoughCircleGeometry {
         fill,
-        outline: ellipse.opset,
+        outline: OpSet {
+            op_set_type: OpSetType::Path,
+            ops: outline,
+            path: None,
+            size: None,
+        },
     })
 }
 
@@ -92,33 +104,47 @@ fn collect_hachure(
 ) -> Result<OpSet<f64>> {
     let mut ops = Vec::new();
     try_hachure_fill(polygons, options, |event| {
-        match event {
-            HachureEvent::Work(units) => work_meter.charge_at(units, OperationPhase::Emit)?,
-            HachureEvent::Op(op) => {
-                ops.try_reserve(1)
-                    .map_err(|_| Error::DrawingListAllocationFailed {
-                        collection: "Venn hachure operations",
-                    })?;
-                ops.push(op);
-            }
-        }
-        Ok(())
+        collect_operation(event, &mut ops, work_meter)
     })
-    .map_err(|error| match error {
-        HachureError::Consumer(error) => error,
-        HachureError::Allocation(_) => Error::DrawingListAllocationFailed {
-            collection: "Venn hachure scratch",
-        },
-        HachureError::InvalidGeometry | HachureError::UnsupportedFillStyle => Error::InvalidModel {
-            message: error.to_string(),
-        },
-    })?;
+    .map_err(generation_error)?;
     Ok(OpSet {
         op_set_type: OpSetType::FillSketch,
         ops,
         size: None,
         path: None,
     })
+}
+
+fn collect_operation(
+    event: GenerationEvent<f64>,
+    ops: &mut Vec<roughr::core::Op<f64>>,
+    work_meter: &OperationWorkMeter,
+) -> Result<()> {
+    match event {
+        GenerationEvent::Work(units) => work_meter.charge_at(units, OperationPhase::Emit)?,
+        GenerationEvent::Op(op) => {
+            ops.try_reserve(1)
+                .map_err(|_| Error::DrawingListAllocationFailed {
+                    collection: "Venn rough operations",
+                })?;
+            ops.push(op);
+        }
+    }
+    Ok(())
+}
+
+fn generation_error(error: GenerationError<Error>) -> Error {
+    match error {
+        GenerationError::Consumer(error) => error,
+        GenerationError::Allocation(_) => Error::DrawingListAllocationFailed {
+            collection: "Venn rough geometry scratch",
+        },
+        GenerationError::InvalidGeometry | GenerationError::UnsupportedFillStyle => {
+            Error::InvalidModel {
+                message: error.to_string(),
+            }
+        }
+    }
 }
 
 fn invalid_options(context: &str, error: impl std::fmt::Display) -> Error {

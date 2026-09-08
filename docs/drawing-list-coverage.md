@@ -300,10 +300,17 @@ consumed individually, without the former complete line array or polygon copies.
 per-line Rough.js operation batches still use the existing allocator, and sorting checkpoints
 bound admitted input size rather than guaranteeing fixed-latency cancellation inside sorting.
 
-This removes the SVG-string boundary for the pending direct adapter, but ellipse sampling and
-intersection curve subdivision still need fallible production before the public hand-drawn
-DrawingList gate can be removed. Preserve outline-before-fill random-number consumption; do not
-replace this with a guessed geometry-size cutoff or a final post-allocation footprint check.
+Ellipse sampling now uses a four-point rolling curve window. Work admission precedes each
+sample; outline operations are emitted during sampling instead of after a complete point array.
+The first outline's fill-estimation points grow fallibly, while the second stroke does not retain
+an unused polygon. Rejecting the second operation of a high-resolution ellipse stops after four
+points, and a stalled or underflowed angular step returns an error rather than looping forever.
+Venn circle generation uses this path and shares the same operation meter with hachure filling.
+
+Intersection curve subdivision still needs fallible production before the public hand-drawn
+DrawingList gate can be removed. The direct adapter must also send operations to its bounded path
+builder, rather than collect complete operation sets first. Preserve outline-before-fill random
+consumption; do not substitute a guessed size cutoff or a final post-allocation footprint check.
 The new roughr API also needs its independently versioned package release before a Merman
 release can resolve this implementation from the registry.
 
