@@ -944,11 +944,21 @@ typography properties are Unsupported; mixed base typography fails closed withou
 retired bundled contribution or claiming layout ownership. Text and Title paint remain separate
 compatibility surfaces, so Sankey still uses the family bridge for those routes.
 
-The C5 checkpoint also retires the generic `Title.fill` compatibility routes for C4, Cynefin, and
+The earlier C5 checkpoint retired the generic `Title.fill` compatibility routes for C4, Cynefin, and
 Sankey. C4's title inherits the generic text surface rather than consuming `titleColor`; Cynefin's
 visible title uses `cynefin.labelColor`; and Sankey has no title terminal. These routes are now
-explicitly `Unsupported`, while each family's real generic `Text.fill` compatibility route remains
-unchanged. The support-claim manifest advances to internal revision 26.
+explicitly `Unsupported`; that checkpoint retained their generic `Text.fill` compatibility routes
+and advanced the support-claim manifest to revision 26. Subsequent migrations supersede that snapshot.
+
+C4 now directly consumes static unqualified/Default `Text.fill` in the inherited root color and
+optional diagram title. Its shape, boundary, and relationship colors remain independently owned;
+explicit `themeVariables.textColor` suppresses the typed fill. A writer-owned receipt delays
+applicability until source-directed inheritance has been observed, so mixed rules and active
+palette/effect fallbacks cannot certify an empty domain prematurely. KTD17 v53 authorizes four
+routes across Classic, Neo, and HandDrawn: replace `text.fill`, retire the unused `title.fill`
+fallback. C4 has no remaining family-owned legacy route, and the bridge's now-unused generic Text
+dispatch/compiler is removed. This does not add a generic `Title.fill` consumer or authorize global
+bridge deletion. Current totals and release boundaries remain in the coverage snapshot.
 
 | C6a | Complete; `18/18` representative native cells execute and the eligibility receipt is issued | Schema v4 is the current 18-cell authority and binds the immutable schema-v3 predecessor, which remains fixed at its historical 12 enforced and 6 deferred cells. The loader rejects lineage shrinkage, and the private unique issuer emits `C6aEligibilityReceipt` only after all nine Brutalist/Spotless/Cyberpunk by Flowchart/State/Sequence render groups pass on Standalone SVG and PNG with target-owned receipts. Each render group projects both targets from one `RenderedDocument`; Flowchart and Sequence also retain prepared terminal text through their production font seals. The separate route-cutover manifest remains a non-cell ownership proof and does not increase C6a progress. |
 | C6b | Paused; no active denominator | Four historical Brutalist/State cross-target observations exist, but the 45-cell equal-depth certification program is not active. JPEG/PDF retain representative smoke coverage; Browser SVG starts only after a real adapter and release requirement exist. |

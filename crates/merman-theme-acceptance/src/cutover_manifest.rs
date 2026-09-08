@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 52;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 53;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0x48, 0x63, 0x8d, 0xc0, 0x34, 0xbb, 0x85, 0x0c, 0xf5, 0x9e, 0x47, 0x7a, 0x01, 0x18, 0x36, 0x8d,
-    0x2c, 0xb0, 0xb8, 0x3c, 0x39, 0xff, 0x83, 0x68, 0xb5, 0xd5, 0x18, 0x0d, 0x1e, 0x98, 0x62, 0xfe,
+    0xc4, 0xb3, 0x4a, 0xeb, 0x98, 0x13, 0x3b, 0xb9, 0x1f, 0x3f, 0xb2, 0x95, 0x5f, 0xb2, 0x6f, 0xc0,
+    0xf3, 0xbf, 0x00, 0xb3, 0xb6, 0x96, 0x7a, 0x34, 0x74, 0x72, 0xf5, 0xdb, 0xda, 0xdd, 0xf8, 0xf6,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 42] = [
+); 43] = [
+    (
+        ThemeRouteCutoverProjection::C4TitleFillFallback,
+        ThemeRouteCutoverProjectionAction::RetireFallback,
+    ),
     (
         ThemeRouteCutoverProjection::NodeFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -299,6 +303,10 @@ const PIE_SLICE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceFill];
 const TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TextFill];
+const C4_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::TextFill,
+    ThemeRouteCutoverProjection::C4TitleFillFallback,
+];
 const GANTT_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TextFill];
 const GANTT_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
@@ -355,7 +363,37 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 292] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 296] = [
+    route(
+        DiagramFamilyId::C4,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        C4_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::C4,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        C4_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::C4,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        C4_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::C4,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        C4_TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,

@@ -1267,6 +1267,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             artifact.typography_theme(),
             artifact.cluster_theme(),
+            artifact.text_paint(),
             options,
         ),
     }

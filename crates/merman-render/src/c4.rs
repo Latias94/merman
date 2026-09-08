@@ -351,8 +351,10 @@ fn c4_wrap_source_word_lines(
 }
 
 mod layout;
+mod text_paint;
 mod typography;
 pub(crate) use layout::layout_c4_diagram_typed;
+pub(crate) use text_paint::C4TextPaintPlan;
 pub(crate) use typography::C4TypographyThemePlan;
 
 #[cfg(test)]

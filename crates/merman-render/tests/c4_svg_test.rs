@@ -106,7 +106,15 @@ fn try_render_c4_rendered_with_theme(
     source: &str,
     theme: &DiagramTheme,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
+    try_render_c4_rendered_with_engine(source, theme, Engine::new())
+}
+
+fn try_render_c4_rendered_with_engine(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse themed C4 diagram")
         .expect("detect themed C4 diagram");
@@ -380,6 +388,480 @@ Boundary(boundary, "Boundary") {
     assert_eq!(
         c4_rect_labeled(&document, "Boundary").attribute("fill"),
         Some("#ef4444")
+    );
+}
+
+#[test]
+fn c4_text_fill_reaches_the_inherited_title_without_recoloring_owned_labels() {
+    let source = r##"---
+title: C4 paint
+---
+C4Context
+Boundary(boundary, "Boundary", "") {
+  System(a, "First")
+  System(b, "Second")
+}
+Rel(a, b, "Connects")
+UpdateElementStyle(a, $fontColor="#135790")
+UpdateElementStyle(b, $fontColor="#246801")
+UpdateRelStyle(a, b, $textColor="#975310")
+"##;
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, expected) in [
+            (
+                CanvasPaint::solid("#123456").expect("valid paint"),
+                "#123456",
+            ),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(paint),
+            )
+            .for_family(merman_render::DiagramFamilyId::C4);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = c4_cluster_rules_theme([rule]);
+            let rendered = try_render_c4_rendered_with_theme(source, &theme)
+                .expect("C4 Text.fill must have portable terminal evidence");
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+            let title = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && svg_text_content(*node) == "C4 paint")
+                .expect("visible title");
+            assert_eq!(title.attribute("fill"), Some(expected));
+            for (label, color) in [
+                ("First", "#135790"),
+                ("Second", "#246801"),
+                ("Boundary", "#444444"),
+                ("Connects", "#975310"),
+            ] {
+                let text = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && svg_text_content(*node) == label)
+                    .unwrap_or_else(|| panic!("missing independently colored C4 label {label}"));
+                assert_eq!(c4_effective_property(text, "fill").as_deref(), Some(color));
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_text_fill_is_not_applicable_without_a_title_or_with_explicit_text_color() {
+    let spec = DiagramThemeSpec::new().with_styles(
+        ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").expect("valid paint")),
+            )
+            .for_family(merman_render::DiagramFamilyId::C4),
+        ),
+    );
+    let theme = DiagramThemeCompiler::new()
+        .compile(spec.clone())
+        .expect("typed text theme");
+    let owned_engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+    ));
+    for (source, engine, config_owned) in [
+        ("C4Context\nSystem(a, \"Service\")\n", Engine::new(), false),
+        (
+            "---\ntitle: Owned title\n---\nC4Context\nSystem(a, \"Service\")\n",
+            owned_engine,
+            true,
+        ),
+    ] {
+        let rendered = try_render_c4_rendered_with_engine(source, &theme, engine)
+            .expect("absent or source-owned title is portable");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+        assert!(!document.descendants().any(|node| {
+            node.has_tag_name("text") && node.attribute("fill") == Some("#123456")
+        }));
+        let title = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && svg_text_content(*node) == "Owned title");
+        assert_eq!(title.is_some(), config_owned);
+        if let Some(title) = title {
+            assert_eq!(c4_effective_property(title, "fill"), None);
+            let root = document.root_element();
+            let root_selector = format!("#{}", root.attribute("id").expect("SVG root id"));
+            let style = root
+                .children()
+                .find(|node| node.has_tag_name("style"))
+                .expect("root stylesheet");
+            let css = svg_text_content(style);
+            let root_fills = css
+                .split('}')
+                .filter_map(|rule| rule.split_once('{'))
+                .filter(|(selector, _)| selector.trim() == root_selector)
+                .flat_map(|(_, declarations)| declarations.split(';'))
+                .filter_map(|declaration| declaration.split_once(':'))
+                .filter_map(|(property, value)| (property.trim() == "fill").then_some(value.trim()))
+                .collect::<Vec<_>>();
+            assert_eq!(root_fills, ["#abcdef"]);
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn c4_boundary_only_text_keeps_stroke_and_effect_applicable() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+
+    let paint = CanvasPaint::solid("#123456").expect("valid text paint");
+    let fill = c4_cluster_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(paint.clone()),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)]);
+    let stroke = c4_cluster_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_stroke(paint),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)]);
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                "blur",
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .expect("valid text effect graph"),
+        )
+        .expect("insert text effect graph")
+        .with_binding(EffectBinding::new(ThemeTarget::Text, "blur").expect("valid text binding"))
+        .expect("insert text binding");
+    let effect = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .expect("compile text effect theme");
+
+    for label in ["Visible", ""] {
+        let source = format!(
+            "C4Context\nBoundary(b, \"{label}\", \"\") {{\n  UpdateLayoutConfig(3, 2)\n}}\n"
+        );
+        for (theme, inherited_fill_only) in [(&fill, true), (&stroke, false), (&effect, false)] {
+            let result = try_render_c4_rendered_with_theme(&source, theme);
+            if !label.is_empty() && !inherited_fill_only {
+                let error = match result {
+                    Ok(_) => panic!("visible boundary text retains unsupported stroke or effect"),
+                    Err(error) => error,
+                };
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((merman_render::DiagramFamilyId::C4, 1))
+                );
+                continue;
+            }
+            let rendered = result.expect("owned fill or an empty text domain is portable");
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid boundary SVG");
+            let texts = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .filter(|node| !svg_text_content(*node).trim().is_empty())
+                .collect::<Vec<_>>();
+            assert_eq!(texts.len(), usize::from(!label.is_empty()));
+            if let Some(text) = texts.first() {
+                assert_eq!(svg_text_content(*text), "Visible");
+                assert_eq!(
+                    c4_effective_property(*text, "fill").as_deref(),
+                    Some("#444444")
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_text_fill_does_not_certify_unsupported_siblings_or_source_inheritance() {
+    let fill = CanvasPaint::solid("#123456").expect("valid paint");
+    let mixed = c4_cluster_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default()
+            .with_fill(fill.clone())
+            .with_stroke(fill.clone()),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)]);
+    let title_source = "---\ntitle: C4 paint\n---\nC4Context\nSystem(a, \"Service\")\n";
+    let error = try_render_c4_svg_with_theme(title_source, &mixed)
+        .expect_err("a fill receipt cannot certify an unsupported stroke");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 1))
+    );
+
+    let theme = c4_cluster_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)]);
+    let source = "C4Context\nSystem(a, \"First\")\nSystem(b, \"Second\")\nRel(a, b, \"Connects\")\nUpdateRelStyle(a, b, $textColor=\"inherit\")\n";
+    let error = try_render_c4_svg_with_theme(source, &mixed)
+        .expect_err("mixed rules must not hide source-directed root inheritance");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 1))
+    );
+    let error = try_render_c4_svg_with_theme(source, &theme)
+        .expect_err("source-directed root inheritance is not an absent text terminal");
+    assert_eq!(
+        error.unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 1))
+    );
+}
+
+#[test]
+fn c4_text_fallbacks_do_not_treat_source_inheritance_as_an_empty_domain() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let palette =
+        DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Text,
+            OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+        ));
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                "blur",
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .with_binding(EffectBinding::new(ThemeTarget::Text, "blur").unwrap())
+        .unwrap();
+    let effect_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects.clone()))
+        .unwrap();
+    let mut clear = ThemeStylePatch::default();
+    clear.effects.effect = Specified::Clear;
+    let partially_cleared = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_effects(effects).with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(ThemeTarget::Text, clear)
+                        .for_family(merman_render::DiagramFamilyId::C4)
+                        .with_ordinal(OrdinalSelector::Exact(1)),
+                ),
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        try_render_c4_svg_with_theme("C4Context\nSystem(a, \"Visible\")\n", &partially_cleared)
+            .expect_err("an unproved ordinal clear cannot mask the whole binding")
+            .unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 2))
+    );
+    {
+        let source = "C4Context\nSystem(a, \"Visible\")\n";
+        assert_eq!(
+            try_render_c4_svg_with_theme(source, &effect_theme)
+                .expect_err("fill ownership does not suppress an active effect")
+                .unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+    }
+    try_render_c4_svg_with_theme(
+        "C4Context\nUpdateLayoutConfig($c4ShapeInRow=\"3\")\n",
+        &effect_theme,
+    )
+    .expect("no text terminal has an active effect");
+    {
+        let theme = DiagramThemeCompiler::new().compile(palette).unwrap();
+        let owned =
+            "C4Context\nSystem(a, \"First\")\nSystem(b, \"Second\")\nRel(a, b, \"Connects\")\n";
+        try_render_c4_svg_with_theme(owned, &theme)
+            .expect("independently colored labels have no inherited text paint");
+        let source = format!("{owned}UpdateRelStyle(a, b, $textColor=\"inherit\")\n");
+        for label in ["", "<br/>"] {
+            let empty_label = source.replace("\"Connects\"", &format!("\"{label}\""));
+            try_render_c4_svg_with_theme(&empty_label, &theme)
+                .expect("an empty relationship label does not inherit visible text paint");
+        }
+        let technology_only =
+            source.replace("Rel(a, b, \"Connects\")", "Rel(a, b, \"\", \"HTTPS\")");
+        assert_eq!(
+            try_render_c4_svg_with_theme(&technology_only, &theme)
+                .unwrap_err()
+                .unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+        let error = try_render_c4_svg_with_theme(&source, &theme)
+            .expect_err("inherited text cannot certify an empty fallback domain");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+    }
+}
+
+#[test]
+fn c4_owned_fill_does_not_hide_unsupported_text_stroke() {
+    let paint = CanvasPaint::solid("#123456").unwrap();
+    for patch in [
+        ThemeStylePatch::default().with_stroke(paint.clone()),
+        ThemeStylePatch::default()
+            .with_fill(paint.clone())
+            .with_stroke(paint),
+    ] {
+        let theme =
+            c4_cluster_rules_theme([ThemeRule::new(ThemeTarget::Text, patch)
+                .for_family(merman_render::DiagramFamilyId::C4)]);
+        let error = try_render_c4_svg_with_theme("C4Context\nSystem(a, \"Visible\")\n", &theme)
+            .expect_err("visible text retains an unsupported stroke even when fill is owned");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+    }
+}
+
+#[test]
+fn c4_text_palette_respects_the_fill_winner_and_host_color_owner() {
+    let styles = ThemeRuleSet::default()
+        .with_ordinal_palette(
+            ThemeTarget::Text,
+            OrdinalPalette::new([ThemeColorValue::parse("#654321").unwrap()]).unwrap(),
+        )
+        .with_rule(
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .for_family(merman_render::DiagramFamilyId::C4),
+        );
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap();
+    let source = "---\ntitle: Inherited paint\n---\nC4Context\nSystem(a, \"Service\")\n";
+    for config_owned in [false, true] {
+        let engine = if config_owned {
+            Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+                serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+            ))
+        } else {
+            Engine::new()
+        };
+        let rendered = try_render_c4_rendered_with_engine(source, &theme, engine).unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), usize::from(!config_owned));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            1 + usize::from(config_owned)
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn c4_unproved_text_ordinals_do_not_certify_absence() {
+    for ordinal in [
+        OrdinalSelector::Exact(2),
+        OrdinalSelector::Cycle {
+            period: 2,
+            offset: 1,
+        },
+    ] {
+        let theme = c4_cluster_rules_theme([ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .for_family(merman_render::DiagramFamilyId::C4)
+        .with_ordinal(ordinal)]);
+        let error = try_render_c4_svg_with_theme(
+            "C4Context\nSystem(a, \"First\")\nSystem(b, \"Second\")\n",
+            &theme,
+        )
+        .expect_err("unsupported ordinal domains cannot be proved empty from ordinal one");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_render::DiagramFamilyId::C4, 1))
+        );
+        try_render_c4_svg_with_theme(
+            "C4Context\nUpdateLayoutConfig($c4ShapeInRow=\"3\")\n",
+            &theme,
+        )
+        .expect("a genuinely empty text domain is not applicable");
+    }
+}
+
+#[test]
+fn c4_text_ordinals_preserve_provable_global_winners() {
+    let ordinal = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4)
+    .with_ordinal(OrdinalSelector::Exact(2));
+    let global = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#0000ff").unwrap()),
+    )
+    .for_family(merman_render::DiagramFamilyId::C4);
+    let source = "---\ntitle: Global winner\n---\nC4Context\nSystem(a, \"Visible\")\n";
+    let covered = c4_cluster_rules_theme([ordinal.clone(), global.clone()]);
+    let rendered = try_render_c4_rendered_with_theme(source, &covered)
+        .expect("a later global winner covers any ordinal");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    let unproved = c4_cluster_rules_theme([global, ordinal.clone()]);
+    assert_eq!(
+        try_render_c4_svg_with_theme(source, &unproved)
+            .expect_err("a later ordinal remains unverified")
+            .unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 1))
+    );
+
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+    let partial = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(ordinal.with_ordinal(OrdinalSelector::Exact(1)))
+                    .with_ordinal_palette(ThemeTarget::Text, palette),
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        try_render_c4_svg_with_theme(source, &partial)
+            .expect_err("an ordinal does not suppress the whole palette")
+            .unverified_family_theme(),
+        Some((merman_render::DiagramFamilyId::C4, 2))
     );
 }
 

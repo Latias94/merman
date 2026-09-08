@@ -319,6 +319,7 @@ enum CutoverWitnessProfile {
 
 impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
+    const C4_TEXT: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::HandDrawnStatic];
     const GANTT_WARNING: [Self; 2] = [Self::ClassicToday, Self::ClassicVertical];
     const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
@@ -349,6 +350,9 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
+        if route.family_id() == DiagramFamilyId::C4 && route.target() == ThemeTarget::Text {
+            return &Self::C4_TEXT;
+        }
         if route.family_id() == DiagramFamilyId::GANTT
             && route.target() == ThemeTarget::Task
             && route.facet() == ThemeRouteCutoverFacet::Stroke
@@ -419,6 +423,9 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
+        (DiagramFamilyId::C4, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok("---\ntitle: C4 inherited paint\n---\nC4Context\nSystem(service, \"Service\")\n")
+        }
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Node, _) => Ok(FLOWCHART_NODE_SOURCE),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel, _) => Ok(FLOWCHART_NODE_LABEL_SOURCE),
         (DiagramFamilyId::FLOWCHART, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
@@ -1533,11 +1540,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_292_routes_and_322_artifact_witnesses() {
+    fn route_inventory_retains_296_routes_and_334_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 292);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 322);
+        assert_eq!(inventory.len(), 296);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 334);
     }
 
     #[test]
@@ -1655,6 +1662,40 @@ mod tests {
             &[],
             TargetFontSource::Mixed,
         ));
+    }
+
+    #[test]
+    fn c4_text_routes_require_each_look_specific_witness() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
+        let routes = inventory
+            .iter()
+            .copied()
+            .filter(|route| {
+                route.family_id() == DiagramFamilyId::C4 && route.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for route in routes {
+            for profile in [
+                CutoverWitnessProfile::ClassicStatic,
+                CutoverWitnessProfile::NeoStatic,
+                CutoverWitnessProfile::HandDrawnStatic,
+            ] {
+                let mut receipts = expected_cutover_witnesses(&inventory)
+                    .into_iter()
+                    .map(|witness| (witness, RouteCutoverReceipt { digest: [0x5a; 32] }))
+                    .collect::<BTreeMap<_, _>>();
+                assert!(
+                    receipts
+                        .remove(&CutoverWitnessId::new(route, profile))
+                        .is_some()
+                );
+                assert!(
+                    evaluate_route_receipts(inventory.clone(), receipts).is_err(),
+                    "missing {profile:?} C4 witness must reject authorization"
+                );
+            }
+        }
     }
 
     #[test]

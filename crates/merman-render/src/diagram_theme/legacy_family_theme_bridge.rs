@@ -16,12 +16,12 @@ use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
-    MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
+    FamilyThemeDisposition, FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
 };
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::family_mechanism_matrix::{
-    LegacyCompatibilityRouteKey, classify_rule_facet, legacy_compatibility_route_inventory,
+    FamilyThemePaintKind, FamilyThemeSelectorShape, LegacyCompatibilityRouteKey,
+    classify_rule_facet, legacy_compatibility_route_inventory,
 };
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
@@ -216,9 +216,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Journey => {
             compile_journey_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Text => {
-            compile_text_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::NoLegacy => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
                 family.as_str(),
@@ -240,7 +237,6 @@ enum LegacyFamilyDispatch {
     Chart,
     Timeline,
     Journey,
-    Text,
     NoLegacy,
 }
 
@@ -541,33 +537,9 @@ fn legacy_family_dispatch(
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
-        DiagramFamilyId::C4 => {
-            if super::family_mechanism_matrix::classify_rule_facet(
-                family,
-                ThemeTarget::Text,
-                FamilyThemeSelectorShape::Static { variant: None },
-                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
-            ) == FamilyThemeDisposition::LegacyCompatibility
-            {
-                LegacyFamilyDispatch::Text
-            } else {
-                LegacyFamilyDispatch::NoLegacy
-            }
-        }
-        DiagramFamilyId::TREEMAP => {
-            if super::family_mechanism_matrix::classify_rule_facet(
-                family,
-                ThemeTarget::Text,
-                FamilyThemeSelectorShape::Static { variant: None },
-                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
-            ) == FamilyThemeDisposition::LegacyCompatibility
-            {
-                LegacyFamilyDispatch::Text
-            } else {
-                LegacyFamilyDispatch::NoLegacy
-            }
-        }
         DiagramFamilyId::STATE
+        | DiagramFamilyId::C4
+        | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::GANTT
@@ -1119,26 +1091,6 @@ fn compile_journey_family(
     contributions.finish_into(builder)
 }
 
-fn compile_text_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    // Text and Title are only candidate compatibility mappings here. The family matrix filters
-    // terminal-less routes before any contribution is created. Renderer-specific roles remain
-    // unsupported until the public model types them.
-    let mut contributions = FamilyContributions::new();
-    contributions.add_typography(reader);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TextFill.contribution_id(),
-        [("textColor", reader.text_fill(ThemeTarget::Text))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TitleFill.contribution_id(),
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
-    contributions.finish_into(builder)
-}
-
 struct FamilyStyleReader {
     family: DiagramFamilyId,
     program: Arc<FamilyThemeProgram>,
@@ -1548,7 +1500,7 @@ mod tests {
         );
         assert!(unsupported.projections().is_empty());
 
-        let partial = legacy_projection_probe(
+        let typed = legacy_projection_probe(
             super::super::legacy_tombstones::ThemeLegacyRouteId::new(
                 DiagramFamilyId::C4,
                 ThemeTarget::Text,
@@ -1559,17 +1511,10 @@ mod tests {
         )
         .expect("observe current C4 text facts");
         assert_eq!(
-            partial.disposition(),
-            ThemeLegacyProjectionDisposition::LegacyCompatibility
+            typed.disposition(),
+            ThemeLegacyProjectionDisposition::TypedAdapter
         );
-        assert_eq!(
-            partial
-                .projections()
-                .iter()
-                .map(ThemeLegacyProjectionObservation::assignment_path)
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["themeVariables.textColor", "themeVariables.titleColor"])
-        );
+        assert!(typed.projections().is_empty());
     }
 
     #[test]
@@ -2438,6 +2383,7 @@ mod tests {
             actual,
             BTreeSet::from([
                 DiagramFamilyId::STATE,
+                DiagramFamilyId::C4,
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::GANTT,
@@ -2462,30 +2408,30 @@ mod tests {
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0x80, 0xaf, 0x43, 0xcf, 0x1c, 0xc5, 0x17, 0x00, 0x98, 0x8a, 0xdf, 0x8f, 0x58, 0x3d,
-            0x04, 0xef, 0xb2, 0x9e, 0x9b, 0xbd, 0x26, 0x62, 0xa3, 0x31, 0xd9, 0xc4, 0xa7, 0x64,
-            0xe3, 0x42, 0x75, 0x8e,
+            0xe2, 0xae, 0x8e, 0x38, 0x49, 0x7e, 0x16, 0x6c, 0x36, 0xac, 0x16, 0xe3, 0xec, 0x0b,
+            0xab, 0x82, 0xf4, 0x46, 0x34, 0x4b, 0x35, 0x0b, 0x7a, 0xe8, 0x9f, 0x07, 0x36, 0xa5,
+            0xe9, 0x4c, 0x0d, 0x33,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 262);
-        assert_eq!(status.matrix_family_count(), 15);
-        assert_eq!(status.dispatched_family_count(), 15);
+        assert_eq!(status.matrix_route_count(), 258);
+        assert_eq!(status.matrix_family_count(), 14);
+        assert_eq!(status.dispatched_family_count(), 14);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                0x7d, 0x65, 0x68, 0xb9, 0x03, 0xde, 0x92, 0xe0, 0xa2, 0x31, 0xf9, 0x42, 0x64, 0xdc,
-                0x05, 0x1e, 0x8d, 0x5a, 0xe9, 0x1e, 0x81, 0xc9, 0xa5, 0x39, 0x1b, 0xc3, 0x3d, 0x64,
-                0x87, 0x3f, 0x9e, 0xca,
+                0x53, 0x8d, 0xb4, 0x7c, 0xb8, 0x66, 0x3a, 0x43, 0xc8, 0xa9, 0x37, 0x08, 0xed, 0x46,
+                0x45, 0x0c, 0x68, 0xf5, 0xb8, 0x18, 0x31, 0x29, 0x2d, 0x7c, 0x26, 0x96, 0x27, 0xe9,
+                0x37, 0x8f, 0x3f, 0xce,
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                0xe3, 0x09, 0xb6, 0xbf, 0x7f, 0xd4, 0xce, 0x65, 0x99, 0x40, 0x80, 0x13, 0x2a, 0xea,
-                0xe9, 0x72, 0xb8, 0x8f, 0x63, 0x58, 0x70, 0x90, 0x40, 0x6d, 0xb6, 0xee, 0x40, 0xcb,
-                0xaf, 0x43, 0x7f, 0x63,
+                0x95, 0xdd, 0x05, 0x43, 0x4f, 0x1d, 0x61, 0xb2, 0x62, 0x0c, 0xd6, 0x5f, 0x2d, 0x95,
+                0xf9, 0xd9, 0x85, 0x02, 0xe4, 0xe6, 0x1f, 0xbd, 0x9e, 0xac, 0x56, 0x7c, 0xdd, 0xe4,
+                0x4e, 0x0b, 0x03, 0x19,
             ]
         );
         assert_eq!(
@@ -2613,6 +2559,7 @@ mod tests {
                 let expects_text_bridge = !matches!(
                     family,
                     DiagramFamilyId::ARCHITECTURE
+                        | DiagramFamilyId::C4
                         | DiagramFamilyId::CYNEFIN
                         | DiagramFamilyId::SANKEY
                 );

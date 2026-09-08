@@ -867,12 +867,10 @@ impl FamilyThemeEvidence {
         &self.applied
     }
 
-    #[cfg(test)]
     pub(crate) fn not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
         &self.not_applicable
     }
 
-    #[cfg(test)]
     pub(crate) fn residuals(&self) -> &[FamilyThemeResidual] {
         &self.residuals
     }
@@ -1494,9 +1492,13 @@ pub(crate) struct C4FamilyArtifact {
     pair: FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>,
     cluster_theme: crate::c4::C4ClusterThemePlan,
     typography_theme: crate::c4::C4TypographyThemePlan,
+    text_paint: crate::c4::C4TextPaintPlan,
 }
 
 impl C4FamilyArtifact {
+    pub(crate) const fn text_paint(&self) -> &crate::c4::C4TextPaintPlan {
+        &self.text_paint
+    }
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout> {
@@ -2562,6 +2564,7 @@ impl BuiltinFamilyArtifact {
             Self::C4(artifact) => {
                 let mut evidence = artifact.cluster_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
                 Some(evidence)
             }
             _ => None,

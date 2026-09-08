@@ -11,17 +11,17 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 18/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 15/33; 262 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 19/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 14/33; 258 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 46 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v52; 292 routes / 322 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 47 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v53; 296 routes / 334 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v2; 58 routes / 116 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. The v52 route authorization inventory is unchanged; its witness suite now isolates
-Gantt Warning today and vertical strokes into separate profiles (322 witnesses, previously 320).
+output files. Version 53 adds four C4 Text.fill routes, each with Classic, Neo, and HandDrawn
+witnesses. Gantt Warning today and vertical strokes retain separate profiles.
 The today profile fixes the runtime clock to 2024-01-03 within the task interval; `todayMarker`
 is a style directive, not a clock override. Neither terminal can supply the other's pixel evidence.
 Neither KTD17 nor KTD23 is a percentage of all theme capabilities. Their selector/value domains
@@ -56,7 +56,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Timeline | Typed | Typed | Required |
 | Journey | Typed | Typed | Required |
 | Architecture | Typed | Typed | None |
-| C4 | Typed | Typed | Required |
+| C4 | Typed | Typed | None |
 | Treemap | Typed | Unsupported | None |
 | Packet | Typed | Unsupported | None |
 | Sankey | Typed | Unsupported | None |
@@ -77,6 +77,12 @@ or native-export qualification for an otherwise unverified output.
 
 Important boundaries that a family-level count cannot express:
 
+- C4 static unqualified/Default Text.fill owns the root inherited color and optional diagram title.
+  Shape, boundary, and relationship labels retain independent colors. Explicit
+  `themeVariables.textColor` owns the root; a title-less document with statically owned label colors
+  is `NotApplicable`. Source-directed inheritance or browser-dependent colors remain unverified.
+  KTD17 replaces `text.fill` and retires its unused `title.fill` fallback; this does not introduce
+  a C4 `Title.fill` consumer.
 - XY Chart shares a resolved `FontStack` across title/axis/legend measurement, layout, CSS, and
   visible-text receipts. Only base `FontSize` is Unsupported; role-local `xyChart.*` sizes remain.
 - Class shares base typography with layout and final CSS; fixed-size cardinality terminals do not

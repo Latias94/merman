@@ -247,6 +247,7 @@ pub(crate) struct UnsupportedTerminalDomain<'a> {
     variants: TerminalVariantDomain<'a>,
     source_owned_fill: Option<&'a [bool]>,
     reconcile_rules: bool,
+    resolve_ordinal_rules: bool,
 }
 
 impl<'a> UnsupportedTerminalDomain<'a> {
@@ -256,6 +257,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             variants,
             source_owned_fill: None,
             reconcile_rules: true,
+            resolve_ordinal_rules: true,
         }
     }
 
@@ -270,6 +272,19 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             variants,
             source_owned_fill: None,
             reconcile_rules: false,
+            resolve_ordinal_rules: true,
+        }
+    }
+
+    /// Resolves whole-surface fallback winners without inventing an ordinal identity.
+    /// The family still owns ordinal-rule accounting and the final visible applicability check.
+    pub(crate) const fn static_fallbacks_only(target: ThemeTarget, variant: ThemeVariant) -> Self {
+        Self {
+            resolution: TerminalStyleResolution::Direct(target),
+            variants: TerminalVariantDomain::uniform(1, variant),
+            source_owned_fill: None,
+            reconcile_rules: false,
+            resolve_ordinal_rules: false,
         }
     }
 
@@ -296,6 +311,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             variants,
             source_owned_fill: None,
             reconcile_rules: true,
+            resolve_ordinal_rules: true,
         }
     }
 
@@ -434,17 +450,18 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
         domain.variants.for_each(|ordinal, variant| {
             work_meter.charge(1)?;
             let terminal_target = domain.resolution.terminal_target();
+            let ordinal_identity = domain.resolve_ordinal_rules.then_some(ordinal);
             let style = match domain.resolution {
                 TerminalStyleResolution::Direct(_) => theme.style_with_work_meter(
                     terminal_target,
                     variant,
-                    Some(ordinal),
+                    ordinal_identity,
                     work_meter,
                 )?,
                 TerminalStyleResolution::Textual { .. } => theme.text_style_with_work_meter(
                     terminal_target,
                     variant,
-                    Some(ordinal),
+                    ordinal_identity,
                     work_meter,
                 )?,
             };

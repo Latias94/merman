@@ -449,6 +449,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::TREEMAP, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::C4, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_C4_TEXT_FILL)
+        }
         (DiagramFamilyId::INFO, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
@@ -1259,10 +1262,9 @@ fn legacy_paint_route_without_writer_consumer(
         DiagramFamilyId::MINDMAP => {
             (matches!(
                 target,
-                ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::Title
+                ThemeTarget::NodeLabel | ThemeTarget::Text | ThemeTarget::Title | ThemeTarget::Edge
             ) && unqualified_or_default
                 && fill)
-                || (target == ThemeTarget::Edge && unqualified_or_default && fill)
                 || (target == ThemeTarget::Edge && variant == Some(ThemeVariant::Default) && stroke)
                 || (target == ThemeTarget::Marker && unqualified_or_default && (fill || stroke))
                 || (target == ThemeTarget::EdgeLabelBackground && unqualified_or_default && fill)
@@ -1926,6 +1928,23 @@ pub(super) fn classify_rule_facet(
     if family == DiagramFamilyId::QUADRANT_CHART
         && target == ThemeTarget::ChartSeries
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::C4
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -5083,6 +5102,20 @@ mod tests {
                 vec!["node.stroke"],
             ),
             (
+                DiagramFamilyId::C4,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill", "title.fill"],
+            ),
+            (
+                DiagramFamilyId::C4,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill", "title.fill"],
+            ),
+            (
                 DiagramFamilyId::CLASS,
                 ThemeTarget::Node,
                 Fill,
@@ -6121,7 +6154,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 144);
+        assert_eq!(qualified.len(), 146);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6257,11 +6290,12 @@ mod tests {
 
         for route in qualified {
             let projections = route.projections().iter().collect::<Vec<_>>();
-            let expected_projection_count = if matches!(
-                route.family_id(),
-                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-            ) && route.target() == ThemeTarget::Edge
-                && route.facet() == ThemeRouteCutoverFacet::Stroke
+            let expected_projection_count = if route.family_id() == DiagramFamilyId::C4
+                || (matches!(
+                    route.family_id(),
+                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+                ) && route.target() == ThemeTarget::Edge
+                    && route.facet() == ThemeRouteCutoverFacet::Stroke)
             {
                 2
             } else {
@@ -6272,7 +6306,21 @@ mod tests {
                 expected_projection_count,
                 "route={route:?}"
             );
-            if matches!(
+            if route.family_id() == DiagramFamilyId::C4 {
+                assert_eq!(route.target(), ThemeTarget::Text);
+                assert_eq!(
+                    route.selector(),
+                    ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+                );
+                assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    projections,
+                    vec![
+                        ThemeRouteCutoverProjection::TextFill,
+                        ThemeRouteCutoverProjection::C4TitleFillFallback
+                    ]
+                );
+            } else if matches!(
                 route.family_id(),
                 DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
             ) && route.target() == ThemeTarget::Edge
@@ -6971,6 +7019,7 @@ mod tests {
             let expected_text_disposition = if matches!(
                 family,
                 DiagramFamilyId::ARCHITECTURE
+                    | DiagramFamilyId::C4
                     | DiagramFamilyId::CYNEFIN
                     | DiagramFamilyId::ER
                     | DiagramFamilyId::SANKEY
