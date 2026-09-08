@@ -56,9 +56,8 @@ fn canonical_json_sorts_nested_extension_objects() {
 
 #[test]
 fn published_draft_2020_12_schema_accepts_the_runtime_document() {
-    let schema: Value =
-        serde_json::from_str(include_str!("../../../contracts/drawing-list-v1.json"))
-            .expect("DrawingList schema is valid JSON");
+    let schema: Value = serde_json::from_str(include_str!("../schema/drawing-list-v1.json"))
+        .expect("DrawingList schema is valid JSON");
     assert_eq!(
         schema["$defs"]["stroke_style"]["properties"]["dash_array"]["maxItems"],
         json!(DrawingListLimits::default().max_stroke_dash_entries),
