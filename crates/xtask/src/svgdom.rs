@@ -406,6 +406,7 @@ fn eventmodeling_root_fill_value(root: roxmltree::Node<'_, '_>) -> Option<String
     }
     let diagram_id = root.attribute("id")?;
     let selector = format!("#{diagram_id}");
+    let mut fill = None;
 
     for style in root
         .children()
@@ -422,12 +423,60 @@ fn eventmodeling_root_fill_value(root: roxmltree::Node<'_, '_>) -> Option<String
             {
                 continue;
             }
-            if let Some(fill) = extract_style_prop_value(declarations, "fill") {
-                return Some(fill);
-            }
+            eventmodeling_collect_unique_fill(declarations, &mut fill)?;
         }
     }
-    None
+    fill
+}
+
+// Only enumerate declarations: a competing fill or an `all` reset makes inheritance unproven.
+// CSS tokenization keeps quoted semicolons and escaped property names out of the decision logic.
+fn eventmodeling_collect_unique_fill(style: &str, fill: &mut Option<String>) -> Option<()> {
+    let mut input = cssparser::ParserInput::new(style);
+    let mut parser = cssparser::Parser::new(&mut input);
+    while !parser.is_exhausted() {
+        if parser.try_parse(|input| input.expect_semicolon()).is_ok() {
+            continue;
+        }
+        parser
+            .parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
+                let property = declaration.expect_ident_cloned()?;
+                declaration.expect_colon()?;
+                let start = declaration.position();
+                while declaration.next_including_whitespace_and_comments().is_ok() {}
+                let value = declaration.slice_from(start).trim();
+                if value.is_empty() || property.eq_ignore_ascii_case("all") {
+                    return Err(declaration.new_custom_error(()));
+                }
+                if property.eq_ignore_ascii_case("fill") {
+                    if fill.is_some() {
+                        return Err(declaration.new_custom_error(()));
+                    }
+                    *fill = Some(value.to_owned());
+                }
+                Ok::<_, cssparser::ParseError<'_, ()>>(())
+            })
+            .ok()?;
+    }
+    Some(())
+}
+
+fn eventmodeling_has_unoverridden_inheritance(node: roxmltree::Node<'_, '_>) -> bool {
+    for ancestor in node.ancestors().filter(|node| node.is_element()) {
+        if ancestor.attribute("fill").is_some() {
+            return false;
+        }
+        if let Some(style) = ancestor.attribute("style") {
+            let mut fill = None;
+            if eventmodeling_collect_unique_fill(style, &mut fill).is_none() || fill.is_some() {
+                return false;
+            }
+        }
+        if ancestor.tag_name().name() == "svg" {
+            return true;
+        }
+    }
+    false
 }
 
 fn normalize_style_font_size_for_parity(style: &str, decimals: u32) -> Option<String> {
@@ -2062,6 +2111,7 @@ fn build_node(
             && is_eventmodeling_swimlane_text(n)
             && !attrs.contains_key("fill")
             && let Some(fill) = eventmodeling_root_fill
+            && eventmodeling_has_unoverridden_inheritance(n)
         {
             attrs.insert(
                 "fill".to_string(),
@@ -3096,6 +3146,55 @@ mod tests {
     }
 
     #[test]
+    fn parity_does_not_infer_eventmodeling_fill_from_competing_root_declarations() {
+        for styles in [
+            "<style>#event-diagram{fill:#333;fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;fill:#333;}</style>",
+            "<style>#event-diagram{fill:#333;}#event-diagram{fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;}</style><style>#event-diagram{fill:#f00;}</style>",
+            "<style>#event-diagram{fill:#333!important;fill:#f00!important;}</style>",
+            "<style>#event-diagram{fill:#333;FILL:#f00;}</style>",
+            r"<style>#event-diagram{fill:#333;f\69ll:#f00;}</style>",
+            "<style>#event-diagram{fill:#333;all:initial;}</style>",
+        ] {
+            let upstream = format!(
+                r#"<svg id="event-diagram" aria-roledescription="eventmodeling">{styles}<g class="em-swimlane"><text>Events</text></g></svg>"#
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "competing root declarations must remain unnormalized: {styles}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_through_source_overrides() {
+        for (root_style, group_attributes, text_attributes) in [
+            ("", "fill=\"#f00\"", ""),
+            ("", "style=\"fill:#f00\"", ""),
+            ("fill:#f00", "", ""),
+            ("", "style=\"all:initial\"", ""),
+            ("", "", "style=\"fill:#f00\""),
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling" style="{root_style}"><style>#event-diagram{{fill:#333;}}</style><g class="em-swimlane" {group_attributes}><text {text_attributes}>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text ", "<text fill=\"#333\" ");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "source override must block root inheritance: {upstream}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn parity_compares_eventmodeling_swimlane_effective_fill() {
         let upstream = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text font-weight="bold">Events</text></g></svg>"##;
         let local = r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{fill:#333;}</style><g class="em-swimlane"><text fill="#333" font-weight="bold">Events</text></g></svg>"##;
@@ -3122,6 +3221,14 @@ mod tests {
         assert_ne!(
             dom_signature(&unproven_upstream, DomMode::Parity, 3).unwrap(),
             dom_signature(local, DomMode::Parity, 3).unwrap()
+        );
+
+        let quoted_style = "font-family:'quoted;family';fill:#333;";
+        let quoted_upstream = upstream.replace("fill:#333;", quoted_style);
+        let quoted_local = local.replace("fill:#333;", quoted_style);
+        assert_eq!(
+            dom_signature(&quoted_upstream, DomMode::Parity, 3).unwrap(),
+            dom_signature(&quoted_local, DomMode::Parity, 3).unwrap()
         );
     }
 
