@@ -193,6 +193,18 @@ task/section text shells and explicit paint attributes as remaining work. This s
 does not establish root geometry, browser-visible parity or native raster parity. Temporary
 admission was removed after the probe; no comparator or residual policy was relaxed.
 
+Gantt axes now carry their translation in public `ConcatTransform` commands, with domain, tick
+paths, text and layer bounds in their local coordinate spaces. The SVG serializer projects the
+axis transform onto `g.grid`; an exact semantic/layer/path/text scope projects to one `g.tick`.
+Both protocol stack entries remain active, and the projected transform is restored on layer exit.
+An edited command sequence that no longer has that exact shape uses the complete generic
+serializer, not a legacy renderer. Public transform, opacity and blend mutations remain visible.
+The existing direct tests now check both axes' world-space text positions, local stroke/text
+bounds, state restoration before tasks and preservation of an inserted tick primitive. The host
+integration contract explicitly defines layer bounds in the user space active at `BeginLayer`.
+This resolves the redundant tick wrapper but not the remaining inherited-style/text-shell
+differences from the full candidate report; Gantt is still not admitted.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

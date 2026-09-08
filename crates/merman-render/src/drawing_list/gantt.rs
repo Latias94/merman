@@ -25,7 +25,7 @@ use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
     Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
     PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -334,6 +334,15 @@ impl<'a> GanttBuilder<'a> {
         let axis_semantic_id = format!("gantt.axis.{axis_name}");
         self.semantic_classes
             .insert(axis_semantic_id.clone(), "grid".to_string());
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::ConcatTransform {
+                transform: Transform {
+                    e: self.layout.left_padding,
+                    f: y,
+                    ..Transform::IDENTITY
+                },
+            })?;
         self.document
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: axis_semantic_id.clone(),
@@ -353,16 +362,16 @@ impl<'a> GanttBuilder<'a> {
             domain_id,
             vec![
                 PathSegment::MoveTo {
-                    to: Point::new(self.layout.left_padding + 0.5, y + tick_size),
+                    to: Point::new(0.5, tick_size),
                 },
                 PathSegment::LineTo {
-                    to: Point::new(self.layout.left_padding + 0.5, y + 0.5),
+                    to: Point::new(0.5, 0.5),
                 },
                 PathSegment::LineTo {
-                    to: Point::new(self.layout.left_padding + range + 0.5, y + 0.5),
+                    to: Point::new(range + 0.5, 0.5),
                 },
                 PathSegment::LineTo {
-                    to: Point::new(self.layout.left_padding + range + 0.5, y + tick_size),
+                    to: Point::new(range + 0.5, tick_size),
                 },
             ],
             PathStyle {
@@ -373,10 +382,9 @@ impl<'a> GanttBuilder<'a> {
         )?;
 
         for (index, tick) in ticks.iter().enumerate() {
-            let x = tick.x + 0.5;
-            let text_y = if bottom { y + 13.0 } else { y - 3.0 };
+            let text_y = if bottom { 13.0 } else { -3.0 };
             let text_spec = TextEmitSpec {
-                origin: Point::new(x, text_y),
+                origin: Point::new(0.0, text_y),
                 font_size: 10.0,
                 weight: 400,
                 color: self.text_fill,
@@ -387,13 +395,22 @@ impl<'a> GanttBuilder<'a> {
             let text_bounds = self.measure_text_bounds(&tick.label, &text_spec)?;
             // The source applies opacity to the tick group after painting both children.
             // A layer retains that compositing order rather than fading each child separately.
-            let left = text_bounds.x.min(x - 0.5);
-            let top = text_bounds.y.min(y.min(y + tick_size) - 0.5);
-            let right = (text_bounds.x + text_bounds.width).max(x + 0.5);
-            let bottom_edge = (text_bounds.y + text_bounds.height).max(y.max(y + tick_size) + 0.5);
+            let left = text_bounds.x.min(-0.5);
+            let top = text_bounds.y.min(0.0_f64.min(tick_size) - 0.5);
+            let right = (text_bounds.x + text_bounds.width).max(0.5);
+            let bottom_edge =
+                (text_bounds.y + text_bounds.height).max(0.0_f64.max(tick_size) + 0.5);
             let tick_semantic_id = format!("{axis_semantic_id}.tick.{index}");
             self.semantic_classes
                 .insert(tick_semantic_id.clone(), "tick".to_string());
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::ConcatTransform {
+                    transform: Transform {
+                        e: tick.x - self.layout.left_padding + 0.5,
+                        ..Transform::IDENTITY
+                    },
+                })?;
             self.document
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: tick_semantic_id.clone(),
@@ -408,10 +425,10 @@ impl<'a> GanttBuilder<'a> {
                 tick_path_id,
                 vec![
                     PathSegment::MoveTo {
-                        to: Point::new(x, y),
+                        to: Point::new(0.0, 0.0),
                     },
                     PathSegment::LineTo {
-                        to: Point::new(x, y + tick_size),
+                        to: Point::new(0.0, tick_size),
                     },
                 ],
                 PathStyle {
@@ -429,6 +446,7 @@ impl<'a> GanttBuilder<'a> {
             self.document.push_control(DrawingCommand::EndLayer)?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_control(DrawingCommand::Restore)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: tick_semantic_id,
                 role: SemanticRole::Label,
@@ -439,6 +457,7 @@ impl<'a> GanttBuilder<'a> {
         }
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_control(DrawingCommand::Restore)?;
         self.document.push_semantic(SemanticAnnotation {
             id: axis_semantic_id,
             role: SemanticRole::Group,
@@ -1234,7 +1253,7 @@ mod tests {
             .with_site_config(MermaidConfig::from_value(json!({
                 "securityLevel": "loose",
                 "themeVariables": { "gridColor": "#ff0000" },
-                "gantt": { "displayMode": "compact", "useWidth": 800 }
+                "gantt": { "displayMode": "compact", "useWidth": 800, "topAxis": true }
             })))
             .parse_diagram_for_render_model_sync(COMPACT_TASKS, ParseOptions::strict())
             .unwrap()
@@ -1248,6 +1267,9 @@ mod tests {
     #[test]
     fn axis_ticks_composite_lines_and_labels_in_one_public_layer() {
         let artifact = compact_artifact();
+        let projection = artifact.layout_json().unwrap();
+        let layout: GanttDiagramLayout =
+            serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).unwrap();
         let rendered = artifact
             .render_drawing_list(
                 DrawingListPolicy::VectorOnly,
@@ -1257,10 +1279,24 @@ mod tests {
         let mut in_tick = false;
         let mut layer = None;
         let mut tick_texts = 0;
+        let mut semantic_id = "";
+        let mut translation = Point::new(0.0, 0.0);
+        let mut saves = Vec::new();
         for command in &rendered.document().commands {
             match command {
-                DrawingCommand::BeginSemanticGroup { semantic_id } => {
-                    in_tick = semantic_id.contains(".tick.");
+                DrawingCommand::Save => saves.push(translation),
+                DrawingCommand::Restore => translation = saves.pop().unwrap(),
+                DrawingCommand::ConcatTransform { transform } => {
+                    assert_eq!(
+                        (transform.a, transform.b, transform.c, transform.d),
+                        (1.0, 0.0, 0.0, 1.0)
+                    );
+                    translation.x += transform.e;
+                    translation.y += transform.f;
+                }
+                DrawingCommand::BeginSemanticGroup { semantic_id: id } => {
+                    semantic_id = id;
+                    in_tick = id.contains(".tick.");
                 }
                 DrawingCommand::EndSemanticGroup => in_tick = false,
                 DrawingCommand::BeginLayer {
@@ -1275,7 +1311,7 @@ mod tests {
                 DrawingCommand::EndLayer => {
                     layer.take().unwrap();
                 }
-                DrawingCommand::DrawPath { style, .. } if in_tick => {
+                DrawingCommand::DrawPath { path, style } if in_tick => {
                     assert!(
                         layer.is_some(),
                         "tick lines require group opacity, not per-path opacity"
@@ -1285,18 +1321,72 @@ mod tests {
                         Paint::solid(Color::rgba(0, 0, 0, 255)),
                         "D3 line currentColor does not inherit the tick group's gridColor stroke"
                     );
+                    let bounds = layer.unwrap();
+                    let resource = rendered
+                        .document()
+                        .resources
+                        .iter()
+                        .find_map(|resource| match resource {
+                            merman_display_list::DrawingResource::Path(resource)
+                                if resource.id == *path =>
+                            {
+                                Some(resource)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    let [
+                        PathSegment::MoveTo { to: start },
+                        PathSegment::LineTo { to: end },
+                    ] = resource.segments.as_slice()
+                    else {
+                        panic!("tick line")
+                    };
+                    assert_eq!(*start, Point::new(0.0, 0.0));
+                    assert_eq!(end.x, 0.0);
+                    assert!(bounds.x <= -0.5 && bounds.x + bounds.width >= 0.5);
+                    assert!(bounds.y <= start.y.min(end.y) - 0.5);
+                    assert!(bounds.y + bounds.height >= start.y.max(end.y) + 0.5);
                 }
                 DrawingCommand::DrawText { run } if in_tick => {
                     let bounds = layer.expect("tick text must share the line's opacity layer");
                     assert!(bounds.x <= run.bounds.x && bounds.y <= run.bounds.y);
                     assert!(bounds.x + bounds.width >= run.bounds.x + run.bounds.width);
                     assert!(bounds.y + bounds.height >= run.bounds.y + run.bounds.height);
+                    let index: usize = semantic_id.rsplit('.').next().unwrap().parse().unwrap();
+                    let bottom = semantic_id.starts_with("gantt.axis.bottom.");
+                    let (ticks, y, baseline) = if bottom {
+                        (
+                            &layout.bottom_ticks,
+                            layout.height - layout.top_padding,
+                            13.0,
+                        )
+                    } else {
+                        (&layout.top_ticks, layout.top_padding, -3.0)
+                    };
+                    assert_eq!(run.origin, Point::new(0.0, baseline));
+                    assert!((translation.x + run.origin.x - (ticks[index].x + 0.5)).abs() < 1e-9);
+                    assert!((translation.y + run.origin.y - (y + baseline)).abs() < 1e-9);
                     tick_texts += 1;
+                }
+                DrawingCommand::DrawPath { path, .. }
+                    if path.as_str().starts_with("gantt.task.") =>
+                {
+                    assert_eq!(
+                        translation,
+                        Point::new(0.0, 0.0),
+                        "axis state must not leak into tasks"
+                    );
                 }
                 _ => {}
             }
         }
-        assert!(tick_texts > 0);
+        assert!(!layout.top_ticks.is_empty() && !layout.bottom_ticks.is_empty());
+        assert_eq!(
+            tick_texts,
+            layout.top_ticks.len() + layout.bottom_ticks.len()
+        );
+        assert!(saves.is_empty());
         assert!(layer.is_none());
     }
 

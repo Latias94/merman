@@ -76,7 +76,7 @@
     {
       "family": "gantt",
       "source": "gantt\n  dateFormat YYYY-MM-DD\n  section Core\n  Build :a1, 2026-01-01, 4d\n",
-      "expected_effects": ["host_text", "layer", "opacity", "path"]
+      "expected_effects": ["host_text", "layer", "opacity", "path", "transform"]
     },
     {
       "family": "pie",

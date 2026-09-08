@@ -131,7 +131,9 @@ enum GroupKind {
         semantic_id: String,
         projected_transform: Transform,
     },
-    Layer,
+    Layer {
+        projected_transform: Transform,
+    },
     Clip,
 }
 
@@ -1468,7 +1470,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         while self.groups.len() > save.group_len {
             match self.groups.pop() {
                 Some(GroupKind::Clip) => self.output.push_str("</g>")?,
-                Some(GroupKind::Semantic { .. }) | Some(GroupKind::Layer) => {
+                Some(GroupKind::Semantic { .. }) | Some(GroupKind::Layer { .. }) => {
                     return Err(invalid(
                         "SVG restore crossed an open semantic or layer group",
                     ))?;
@@ -1484,6 +1486,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn begin_layer(&mut self, bounds: Rect, opacity: f64, blend_mode: BlendMode) -> Result<()> {
+        if self.begin_gantt_tick_layer(opacity, blend_mode)? {
+            return Ok(());
+        }
         write!(
             self.output,
             "<g class=\"merman-layer\" data-bounds=\"{},{},{},{}\" opacity=\"{}\"",
@@ -1495,13 +1500,21 @@ impl<'a> DocumentSvgEncoder<'a> {
         )?;
         write_blend_style(&mut self.output, blend_mode)?;
         self.output.push('>')?;
-        self.groups.push(GroupKind::Layer);
+        self.groups.push(GroupKind::Layer {
+            projected_transform: Transform::IDENTITY,
+        });
         Ok(())
     }
 
     fn end_layer(&mut self) -> Result<()> {
         match self.groups.pop() {
-            Some(GroupKind::Layer) => {
+            Some(GroupKind::Layer {
+                projected_transform,
+            }) => {
+                if projected_transform != Transform::IDENTITY {
+                    self.state.transform =
+                        multiply_transform(projected_transform, self.state.transform);
+                }
                 self.output.push_str("</g>")?;
                 Ok(())
             }

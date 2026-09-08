@@ -2189,10 +2189,15 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!ticks.is_empty());
         for tick in ticks {
-            let layer = tick
-                .children()
-                .find(|node| node.attribute("class") == Some("merman-layer"))
-                .unwrap();
+            let layer = tick;
+            assert_eq!(layer.attribute("class"), Some("tick"));
+            assert!(
+                layer.attribute("transform").is_some(),
+                "tick translation belongs on its source layer"
+            );
+            let grid = layer.parent().unwrap();
+            assert_eq!(grid.attribute("class"), Some("grid"));
+            assert!(grid.attribute("transform").is_some());
             assert_eq!(layer.attribute("opacity"), Some("0.8"));
             assert!(layer.children().any(|node| node.has_tag_name("line")));
             assert!(layer.children().any(|node| node.has_tag_name("text")));
@@ -2200,8 +2205,9 @@ mod tests {
                 layer
                     .children()
                     .filter(|node| node.is_element())
-                    .all(|node| node.attribute("opacity").is_none()),
-                "opacity must be applied once to the shared layer"
+                    .all(|node| node.attribute("opacity").is_none()
+                        && node.attribute("transform").is_none()),
+                "opacity and translation must be applied once to the shared layer"
             );
         }
         assert!(
@@ -2233,7 +2239,14 @@ mod tests {
         }
         for command in &mut document.public.commands {
             match command {
-                merman_display_list::DrawingCommand::BeginLayer { opacity, .. } => *opacity = 0.35,
+                merman_display_list::DrawingCommand::BeginLayer {
+                    opacity,
+                    blend_mode,
+                    ..
+                } => {
+                    *opacity = 0.35;
+                    *blend_mode = merman_display_list::BlendMode::Multiply;
+                }
                 merman_display_list::DrawingCommand::DrawText { run } => {
                     run.style.fill = merman_display_list::Paint::solid(
                         merman_display_list::Color::rgba(18, 52, 86, 128),
@@ -2244,6 +2257,16 @@ mod tests {
                 _ => {}
             }
         }
+        let first_tick = document.public.commands.iter().position(|command| matches!(command,
+            merman_display_list::DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "gantt.axis.bottom.tick.0"
+        )).unwrap();
+        let merman_display_list::DrawingCommand::ConcatTransform { transform } =
+            &mut document.public.commands[first_tick - 1]
+        else {
+            panic!("tick transform")
+        };
+        transform.e = 47.0;
+        transform.f = 11.0;
         let edited = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
@@ -2253,17 +2276,74 @@ mod tests {
         )
         .unwrap();
         let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .find(|node| node.attribute("class") == Some("tick"))
+                .unwrap()
+                .attribute("transform"),
+            Some("translate(47,11)")
+        );
         for layer in xml
             .descendants()
-            .filter(|node| node.attribute("class") == Some("merman-layer"))
+            .filter(|node| node.attribute("class") == Some("tick"))
         {
             assert_eq!(layer.attribute("opacity"), Some("0.35"));
+            assert_eq!(layer.attribute("style"), Some("mix-blend-mode: multiply;"));
         }
         for text in xml.descendants().filter(|node| node.has_tag_name("text")) {
             assert_eq!(text.attribute("fill"), Some("#123456"));
             assert_eq!(text.attribute("font-size"), Some("17"));
             assert_eq!(text.attribute("font-weight"), Some("500"));
         }
+        // An extra valid primitive disables compact projection, but must not disappear.
+        let extra_path = document.public.commands[first_tick + 2].clone();
+        document.public.commands.insert(first_tick + 4, extra_path);
+        let expanded = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&expanded).unwrap();
+        let tick = xml
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-semantic-id") == Some("gantt.axis.bottom.tick.0")
+            })
+            .unwrap();
+        let layer = tick
+            .children()
+            .find(|node| node.attribute("class") == Some("merman-layer"))
+            .unwrap();
+        assert_eq!(
+            layer
+                .children()
+                .filter(|node| node.has_tag_name("line"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            layer
+                .children()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            1
+        );
+        assert_eq!(layer.attribute("opacity"), Some("0.35"));
+        assert!(
+            layer
+                .children()
+                .filter(|node| node.is_element())
+                .all(|node| { node.attribute("transform") == Some("matrix(1 0 0 1 47 11)") }),
+            "the generic path retains the unprojected transform on each primitive"
+        );
+        assert!(
+            xml.descendants()
+                .any(|node| node.attribute("class") == Some("tick")),
+            "other ticks keep their valid projection"
+        );
     }
 
     #[test]
