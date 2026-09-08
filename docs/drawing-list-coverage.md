@@ -435,6 +435,26 @@ unchanged and the translation differed by up to 0.00757598876953125px. A trial 1
 assertion therefore failed. This is a recorded browser-coordinate residual, not a production
 offset or a claim of exact screen-coordinate equivalence.
 
+A separate source-versus-candidate Chromium probe covers all 19 text nodes in the three failing
+fixtures (`upstream_docs_venn_text_nodes_and_style_003`,
+`upstream_cypress_venn_handdrawn_custom_styles_018`, and
+`upstream_cypress_venn_spec_13_should_render_a_complex_venn_with_labels_text_nodes_and_style_013`).
+All are single-line in that browser. Literal text, computed font/paint, and HTML container boxes
+agree, but the deterministic candidate's text top is about 1.5px higher for the default font stack
+and 0.5px higher for Courier. This is distinct from the promotion-only coordinate residual above.
+The built-in 24/18 line-height/baseline pair at 20px is a declared em-box heuristic; the browser
+provider returns 23/19 for these default-font labels and 23/18 for these Courier labels.
+
+As a controlled diagnostic, replacing only the candidate text baselines using the existing Web
+browser measurement session and the same centered-line formula reduces the observed source Range
+rectangle differences to at most 0.015533447265625px vertically and 0.013763427734375px horizontally.
+This is DOM reprojection evidence, not an end-to-end WASM run or a portable font constant. The
+Rust family regression separately builds Venn using two supplied normal-line pairs and verifies
+their exact public origins and line boxes, their SVG projection, and zero additional host calls
+during both browser SVG serialization and native promotion. Neither check admits the remaining
+span child-structure difference. Restoring automatic HTML wrapping would violate ADR-0088 rather
+than resolve that structural contract: SVG must retain the already-resolved public origins.
+
 Quoted whitespace labels also preserve Mermaid's truthiness-before-normalization order: `[" "]`
 normalizes to empty paint while retaining its semantic anchor, whereas `[""]` is absent and uses
 the node ID.

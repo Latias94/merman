@@ -3363,6 +3363,116 @@ mod tests {
     }
 
     #[test]
+    fn venn_normal_line_host_metrics_reach_both_svg_projections_without_remeasurement() {
+        struct NormalLineHost {
+            metrics: crate::text::NormalLineMetrics,
+            calls: AtomicUsize,
+        }
+
+        impl HostTextMeasurer for NormalLineHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                Ok(
+                    (request.operation == TextMeasurementOperation::NormalLineMetrics)
+                        .then_some(HostTextMeasurement::NormalLineMetrics(self.metrics)),
+                )
+            }
+        }
+
+        for (line_height, baseline_offset) in [(23.0, 19.0), (31.0, 7.0)] {
+            let host = Arc::new(NormalLineHost {
+                metrics: crate::text::NormalLineMetrics {
+                    line_height,
+                    baseline_offset,
+                },
+                calls: AtomicUsize::new(0),
+            });
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.venn-normal-line").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    identity,
+                    host.clone(),
+                    TextMeasurementPhase::ALL,
+                ))
+                .begin_session()
+                .unwrap();
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    "venn-beta\nset A[\"Alpha\"]:20\n  text A1[\"React\"]\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let BuiltinFamilyArtifact::Venn(pair) = &artifact.family else {
+                panic!("expected Venn artifact");
+            };
+            let node = &pair.layout.text_nodes[0];
+            let expected_y = node.y + (node.height - line_height) / 2.0 + baseline_offset;
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let run = document
+                .public
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    merman_display_list::DrawingCommand::DrawText { run }
+                        if run.text == "React" =>
+                    {
+                        Some(run)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(run.origin.y, expected_y);
+            assert_eq!(run.bounds.height, line_height);
+            assert_eq!(run.style.line_height, line_height);
+
+            let calls = host.calls.load(Ordering::Relaxed);
+            assert!(calls > 0);
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let native = crate::svg::SvgPipeline::resvg_safe()
+                .process_to_string(&svg, &artifact.session)
+                .unwrap();
+            for output in [&svg, &native] {
+                let xml = roxmltree::Document::parse(output).unwrap();
+                let texts = xml
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text") && node.text() == Some("React"))
+                    .collect::<Vec<_>>();
+                assert_eq!(texts.len(), 1);
+                let y: f64 = texts[0].attribute("y").unwrap().parse().unwrap();
+                assert!(
+                    (y - expected_y).abs() < 0.001,
+                    "SVG must retain the resolved baseline"
+                );
+            }
+            assert_eq!(
+                host.calls.load(Ordering::Relaxed),
+                calls,
+                "serializers must not measure the label again"
+            );
+        }
+    }
+
+    #[test]
     fn venn_text_node_svg_projects_public_container_and_baselines_without_rewrapping() {
         use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint};
         let parsed = Engine::new()
