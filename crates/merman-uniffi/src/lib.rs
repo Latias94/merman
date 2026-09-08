@@ -28,15 +28,16 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 8;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 7 therefore
-// replaces the API 6 version-probe symbol before adding DrawingList error details, so stale
-// generated bindings fail before decoding the changed MermanError::Binding record layout.
+// UniFFI method checksums do not fully cover nested record layouts. Replace the version-probe
+// symbol before adding the normal-line metrics pair so stale bindings fail before decoding it.
 #[cfg(test)]
 const UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM: u16 = 32_101;
 #[cfg(test)]
 const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
+#[cfg(test)]
+const UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM: u16 = 21_723;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -471,6 +472,12 @@ pub struct MermanTextMeasureRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct MermanNormalLineMetrics {
+    pub line_height: f64,
+    pub baseline_offset: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
 pub struct MermanTextMeasureResult {
     pub result_kind: MermanTextMeasurementResultKind,
     pub width: f64,
@@ -480,6 +487,7 @@ pub struct MermanTextMeasureResult {
     pub bbox_left: Option<f64>,
     pub bbox_right: Option<f64>,
     pub raw_width: Option<f64>,
+    pub normal_line_metrics: Option<MermanNormalLineMetrics>,
 }
 
 /// Synchronous host text measurement supplied when a reusable engine is constructed.
@@ -637,12 +645,19 @@ impl UniffiHostTextMeasurer {
                 .clone()
                 .unwrap_or_else(|| "normal".to_string()),
             max_width: request.max_width,
-            line_height: uniffi_line_height(request.style, request.wrap_mode),
+            line_height: merman_bindings_core::host_text_measurement_transport_fields(request)
+                .line_height,
             letter_spacing: 0.0,
             word_spacing: 0.0,
             wrap_mode: uniffi_wrap_mode(request.wrap_mode),
             direction: MermanTextDirection::Auto,
-            white_space: uniffi_white_space(request.max_width, request.wrap_mode),
+            white_space: if request.operation
+                == merman_bindings_core::TextMeasurementOperation::NormalLineMetrics
+            {
+                MermanTextWhiteSpace::Normal
+            } else {
+                uniffi_white_space(request.max_width, request.wrap_mode)
+            },
         }) {
             Ok(Some(result)) => result,
             Ok(None) => return Ok(None),
@@ -660,6 +675,12 @@ impl UniffiHostTextMeasurer {
                 bbox_left: result.bbox_left,
                 bbox_right: result.bbox_right,
                 raw_width: result.raw_width,
+                normal_line_metrics: result.normal_line_metrics.map(|metrics| {
+                    merman_bindings_core::NormalLineMetrics {
+                        line_height: metrics.line_height,
+                        baseline_offset: metrics.baseline_offset,
+                    }
+                }),
             },
         )
         .map(Some)
@@ -674,19 +695,6 @@ impl HostTextMeasurer for UniffiHostTextMeasurer {
     ) -> merman_bindings_core::HostMeasurementResult {
         self.call_host(request)
     }
-}
-
-#[cfg(feature = "svg")]
-fn uniffi_line_height(
-    style: &merman_bindings_core::TextStyle,
-    wrap_mode: merman_bindings_core::WrapMode,
-) -> f64 {
-    let factor = match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
-        merman_bindings_core::WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
 }
 
 #[cfg(feature = "svg")]
@@ -731,7 +739,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v7(&self) -> u32 {
+    pub fn binding_api_version_v8(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -2123,8 +2131,18 @@ mod tests {
                 bbox_left: None,
                 bbox_right: None,
                 raw_width: None,
+                normal_line_metrics: None,
             };
             match request.operation {
+                MermanTextMeasurementOperation::NormalLineMetrics => {
+                    assert_eq!(request.line_height, 0.0);
+                    assert_eq!(request.white_space, MermanTextWhiteSpace::Normal);
+                    result.result_kind = MermanTextMeasurementResultKind::NormalLineMetrics;
+                    result.normal_line_metrics = Some(MermanNormalLineMetrics {
+                        line_height: 28.0,
+                        baseline_offset: 21.0,
+                    });
+                }
                 MermanTextMeasurementOperation::Measure
                 | MermanTextMeasurementOperation::Wrapped
                 | MermanTextMeasurementOperation::MermaidCalculateTextDimensions => {
@@ -2661,19 +2679,23 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
-        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 8);
+        assert_eq!(engine.binding_api_version_v8(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
     fn previous_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
+            UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM
+        );
+        assert_ne!(
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
             UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM
         );
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
             UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
@@ -2681,12 +2703,16 @@ mod tests {
             "/../../platforms/apple/Sources/Merman/Generated/MermanFFI.h"
         ));
         assert!(
-            generated_header
+            !generated_header
                 .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8")
+        );
+        assert!(
+            generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8")
         );
         assert!(
             !generated_header
@@ -2799,6 +2825,23 @@ mod tests {
             panic!("raw bbox height must use the length result shape");
         };
         assert!(raw_height > 0.0);
+
+        let normal = host
+            .call_host(merman_bindings_core::HostTextMeasurementRequest {
+                operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+                phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+                text: "中文",
+                style: &style,
+                max_width: None,
+                wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+            })
+            .expect("callback transport")
+            .expect("handled normal line metrics");
+        let merman_bindings_core::HostTextMeasurement::NormalLineMetrics(normal) = normal else {
+            panic!("normal line metrics must preserve the paired result shape");
+        };
+        assert_eq!(normal.line_height, 28.0);
+        assert_eq!(normal.baseline_offset, 21.0);
     }
 
     #[cfg(feature = "svg")]
@@ -2827,6 +2870,7 @@ mod tests {
                     bbox_left: None,
                     bbox_right: None,
                     raw_width: None,
+                    normal_line_metrics: None,
                 },
             }),
             Arc::clone(&admission),
@@ -2850,6 +2894,7 @@ mod tests {
                     bbox_left: Some(1.0),
                     bbox_right: None,
                     raw_width: None,
+                    normal_line_metrics: None,
                 },
             }),
             admission,

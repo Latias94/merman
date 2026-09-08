@@ -119,8 +119,8 @@ pub use ascii::render_ascii;
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
-    IconRegistryResourceLimitId, TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation,
-    TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
+    IconRegistryResourceLimitId, NormalLineMetrics, TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    TextMeasurementOperation, TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
     icon_registry_resource_limit_descriptors, validate_host_text_measurement,
 };
 #[cfg(feature = "jpeg")]

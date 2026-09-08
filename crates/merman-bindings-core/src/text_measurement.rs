@@ -1,5 +1,6 @@
 use crate::{
-    HostTextMeasurement, HostTextMeasurementRequest, TextMeasurementPhase, TextMetrics, WrapMode,
+    HostTextMeasurement, HostTextMeasurementRequest, NormalLineMetrics, TextMeasurementOperation,
+    TextMeasurementPhase, TextMetrics, WrapMode,
 };
 use merman::svg::validate_host_text_measurement;
 
@@ -44,12 +45,24 @@ pub fn host_text_measurement_transport_fields(
         TextMeasurementPhase::SvgBBox => HostTextMeasurementPhaseCode::SvgBBox,
         TextMeasurementPhase::ComputedLength => HostTextMeasurementPhaseCode::ComputedLength,
     };
+    let normal = request.operation == TextMeasurementOperation::NormalLineMetrics;
 
     HostTextMeasurementTransportFields {
-        line_height: request.style.font_size.max(1.0) * line_height_factor,
+        // Zero is an inapplicable explicit-line-height hint for the normal-metrics operation,
+        // not a request to lay out a zero-height line. That operation measures CSS `normal`.
+        line_height: if normal {
+            0.0
+        } else {
+            request.style.font_size.max(1.0) * line_height_factor
+        },
         wrap_mode: wrap_mode.external_code(),
         direction: HostTextDirectionCode::Auto.external_code(),
-        white_space: white_space.external_code(),
+        white_space: if normal {
+            HostTextWhiteSpaceCode::Normal
+        } else {
+            white_space
+        }
+        .external_code(),
         phase: phase.external_code(),
         operation: request.operation.external_code(),
     }
@@ -65,6 +78,7 @@ pub struct HostTextMeasurementRecord {
     pub bbox_left: Option<f64>,
     pub bbox_right: Option<f64>,
     pub raw_width: Option<f64>,
+    pub normal_line_metrics: Option<NormalLineMetrics>,
 }
 
 pub fn decode_host_text_measurement(
@@ -98,8 +112,18 @@ pub fn decode_host_text_measurement(
             "raw_width is only valid for wrapped-with-raw-width results",
         ));
     }
+    if record.normal_line_metrics.is_some()
+        && result_kind != HostTextMeasurementResultKind::NormalLineMetrics
+    {
+        return Err(invalid_record(
+            "normal_line_metrics is only valid for normal-line-metrics results",
+        ));
+    }
 
     let measurement = match result_kind {
+        HostTextMeasurementResultKind::NormalLineMetrics => HostTextMeasurement::NormalLineMetrics(
+            required_field(record.normal_line_metrics, "normal_line_metrics")?,
+        ),
         HostTextMeasurementResultKind::Metrics => {
             HostTextMeasurement::Metrics(decode_metrics(&record)?)
         }
@@ -177,6 +201,7 @@ mod tests {
             bbox_left: Some(3.0),
             bbox_right: Some(18.0),
             raw_width: Some(34.0),
+            normal_line_metrics: None,
         }
     }
 
@@ -190,8 +215,37 @@ mod tests {
                 (1, "length"),
                 (2, "horizontal-extents"),
                 (3, "wrapped-with-raw-width"),
+                (4, "normal-line-metrics"),
             ]
         );
+    }
+
+    #[test]
+    fn normal_line_record_preserves_the_pair_and_has_no_fixed_line_height_hint() {
+        let style = TextStyle::default();
+        let request = request(TextMeasurementOperation::NormalLineMetrics, "中文", &style);
+        let fields = host_text_measurement_transport_fields(request);
+        assert_eq!(fields.line_height, 0.0);
+        assert_eq!(
+            fields.white_space,
+            HostTextWhiteSpaceCode::Normal.external_code()
+        );
+        let metrics = NormalLineMetrics {
+            line_height: 28.0,
+            baseline_offset: 21.0,
+        };
+        let mut record = record(Some(HostTextMeasurementResultKind::NormalLineMetrics));
+        record.raw_width = None;
+        assert!(decode_host_text_measurement(request, record).is_err());
+        record.normal_line_metrics = Some(metrics);
+        let HostTextMeasurement::NormalLineMetrics(decoded) =
+            decode_host_text_measurement(request, record).unwrap()
+        else {
+            panic!("expected the paired normal-line result")
+        };
+        assert_eq!(decoded, metrics);
+        record.normal_line_metrics.as_mut().unwrap().baseline_offset = f64::INFINITY;
+        assert!(decode_host_text_measurement(request, record).is_err());
     }
 
     #[test]
@@ -293,6 +347,7 @@ mod tests {
                 (16, "length"),
                 (17, "length"),
                 (18, "length"),
+                (19, "normal-line-metrics"),
             ]
         );
     }

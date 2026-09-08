@@ -1205,6 +1205,11 @@ impl NativeHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> HostMeasurementResult {
+        // The published protocol-1 record cannot carry the protocol-2 paired result.
+        // Decline before calling foreign code; the operation records whole-pair fallback.
+        if request.operation == merman_bindings_core::TextMeasurementOperation::NormalLineMetrics {
+            return Ok(None);
+        }
         let transport = merman_bindings_core::host_text_measurement_transport_fields(request);
         let style = request.style;
         let max_width = request.max_width;
@@ -1315,6 +1320,7 @@ impl NativeHostTextMeasurer {
             bbox_left: extents.then_some(native_result.bbox_left),
             bbox_right: extents.then_some(native_result.bbox_right),
             raw_width: (native_result.has_raw_width != 0).then_some(native_result.raw_width),
+            normal_line_metrics: None,
         };
         merman_bindings_core::decode_host_text_measurement(request, record).map(Some)
     }
@@ -2915,6 +2921,42 @@ mod tests {
             unsafe { (*out_result).handled = 0 };
         }
         MERMAN_NATIVE_STATUS_OK
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn protocol_one_callback_declines_normal_metrics_before_foreign_dispatch() {
+        let mut context = CountingTextMeasureContext {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
+        let _operation = admission.enter_operation().expect("operation admission");
+        let host = NativeHostTextMeasurer::new(
+            counting_text_measure_callback,
+            (&mut context as *mut CountingTextMeasureContext).cast(),
+            admission,
+        );
+        let style = merman_bindings_core::TextStyle::default();
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+            phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+            text: "中文",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+        };
+        assert!(host.measure_host(request).unwrap().is_none());
+        assert_eq!(context.calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert!(
+            host.measure_host(merman_bindings_core::HostTextMeasurementRequest {
+                operation: merman_bindings_core::TextMeasurementOperation::Measure,
+                ..request
+            })
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(context.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
     }
 
     #[cfg(feature = "svg")]

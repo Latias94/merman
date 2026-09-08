@@ -3,8 +3,8 @@
 use super::heuristic::append_text_width_em;
 use super::line_break::html_break_spaces_segments;
 use super::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
-    trim_html_collapsible_ascii_whitespace,
+    NormalLineMetrics, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -305,6 +305,10 @@ impl TextMeasurer for DeterministicTextMeasurer {
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+    }
+
+    fn measure_normal_line_metrics(&self, _text: &str, style: &TextStyle) -> NormalLineMetrics {
+        NormalLineMetrics::deterministic(style.font_size, self.line_height_factor)
     }
 
     fn measure_wrapped(

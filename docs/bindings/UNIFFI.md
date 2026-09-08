@@ -21,6 +21,11 @@ API 7 adds optional `MermanDrawingListErrorDetails` to `MermanError::Binding`. T
 structured error's wire layout, even when `drawing_list` is absent. API 6 consumers must be
 regenerated and deployed with the matching native library.
 
+API 8 adds optional `MermanNormalLineMetrics` to `MermanTextMeasureResult` for text-measurement
+protocol 2. The `normal-line-metrics` operation returns line height and alphabetic baseline offset
+as one result; a host must supply both values or decline the operation. Regenerate complete
+Swift/Python projections together with their native library.
+
 ## Public Model
 
 The generated API exposes:
@@ -35,7 +40,7 @@ The generated API exposes:
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, drawing_list, message }` failures, where resource, diagnostic, icon-registry, cancellation, and DrawingList evidence remain separate optional records.
 
-`Merman::binding_api_version_v7()` reports `7`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v8()` reports `8`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -63,6 +68,10 @@ API `7` replaces `binding_api_version_v6()` with `binding_api_version_v7()` beca
 decode even an ordinary structured error. Removing both API 6 probe symbols makes that projection
 fail at symbol resolution, before the changed error layout is read. Changing only the version
 returned by the old probe would not protect generated consumers.
+
+API `8` replaces `binding_api_version_v7()` with `binding_api_version_v8()` to reject stale
+callback-result layouts before callbacks execute. As with the earlier record changes, an unchanged
+method checksum is not evidence that the nested result record remains compatible.
 
 In current unreleased source, every operation is available through `execute(request)`, and
 `MermanOperationRequestV4.options_json` owns the generic operation's options. Named methods such as
@@ -211,6 +220,9 @@ contract.
   reports another.
 - Move API 6 projections and native libraries together to API 7 before consuming DrawingList error
   details. Replace `binding_api_version_v6()` with `binding_api_version_v7()` in host code.
+- For current source, regenerate again for API 8 and replace the probe with
+  `binding_api_version_v8()`. Host callbacks return `MermanNormalLineMetrics` for protocol-2 normal
+  line measurement, or decline the operation to use the complete fallback pair.
 
 ## Verification
 

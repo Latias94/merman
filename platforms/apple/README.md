@@ -50,7 +50,7 @@ let drawingListJson = try client.renderDrawingList(source: source, optionsJson: 
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
-The generated binding API is 7. `MermanOperationRequestV4` remains the current request record name;
+The generated binding API is 8. `MermanOperationRequestV4` remains the current request record name;
 it does not identify the binding API version. API 6 adds ASCII layout/width/encoding/fallback
 admission arrays and schema-2 output-plan encoding. `MermanError.Binding` includes an optional
 `MermanDiagnosticErrorDetails` payload with a stable code, optional source span, field, and diagram
@@ -60,6 +60,11 @@ API 7 adds optional `MermanDrawingListErrorDetails` to `MermanError.Binding`. Re
 `bindingApiVersionV6()` with `bindingApiVersionV7()` and regenerate the Swift projection with its
 matching native library. Removing the API 6 probe ensures old consumers fail before decoding the
 changed error layout, even when the new payload is absent.
+
+API 8 additionally changes host callback results to carry optional `MermanNormalLineMetrics`.
+Use `bindingApiVersionV8()` and regenerate the complete projection with its matching native
+library. The protocol-2 operation returns line height and baseline offset together, or the host
+declines it; the renderer does not mix a host value with a fallback value.
 
 Create `MermanOperationControl(timeoutMs:)` and attach it to a generic request when an editor or
 preview host must stop stale work. The host may retain the same object and call `cancel()` from

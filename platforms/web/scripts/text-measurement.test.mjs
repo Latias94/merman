@@ -28,6 +28,7 @@ const OPERATION_CONTRACTS = new Map([
     { kind: "length", wrapMode: "svg-like", signed: true },
   ],
   ["raw-bbox-height", { kind: "length", wrapMode: "svg-like" }],
+  ["normal-line-metrics", { kind: "normal-line-metrics", wrapMode: "html-like" }],
 ]);
 
 class FakeStyle {
@@ -143,6 +144,12 @@ class FakeMeasureElement {
   }
 
   getBoundingClientRect() {
+    if (this.style.verticalAlign === "baseline") {
+      return { top: 77, width: 0, height: 0 };
+    }
+    if (this.style.lineHeight === "normal") {
+      return { top: 50, width: 100, height: 33 };
+    }
     const fontSize = this.fontSize();
     const lineHeight = parseFloat(this.style.lineHeight) || fontSize;
     const explicitLines = [[]];
@@ -208,7 +215,7 @@ test("browser text measurement session routes exact operations to their DOM prim
   globalThis.document = {
     body,
     createElement(tagName) {
-      assert.ok(tagName === "div" || tagName === "canvas" || tagName === "br");
+      assert.ok(["div", "canvas", "br", "span"].includes(tagName));
       if (tagName === "canvas") {
         canvasCreates += 1;
       }
@@ -400,12 +407,15 @@ test("browser text measurement session routes exact operations to their DOM prim
       },
     ]);
 
-    assert.equal(OPERATION_CONTRACTS.size, 19);
+    assert.equal(OPERATION_CONTRACTS.size, 20);
     for (const [operation, contract] of OPERATION_CONTRACTS) {
       const result = measure(request("Contract value", 80, operation, contract.wrapMode));
       assert.ok(result, `${operation} should be handled`);
       assert.equal(result.kind, contract.kind, `${operation} result kind`);
       switch (contract.kind) {
+        case "normal-line-metrics":
+          assert.deepEqual(result, { kind: "normal-line-metrics", line_height: 33, baseline_offset: 27 });
+          break;
         case "metrics":
           assert.ok(Number.isFinite(result.width), `${operation} width`);
           assert.ok(Number.isFinite(result.height), `${operation} height`);

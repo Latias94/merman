@@ -39,13 +39,18 @@ source:
 drawing_list_json = client.render_drawing_list(source, None)
 ```
 
-The same one-shot facade in current unreleased source exposes `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. A source-built wheel using the current default native profile supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and document analysis; the published `0.8.0a6` wheel retains the earlier profile without DrawingList. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default profile raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID when a requested capability is absent. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 7; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding.
+The same one-shot facade in current unreleased source exposes `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`, `layout_json`, `analyze_json`, `validate`, theme and lint metadata, ASCII support grades, and the complete diagram-family capability catalog. A source-built wheel using the current default native profile supports SVG, DrawingList, ASCII, semantic/layout operations, analysis, validation, and document analysis; the published `0.8.0a6` wheel retains the earlier profile without DrawingList. Math-bearing SVG and PNG, JPEG, or PDF methods remain available for custom current-contract libraries; the default profile raises `MermanError.Binding` with `MISSING_CAPABILITY` and the exact capability ID when a requested capability is absent. `MermanOperationRequestV4` plus `client.execute()` is the generic, descriptor-owned form of those named methods and returns binary-safe data with media type and typed operation metadata. Generic options belong in `MermanOperationRequestV4.options_json`; `execute()` has no separate options argument. The binding API is 8; `MermanOperationRequestV4` retains its record name and carries an optional `MermanOperationControl` for cooperative cancellation and relative deadlines. ASCII capability records expose layout/width/encoding/fallback admission arrays, and ASCII output plans use schema 2 with explicit encoding.
 
 API 7 adds optional `drawing_list` details to `MermanError.Binding`, carrying a category and optional
 family/reason. Replace `binding_api_version_v6()` with `binding_api_version_v7()` and regenerate the
 whole package with its matching native library. The old probe is removed so API 6 consumers fail
 at symbol resolution before decoding the changed error layout, including ordinary errors without
 DrawingList details.
+
+Current source uses binding API 8 and `binding_api_version_v8()`. API 8 adds the exported
+`MermanNormalLineMetrics` callback result for protocol-2 `normal-line-metrics`. Return both line
+height and baseline offset, or decline the operation. API 7 projections must be regenerated with
+the matching library because the callback result layout has changed.
 
 ## Reuse An Engine
 

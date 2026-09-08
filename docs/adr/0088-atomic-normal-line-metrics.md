@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted design; the normal-line operation and its transports are not yet implemented.
+Accepted design; implementation is in progress and is not yet transport-complete.
 
 ## Date
 

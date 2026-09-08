@@ -41,7 +41,7 @@ pub(crate) use metrics::{
 pub(crate) use svg_metrics::{
     svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
 };
-pub use types::{TextMetrics, TextStyle, WrapMode};
+pub use types::{NormalLineMetrics, TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace, trim_ecmascript_whitespace,
     trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,

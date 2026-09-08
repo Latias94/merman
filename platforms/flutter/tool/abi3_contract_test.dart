@@ -2380,7 +2380,7 @@ Map<String, Object?> _catalog({
       'operation_ids': operationIds,
       'system_adapter_ids': systemAdapterIds,
       'text_measurement': usesSvgPipeline
-          ? {'protocol_version': 1, 'provider_ids': providers}
+          ? {'protocol_version': 2, 'provider_ids': providers}
           : null,
     },
     'option_group_ids': optionGroupIds,

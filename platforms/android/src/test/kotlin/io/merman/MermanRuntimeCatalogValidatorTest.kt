@@ -11,6 +11,21 @@ import org.junit.Test
 
 class MermanRuntimeCatalogValidatorTest {
     @Test
+    fun normalLineMetricsPreserveTheAtomicPair() {
+        val result = MermanTextMeasureResult.normalLineMetrics(28.0, 21.0)
+        assertEquals(MermanTextMeasurementResultKind.NORMAL_LINE_METRICS, result.resultKind)
+        assertEquals(28.0, result.normalLineHeight, 0.0)
+        assertEquals(21.0, result.normalBaselineOffset, 0.0)
+        for ((height, baseline) in listOf(-1.0 to 21.0, 28.0 to Double.NaN)) {
+            try {
+                MermanTextMeasureResult.normalLineMetrics(height, baseline)
+                fail("invalid normal line metrics accepted")
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+    }
+
+    @Test
     fun knownResourceLimitValuesAreRuntimeImmutable() {
         @Suppress("UNCHECKED_CAST")
         val values = MermanResourceLimitId.knownValues as MutableList<MermanResourceLimitId>
@@ -292,7 +307,7 @@ class MermanRuntimeCatalogValidatorTest {
             validCatalog().also {
                 it.getJSONObject("capabilities").remove("capability_ids")
             }.toString(),
-            validCatalog().withTextMeasurement(JSONObject().put("protocol_version", 2)),
+            validCatalog().withTextMeasurement(JSONObject().put("protocol_version", 3)),
             validCatalog().withTextMeasurement(JSONObject().put("protocol_version", "1")),
             validCatalog().withTextMeasurement(
                 JSONObject()

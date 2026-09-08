@@ -209,6 +209,27 @@ impl JniHostTextMeasurer {
                     let Some(has_raw_width) = has_raw_width else {
                         return Ok(None);
                     };
+                    let normal_line_metrics = if result_kind
+                        == merman_bindings_core::HostTextMeasurementResultKind::NormalLineMetrics
+                            .external_code()
+                    {
+                        let Some(line_height) = read_callback_field_f64(
+                            env, &result, "normalLineHeight", &callback_failed,
+                        )? else {
+                            return Ok(None);
+                        };
+                        let Some(baseline_offset) = read_callback_field_f64(
+                            env, &result, "normalBaselineOffset", &callback_failed,
+                        )? else {
+                            return Ok(None);
+                        };
+                        Some(merman_bindings_core::NormalLineMetrics {
+                            line_height,
+                            baseline_offset,
+                        })
+                    } else {
+                        None
+                    };
 
                     Ok(Some(merman_bindings_core::HostTextMeasurementRecord {
                         result_kind:
@@ -222,6 +243,7 @@ impl JniHostTextMeasurer {
                         bbox_left: Some(bbox_left),
                         bbox_right: Some(bbox_right),
                         raw_width: has_raw_width.then_some(raw_width),
+                        normal_line_metrics,
                     }))
                 },
             )

@@ -124,6 +124,9 @@ function measureWithBrowserProbes(
   probes: BrowserTextMeasureProbes,
   request: HostTextMeasureRequest
 ): HostTextMeasureResult | undefined {
+  if (request.operation === "normal-line-metrics") {
+    return normalLineMetrics(probes.html, request);
+  }
   if (!request.text) {
     return emptyMeasurement(request);
   }
@@ -185,6 +188,43 @@ function measureWithBrowserProbes(
         raw_width: measured.rawWidth,
       };
     }
+  }
+}
+
+function normalLineMetrics(
+  probe: HTMLDivElement,
+  request: HostTextMeasureRequest
+): HostTextMeasureResult {
+  applyHtmlTextMeasureStyle(probe, request);
+  Object.assign(probe.style, {
+    display: "inline-block",
+    width: "max-content",
+    maxWidth: "none",
+    height: "auto",
+    whiteSpace: "nowrap",
+    lineHeight: "normal",
+  });
+  // Measure literal text and its fallback fonts, not markup or a fixed Latin specimen.
+  const marker = document.createElement("span");
+  Object.assign(marker.style, {
+    display: "inline-block",
+    verticalAlign: "baseline",
+    width: "0",
+    height: "0",
+    margin: "0",
+    padding: "0",
+    border: "0",
+  });
+  probe.replaceChildren(document.createTextNode(request.text), marker);
+  try {
+    const box = probe.getBoundingClientRect();
+    return {
+      kind: "normal-line-metrics",
+      line_height: box.height,
+      baseline_offset: marker.getBoundingClientRect().top - box.top,
+    };
+  } finally {
+    marker.remove();
   }
 }
 

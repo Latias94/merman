@@ -474,11 +474,19 @@ export interface HostTextUnhandledResult {
   handled: false;
 }
 
+export interface HostTextNormalLineMetricsResult {
+  handled?: true;
+  kind: "normal-line-metrics";
+  line_height: number;
+  baseline_offset: number;
+}
+
 export type HostTextMeasureResult =
   | HostTextMetricsResult
   | HostTextLengthResult
   | HostTextHorizontalExtentsResult
   | HostTextWrappedWithRawWidthResult
+  | HostTextNormalLineMetricsResult
   | HostTextUnhandledResult;
 
 export type HostTextMeasurer = (

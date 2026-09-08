@@ -1978,9 +1978,9 @@ class MermanRuntimeCatalog {
         'provider_ids',
       }, 'runtime text measurement');
       if (_requiredInt(textMeasurementMap, 'protocol_version') !=
-          native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION) {
+          mermanTextMeasurementProtocolVersion) {
         throw MermanException.contract(
-          'text measurement protocol version does not match the generated native header',
+          'text measurement protocol version does not match the generated vocabulary',
         );
       }
       providers.addAll(

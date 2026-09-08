@@ -15,7 +15,7 @@ internal val MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_REGEX =
 
 internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 2
 internal const val MERMAN_OPERATION_METADATA_SCHEMA_VERSION: Int = 1
-internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 1
+internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 2
 
 internal data class MermanBindingCapabilitySpec(
     val id: String,

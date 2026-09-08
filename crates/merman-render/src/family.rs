@@ -4866,6 +4866,12 @@ mod tests {
         };
 
         match request.operation.required_result_kind() {
+            TextMeasurementResultKind::NormalLineMetrics => {
+                HostTextMeasurement::NormalLineMetrics(crate::text::NormalLineMetrics {
+                    line_height: 20.0 + state_delta,
+                    baseline_offset: 16.0 + state_delta,
+                })
+            }
             TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
             TextMeasurementResultKind::Length => {
                 let length = match request.operation {

@@ -10,7 +10,7 @@ const String mermanRuntimeCatalogIdentifierPattern = r'^[a-z0-9][a-z0-9-]*$';
 const String mermanRuntimeCatalogFieldIdentifierPattern = r'^[a-z][a-z0-9_-]*$';
 const int mermanBindingOptionsContractSchemaVersion = 2;
 const int mermanOperationMetadataSchemaVersion = 1;
-const int mermanTextMeasurementContractProtocolVersion = 1;
+const int mermanTextMeasurementContractProtocolVersion = 2;
 const String mermanHostTextMeasurementConstructorServiceId =
     "host-text-measurement";
 const String mermanIconRegistryConstructorServiceId = "icon-registry";

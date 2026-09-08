@@ -47,7 +47,7 @@ pub use merman_render::svg::{
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, NormalLineMetrics, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,

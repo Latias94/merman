@@ -9,7 +9,7 @@
 //! [`crate::environment::HostTextMeasurer`] instead; the environment's phase policy owns their
 //! deterministic fallback and records its provenance.
 
-use super::{TextMetrics, TextStyle, WrapMode};
+use super::{NormalLineMetrics, TextMetrics, TextStyle, WrapMode};
 
 pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 
@@ -66,6 +66,15 @@ pub trait TextMeasurer {
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
+
+    /// Measures the normal line height and alphabetic baseline for the actual single-line text.
+    ///
+    /// This is not SVG glyph bounds or an explicit CSS line-height. Hosts must return both
+    /// metrics from the same measurement. The default is a font-agnostic 1.2em compatibility
+    /// line box with a 0.8em ascent and symmetric leading, not browser font measurement.
+    fn measure_normal_line_metrics(&self, _text: &str, style: &TextStyle) -> NormalLineMetrics {
+        NormalLineMetrics::deterministic(style.font_size, 0.0)
+    }
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the
     /// baseline).

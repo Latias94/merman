@@ -3,7 +3,7 @@
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1 as const;
 export const BINDING_OPTIONS_SCHEMA_VERSION = 2 as const;
-export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
+export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 2 as const;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$" as const;
 export const RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN = "^[a-z][a-z0-9_-]*$" as const;

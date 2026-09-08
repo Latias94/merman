@@ -97,8 +97,8 @@ def verify(library: Path) -> None:
     assert missing == [PROBE], "API 6 must fail before lifting any wire value"
     assert not mismatched, "unrelated published method signatures unexpectedly changed"
     assert not hasattr(native, "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6")
-    assert hasattr(native, "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
-    assert hasattr(native, "uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
+    assert hasattr(native, "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8")
+    assert hasattr(native, "uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8")
 
 
 if __name__ == "__main__":
