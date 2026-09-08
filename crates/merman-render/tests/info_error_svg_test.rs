@@ -177,31 +177,23 @@ fn compile_global_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
         .expect("compile global inherited text-family theme")
 }
 
-fn compile_flowchart_only_theme(
-    typography: Option<ThemeTextStyle>,
-    node_fill: Option<CanvasPaint>,
-) -> DiagramTheme {
-    let mut spec = DiagramThemeSpec::new();
-    if let Some(typography) = typography {
-        spec = spec.with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::FLOWCHART, typography),
-        );
-    }
-    if let Some(node_fill) = node_fill {
-        spec = spec.with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Node,
-                    ThemeStylePatch::default().with_fill(node_fill),
-                )
-                .with_variant(ThemeVariant::Default)
-                .for_family(DiagramFamilyId::FLOWCHART),
-            ),
-        );
-    }
+fn compile_flowchart_node_fill_theme() -> DiagramTheme {
     DiagramThemeCompiler::new()
-        .compile(spec)
-        .expect("compile Flowchart-only compatibility theme")
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default().with_fill(
+                            CanvasPaint::solid("#123456").expect("valid Flowchart node fill"),
+                        ),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .for_family(DiagramFamilyId::FLOWCHART),
+                ),
+            ),
+        )
+        .expect("compile Flowchart-only typed theme")
 }
 
 fn compile_flowchart_and_error_typography_theme(
@@ -219,12 +211,12 @@ fn compile_flowchart_and_error_typography_theme(
         .expect("compile distinct Flowchart and Error typography theme")
 }
 
-fn flowchart_typography_compatibility_plan(
+fn flowchart_compatibility_plan(
     theme: &DiagramTheme,
-    font_family_css: &str,
+    contribution_id: &'static str,
+    patch: MermaidConfig,
 ) -> ThemeCompatibilityPlan {
     let recipe_identity = *theme.recipe_fingerprint().as_bytes();
-    let font_family_css = font_family_css.to_string();
     ThemeCompatibilityPlan::try_new(
         recipe_identity,
         MermaidConfig::empty_object(),
@@ -237,16 +229,8 @@ fn flowchart_typography_compatibility_plan(
                 "merman.legacy-family-theme.v1.",
             );
             builder
-                .try_push(
-                    "typography",
-                    MermaidConfig::from_value(serde_json::json!({
-                        "fontFamily": font_family_css.clone(),
-                        "themeVariables": {
-                            "fontFamily": font_family_css.clone(),
-                        }
-                    })),
-                )
-                .expect("valid test-only Flowchart typography contribution");
+                .try_push(contribution_id, patch.clone())
+                .expect("valid test-only Flowchart contribution");
             Ok(Ok(Some(builder.finish())))
         },
     )
@@ -976,17 +960,39 @@ fn lenient_error_retires_font_size_compatibility_but_keeps_the_typed_theme_resid
 }
 
 #[test]
-fn lenient_error_keeps_non_typography_flowchart_compatibility_residuals() {
+fn lenient_error_does_not_invent_compatibility_for_typed_flowchart_node_fill() {
     let family = InheritedTextFamily::Error;
-    let theme = compile_flowchart_only_theme(
-        None,
-        Some(CanvasPaint::solid("#123456").expect("valid Flowchart node fill")),
-    );
-    let rendered = try_render_family_with_requirement(
+    let theme = compile_flowchart_node_fill_theme();
+    let rendered = try_render_family(
         family,
         family.base_source(),
         &theme,
         Engine::new(),
+        "lenient-error-typed-flowchart-node-fill",
+    )
+    .expect("a retired projection must not create a phantom compatibility residual");
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn lenient_error_keeps_preinstalled_non_typography_flowchart_compatibility_residuals() {
+    let family = InheritedTextFamily::Error;
+    let theme = compile_flowchart_node_fill_theme();
+    let compatibility = flowchart_compatibility_plan(
+        &theme,
+        "node.fill",
+        MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"primaryColor": "#123456", "mainBkg": "#123456"}
+        })),
+    );
+    let rendered = try_render_family_with_preinstalled_parse_compatibility(
+        family,
+        family.base_source(),
+        &theme,
+        install_theme_compatibility(Engine::new(), &compatibility),
         "lenient-error-flowchart-node-fill",
         ThemePortabilityRequirement::BestEffort,
     )
@@ -996,12 +1002,13 @@ fn lenient_error_keeps_non_typography_flowchart_compatibility_residuals() {
 
     assert_eq!(evidence.compatibility_residual_count(), 1);
 
-    let error = try_render_family(
+    let error = try_render_family_with_preinstalled_parse_compatibility(
         family,
         family.base_source(),
         &theme,
-        Engine::new(),
+        install_theme_compatibility(Engine::new(), &compatibility),
         "lenient-error-flowchart-node-fill-strict",
+        ThemePortabilityRequirement::RequirePortable,
     )
     .err()
     .expect("RequirePortable must retain the unrelated Flowchart contribution");
@@ -1026,7 +1033,14 @@ fn lenient_error_keeps_flowchart_typography_when_error_terminal_consumes_a_diffe
         ThemeTextStyle::default().with_font_stack(flowchart_font),
         ThemeTextStyle::default().with_font_stack(error_font),
     );
-    let compatibility = flowchart_typography_compatibility_plan(&theme, &flowchart_font_css);
+    let compatibility = flowchart_compatibility_plan(
+        &theme,
+        "typography",
+        MermaidConfig::from_value(serde_json::json!({
+            "fontFamily": flowchart_font_css,
+            "themeVariables": {"fontFamily": flowchart_font_css}
+        })),
+    );
     let rendered = try_render_family_with_preinstalled_parse_compatibility(
         family,
         family.base_source(),
