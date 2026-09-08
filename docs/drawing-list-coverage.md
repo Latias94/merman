@@ -24,7 +24,7 @@ inventory row fails at test time.  The current inventory is:
 | Architecture | yes | legacy bridge |
 | Class | yes | legacy bridge |
 | C4 | yes | legacy bridge |
-| Cynefin | yes | canonical |
+| Cynefin | yes | legacy bridge |
 | Wardley | yes | legacy bridge |
 | Railroad | yes | legacy bridge |
 | Kanban | yes | canonical |
