@@ -7,6 +7,7 @@ use std::time::Duration;
 use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingCancellationErrorDetails,
     BindingDiagnosticErrorDetails, BindingEngine, BindingError, BindingErrorKind,
+    BindingDrawingListErrorDetails,
     BindingIconRegistryErrorDetails, BindingJsSafeResourceErrorDetails, BindingOperationKind,
     BindingOperationRequest, BindingPayloadSchemaKey, BindingStatus, BindingTransportKey,
     CAPABILITY_DESCRIPTOR_DIGEST, CapabilityKey, OperationControl, OperationKey, OperationPhase,
@@ -398,6 +399,8 @@ struct ErrorDetails<'a> {
     cancellation: Option<BindingCancellationErrorDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     icon_registry: Option<&'a BindingIconRegistryErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    drawing_list: Option<&'a BindingDrawingListErrorDetails>,
 }
 
 pub(crate) fn create_engine(options_json: &str) -> Result<BindingEngine, BindingError> {
@@ -802,12 +805,14 @@ fn try_error_envelope(error: &BindingError) -> Result<String, String> {
     let details = (resource.is_some()
         || diagnostic.is_some()
         || cancellation.is_some()
-        || error.icon_registry_details().is_some())
+        || error.icon_registry_details().is_some()
+        || error.drawing_list_details().is_some())
     .then_some(ErrorDetails {
         resource,
         diagnostic,
         cancellation,
         icon_registry: error.icon_registry_details(),
+        drawing_list: error.drawing_list_details(),
     });
     let envelope = ErrorEnvelope {
         version: NODE_BINDING_RESULT_PAYLOAD_VERSION,

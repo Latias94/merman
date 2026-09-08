@@ -105,6 +105,7 @@ export class MermanOperationError extends MermanError {
     this.resourceDetails = payload.details?.resource ?? null;
     this.diagnosticDetails = payload.details?.diagnostic ?? null;
     this.cancellationDetails = payload.details?.cancellation ?? null;
+    this.drawingListDetails = payload.details?.drawing_list ?? null;
   }
 }
 
@@ -1258,6 +1259,24 @@ function validateErrorDetails(details) {
     ) {
       throw new MermanInvalidTransportError(
         "Merman transport returned invalid icon-registry error details.",
+      );
+    }
+  }
+  if (details.drawing_list !== undefined) {
+    const drawingList = details.drawing_list;
+    if (
+      !isPlainJsonObject(drawingList) ||
+      typeof drawingList.category !== "string" ||
+      drawingList.category.length === 0 ||
+      (drawingList.family !== null &&
+        drawingList.family !== undefined &&
+        typeof drawingList.family !== "string") ||
+      (drawingList.reason !== null &&
+        drawingList.reason !== undefined &&
+        typeof drawingList.reason !== "string")
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned invalid DrawingList error details.",
       );
     }
   }

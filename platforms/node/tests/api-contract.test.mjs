@@ -210,6 +210,24 @@ test("operation errors preserve structured diagnostic details", () => {
   assert.deepEqual(error.diagnosticDetails, diagnostic);
 });
 
+test("operation errors preserve structured DrawingList details", () => {
+  const drawingList = {
+    category: "unavailable",
+    family: "state",
+    reason: "htmlLabels requires a foreignObject fallback",
+  };
+  const error = new MermanOperationError({
+    code: 7,
+    code_name: "MERMAN_UNSUPPORTED_OPERATION",
+    kind: "generic",
+    capability_id: null,
+    details: { drawing_list: drawingList },
+    message: "DrawingList is unavailable",
+  });
+
+  assert.deepEqual(error.drawingListDetails, drawingList);
+});
+
 test("runtime catalog lossless integer scanning covers every known numeric path", () => {
   const unsafe = "9007199254740991.1";
   const catalogs = [
