@@ -601,8 +601,6 @@ impl ErEntityThemePlan {
                                 expected_capabilities.get(&(rule_index, target, property))
                             {
                                 observation.capabilities.insert(*capability);
-                            } else {
-                                observation.suppressed = true;
                             }
                         }
                         FamilyThemeDisposition::Unsupported => {
@@ -684,8 +682,6 @@ impl ErEntityThemePlan {
                 // Strict completion remains fail-closed until the writer proves every winner.
             } else if !observation.capabilities.is_empty() {
                 pending.insert(key, observation.capabilities);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -1192,7 +1188,6 @@ fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVa
 struct ErRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
     capabilities: BTreeSet<ThemeCapability>,
 }

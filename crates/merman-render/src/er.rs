@@ -252,6 +252,7 @@ pub(crate) fn prepare_er_labels(
     Arc::new(ErPreparedLabels::prepare(model, measurer, &settings))
 }
 
+#[cfg(test)]
 pub(crate) fn er_box_label_metrics(
     label: &ErBoxLabel,
     measurer: &dyn TextMeasurer,

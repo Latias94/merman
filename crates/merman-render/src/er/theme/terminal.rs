@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::text::VisibleTextStyleFacts;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ExpectedPaint {
     pub(super) rule_index: usize,
@@ -417,25 +419,15 @@ impl ErEntityThemeReceipt {
         &mut self,
         entity_id: &str,
         actual_terminal_style: &str,
-        visible_run_count: usize,
-        inherited_color_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
+        actual_facts: &VisibleTextStyleFacts,
         measured_font_size: f64,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::entity_name(entity_id),
             actual_terminal_style,
-            visible_run_count,
-            inherited_color_run_count,
-            inherited_font_family_run_count,
-            unverified_font_family_run_count,
-            inherited_font_size_run_count,
-            unverified_font_size_run_count,
+            actual_facts,
         );
-        if visible_run_count != 0 {
+        if actual_facts.has_visible_runs() {
             self.record_base_font_size_measurement(measured_font_size);
         }
     }
@@ -446,25 +438,15 @@ impl ErEntityThemeReceipt {
         row_index: usize,
         role: ErAttributeTextRole,
         actual_terminal_style: &str,
-        visible_run_count: usize,
-        inherited_color_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
+        actual_facts: &VisibleTextStyleFacts,
         measured_font_size: f64,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::attribute(entity_id, row_index, role),
             actual_terminal_style,
-            visible_run_count,
-            inherited_color_run_count,
-            inherited_font_family_run_count,
-            unverified_font_family_run_count,
-            inherited_font_size_run_count,
-            unverified_font_size_run_count,
+            actual_facts,
         );
-        if visible_run_count != 0 {
+        if actual_facts.has_visible_runs() {
             self.record_base_font_size_measurement(measured_font_size);
         }
     }
@@ -473,22 +455,12 @@ impl ErEntityThemeReceipt {
         &mut self,
         relationship_index: usize,
         actual_terminal_style: &str,
-        visible_run_count: usize,
-        inherited_color_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
+        actual_facts: &VisibleTextStyleFacts,
     ) {
         self.record_text_terminal(
             ErTextTerminalId::relation_label(relationship_index),
             actual_terminal_style,
-            visible_run_count,
-            inherited_color_run_count,
-            inherited_font_family_run_count,
-            unverified_font_family_run_count,
-            inherited_font_size_run_count,
-            unverified_font_size_run_count,
+            actual_facts,
         );
     }
 
@@ -496,12 +468,7 @@ impl ErEntityThemeReceipt {
         &mut self,
         id: ErTextTerminalId,
         actual_terminal_style: &str,
-        visible_run_count: usize,
-        inherited_color_run_count: usize,
-        inherited_font_family_run_count: usize,
-        unverified_font_family_run_count: usize,
-        inherited_font_size_run_count: usize,
-        unverified_font_size_run_count: usize,
+        actual_facts: &VisibleTextStyleFacts,
     ) {
         if !self.records_text_terminals {
             return;
@@ -515,6 +482,12 @@ impl ErEntityThemeReceipt {
             return;
         }
         checkpoint.checkpointed = true;
+        let visible_run_count = actual_facts.visible_run_count();
+        let inherited_color_run_count = actual_facts.inherited_color_run_count();
+        let inherited_font_family_run_count = actual_facts.inherited_font_family_run_count();
+        let unverified_font_family_run_count = visible_run_count - inherited_font_family_run_count;
+        let inherited_font_size_run_count = actual_facts.inherited_font_size_run_count();
+        let unverified_font_size_run_count = visible_run_count - inherited_font_size_run_count;
         self.attributes_match &= checkpoint.expectation.visible_run_count == visible_run_count;
         self.attributes_match &=
             checkpoint.expectation.inherited_color_run_count == inherited_color_run_count;
@@ -876,17 +849,30 @@ mod tests {
             BTreeMap::new(),
             None,
         );
+        for fragment in [
+            "<span>first</span>",
+            "<span>first</span><span style=\"color:red\">second</span>",
+            "<span>first</span><span style=\"font-family:serif\">second</span>",
+            "<span>first</span><span style=\"font-size:12px\">second</span>",
+        ] {
+            let mut mismatched = receipt.clone();
+            mismatched.record_attribute_text(
+                "entity-A-0",
+                1,
+                ErAttributeTextRole::Name,
+                "color:#123456;fill:#123456",
+                &VisibleTextStyleFacts::from_xhtml_fragment(fragment),
+                16.0,
+            );
+            assert!(!mismatched.proves_complete(), "{fragment}");
+            assert!(!mismatched.proves_rule(7), "{fragment}");
+        }
         receipt.record_attribute_text(
             "entity-A-0",
             1,
             ErAttributeTextRole::Name,
             "color:#123456;fill:#123456",
-            2,
-            2,
-            2,
-            0,
-            2,
-            0,
+            &VisibleTextStyleFacts::from_xhtml_fragment("<span>first</span><span>second</span>"),
             16.0,
         );
 
@@ -917,7 +903,13 @@ mod tests {
             BTreeMap::new(),
             None,
         );
-        receipt.record_relation_label_text(0, "color:#123456;fill:#123456", 3, 2, 3, 0, 3, 0);
+        receipt.record_relation_label_text(
+            0,
+            "color:#123456;fill:#123456",
+            &VisibleTextStyleFacts::from_xhtml_fragment(
+                "<span>first</span><span style=\"color:red\">second</span><span>third</span>",
+            ),
+        );
 
         assert!(receipt.proves_complete());
         assert!(receipt.has_effective_rule(7));
@@ -946,7 +938,12 @@ mod tests {
         );
 
         receipt.record_typography_css_emission("Inter, sans-serif");
-        receipt.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 1, 0, 16.0);
+        receipt.record_entity_name_text(
+            "entity-A-0",
+            "",
+            &VisibleTextStyleFacts::plain_text("Entity"),
+            16.0,
+        );
         assert!(receipt.proves_typography());
 
         let mut unverified = ErEntityThemeReceipt::new(
@@ -967,7 +964,14 @@ mod tests {
             Some("Inter, sans-serif".into()),
         );
         unverified.record_typography_css_emission("Inter, sans-serif");
-        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 0, 1, 1, 0, 16.0);
+        unverified.record_entity_name_text(
+            "entity-A-0",
+            "",
+            &VisibleTextStyleFacts::from_xhtml_fragment(
+                "<span style=\"font-family:serif\">Entity</span>",
+            ),
+            16.0,
+        );
         assert!(!unverified.proves_typography());
     }
 
@@ -1113,12 +1117,24 @@ mod tests {
 
         let mut inherited = receipt(1, 0);
         inherited.record_typography_css_emission_with_font_size("sans-serif", "24px");
-        inherited.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 1, 0, 24.0);
+        inherited.record_entity_name_text(
+            "entity-A-0",
+            "",
+            &VisibleTextStyleFacts::plain_text("Entity"),
+            24.0,
+        );
         assert!(inherited.proves_font_size());
 
         let mut unverified = receipt(0, 1);
         unverified.record_typography_css_emission_with_font_size("sans-serif", "24px");
-        unverified.record_entity_name_text("entity-A-0", "", 1, 1, 1, 0, 0, 1, 24.0);
+        unverified.record_entity_name_text(
+            "entity-A-0",
+            "",
+            &VisibleTextStyleFacts::from_xhtml_fragment(
+                "<span style=\"font-size:12px\">Entity</span>",
+            ),
+            24.0,
+        );
         assert!(!unverified.proves_font_size());
     }
 

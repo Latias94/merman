@@ -158,119 +158,6 @@ fn style_decls_with_important(decls: &[ErStyleDeclaration]) -> String {
 // The ER parser also accepts source declarations represented as raw strings for
 // subgraph compatibility styling. Keep that formatting path separate from the
 // prepared declaration path used by the typed theme receipts.
-fn insert_er_redux_color_css<I>(css: &mut String, diagram_id: I, color_css: &str)
-where
-    I: SvgDiagramIdValue,
-{
-    if color_css.is_empty() {
-        return;
-    }
-
-    let escaped_id = diagram_id.semantic_value();
-    let family_rule = format!("#{escaped_id} .entityBox");
-    let root_rule = format!("#{escaped_id} :root");
-    let insertion_point = css
-        .find(&family_rule)
-        .or_else(|| css.find(&root_rule))
-        .unwrap_or(css.len());
-    css.insert_str(insertion_point, color_css);
-}
-
-fn compile_er_entity_styles(
-    entity: &crate::er::ErEntity,
-    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
-) -> (Vec<String>, Vec<String>) {
-    let mut compiled_box: Vec<String> = Vec::new();
-    let mut compiled_text: Vec<String> = Vec::new();
-    let mut seen_classes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for class_name in entity.css_classes.split_whitespace() {
-        if !seen_classes.insert(class_name) {
-            continue;
-        }
-        let Some(def) = classes.get(class_name) else {
-            continue;
-        };
-        for s in &def.styles {
-            let t = s.trim();
-            if t.is_empty() {
-                continue;
-            }
-            compiled_box.push(t.to_string());
-        }
-        for s in &def.text_styles {
-            let t = s.trim();
-            if t.is_empty() {
-                continue;
-            }
-            compiled_text.push(t.to_string());
-        }
-    }
-
-    let mut rect_map: std::collections::BTreeMap<String, String> =
-        std::collections::BTreeMap::new();
-    let mut text_map: std::collections::BTreeMap<String, String> =
-        std::collections::BTreeMap::new();
-
-    // Box styles: classDef styles + `style` statements.
-    for s in compiled_box.iter().chain(entity.css_styles.iter()) {
-        let Some((k, v)) = parse_style_decl(s) else {
-            continue;
-        };
-        if is_rect_style_key(k) {
-            rect_map.insert(k.to_string(), v.to_string());
-        }
-        // Mermaid treats `color:` as the HTML label text color (even if it comes from the style list).
-        if k == "color" {
-            text_map.insert("color".to_string(), v.to_string());
-        }
-    }
-
-    // Text styles: classDef textStyles + `style` statements (only text-related keys).
-    for s in compiled_text.iter().chain(entity.css_styles.iter()) {
-        let Some((k, v)) = parse_style_decl(s) else {
-            continue;
-        };
-        if !is_text_style_key(k) {
-            continue;
-        }
-        if k == "color" {
-            text_map.insert("color".to_string(), v.to_string());
-        } else {
-            text_map.insert(k.to_string(), v.to_string());
-        }
-    }
-
-    let mut rect_decls: Vec<String> = Vec::new();
-    for k in [
-        "fill",
-        "stroke",
-        "stroke-width",
-        "stroke-dasharray",
-        "opacity",
-        "fill-opacity",
-        "stroke-opacity",
-    ] {
-        if let Some(v) = rect_map.get(k) {
-            rect_decls.push(format!("{k}:{v}"));
-        }
-    }
-
-    let mut text_decls: Vec<String> = Vec::new();
-    for k in [
-        "color",
-        "font-family",
-        "font-size",
-        "font-weight",
-        "opacity",
-    ] {
-        if let Some(v) = text_map.get(k) {
-            text_decls.push(format!("{k}:{v}"));
-        }
-    }
-
-    (rect_decls, text_decls)
-}
-
 fn compile_er_subgraph_styles(
     subgraph: &crate::er::ErSubgraph,
     classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
@@ -1405,12 +1292,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     entity_theme_receipt.record_relation_label_text(
                         relationship_index,
                         &relation_label_terminal_style,
-                        facts.visible_run_count(),
-                        facts.inherited_color_run_count(),
-                        facts.inherited_font_family_run_count(),
-                        facts.unverified_font_family_run_count(),
-                        facts.inherited_font_size_run_count(),
-                        facts.unverified_font_size_run_count(),
+                        facts,
                     );
                 }
             } else {
@@ -1627,33 +1509,14 @@ pub(crate) fn render_er_diagram_svg_model(
                 paint_emission.emitted_stroke,
             );
             if entity_theme_receipt.records_text_terminals()
-                && measure.label.visible_style_facts().parse_valid()
-                && measure.label.visible_style_facts().has_visible_runs()
+                && let facts = measure.label.visible_style_facts()
+                && facts.parse_valid()
+                && facts.has_visible_runs()
             {
                 entity_theme_receipt.record_entity_name_text(
                     &entity.id,
                     &entity_name_terminal_style,
-                    measure.label.visible_style_facts().visible_run_count(),
-                    measure
-                        .label
-                        .visible_style_facts()
-                        .inherited_color_run_count(),
-                    measure
-                        .label
-                        .visible_style_facts()
-                        .inherited_font_family_run_count(),
-                    measure
-                        .label
-                        .visible_style_facts()
-                        .unverified_font_family_run_count(),
-                    measure
-                        .label
-                        .visible_style_facts()
-                        .inherited_font_size_run_count(),
-                    measure
-                        .label
-                        .visible_style_facts()
-                        .unverified_font_size_run_count(),
+                    facts,
                     label_style.font_size,
                 );
             }
@@ -1855,14 +1718,14 @@ pub(crate) fn render_er_diagram_svg_model(
             &mut out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
             roughjs46_rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
-            escape_attr(&box_fill),
+            escape_attr(box_fill),
             base_fill_style_attr
         );
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
             rough_rect_border_path_d(&hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
-            escape_attr(&box_stroke),
+            escape_attr(box_stroke),
             stroke_width_attr,
             override_style_attr
         );
@@ -2008,33 +1871,14 @@ pub(crate) fn render_er_diagram_svg_model(
         }
         out.checkpoint()?;
         if entity_theme_receipt.records_text_terminals()
-            && measure.label.visible_style_facts().parse_valid()
-            && measure.label.visible_style_facts().has_visible_runs()
+            && let facts = measure.label.visible_style_facts()
+            && facts.parse_valid()
+            && facts.has_visible_runs()
         {
             entity_theme_receipt.record_entity_name_text(
                 &entity.id,
                 &entity_name_terminal_style,
-                measure.label.visible_style_facts().visible_run_count(),
-                measure
-                    .label
-                    .visible_style_facts()
-                    .inherited_color_run_count(),
-                measure
-                    .label
-                    .visible_style_facts()
-                    .inherited_font_family_run_count(),
-                measure
-                    .label
-                    .visible_style_facts()
-                    .unverified_font_family_run_count(),
-                measure
-                    .label
-                    .visible_style_facts()
-                    .inherited_font_size_run_count(),
-                measure
-                    .label
-                    .visible_style_facts()
-                    .unverified_font_size_run_count(),
+                facts,
                 label_style.font_size,
             );
         }
@@ -2306,12 +2150,7 @@ pub(crate) fn render_er_diagram_svg_model(
                             row_index,
                             role,
                             &typed_text_terminal_style(paint),
-                            facts.visible_run_count(),
-                            facts.inherited_color_run_count(),
-                            facts.inherited_font_family_run_count(),
-                            facts.unverified_font_family_run_count(),
-                            facts.inherited_font_size_run_count(),
-                            facts.unverified_font_size_run_count(),
+                            facts,
                             attr_style.font_size,
                         );
                     }
@@ -2325,7 +2164,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let divider_style = override_style_attr.clone();
         let divider_path_attrs = format!(
             r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
-            escape_xml(&box_stroke),
+            escape_xml(box_stroke),
             stroke_width_attr,
             divider_style
         );
@@ -2362,7 +2201,7 @@ pub(crate) fn render_er_diagram_svg_model(
             sep_y,
             box_x1,
             sep_y,
-            &box_fill,
+            box_fill,
             &divider_path_attrs,
         )?;
 
@@ -2382,7 +2221,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 sep_y,
                 x,
                 box_y1,
-                &box_fill,
+                box_fill,
                 &divider_path_attrs,
             )?;
         }
@@ -2394,7 +2233,7 @@ pub(crate) fn render_er_diagram_svg_model(
             sep_y,
             box_x1,
             sep_y,
-            &box_fill,
+            box_fill,
             &divider_path_attrs,
         )?;
 
