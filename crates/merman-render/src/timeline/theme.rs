@@ -148,7 +148,8 @@ impl TimelineEventTheme {
         // colors are residuals here.
         let mut missing_palette_slot = palette_node_slots.iter().any(Option::is_none);
         let palette_enabled = palette_disposition == Some(FamilyThemeDisposition::TypedAdapter)
-            && !timeline_is_redux_theme(effective_config);
+            && !timeline_is_redux_theme(effective_config)
+            && !super::TimelineConfigView::new(effective_config.as_value()).uses_neo_gradient();
         if palette_enabled {
             let mut used_slots = BTreeSet::new();
             for slot in palette_node_slots
@@ -589,6 +590,12 @@ fn timeline_event_fill_source_owned(
     let Some(slot) = timeline_section_slot(&event.section_class) else {
         return false;
     };
+    if super::TimelineConfigView::new(config.as_value()).uses_neo_gradient() {
+        return merman_core::__private::config_path_overrides_typed_default(
+            config,
+            "themeVariables.mainBkg",
+        );
+    }
     let theme = config.get_str("theme").unwrap_or_default();
     if !theme.contains("redux") {
         return merman_core::__private::config_path_overrides_typed_default(

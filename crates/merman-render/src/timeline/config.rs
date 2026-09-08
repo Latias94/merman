@@ -39,6 +39,14 @@ impl<'a> TimelineConfigView<'a> {
         }
     }
 
+    /// Neo's gradient stylesheet replaces both Classic and Redux section paint owners.
+    pub(crate) fn uses_neo_gradient(&self) -> bool {
+        crate::config::config_diagram_look(self.effective_config).is_neo()
+            && config_bool(self.effective_config, &["themeVariables", "useGradient"])
+                .unwrap_or(false)
+            && self.effective_config.get("theme").and_then(Value::as_str) != Some("neutral")
+    }
+
     pub(crate) fn layout_settings(&self) -> TimelineLayoutSettings {
         let text_style = self.text_style();
         TimelineLayoutSettings {

@@ -471,6 +471,121 @@ fn timeline_static_event_fill_reaches_only_event_terminals() {
 }
 
 #[test]
+fn timeline_neo_event_fill_uses_the_active_stylesheet_owner() {
+    for direction in ["", " TD"] {
+        for (mermaid_theme, gradient, owner, typed_applied) in [
+            ("default", true, "mainBkg", false),
+            ("default", true, "cScale0", true),
+            ("redux-color", true, "mainBkg", false),
+            ("redux-color", true, "borderColorArray", true),
+            ("default", false, "mainBkg", true),
+            ("default", false, "cScale0", false),
+            ("neutral", true, "mainBkg", true),
+            ("neutral", true, "cScale0", false),
+        ] {
+            let mut variables = serde_json::json!({"useGradient": gradient});
+            variables[owner] = if owner == "borderColorArray" {
+                serde_json::json!(["#abcdef", "#abcdef"])
+            } else {
+                serde_json::json!("#abcdef")
+            };
+            let config = serde_json::json!({
+                "look": "neo", "theme": mermaid_theme, "themeVariables": variables,
+            });
+            let theme = timeline_event_fill_theme(CanvasPaint::solid("#123456").unwrap());
+            let rendered = try_render_timeline_with_theme_and_engine(
+                &format!("timeline{direction}\nsection Release\nPlan : Build\n"),
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let paths = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper")
+                })
+                .flat_map(|wrapper| wrapper.descendants())
+                .filter(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("class") == Some("node-bkg node-undefined")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(paths.len(), 1, "{config}, {direction}");
+            assert!(
+                paths[0]
+                    .ancestors()
+                    .any(|node| node.attribute("data-look") == Some("neo"))
+            );
+            assert_eq!(
+                paths[0].attribute("style"),
+                typed_applied.then_some("fill:#123456;"),
+                "{config}, {direction}"
+            );
+            if gradient && mermaid_theme != "neutral" && owner == "mainBkg" {
+                let stylesheet = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .unwrap();
+                assert!(
+                    stylesheet.contains(r#"[data-look="neo"] circle{fill:#abcdef;stroke:url("#),
+                    "{stylesheet}"
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(typed_applied),
+                "{config}, {direction}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!typed_applied),
+                "{config}, {direction}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_neo_gradient_does_not_consume_classic_palette() {
+    for direction in ["", " TD"] {
+        let theme = timeline_event_palette_theme(&["#123456"]);
+        let config = serde_json::json!({
+            "look": "neo", "themeVariables": {"useGradient": true, "mainBkg": "#abcdef"},
+        });
+        let rendered = try_render_timeline_with_theme_and_engine(
+            &format!("timeline{direction}\nsection Release\nPlan : Build\n"),
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let backgrounds = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class") == Some("node-bkg node-undefined")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backgrounds.len(), 3);
+        assert!(
+            backgrounds
+                .iter()
+                .all(|node| node.attribute("style").is_none())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn timeline_site_owned_color_scale_suppresses_typed_event_fill() {
     let theme = timeline_event_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Timeline event fill"),

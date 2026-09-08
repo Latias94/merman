@@ -7,7 +7,6 @@ fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &TimelineTheme,
-    is_neo: bool,
     resolved_font_family_css: &str,
     resolved_font_size_css: &str,
 ) -> TimelineCss {
@@ -122,11 +121,7 @@ fn timeline_css(
         }
     }
 
-    let use_neo_gradient = is_neo
-        && crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
-            .unwrap_or(false)
-        && crate::config::config_string(effective_config, &["theme"]).as_deref() != Some("neutral");
-    if use_neo_gradient {
+    if crate::timeline::TimelineConfigView::new(effective_config).uses_neo_gradient() {
         let gradient = scoped_svg_url(diagram_id, "gradient");
         for (i, _) in theme.sections.iter().enumerate() {
             let section = i as i64 - 1;
@@ -532,10 +527,8 @@ fn render_timeline_diagram_svg_inner(
     let theme = MermaidThemeAdapter::new(effective_config).timeline();
     let is_redux_theme = theme.is_redux_theme;
     let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
-    let use_neo_gradient = is_neo
-        && crate::config::config_bool(effective_config, &["themeVariables", "useGradient"])
-            .unwrap_or(false)
-        && crate::config::config_string(effective_config, &["theme"]).as_deref() != Some("neutral");
+    let use_neo_gradient =
+        crate::timeline::TimelineConfigView::new(effective_config).uses_neo_gradient();
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -934,7 +927,6 @@ fn render_timeline_diagram_svg_inner(
         diagram_id,
         effective_config,
         &theme,
-        is_neo,
         typography_theme.font_family_css(),
         typography_theme.font_size_css(),
     );
