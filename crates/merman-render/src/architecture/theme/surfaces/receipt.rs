@@ -101,9 +101,14 @@ struct ArchitectureTextResolution<'a> {
     source_owned: bool,
     ordinal: &'a mut usize,
     work_meter: &'a OperationWorkMeter,
-    winner_properties: &'a mut BTreeSet<(FamilyThemeMechanismKey, ResolvedStyleProperty)>,
-    active_palettes: &'a mut BTreeSet<FamilyThemeMechanismKey>,
-    active_effects: &'a mut BTreeSet<FamilyThemeMechanismKey>,
+    mechanisms: &'a mut ArchitectureTerminalMechanisms,
+}
+
+#[derive(Default)]
+struct ArchitectureTerminalMechanisms {
+    winner_properties: BTreeSet<(FamilyThemeMechanismKey, ResolvedStyleProperty)>,
+    active_palettes: BTreeSet<FamilyThemeMechanismKey>,
+    active_effects: BTreeSet<FamilyThemeMechanismKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,9 +212,7 @@ impl ArchitectureSurfaceThemeReceipt {
         edges: impl IntoIterator<Item = ArchitectureEdgeTerminal<'a>>,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut winner_properties = BTreeSet::new();
-        let mut active_palettes = BTreeSet::new();
-        let mut active_effects = BTreeSet::new();
+        let mut mechanisms = ArchitectureTerminalMechanisms::default();
         let mut expected_by_rule = BTreeMap::new();
         let direct_rule_facets = theme
             .family_mechanism_routes()
@@ -244,18 +247,15 @@ impl ArchitectureSurfaceThemeReceipt {
                     Some(ordinal),
                     work_meter,
                 )?;
-                observe_terminal_style(
+                mechanisms.observe_terminal_style(
                     theme,
                     ThemeTarget::Node,
                     ordinal,
                     &style,
-                    [
+                    &[
                         (ResolvedStyleProperty::Fill, false),
                         (ResolvedStyleProperty::Stroke, ownership.service_stroke),
                     ],
-                    &mut winner_properties,
-                    &mut active_palettes,
-                    &mut active_effects,
                 );
                 (
                     typed_terminal_paint(&direct_rule_facets, ThemeTarget::Node, &style, false),
@@ -286,9 +286,7 @@ impl ArchitectureSurfaceThemeReceipt {
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
-                    winner_properties: &mut winner_properties,
-                    active_palettes: &mut active_palettes,
-                    active_effects: &mut active_effects,
+                    mechanisms: &mut mechanisms,
                 },
             )?;
             let title_style = compose_paint_style(title_fill.as_ref(), None);
@@ -325,9 +323,7 @@ impl ArchitectureSurfaceThemeReceipt {
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
-                    winner_properties: &mut winner_properties,
-                    active_palettes: &mut active_palettes,
-                    active_effects: &mut active_effects,
+                    mechanisms: &mut mechanisms,
                 },
             )?;
             let title_style = compose_paint_style(title_fill.as_ref(), None);
@@ -359,9 +355,7 @@ impl ArchitectureSurfaceThemeReceipt {
                     source_owned: ownership.text_fill,
                     ordinal: &mut text_ordinal,
                     work_meter,
-                    winner_properties: &mut winner_properties,
-                    active_palettes: &mut active_palettes,
-                    active_effects: &mut active_effects,
+                    mechanisms: &mut mechanisms,
                 },
             )?;
             let label_style = compose_paint_style(label_fill.as_ref(), None);
@@ -379,15 +373,12 @@ impl ArchitectureSurfaceThemeReceipt {
                         Some(marker_ordinal),
                         work_meter,
                     )?;
-                    observe_terminal_style(
+                    mechanisms.observe_terminal_style(
                         theme,
                         ThemeTarget::Marker,
                         marker_ordinal,
                         &style,
-                        [(ResolvedStyleProperty::Fill, ownership.arrow_fill)],
-                        &mut winner_properties,
-                        &mut active_palettes,
-                        &mut active_effects,
+                        &[(ResolvedStyleProperty::Fill, ownership.arrow_fill)],
                     );
                     Ok((!ownership.arrow_fill)
                         .then(|| {
@@ -429,13 +420,7 @@ impl ArchitectureSurfaceThemeReceipt {
             });
         }
 
-        let mechanism_outcomes = resolve_mechanism_outcomes(
-            theme,
-            &winner_properties,
-            &active_palettes,
-            &active_effects,
-            &expected_by_rule,
-        );
+        let mechanism_outcomes = resolve_mechanism_outcomes(theme, &mechanisms, &expected_by_rule);
 
         Ok(Self {
             services: service_expectations,
@@ -772,56 +757,57 @@ fn record_text_bounds(expected: bool, emitted: Option<&Bounds>, terminals_match:
         && bounds.max_y >= bounds.min_y;
 }
 
-fn observe_terminal_style(
-    theme: &ResolvedDiagramTheme,
-    target: ThemeTarget,
-    ordinal: usize,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-    properties: impl IntoIterator<Item = (ResolvedStyleProperty, bool)>,
-    winner_properties: &mut BTreeSet<(FamilyThemeMechanismKey, ResolvedStyleProperty)>,
-    active_palettes: &mut BTreeSet<FamilyThemeMechanismKey>,
-    active_effects: &mut BTreeSet<FamilyThemeMechanismKey>,
-) {
-    let source_owned = properties.into_iter().collect::<Vec<_>>();
-    winner_properties.extend(style.winner_rule_properties().into_iter().filter_map(
-        |(property, origin)| {
-            (!source_owned
-                .iter()
-                .any(|(candidate, owned)| *candidate == property && *owned))
-            .then(|| {
-                (
-                    FamilyThemeMechanismKey::Rule {
-                        index: origin.rule_index(),
-                        target: origin.target(),
-                    },
-                    property,
-                )
-            })
-        },
-    ));
-    if !source_owned
-        .iter()
-        .any(|(property, owned)| *property == ResolvedStyleProperty::Fill && *owned)
-        && matches!(style.fill_resolution().specified(), Specified::Unspecified)
-        && theme.series_color(target, ordinal).is_some()
-    {
-        active_palettes.insert(FamilyThemeMechanismKey::OrdinalPalette { target });
-    }
-    if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
-        theme.resolve_effect(target, style.effect_resolution())
-    {
-        active_effects.insert(FamilyThemeMechanismKey::EffectBinding {
-            target: binding.target(),
-            effect_id: binding.effect_id().to_owned(),
-        });
+impl ArchitectureTerminalMechanisms {
+    fn observe_terminal_style(
+        &mut self,
+        theme: &ResolvedDiagramTheme,
+        target: ThemeTarget,
+        ordinal: usize,
+        style: &crate::diagram_theme::ResolvedThemeStyle,
+        source_owned: &[(ResolvedStyleProperty, bool)],
+    ) {
+        self.winner_properties.extend(
+            style
+                .winner_rule_properties()
+                .filter(|(property, _)| {
+                    !source_owned
+                        .iter()
+                        .any(|(candidate, owned)| candidate == property && *owned)
+                })
+                .map(|(property, origin)| {
+                    (
+                        FamilyThemeMechanismKey::Rule {
+                            index: origin.rule_index(),
+                            target: origin.target(),
+                        },
+                        property,
+                    )
+                }),
+        );
+        if !source_owned
+            .iter()
+            .any(|(property, owned)| *property == ResolvedStyleProperty::Fill && *owned)
+            && matches!(style.fill_resolution().specified(), Specified::Unspecified)
+            && theme.series_color(target, ordinal).is_some()
+        {
+            self.active_palettes
+                .insert(FamilyThemeMechanismKey::OrdinalPalette { target });
+        }
+        if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
+            theme.resolve_effect(target, style.effect_resolution())
+        {
+            self.active_effects
+                .insert(FamilyThemeMechanismKey::EffectBinding {
+                    target: binding.target(),
+                    effect_id: binding.effect_id().to_owned(),
+                });
+        }
     }
 }
 
 fn resolve_mechanism_outcomes(
     theme: &ResolvedDiagramTheme,
-    winner_properties: &BTreeSet<(FamilyThemeMechanismKey, ResolvedStyleProperty)>,
-    active_palettes: &BTreeSet<FamilyThemeMechanismKey>,
-    active_effects: &BTreeSet<FamilyThemeMechanismKey>,
+    mechanisms: &ArchitectureTerminalMechanisms,
     expected_by_rule: &BTreeMap<FamilyThemeMechanismKey, usize>,
 ) -> BTreeMap<FamilyThemeMechanismKey, ArchitectureMechanismOutcome> {
     let mut rules = BTreeMap::<FamilyThemeMechanismKey, ArchitectureRuleOutcome>::new();
@@ -840,7 +826,10 @@ fn resolve_mechanism_outcomes(
             } => {
                 let property = resolved_style_property_for_facet(facet);
                 let observation = rules.entry(key.clone()).or_default();
-                if !winner_properties.contains(&(key.clone(), property)) {
+                if !mechanisms
+                    .winner_properties
+                    .contains(&(key.clone(), property))
+                {
                     continue;
                 }
                 observation.applicable = true;
@@ -865,7 +854,7 @@ fn resolve_mechanism_outcomes(
             FamilyThemeMechanism::OrdinalPalette { .. } => {
                 other.insert(
                     key.clone(),
-                    if active_palettes.contains(&key) {
+                    if mechanisms.active_palettes.contains(&key) {
                         match route.disposition() {
                             FamilyThemeDisposition::Unsupported => {
                                 ArchitectureMechanismOutcome::Residual(
@@ -885,7 +874,7 @@ fn resolve_mechanism_outcomes(
             FamilyThemeMechanism::EffectBinding { .. } => {
                 other.insert(
                     key.clone(),
-                    if active_effects.contains(&key) {
+                    if mechanisms.active_effects.contains(&key) {
                         match route.disposition() {
                             FamilyThemeDisposition::Unsupported => {
                                 ArchitectureMechanismOutcome::Residual(
@@ -935,15 +924,12 @@ fn resolve_text_fill(
         Some(*resolution.ordinal),
         resolution.work_meter,
     )?;
-    observe_terminal_style(
+    resolution.mechanisms.observe_terminal_style(
         resolution.theme,
         ThemeTarget::Text,
         *resolution.ordinal,
         &style,
-        [(ResolvedStyleProperty::Fill, resolution.source_owned)],
-        resolution.winner_properties,
-        resolution.active_palettes,
-        resolution.active_effects,
+        &[(ResolvedStyleProperty::Fill, resolution.source_owned)],
     );
     Ok((!resolution.source_owned)
         .then(|| {
@@ -1065,37 +1051,34 @@ fn direct_surface_facet(
     selector: FamilyThemeSelectorShape,
     facet: FamilyThemeRuleFacet,
 ) -> bool {
-    let selector_is_direct = match (target, selector) {
+    let selector_is_direct = matches!(
+        (target, selector),
         (
             ThemeTarget::Text,
             FamilyThemeSelectorShape::Static {
                 variant: None | Some(ThemeVariant::Default),
             },
-        )
-        | (_, FamilyThemeSelectorShape::Static { variant: None }) => true,
-        _ => false,
-    };
+        ) | (_, FamilyThemeSelectorShape::Static { variant: None })
+    );
     if !selector_is_direct {
         return false;
     }
-    match (target, facet) {
+    matches!(
+        (target, facet),
         (
             ThemeTarget::Node,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
-            )
-            | FamilyThemeRuleFacet::Stroke(
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
             ),
-        )
-        | (
+        ) | (
             ThemeTarget::Text | ThemeTarget::Marker,
             FamilyThemeRuleFacet::Fill(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
             ),
-        ) => true,
-        _ => false,
-    }
+        )
+    )
 }
 
 fn add_capabilities(capabilities: &mut BTreeSet<ThemeCapability>, facet: FamilyThemeRuleFacet) {

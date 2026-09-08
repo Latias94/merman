@@ -112,7 +112,6 @@ impl ArchitectureGroupThemePlan {
 
         let winners = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
         let mut observations = BTreeMap::<usize, ArchitectureGroupRuleObservation>::new();
