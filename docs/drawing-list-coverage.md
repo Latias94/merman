@@ -27,26 +27,26 @@ inventory row fails at test time.  The current inventory is:
 | Cynefin | yes | legacy bridge |
 | Wardley | yes | legacy bridge |
 | Railroad | yes | legacy bridge |
-| Kanban | yes | canonical |
-| Gantt | yes | canonical |
+| Kanban | yes | legacy bridge |
+| Gantt | yes | legacy bridge |
 | Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | legacy bridge |
-| Journey | yes | canonical |
-| Requirement | yes | canonical |
-| Sankey | yes | canonical |
-| Radar | yes | canonical |
-| Info | yes | canonical |
+| Journey | yes | legacy bridge |
+| Requirement | yes | legacy bridge |
+| Sankey | yes | legacy bridge |
+| Radar | yes | legacy bridge |
+| Info | yes | legacy bridge |
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
 | QuadrantChart | yes | legacy bridge |
-| XYChart | yes | canonical |
-| GitGraph | yes | canonical |
-| TreeView | yes | canonical |
-| Ishikawa | yes | canonical |
-| EventModeling | yes | canonical |
-| Venn | yes | canonical |
+| XYChart | yes | legacy bridge |
+| GitGraph | yes | legacy bridge |
+| TreeView | yes | legacy bridge |
+| Ishikawa | yes | legacy bridge |
+| EventModeling | yes | legacy bridge |
+| Venn | yes | legacy bridge |
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
@@ -54,6 +54,21 @@ root geometry, style, DOM/a11y obligations, and effect disposition remain source
 uses a separate external-plugin evidence lane and remains bridged until that lane is admitted.
 Unsupported browser-only effects must remain explicit DrawingList errors or bounded raster
 fallbacks; they must not be hidden by the bridge.
+
+### Admission correction, September 8, 2026
+
+The structure comparison generated at 15:15 +08:00 failed for 14 of the 17 then-admitted families.
+Their public canonical admission is withdrawn; the direct adapters and candidate assertions remain.
+Info adds a background path absent from the upstream DOM, and Sankey changes the source group
+hierarchy while applying both command opacity and stylesheet stroke opacity. The other failed
+cohorts are Railroad, Kanban, Gantt, Journey, Requirement, Radar, XYChart, GitGraph, TreeView,
+Ishikawa, EventModeling, and Venn. These are not classified as font or floating-point residuals.
+
+Error (4/4), Packet (33/33), and Pie (69/69) passed that structure run. This is historical evidence,
+not a claim that the current HEAD has passed the complete root/parity/release matrix: those reports
+were not bound to a commit, and earlier root reports predate later migration changes. Candidate
+tests that require withdrawn public routes are explicitly ignored pending migration; ignored tests
+are not admission evidence. Live route tests check the explicit compatibility result separately.
 
 ### Cynefin migration evidence
 

@@ -49,6 +49,30 @@ fn render_svg(source: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn unadmitted_svg_families_report_compatibility_routes() {
+    for (source, family) in [
+        ("info", family::RenderFamilyKind::Info),
+        ("sankey-beta\nA,B,10\n", family::RenderFamilyKind::Sankey),
+        (
+            "railroad-beta\nexpr = terminal(\"a\") ;\n",
+            family::RenderFamilyKind::Railroad,
+        ),
+    ] {
+        let output = render_family_svg(source, "unadmitted-route");
+        assert_eq!(
+            output.serialization_route(),
+            SvgSerializationRoute::LegacyBridge
+        );
+        assert_eq!(
+            output.serialization_bridge_reason(),
+            Some(&SvgSerializationBridgeReason::LegacyFamily { family })
+        );
+        assert!(!output.svg().is_empty());
+    }
+}
+
+#[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn info_canonical_svg_keeps_document_root_and_version_structure() {
     let svg = render_svg("info", "info-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Info SVG is XML");
@@ -76,6 +100,7 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
 }
 
 #[test]
+#[ignore = "Info currently reports LegacyFamily before candidate effect resolution"]
 fn info_nonportable_css_values_use_an_explicit_effect_bridge() {
     let cases = [
         (
@@ -477,6 +502,7 @@ fn packet_canonical_svg_preserves_empty_labels_words_and_authored_accessibility(
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
     let svg = render_svg(
         r#"requirementDiagram
@@ -722,6 +748,7 @@ fn treemap_canonical_svg_preserves_upstream_custom_class_tokens() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
     let svg = render_svg(
         "radar-beta\ntitle Radar parity\naxis A,B,C\ncurve score{1,2,3}\n",
@@ -759,6 +786,7 @@ fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
     let svg = render_svg(
         "xychart\n  title Sales\n  x-axis [A, B]\n  y-axis 0 --> 100\n  bar [40, 60]\n  line [30, 70]\n",
@@ -969,6 +997,7 @@ fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
     let svg = render_svg("sankey-beta\nA,B,10\n", "sankey-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Sankey SVG is XML");
@@ -1006,6 +1035,7 @@ fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
     let svg = render_svg(
         "venn-beta\n title Product Surface\n set A[\"Core\"]:20\n set B[\"Editor\"]:14\n union A,B[\"Shared\"]:4\n",
@@ -1049,6 +1079,7 @@ fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
     let svg = render_svg(
         "railroad-beta\naccTitle: Railroad parity\nexpr = sequence(nonterminal(\"term\"), terminal(\"+\"), special(\"guard\")) ;\n",
@@ -1104,6 +1135,7 @@ fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
     let svg = render_svg(
         "eventmodeling\ntf 01 ui Web.ShopCart\ntf 02 cmd Cart.AddItem ->> 01 { sku: \"SKU-1\" }\ntf 03 evt Cart.ItemAdded ->> 02\n",
@@ -1143,6 +1175,7 @@ fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
     let svg = render_svg(
         "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n    User\n        Shaky hands\n",
@@ -1229,6 +1262,7 @@ fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
     let svg = render_svg(
         "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
@@ -1270,6 +1304,7 @@ fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
     let svg = render_svg(
         "gantt\n  title Release Plan\n  dateFormat YYYY-MM-DD\n  topAxis\n  todayMarker off\n  section Core\n  Build :a1, 2026-01-01, 4d\n  Ship :crit, milestone, 2026-01-05, 1d\n  section Follow-up\n  Docs :done, 2026-01-06, 2d\n",
@@ -1331,6 +1366,7 @@ fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
     let svg = render_svg(
         "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob\n    Review: 1: Alice\n",
@@ -1411,6 +1447,7 @@ fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn kanban_canonical_svg_keeps_sections_cards_ticket_links_and_plain_text() {
     let svg = render_svg(
         r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
@@ -1464,6 +1501,7 @@ kanban
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn kanban_canonical_svg_escapes_logical_ticket_uris_at_the_attribute_boundary() {
     let svg = render_svg(
         r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
@@ -1479,6 +1517,7 @@ kanban
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
     let svg = render_svg(
         r##"gitGraph
@@ -1547,6 +1586,7 @@ fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
 }
 
 #[test]
+#[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn gitgraph_canonical_svg_scopes_gradient_coordinates_to_each_branch_label() {
     let svg = render_svg(
         r##"%%{init: {"theme": "neo", "themeVariables": {"useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%

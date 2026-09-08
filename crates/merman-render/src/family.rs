@@ -1214,28 +1214,12 @@ fn render_legacy_family_artifact_svg(
 }
 
 /// Returns the family cohort whose SVG output is currently emitted by the canonical document
-/// serializer.  The list is intentionally explicit: adding a family requires a focused SVG
-/// parity fixture and a review of every effect that the public document can carry.
+/// serializer. Admission requires full-family source-backed SVG comparison, not only a focused
+/// fixture. Candidate builders remain available independently of this public routing gate.
 fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
     matches!(
         family,
-        RenderFamilyKind::Error
-            | RenderFamilyKind::Info
-            | RenderFamilyKind::Packet
-            | RenderFamilyKind::Pie
-            | RenderFamilyKind::Railroad
-            | RenderFamilyKind::Venn
-            | RenderFamilyKind::EventModeling
-            | RenderFamilyKind::Ishikawa
-            | RenderFamilyKind::Radar
-            | RenderFamilyKind::XyChart
-            | RenderFamilyKind::Journey
-            | RenderFamilyKind::TreeView
-            | RenderFamilyKind::Requirement
-            | RenderFamilyKind::GitGraph
-            | RenderFamilyKind::Kanban
-            | RenderFamilyKind::Gantt
-            | RenderFamilyKind::Sankey
+        RenderFamilyKind::Error | RenderFamilyKind::Packet | RenderFamilyKind::Pie
     )
 }
 
