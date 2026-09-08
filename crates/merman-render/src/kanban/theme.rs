@@ -382,7 +382,6 @@ impl KanbanTaskTheme {
             winner_properties.extend(
                 style
                     .winner_rule_properties()
-                    .into_iter()
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
             let radius_px = typed_radius_px(theme, &style);
@@ -411,17 +410,16 @@ impl KanbanTaskTheme {
                 && matches!(style.fill_resolution().specified(), Specified::Unspecified)
             {
                 let palette_ordinal = item_index % MERMAID_TASK_PALETTE_SLOT_COUNT + 1;
-                match theme.series_color(ThemeTarget::Task, palette_ordinal) {
-                    Some(color) => Some(KanbanTaskPaletteFill {
+                theme
+                    .series_color(ThemeTarget::Task, palette_ordinal)
+                    .map(|color| KanbanTaskPaletteFill {
                         css: color.as_css(),
                         capability: if color.is_transparent() {
                             ThemeCapability::TransparentPaint
                         } else {
                             ThemeCapability::SolidPaint
                         },
-                    }),
-                    None => None,
-                }
+                    })
             } else {
                 None
             };
@@ -437,7 +435,6 @@ impl KanbanTaskTheme {
                 winner_properties.extend(
                     label_style
                         .winner_rule_properties()
-                        .into_iter()
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
             }
@@ -707,10 +704,6 @@ impl KanbanTaskTheme {
         self.typography.font_size_css()
     }
 
-    pub(crate) const fn font_size_px(&self) -> f64 {
-        self.typography.font_size_px()
-    }
-
     pub(crate) fn resolved_typography_for_css(&self) -> Option<(&str, &str)> {
         self.typography
             .uses_resolved_typography_css()
@@ -779,18 +772,11 @@ impl KanbanTaskTheme {
             || !self.pending_label_keys.is_empty()
             || self.typography.typography_requested())
         .then(|| {
-            KanbanTaskThemeReceipt::new_with_typography(
+            KanbanTaskThemeReceipt::from_typography_plan(
                 &self.items,
                 decisions,
-                self.typography.typography_requested(),
-                self.typography
-                    .inherited_font_stack
-                    .typed_font_stack_requested(),
-                self.typography.typed_font_size_requested,
+                &self.typography,
                 typography_facts,
-                self.font_family_css(),
-                self.font_size_css(),
-                self.font_size_px(),
                 typography_layout,
             )
         })
@@ -1108,16 +1094,11 @@ struct KanbanTaskReceiptItem {
 impl KanbanTaskThemeReceipt {
     #[cfg(test)]
     fn new(items: &[KanbanTaskResolvedItem], decisions: &[KanbanTaskTerminalDecision]) -> Self {
-        Self::new_with_typography(
+        Self::from_typography_plan(
             items,
             decisions,
-            false,
-            false,
-            false,
+            &KanbanTypographyPlan::resolve(None, &MermaidConfig::default()),
             KanbanTypographyFacts::default(),
-            "",
-            "",
-            MERMAID_BASE_FONT_SIZE_PX,
             &super::KanbanTypographyLayoutReceipt::new(
                 "",
                 MERMAID_BASE_FONT_SIZE_PX,
@@ -1128,16 +1109,11 @@ impl KanbanTaskThemeReceipt {
         )
     }
 
-    fn new_with_typography(
+    fn from_typography_plan(
         items: &[KanbanTaskResolvedItem],
         decisions: &[KanbanTaskTerminalDecision],
-        typography_required: bool,
-        font_family_requested: bool,
-        font_size_requested: bool,
+        typography: &KanbanTypographyPlan,
         expected_typography: KanbanTypographyFacts,
-        expected_font_family: &str,
-        expected_font_size_css: &str,
-        expected_font_size_px: f64,
         typography_layout: &super::KanbanTypographyLayoutReceipt,
     ) -> Self {
         let schema_valid = items.len() == decisions.len();
@@ -1159,13 +1135,13 @@ impl KanbanTaskThemeReceipt {
             radius_valid: true,
             palette_valid: true,
             label_schema_valid: schema_valid,
-            expected_font_family: expected_font_family.into(),
-            expected_font_size_css: expected_font_size_css.into(),
-            expected_font_size_px,
+            expected_font_family: typography.font_family_css().into(),
+            expected_font_size_css: typography.font_size_css().into(),
+            expected_font_size_px: typography.font_size_px(),
             typography_layout: typography_layout.clone(),
-            typography_required,
-            font_family_requested,
-            font_size_requested,
+            typography_required: typography.typography_requested(),
+            font_family_requested: typography.inherited_font_stack.typed_font_stack_requested(),
+            font_size_requested: typography.typed_font_size_requested,
             expected_typography,
             actual_typography: KanbanTypographyFacts::default(),
             typography_css_recorded: false,
@@ -1274,16 +1250,16 @@ impl KanbanTaskThemeReceipt {
                 }
             }
         }
-        if let Some(stroke_capability) = terminal_decision.stroke_capability {
-            if let Some(rule_index) = terminal_decision.stroke_rule_index {
-                if actual_stroke == terminal_decision.stroke_css() {
-                    self.typed_stroke_capabilities
-                        .entry(rule_index)
-                        .or_default()
-                        .insert(stroke_capability);
-                } else {
-                    self.invalid_stroke_rules.insert(rule_index);
-                }
+        if let Some(stroke_capability) = terminal_decision.stroke_capability
+            && let Some(rule_index) = terminal_decision.stroke_rule_index
+        {
+            if actual_stroke == terminal_decision.stroke_css() {
+                self.typed_stroke_capabilities
+                    .entry(rule_index)
+                    .or_default()
+                    .insert(stroke_capability);
+            } else {
+                self.invalid_stroke_rules.insert(rule_index);
             }
         }
     }
@@ -1487,8 +1463,8 @@ mod tests {
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectGraph,
-        EffectInput, EffectPrimitive, FamilyThemeMechanismKey, ThemeCapability, ThemeRule,
-        ThemeRuleSet, ThemeStylePatch, ThemeTarget,
+        EffectInput, EffectPrimitive, FamilyThemeMechanismKey, FontStack, ThemeCapability,
+        ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_core::MermaidConfig;
@@ -1540,20 +1516,83 @@ mod tests {
         KanbanTypographyLayoutReceipt::new(font_family, font_size_px, terminal_count, 0, 0)
     }
 
+    fn typography_plan(style: ThemeTextStyle) -> KanbanTypographyPlan {
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::KANBAN, style),
+            ))
+            .expect("compile Kanban receipt typography")
+            .resolve(DiagramFamilyId::KANBAN);
+        KanbanTypographyPlan::resolve(Some(&theme), &MermaidConfig::default())
+    }
+
+    fn typed_font_stack() -> FontStack {
+        FontStack::new(["Typed", "sans-serif"]).expect("valid receipt font stack")
+    }
+
+    #[test]
+    fn task_theme_receipt_preserves_property_local_typography_requests() {
+        let size_only = ThemeTextStyle::default()
+            .with_font_size_px(24.0)
+            .expect("valid receipt font size");
+        let stack_only = ThemeTextStyle::default().with_font_stack(typed_font_stack());
+        let both = stack_only
+            .clone()
+            .with_font_size_px(24.0)
+            .expect("valid receipt font size");
+        for (style, family_requested, size_requested) in [
+            (None, false, false),
+            (Some(size_only), false, true),
+            (Some(stack_only), true, false),
+            (Some(both), true, true),
+        ] {
+            let plan = style
+                .map(typography_plan)
+                .unwrap_or_else(|| KanbanTypographyPlan::resolve(None, &MermaidConfig::default()));
+            let receipt = KanbanTaskThemeReceipt::from_typography_plan(
+                &[],
+                &[],
+                &plan,
+                KanbanTypographyFacts::default(),
+                &typography_layout("Independent layout font", 19.0, 0),
+            );
+            assert_eq!(
+                receipt.typography_required,
+                family_requested || size_requested
+            );
+            assert_eq!(receipt.font_family_requested, family_requested);
+            assert_eq!(receipt.font_size_requested, size_requested);
+            if family_requested {
+                assert_eq!(receipt.expected_font_family.as_ref(), "Typed, sans-serif");
+            }
+            assert_eq!(
+                receipt.expected_font_size_css.as_ref(),
+                if size_requested { "24px" } else { "16px" }
+            );
+            assert_eq!(
+                receipt.expected_font_size_px,
+                if size_requested { 24.0 } else { 16.0 }
+            );
+            assert_eq!(receipt.typography_layout.font_size_px(), 19.0);
+            assert!(!receipt.typography_css_recorded);
+            assert_eq!(receipt.actual_typography, KanbanTypographyFacts::default());
+        }
+    }
+
     fn typed_font_size_receipt(
         emitted_font_size_css: &str,
         typography_layout: &KanbanTypographyLayoutReceipt,
     ) -> KanbanTaskThemeReceipt {
-        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+        let plan = typography_plan(
+            ThemeTextStyle::default()
+                .with_font_size_px(24.0)
+                .expect("valid receipt font size"),
+        );
+        let mut receipt = KanbanTaskThemeReceipt::from_typography_plan(
             &[],
             &[],
-            true,
-            false,
-            true,
+            &plan,
             KanbanTypographyFacts::with_visible(true),
-            "Typed, sans-serif",
-            "24px",
-            24.0,
             typography_layout,
         );
         receipt.record_typography_css("Typed, sans-serif", emitted_font_size_css, true);
@@ -1690,16 +1729,17 @@ mod tests {
     fn task_theme_receipt_requires_the_emitted_font_and_visible_text() {
         let item = resolved_item(KanbanTaskOccurrence::new("task", []));
         let decision = palette_decision();
-        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+        let plan = typography_plan(
+            ThemeTextStyle::default()
+                .with_font_stack(typed_font_stack())
+                .with_font_size_px(24.0)
+                .expect("valid receipt font size"),
+        );
+        let mut receipt = KanbanTaskThemeReceipt::from_typography_plan(
             std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
-            true,
-            true,
-            true,
+            &plan,
             KanbanTypographyFacts::with_visible(true),
-            "Typed, sans-serif",
-            "24px",
-            24.0,
             &typography_layout("Typed, sans-serif", 24.0, 1),
         );
 
@@ -1719,16 +1759,11 @@ mod tests {
         assert!(receipt.proves_font_family());
         assert!(receipt.proves_font_size());
 
-        let mut wrong_family = KanbanTaskThemeReceipt::new_with_typography(
+        let mut wrong_family = KanbanTaskThemeReceipt::from_typography_plan(
             std::slice::from_ref(&item),
             std::slice::from_ref(&decision),
-            true,
-            true,
-            true,
+            &plan,
             KanbanTypographyFacts::with_visible(true),
-            "Typed, sans-serif",
-            "24px",
-            24.0,
             &typography_layout("Typed, sans-serif", 24.0, 1),
         );
         wrong_family.record_checkpointed_item(
@@ -1763,16 +1798,17 @@ mod tests {
 
     #[test]
     fn task_theme_receipt_allows_a_typed_font_without_visible_terminals() {
-        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+        let plan = typography_plan(
+            ThemeTextStyle::default()
+                .with_font_stack(typed_font_stack())
+                .with_font_size_px(24.0)
+                .expect("valid receipt font size"),
+        );
+        let mut receipt = KanbanTaskThemeReceipt::from_typography_plan(
             &[],
             &[],
-            true,
-            true,
-            true,
+            &plan,
             KanbanTypographyFacts::with_visible(false),
-            "Typed, sans-serif",
-            "24px",
-            24.0,
             &typography_layout("Typed, sans-serif", 24.0, 0),
         );
         receipt.record_typography_css("Typed, sans-serif", "24px", true);
@@ -1789,16 +1825,12 @@ mod tests {
         );
         let mut expected = KanbanTypographyFacts::default();
         expected.record_visible_style_facts(&facts);
-        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+        let plan = typography_plan(ThemeTextStyle::default().with_font_stack(typed_font_stack()));
+        let mut receipt = KanbanTaskThemeReceipt::from_typography_plan(
             &[],
             &[],
-            true,
-            true,
-            false,
+            &plan,
             expected,
-            "Typed, sans-serif",
-            "16px",
-            16.0,
             &typography_layout("Typed, sans-serif", 16.0, expected.terminal_count),
         );
 
@@ -1824,16 +1856,17 @@ mod tests {
         let mut expected = KanbanTypographyFacts::default();
         expected.record_visible_style_facts(&facts);
         let terminal_count = expected.terminal_count;
-        let mut receipt = KanbanTaskThemeReceipt::new_with_typography(
+        let plan = typography_plan(
+            ThemeTextStyle::default()
+                .with_font_stack(typed_font_stack())
+                .with_font_size_px(24.0)
+                .expect("valid receipt font size"),
+        );
+        let mut receipt = KanbanTaskThemeReceipt::from_typography_plan(
             &[],
             &[],
-            true,
-            true,
-            true,
+            &plan,
             expected,
-            "Typed, sans-serif",
-            "24px",
-            24.0,
             &typography_layout("Typed, sans-serif", 24.0, terminal_count),
         );
 

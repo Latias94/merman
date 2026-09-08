@@ -239,10 +239,9 @@ impl GanttTaskTheme {
                 typed_stroke_expectation(theme, effective_config, expectation.state, &style)?;
             if expectation.stroke.as_ref().is_some_and(|stroke| {
                 stroke.typed_rule_index().is_none() && stroke.typed_capability().is_none()
-            }) {
-                if let Some(origin) = style.stroke_resolution().winner() {
-                    source_owned_stroke_rules.insert(origin.rule_index());
-                }
+            }) && let Some(origin) = style.stroke_resolution().winner()
+            {
+                source_owned_stroke_rules.insert(origin.rule_index());
             }
         }
 
@@ -302,10 +301,10 @@ impl GanttTaskTheme {
         let mut ordinary_stroke_rules_replaced_on_vertical_tasks = BTreeSet::new();
         for expectation in &mut task_expectations {
             if expectation.vert && (warning_stroke.is_some() || vertical_source_owned) {
-                if let Some(stroke) = expectation.stroke.take() {
-                    if let Some(rule_index) = stroke.typed_rule_index() {
-                        ordinary_stroke_rules_replaced_on_vertical_tasks.insert(rule_index);
-                    }
+                if let Some(stroke) = expectation.stroke.take()
+                    && let Some(rule_index) = stroke.typed_rule_index()
+                {
+                    ordinary_stroke_rules_replaced_on_vertical_tasks.insert(rule_index);
                 }
                 if let Some(warning) = warning_stroke.as_ref().filter(|warning| warning.vert_typed)
                 {
@@ -323,12 +322,11 @@ impl GanttTaskTheme {
         // marker can be owned by warning or explicit vertical-line configuration. If these
         // owners replace every occurrence, the ordinary route is NotApplicable, not incomplete.
         for expectation in &task_expectations {
-            if let Some(stroke) = &expectation.stroke {
-                if let (Some(rule_index), Some(capability)) =
+            if let Some(stroke) = &expectation.stroke
+                && let (Some(rule_index), Some(capability)) =
                     (stroke.typed_rule_index(), stroke.typed_capability())
-                {
-                    typed_stroke_capabilities.insert(rule_index, capability);
-                }
+            {
+                typed_stroke_capabilities.insert(rule_index, capability);
             }
         }
         if warning_stroke.is_some() || warning_stroke_source_owned {
@@ -380,14 +378,10 @@ impl GanttTaskTheme {
                                     .pending
                                     .capabilities
                                     .insert(expectation.capability);
-                            } else if warning_stroke_source_owned {
-                                observation.suppressed = true;
-                            } else {
+                            } else if !warning_stroke_source_owned {
                                 observation.incomplete = true;
                             }
-                        } else if warning_stroke_source_owned {
-                            observation.suppressed = true;
-                        } else {
+                        } else if !warning_stroke_source_owned {
                             observation.incomplete = true;
                         }
                         continue;
@@ -413,9 +407,7 @@ impl GanttTaskTheme {
                             if let Some(capability) = typed_fill_capabilities.get(&rule_index) {
                                 observation.pending.fill = true;
                                 observation.pending.capabilities.insert(*capability);
-                            } else if source_owned_fill_rules.contains(&rule_index) {
-                                observation.suppressed = true;
-                            } else {
+                            } else if !source_owned_fill_rules.contains(&rule_index) {
                                 observation.incomplete = true;
                             }
                         }
@@ -428,12 +420,10 @@ impl GanttTaskTheme {
                             if let Some(capability) = typed_stroke_capabilities.get(&rule_index) {
                                 observation.pending.stroke = true;
                                 observation.pending.capabilities.insert(*capability);
-                            } else if source_owned_stroke_rules.contains(&rule_index)
-                                || ordinary_stroke_rules_replaced_on_vertical_tasks
+                            } else if !source_owned_stroke_rules.contains(&rule_index)
+                                && !ordinary_stroke_rules_replaced_on_vertical_tasks
                                     .contains(&rule_index)
                             {
-                                observation.suppressed = true;
-                            } else {
                                 observation.incomplete = true;
                             }
                         }
@@ -472,9 +462,7 @@ impl GanttTaskTheme {
                                     .pending
                                     .capabilities
                                     .insert(expectation.capability);
-                            } else if title_config_owned {
-                                observation.suppressed = true;
-                            } else {
+                            } else if !title_config_owned {
                                 observation.incomplete = true;
                             }
                         }
@@ -512,9 +500,7 @@ impl GanttTaskTheme {
                                     .pending
                                     .capabilities
                                     .insert(expectation.capability);
-                            } else if text_fill_source_owned {
-                                observation.suppressed = true;
-                            } else {
+                            } else if !text_fill_source_owned {
                                 observation.incomplete = true;
                             }
                         }
@@ -590,8 +576,6 @@ impl GanttTaskTheme {
                 // Mixed rules remain fail-closed until every winning facet has one terminal owner.
             } else if observation.pending.requires_terminal_proof() {
                 pending.insert(key, observation.pending);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -742,19 +726,12 @@ impl GanttTaskTheme {
             if expectations.len() != self.task_count() {
                 GanttTaskThemeReceipt::invalid(self.task_count())
             } else {
-                GanttTaskThemeReceipt::new_with_typography(
+                GanttTaskThemeReceipt::from_expectations(
                     expectations,
                     self.font_family_css.as_ref(),
                     self.typed_font_stack_active,
-                    self.title_fill.as_ref().map(|fill| fill.css.as_ref()),
-                    self.title_fill.as_ref().map(|fill| fill.rule_index),
-                    self.text_fill
-                        .as_ref()
-                        .and_then(|fill| fill.grid_typed.then_some(fill.grid_css.as_ref())),
-                    self.text_fill
-                        .as_ref()
-                        .and_then(|fill| fill.task_typed.then_some(fill.task_css.as_ref())),
-                    self.text_fill.as_ref().map(|fill| fill.rule_index),
+                    self.title_fill.as_ref(),
+                    self.text_fill.as_ref(),
                     self.warning_stroke.as_ref(),
                 )
             }
@@ -792,9 +769,9 @@ impl GanttTaskTheme {
                     key.clone(),
                     pending.capabilities.iter().copied(),
                 );
-            } else if pending.title_fill && !receipt.has_visible_title_fill_terminal() {
-                evidence.mark_not_applicable(key.clone());
-            } else if pending.text_fill && !receipt.has_visible_text_fill_terminal() {
+            } else if (pending.title_fill && !receipt.has_visible_title_fill_terminal())
+                || (pending.text_fill && !receipt.has_visible_text_fill_terminal())
+            {
                 evidence.mark_not_applicable(key.clone());
             }
         }
@@ -1154,7 +1131,6 @@ fn resolve_gantt_text_fill(
 struct GanttTaskRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
     pending: GanttTaskPendingEvidence,
 }
@@ -1229,18 +1205,15 @@ pub(crate) struct GanttTaskThemeReceipt {
 impl GanttTaskThemeReceipt {
     #[cfg(test)]
     fn new(expectations: Vec<GanttTaskTerminalExpectation>) -> Self {
-        Self::new_with_typography(expectations, "", false, None, None, None, None, None, None)
+        Self::from_expectations(expectations, "", false, None, None, None)
     }
 
-    fn new_with_typography(
+    fn from_expectations(
         expectations: Vec<GanttTaskTerminalExpectation>,
         expected_font_family_css: &str,
         typography_required: bool,
-        expected_title_fill_css: Option<&str>,
-        expected_title_fill_rule: Option<usize>,
-        expected_grid_text_fill_css: Option<&str>,
-        expected_task_text_fill_css: Option<&str>,
-        expected_text_fill_rule: Option<usize>,
+        title_fill: Option<&GanttGlobalFillExpectation>,
+        text_fill: Option<&GanttTextFillExpectation>,
         warning_stroke: Option<&GanttWarningStrokeExpectation>,
     ) -> Self {
         Self {
@@ -1256,14 +1229,18 @@ impl GanttTaskThemeReceipt {
             radius_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
             stroke_rules: BTreeSet::new(),
-            expected_title_fill_css: expected_title_fill_css.map(Into::into),
-            expected_title_fill_rule,
+            expected_title_fill_css: title_fill.map(|fill| fill.css.clone()),
+            expected_title_fill_rule: title_fill.map(|fill| fill.rule_index),
             title_css_recorded: false,
             title_css_matches: true,
             title_text_count: 0,
-            expected_grid_text_fill_css: expected_grid_text_fill_css.map(Into::into),
-            expected_task_text_fill_css: expected_task_text_fill_css.map(Into::into),
-            expected_text_fill_rule,
+            expected_grid_text_fill_css: text_fill
+                .filter(|fill| fill.grid_typed)
+                .map(|fill| fill.grid_css.clone()),
+            expected_task_text_fill_css: text_fill
+                .filter(|fill| fill.task_typed)
+                .map(|fill| fill.task_css.clone()),
+            expected_text_fill_rule: text_fill.map(|fill| fill.rule_index),
             grid_text_css_recorded: false,
             grid_text_css_matches: true,
             task_text_css_recorded: false,
@@ -1680,6 +1657,90 @@ mod tests {
                     .with_font_stack(FontStack::single(name).expect("valid font stack")),
             ),
         )
+    }
+
+    #[test]
+    fn global_text_receipt_preserves_property_local_roles_and_rule_identity() {
+        let pending = GanttTaskPendingEvidence {
+            text_fill: true,
+            ..GanttTaskPendingEvidence::default()
+        };
+        for (grid_typed, css) in [
+            (
+                true,
+                "#g .grid .tick text{font-family:sans-serif;fill:#123456;}",
+            ),
+            (
+                false,
+                "#g .taskText0,#g .taskText1,#g .taskText2,#g .taskText3{fill:#654321;}",
+            ),
+        ] {
+            let expectation = GanttTextFillExpectation {
+                grid_css: "#123456".into(),
+                task_css: "#654321".into(),
+                grid_typed,
+                task_typed: !grid_typed,
+                rule_index: 7,
+                capability: ThemeCapability::SolidPaint,
+            };
+            let receipt = || {
+                GanttTaskThemeReceipt::from_expectations(
+                    Vec::new(),
+                    "sans-serif",
+                    false,
+                    None,
+                    Some(&expectation),
+                    None,
+                )
+            };
+            let mut complete = receipt();
+            assert!(!complete.proves_complete());
+            complete.record_global_css("g", css, "sans-serif");
+            assert!(complete.proves_complete());
+            assert!(!complete.proves_rule(7, &pending));
+
+            if grid_typed {
+                complete.record_task_text("source-owned", "taskText0");
+            } else {
+                complete.record_grid_text("source-owned");
+            }
+            assert!(!complete.proves_rule(7, &pending));
+            if grid_typed {
+                complete.record_grid_text("typed");
+            } else {
+                complete.record_task_text("typed", "taskText0");
+            }
+            assert!(complete.proves_rule(7, &pending));
+            assert!(!complete.proves_rule(8, &pending));
+            complete.record_global_css("g", css, "sans-serif");
+            assert!(!complete.proves_complete());
+
+            let mut wrong_css = receipt();
+            wrong_css.record_global_css("g", "#g .grid .tick text{fill:red;}", "sans-serif");
+            assert!(!wrong_css.proves_complete());
+        }
+
+        let source_owned = GanttTextFillExpectation {
+            grid_css: "red".into(),
+            task_css: "blue".into(),
+            grid_typed: false,
+            task_typed: false,
+            rule_index: 7,
+            capability: ThemeCapability::SolidPaint,
+        };
+        let mut receipt = GanttTaskThemeReceipt::from_expectations(
+            Vec::new(),
+            "sans-serif",
+            false,
+            None,
+            Some(&source_owned),
+            None,
+        );
+        assert_eq!(receipt.expected_text_fill_rule, Some(7));
+        receipt.record_grid_text("source-owned");
+        receipt.record_task_text("source-owned", "taskText0");
+        assert!(receipt.proves_complete());
+        assert!(!receipt.proves_rule(7, &pending));
     }
 
     #[test]

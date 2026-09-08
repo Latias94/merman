@@ -301,20 +301,21 @@ fn record_kanban_label_emission(
     emission: &KanbanLabelGroupEmission,
     decision: &crate::kanban::KanbanTaskTerminalDecision,
 ) {
-    if emission.visible && emission.inherited_color_run_count > 0 && decision.label_css().is_some()
+    if emission.visible
+        && emission.inherited_color_run_count > 0
+        && decision.label_css().is_some()
+        && let Some(receipt) = receipt
     {
-        if let Some(receipt) = receipt {
-            receipt.record_label(
-                item_index,
-                semantic_id,
-                role,
-                &emission.group_style,
-                &emission.div_style,
-                emission.visible_run_count,
-                emission.inherited_color_run_count,
-                decision,
-            );
-        }
+        receipt.record_label(
+            item_index,
+            semantic_id,
+            role,
+            &emission.group_style,
+            &emission.div_style,
+            emission.visible_run_count,
+            emission.inherited_color_run_count,
+            decision,
+        );
     }
 }
 
