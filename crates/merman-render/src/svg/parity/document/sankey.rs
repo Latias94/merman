@@ -3,6 +3,32 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_sankey_referenced_gradient(&mut self, style: &PathStyle) -> Result<()> {
+        for paint in style
+            .fill
+            .iter()
+            .chain(style.stroke.iter().map(|stroke| &stroke.paint))
+        {
+            let Paint::Resource { id } = paint else {
+                continue;
+            };
+            if !self.sankey_inline_gradients.contains(id.as_str())
+                || !self.emitted_sankey_gradients.insert(id.as_str().to_owned())
+            {
+                continue;
+            }
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let Some(DrawingResource::LinearGradient(gradient)) =
+                self.resources.get(id.as_str()).copied()
+            else {
+                return Err(invalid("Sankey inline gradient resource is not linear"));
+            };
+            let svg_id = self.svg_resource_id(id.as_str())?;
+            self.write_linear_gradient(&svg_id, gradient)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn begin_sankey_semantic_group(&mut self, semantic_id: &str) -> Result<()> {
         // Labels stay in their shared source layer; individual logical label and document
         // scopes do not introduce DOM wrappers. Paint and compositing stay on drawing commands.

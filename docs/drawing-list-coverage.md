@@ -83,8 +83,11 @@ Node geometry now uses public local rectangles and transforms; the SVG node grou
 transforms into source-shaped translation/x/y attributes and source-numbered, diagram-scoped IDs.
 The node mutation regression checks that moving a public transform moves the serialized node.
 
-Sankey remains bridged. In-link gradient placement, compact label DOM, and canonical root
-background still require source-backed projection and
+Referenced linear gradients are now placed with their link paint, retain source numbering, and
+project edited public colors/transforms without copying them into the sidecar. Unreferenced
+resources cannot create painted links.
+
+Sankey remains bridged. Compact label DOM and canonical root background still require source-backed projection and
 complete family comparison before admission. The focused tests are not full-family parity proof.
 
 ### Cynefin migration evidence

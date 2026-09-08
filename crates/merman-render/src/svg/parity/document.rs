@@ -77,6 +77,8 @@ struct DocumentSvgEncoder<'a> {
     packet_styles: Option<super::packet::PacketSvgStyles<'a>>,
     pie_styles: Option<super::pie::PieSvgStyles<'a>>,
     cynefin_marker_definitions: BTreeMap<String, String>,
+    sankey_inline_gradients: BTreeSet<String>,
+    emitted_sankey_gradients: BTreeSet<String>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -172,6 +174,39 @@ impl<'a> DocumentSvgEncoder<'a> {
             .map(|fallback| (fallback.id.clone(), fallback))
             .collect();
 
+        let mut sankey_inline_gradients = BTreeSet::new();
+        if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
+            let mut counter = document
+                .public
+                .semantics
+                .iter()
+                .filter(|semantic| semantic.id.starts_with("sankey.node."))
+                .count();
+            for command in &document.public.commands {
+                session.checkpoint(OperationPhase::Emit)?;
+                if let DrawingCommand::DrawPath { path, style } = command
+                    && path.as_str().starts_with("sankey.link.")
+                    && let Some(Paint::Resource { id }) =
+                        style.stroke.as_ref().map(|stroke| &stroke.paint)
+                    && matches!(
+                        resources.get(id.as_str()),
+                        Some(DrawingResource::LinearGradient(_))
+                    )
+                    && sankey_inline_gradients.insert(id.as_str().to_owned())
+                {
+                    counter += 1;
+                    let prefix = if options.diagram_id.is_some() {
+                        format!("{diagram_id}-")
+                    } else {
+                        String::new()
+                    };
+                    resource_svg_ids.insert(
+                        id.as_str().to_owned(),
+                        format!("{prefix}linearGradient-{counter}"),
+                    );
+                }
+            }
+        }
         Ok(Self {
             document: &document.public,
             svg_body: &document.svg.body,
@@ -209,6 +244,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             state: GraphicsState::default(),
             cynefin_marker_definitions: BTreeMap::new(),
+            sankey_inline_gradients,
+            emitted_sankey_gradients: BTreeSet::new(),
             saves: Vec::new(),
             groups: Vec::new(),
             semantic_text_counts: BTreeMap::new(),
@@ -998,6 +1035,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             })
             .collect::<BTreeSet<_>>();
         let has_defs = self.resources.iter().any(|(raw_id, resource)| {
+            if self.sankey_inline_gradients.contains(raw_id) {
+                return false;
+            }
             matches!(
                 resource,
                 DrawingResource::LinearGradient(_)
@@ -1016,6 +1056,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             .map(|(raw_id, resource)| (raw_id.clone(), *resource))
             .collect::<Vec<_>>();
         for (raw_id, resource) in resources {
+            if self.sankey_inline_gradients.contains(&raw_id) {
+                continue;
+            }
             if matches!(resource, DrawingResource::Path(_)) && !clip_paths.contains(&raw_id) {
                 continue;
             }
@@ -1141,7 +1184,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     ) -> Result<()> {
         write!(
             self.output,
-            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
+            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientTransform=\"matrix({})\" spreadMethod=\"{}\">",
             escaped_attr(id),
             fmt(gradient.start.x),
             fmt(gradient.start.y),
@@ -1163,7 +1206,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     ) -> Result<()> {
         write!(
             self.output,
-            "<radialGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" cx=\"{}\" cy=\"{}\" fx=\"{}\" fy=\"{}\" r=\"{}\" gradientTransform=\"{}\" spreadMethod=\"{}\">",
+            "<radialGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" cx=\"{}\" cy=\"{}\" fx=\"{}\" fy=\"{}\" r=\"{}\" gradientTransform=\"matrix({})\" spreadMethod=\"{}\">",
             escaped_attr(id),
             fmt(gradient.center.x),
             fmt(gradient.center.y),
@@ -1231,7 +1274,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         };
         write!(
             self.output,
-            "<pattern id=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" patternUnits=\"userSpaceOnUse\" patternContentUnits=\"userSpaceOnUse\" patternTransform=\"{}\">",
+            "<pattern id=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" patternUnits=\"userSpaceOnUse\" patternContentUnits=\"userSpaceOnUse\" patternTransform=\"matrix({})\">",
             escaped_attr(id),
             fmt(pattern.tile.x),
             fmt(pattern.tile.y),
@@ -1955,6 +1998,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
+            self.write_sankey_referenced_gradient(style)?;
+        }
         if matches!(self.svg_body, SvgStructureBody::Error(_)) {
             return super::error::write_error_path(&mut self.output, path_id);
         }

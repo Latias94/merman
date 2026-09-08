@@ -1978,6 +1978,90 @@ mod tests {
     }
 
     #[test]
+    fn sankey_svg_places_referenced_public_gradients_inside_links() {
+        use merman_display_list::{Color, DrawingResource};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sankey-beta\nA,B,10\nB,C,5\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |doc: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                doc,
+                &SvgRenderOptions {
+                    diagram_id: Some("sankey-gradients".to_string()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let gradients = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("linearGradient"))
+            .collect::<Vec<_>>();
+        assert_eq!(gradients.len(), 2);
+        for (index, gradient) in gradients.iter().enumerate() {
+            assert_eq!(gradient.parent().unwrap().attribute("class"), Some("link"));
+            let id = format!("sankey-gradients-linearGradient-{}", index + 4);
+            assert_eq!(gradient.attribute("id"), Some(id.as_str()));
+            assert_eq!(gradient.attribute("gradientUnits"), Some("userSpaceOnUse"));
+            let path = gradient.next_sibling_element().unwrap();
+            assert!(path.has_tag_name("path"));
+            assert_eq!(
+                path.attribute("stroke"),
+                Some(format!("url(#{id})").as_str())
+            );
+        }
+        assert!(
+            !xml.root_element()
+                .children()
+                .any(|node| node.has_tag_name("defs"))
+        );
+        for resource in &mut document.public.resources {
+            if let DrawingResource::LinearGradient(gradient) = resource {
+                gradient.stops[0].color = Color::rgba(12, 34, 56, 128);
+                gradient.transform.e = 7.0;
+            }
+        }
+        let svg = render(&document);
+        assert!(svg.contains("#0c2238"));
+        assert!(svg.contains("gradientTransform=\"matrix(1 0 0 1 7 0)\""));
+        // A retained resource is not proof of a paint operation. Removing the command must
+        // remove its inline definition; it may remain an inert general resource definition.
+        document.public.commands.retain(|command| {
+            !matches!(command,
+                merman_display_list::DrawingCommand::DrawPath { path, .. }
+                    if path.as_str() == "sankey.link.0.path"
+            )
+        });
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("linearGradient")
+                    && node.parent().unwrap().attribute("class") == Some("link"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn sankey_node_svg_projects_public_local_geometry_and_transform() {
         use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Point};
         let parsed = Engine::new()
