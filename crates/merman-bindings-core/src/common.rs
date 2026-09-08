@@ -361,6 +361,16 @@ pub struct BindingDrawingListErrorDetails {
     pub reason: Option<String>,
 }
 
+impl BindingDrawingListErrorDetails {
+    pub fn new(category: &'static str, family: Option<String>, reason: Option<String>) -> Self {
+        Self {
+            category,
+            family,
+            reason,
+        }
+    }
+}
+
 impl BindingError {
     fn classified(
         status: BindingStatus,

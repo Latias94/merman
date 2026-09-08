@@ -106,6 +106,13 @@ pub struct MermanIconRegistryErrorDetails {
     pub registration_name: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDrawingListErrorDetails {
+    pub category: String,
+    pub family: Option<String>,
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
     #[error("{code_name}: {message}")]
@@ -118,6 +125,7 @@ pub enum MermanError {
         diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         cancellation: Option<MermanCancelledDetails>,
+        drawing_list: Option<MermanDrawingListErrorDetails>,
         message: String,
     },
 }
@@ -165,6 +173,14 @@ impl MermanError {
                 reason: details.reason.to_string(),
                 phase: details.phase.to_string(),
             });
+        let drawing_list =
+            error
+                .drawing_list_details()
+                .map(|details| MermanDrawingListErrorDetails {
+                    category: details.category.to_string(),
+                    family: details.family.clone(),
+                    reason: details.reason.clone(),
+                });
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -174,6 +190,7 @@ impl MermanError {
             diagnostic,
             icon_registry,
             cancellation,
+            drawing_list,
             message: error.message().to_string(),
         }
     }
@@ -189,6 +206,7 @@ impl MermanError {
             diagnostic: None,
             icon_registry: None,
             cancellation: None,
+            drawing_list: None,
             message: message.into(),
         }
     }
@@ -3689,6 +3707,29 @@ A@{ icon: "test:rocket", label: "A" }"#
                 kind_id: "invalid_xml".to_string(),
                 pack_index: Some(0),
                 registration_name: None,
+            })
+        );
+    }
+
+    #[test]
+    fn drawing_list_errors_preserve_structured_details() {
+        let error = MermanError::from_binding(
+            BindingError::unsupported_operation("DrawingList is unavailable")
+                .with_drawing_list_details(
+                    merman_bindings_core::BindingDrawingListErrorDetails::new(
+                        "unavailable",
+                        Some("state".to_string()),
+                        Some("htmlLabels requires a foreignObject fallback".to_string()),
+                    ),
+                ),
+        );
+        let MermanError::Binding { drawing_list, .. } = error;
+        assert_eq!(
+            drawing_list,
+            Some(MermanDrawingListErrorDetails {
+                category: "unavailable".to_string(),
+                family: Some("state".to_string()),
+                reason: Some("htmlLabels requires a foreignObject fallback".to_string()),
             })
         );
     }
