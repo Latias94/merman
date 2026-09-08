@@ -1,11 +1,16 @@
 //! Typed Venn Rough.js geometry, independent of SVG serialization.
 //!
-//! These collecting entry points still need fallible sampling and scanline production before
-//! they can be used by the caller-bounded DrawingList builder.
+//! Scanline work is cancellable and charged during production. These collecting entry points
+//! still need bounded ellipse/curve sampling before use by the DrawingList builder.
 
 use crate::model::VennCircleLayout;
+use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
+use merman_core::OperationPhase;
 use roughr::core::{FillStyle, OpSet, OpSetType, OptionsBuilder, RoughRandomness};
+use roughr::filler::hachure_stream::{
+    HachureError, HachureEvent, HachurePolygon, try_hachure_fill,
+};
 
 pub(crate) struct RoughCircleGeometry {
     pub(crate) fill: OpSet<f64>,
@@ -19,6 +24,7 @@ pub(crate) fn circle_geometry(
     stroke_width: f32,
     hachure_angle: f32,
     randomness: &RoughRandomness,
+    work_meter: &OperationWorkMeter,
 ) -> Result<RoughCircleGeometry> {
     let mut options = OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -43,8 +49,7 @@ pub(crate) fn circle_geometry(
     // Match Generator::ellipse's outline-before-fill order, without Drawable's complete
     // operation-set clone. Hachure fill owns the estimated points after outline generation.
     let ellipse = roughr::renderer::ellipse_with_params(circle.x, circle.y, &mut options, &params);
-    let fill =
-        roughr::renderer::pattern_fill_polygons(vec![ellipse.estimated_points], &mut options);
+    let fill = collect_hachure(&mut [ellipse.estimated_points], &mut options, work_meter)?;
     Ok(RoughCircleGeometry {
         fill,
         outline: ellipse.opset,
@@ -55,6 +60,7 @@ pub(crate) fn intersection_fill_geometry(
     path: &str,
     fill: roughr::Srgba,
     randomness: &RoughRandomness,
+    work_meter: &OperationWorkMeter,
 ) -> Result<OpSet<f64>> {
     let mut options = OptionsBuilder::default()
         .randomness(randomness.clone())
@@ -72,17 +78,47 @@ pub(crate) fn intersection_fill_geometry(
     options.stroke = None;
 
     let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
-    let polygons =
+    let mut polygons =
         roughr::points_on_path::points_on_path::<f64>(path.to_owned(), Some(1.0), Some(distance));
     // Rough.js advances the outline PRNG even with stroke:none, before generating the fill.
     let _discarded_outline = roughr::renderer::svg_path::<f64>(path.to_owned(), &mut options);
-    let fill_path = roughr::renderer::pattern_fill_polygons(polygons, &mut options);
-    if fill_path.op_set_type != OpSetType::FillSketch {
-        return Err(Error::InvalidModel {
-            message: "Venn RoughJS intersection did not produce a sketch fill path".to_owned(),
-        });
-    }
-    Ok(fill_path)
+    collect_hachure(&mut polygons, &mut options, work_meter)
+}
+
+fn collect_hachure(
+    polygons: &mut [HachurePolygon<f64>],
+    options: &mut roughr::core::Options,
+    work_meter: &OperationWorkMeter,
+) -> Result<OpSet<f64>> {
+    let mut ops = Vec::new();
+    try_hachure_fill(polygons, options, |event| {
+        match event {
+            HachureEvent::Work(units) => work_meter.charge_at(units, OperationPhase::Emit)?,
+            HachureEvent::Op(op) => {
+                ops.try_reserve(1)
+                    .map_err(|_| Error::DrawingListAllocationFailed {
+                        collection: "Venn hachure operations",
+                    })?;
+                ops.push(op);
+            }
+        }
+        Ok(())
+    })
+    .map_err(|error| match error {
+        HachureError::Consumer(error) => error,
+        HachureError::Allocation(_) => Error::DrawingListAllocationFailed {
+            collection: "Venn hachure scratch",
+        },
+        HachureError::InvalidGeometry | HachureError::UnsupportedFillStyle => Error::InvalidModel {
+            message: error.to_string(),
+        },
+    })?;
+    Ok(OpSet {
+        op_set_type: OpSetType::FillSketch,
+        ops,
+        size: None,
+        path: None,
+    })
 }
 
 fn invalid_options(context: &str, error: impl std::fmt::Display) -> Error {
@@ -95,6 +131,75 @@ fn invalid_options(context: &str, error: impl std::fmt::Display) -> Error {
 mod tests {
     use super::*;
     use roughr::core::{RoughJsSeed, RoughMathRandom};
+
+    #[test]
+    fn hachure_collection_shares_exact_work_and_keeps_errors_terminal() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        use merman_core::OperationControl;
+        let polygons = || {
+            vec![vec![
+                roughr::Point2D::new(0.0, 0.0),
+                roughr::Point2D::new(30.0, 0.0),
+                roughr::Point2D::new(30.0, 30.0),
+                roughr::Point2D::new(0.0, 30.0),
+            ]]
+        };
+        let options = || {
+            OptionsBuilder::default()
+                .fill_style(FillStyle::CrossHatch)
+                .hachure_angle(60.0)
+                .hachure_gap(6.0)
+                .randomness(RoughRandomness::new(
+                    RoughJsSeed::new(1.0),
+                    RoughMathRandom::new(123),
+                ))
+                .build()
+                .unwrap()
+        };
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let complete = collect_hachure(&mut polygons(), &mut options(), &meter).unwrap();
+        let exact_work = meter.used();
+        assert!(exact_work > 0 && !complete.ops.is_empty());
+        for ceiling in [exact_work, exact_work - 1] {
+            let control = OperationControl::new();
+            let meter = OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, ceiling)
+                    .unwrap(),
+                control.clone(),
+            );
+            let result = collect_hachure(&mut polygons(), &mut options(), &meter);
+            if ceiling == exact_work {
+                assert_eq!(result.unwrap(), complete);
+            } else {
+                let Error::ResourceLimitExceeded(error) = result.unwrap_err() else {
+                    panic!("expected work limit");
+                };
+                assert_eq!(error.limit, "max_layout_work_units");
+                assert_eq!(error.max, ceiling);
+                assert!(error.actual > ceiling);
+                let terminal = control
+                    .terminal_checkpoint_at(OperationPhase::Emit)
+                    .unwrap_err();
+                control.cancel();
+                assert_eq!(
+                    control.terminal_checkpoint_at(OperationPhase::Emit),
+                    Err(terminal)
+                );
+            }
+        }
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(20);
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        assert!(matches!(
+            collect_hachure(&mut polygons(), &mut options(), &meter),
+            Err(Error::Cancelled(_))
+        ));
+        assert!(meter.used() > 0 && meter.used() < exact_work);
+    }
 
     #[test]
     fn typed_circle_preserves_generator_operations_and_seed_progression() {
@@ -133,7 +238,10 @@ mod tests {
                     circle.radius * 2.0,
                     &Some(options),
                 );
-                let actual = circle_geometry(&circle, fill, stroke, 7.0, angle, &random()).unwrap();
+                let meter =
+                    OperationWorkMeter::new(crate::resources::RenderResourcePolicy::default());
+                let actual =
+                    circle_geometry(&circle, fill, stroke, 7.0, angle, &random(), &meter).unwrap();
                 assert_eq!(expected.sets, [actual.fill.clone(), actual.outline.clone()]);
                 for set in [&actual.fill, &actual.outline] {
                     let segments = crate::rough_geometry::opset_to_path_segments(set).unwrap();

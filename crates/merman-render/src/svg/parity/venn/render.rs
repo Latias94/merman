@@ -241,6 +241,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
                     &hand_drawn_seed,
+                    options.work_meter(),
                 )?;
                 let fill_stroke = transparentize(&presentation.fill_color, 0.7)?;
                 let _ = write!(
@@ -284,6 +285,7 @@ pub(crate) fn render_venn_diagram_svg_model(
                         &area.path,
                         rough_color(&presentation.fill_color)?,
                         &hand_drawn_seed,
+                        options.work_meter(),
                     )?;
                     let fill_stroke = transparentize(&presentation.fill_color, 0.3)?;
                     let _ = write!(

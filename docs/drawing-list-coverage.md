@@ -292,13 +292,20 @@ migration work. These features are not inherently outside the vector protocol; m
 implementations must be resolved before full-family admission.
 
 Venn's hand-drawn circle and intersection generators now return typed Rough.js operation sets
-from `venn/rough.rs`; the legacy SVG renderer only formats those operations. This removes the
-SVG-string boundary for the pending direct adapter, but does not make generation bounded.
-Ellipse sampling, hachure scan rows (including empty rows), and intersection curve subdivision
-still need fallible production before the public hand-drawn DrawingList gate can be removed.
-The two crosshatch passes must share the same work budget and preserve outline-before-fill
-random-number consumption. Do not replace this with a guessed geometry-size cutoff or a final
-post-allocation footprint check.
+from `venn/rough.rs`; the legacy SVG renderer only formats those operations. Hachure/crosshatch
+now use fallible operation production, with work admission for vertices, edge tables, and every
+scan row (including empty rows). Both crosshatch passes share the operation meter; an error drops
+the local output instead of returning a partial fill. Rotation occurs in place and lines are
+consumed individually, without the former complete line array or polygon copies. Fixed-size
+per-line Rough.js operation batches still use the existing allocator, and sorting checkpoints
+bound admitted input size rather than guaranteeing fixed-latency cancellation inside sorting.
+
+This removes the SVG-string boundary for the pending direct adapter, but ellipse sampling and
+intersection curve subdivision still need fallible production before the public hand-drawn
+DrawingList gate can be removed. Preserve outline-before-fill random-number consumption; do not
+replace this with a guessed geometry-size cutoff or a final post-allocation footprint check.
+The new roughr API also needs its independently versioned package release before a Merman
+release can resolve this implementation from the registry.
 
 ### Venn text-layout source characterization
 

@@ -14,6 +14,7 @@ use self::zig_zag_line_filler::ZigZagLineFiller;
 
 pub mod dashed_filler;
 pub mod dot_filler;
+pub mod hachure_stream;
 pub mod hatch_filler;
 pub mod scan_line_hachure;
 pub mod traits;
