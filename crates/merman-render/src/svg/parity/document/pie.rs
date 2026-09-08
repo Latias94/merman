@@ -12,48 +12,87 @@ impl DocumentSvgEncoder<'_> {
         if id == "pie.background" {
             return Ok(false);
         }
-        let paint_css = |encoder: &Self, paint: Option<&Paint>| -> Result<String> {
-            match paint {
-                None => Ok("none".to_string()),
-                Some(Paint::Solid { color }) => Ok(format!(
-                    "rgba({},{},{},{})",
-                    color.red,
-                    color.green,
-                    color.blue,
-                    fmt(f64::from(color.alpha) / 255.0)
-                )),
-                Some(Paint::Resource { id }) => {
-                    Ok(format!("url(#{})", encoder.svg_resource_id(id.as_str())?))
-                }
+        let path = self.path_resource(path_id)?;
+        // Decide whether this projection applies before emitting any part of the element.
+        if id == "pie.outer" {
+            let Some((center, radius)) = circle_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"",
+                fmt(center.x),
+                fmt(center.y),
+                fmt(radius)
+            )?;
+        } else if id.starts_with("pie.legend.") && id.ends_with(".swatch") {
+            let Some(bounds) = rectangle_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<rect width=\"{}\" height=\"{}\"",
+                fmt(bounds.width),
+                fmt(bounds.height)
+            )?;
+            if bounds.x != 0.0 || bounds.y != 0.0 {
+                write!(
+                    self.output,
+                    " x=\"{}\" y=\"{}\"",
+                    fmt(bounds.x),
+                    fmt(bounds.y)
+                )?;
             }
-        };
-        let mut css = format!(
-            "fill:{};fill-rule:{};",
-            paint_css(self, style.fill.as_ref())?,
+        } else if id.starts_with("pie.slice.") && id.ends_with(".shape") {
+            write!(
+                self.output,
+                "<path d=\"{}\"",
+                super::super::curve::drawing_path_segments_d_unrounded(&path.segments)
+            )?;
+            if let Some(Paint::Solid { color }) = &style.fill {
+                write!(self.output, " fill=\"{}\"", color_css(*color))?;
+            } else if style.fill.is_none() {
+                self.output.push_str(" fill=\"none\"")?;
+            }
+        } else {
+            return Ok(false);
+        }
+        self.output.push_str(" style=\"fill:")?;
+        self.write_pie_paint(style.fill.as_ref())?;
+        write!(
+            self.output,
+            ";fill-rule:{};",
             fill_rule_name(style.fill_rule)
-        );
+        )?;
         if let Some(stroke) = &style.stroke {
-            write!(css, "stroke:{};stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
-                paint_css(self, Some(&stroke.paint))?, fmt(stroke.width), line_cap(stroke.line_cap), line_join(stroke.line_join), fmt(stroke.miter_limit), fmt(stroke.dash_offset)).map_err(|_| invalid("SVG component formatting failed"))?;
+            self.output.push_str("stroke:")?;
+            self.write_pie_paint(Some(&stroke.paint))?;
+            write!(
+                self.output,
+                ";stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
+                fmt(stroke.width),
+                line_cap(stroke.line_cap),
+                line_join(stroke.line_join),
+                fmt(stroke.miter_limit),
+                fmt(stroke.dash_offset)
+            )?;
             if stroke.dash_array.is_empty() {
-                css.push_str("none");
+                self.output.push_str("none")?;
             }
             for (index, dash) in stroke.dash_array.iter().enumerate() {
                 if index != 0 {
-                    css.push(',');
+                    self.output.push(',')?;
                 }
-                write!(css, "{}", fmt(*dash))
-                    .map_err(|_| invalid("SVG component formatting failed"))?;
+                write!(self.output, "{}", fmt(*dash))?;
             }
-            css.push(';');
+            self.output.push(';')?;
         } else {
-            css.push_str("stroke:none;");
+            self.output.push_str("stroke:none;")?;
         }
-        write!(css, "opacity:{};", fmt(self.state.opacity))
-            .map_err(|_| invalid("SVG component formatting failed"))?;
+        write!(self.output, "opacity:{};", fmt(self.state.opacity))?;
         if self.state.transform != Transform::IDENTITY {
             write!(
-                css,
+                self.output,
                 "transform:matrix({},{},{},{},{},{});",
                 fmt(self.state.transform.a),
                 fmt(self.state.transform.b),
@@ -61,67 +100,35 @@ impl DocumentSvgEncoder<'_> {
                 fmt(self.state.transform.d),
                 fmt(self.state.transform.e),
                 fmt(self.state.transform.f)
-            )
-            .map_err(|_| invalid("SVG component formatting failed"))?;
+            )?;
         }
         if let Some(blend) = blend_css(self.state.blend_mode) {
-            write!(css, "mix-blend-mode:{blend};")
-                .map_err(|_| invalid("SVG component formatting failed"))?;
+            write!(self.output, "mix-blend-mode:{blend};")?;
         }
-        let path = self.path_resource(path_id)?;
-        let mut opening = String::new();
-        if id == "pie.outer" {
-            let Some((center, radius)) = circle_from_path(path) else {
-                return Ok(false);
-            };
-            write!(
-                opening,
-                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"",
-                fmt(center.x),
-                fmt(center.y),
-                fmt(radius)
-            )
-            .map_err(|_| invalid("SVG component formatting failed"))?;
-        } else if id.starts_with("pie.legend.") && id.ends_with(".swatch") {
-            let Some(bounds) = rectangle_from_path(path) else {
-                return Ok(false);
-            };
-            write!(
-                opening,
-                "<rect width=\"{}\" height=\"{}\"",
-                fmt(bounds.width),
-                fmt(bounds.height)
-            )
-            .map_err(|_| invalid("SVG component formatting failed"))?;
-            if bounds.x != 0.0 || bounds.y != 0.0 {
-                write!(opening, " x=\"{}\" y=\"{}\"", fmt(bounds.x), fmt(bounds.y))
-                    .map_err(|_| invalid("SVG component formatting failed"))?;
-            }
-        } else if id.starts_with("pie.slice.") && id.ends_with(".shape") {
-            write!(
-                opening,
-                "<path d=\"{}\"",
-                super::super::curve::drawing_path_segments_d_unrounded(&path.segments)
-            )
-            .map_err(|_| invalid("SVG component formatting failed"))?;
-            if let Some(Paint::Solid { color }) = &style.fill {
-                write!(opening, " fill=\"{}\"", color_css(*color))
-                    .map_err(|_| invalid("SVG component formatting failed"))?;
-            } else if style.fill.is_none() {
-                opening.push_str(" fill=\"none\"");
-            }
-        } else {
-            return Ok(false);
-        }
-        write!(opening, " style=\"{}\"", escaped_attr(&css))
-            .map_err(|_| invalid("SVG component formatting failed"))?;
+        self.output.push('"')?;
         if let Some(class) = self.path_class(path_id) {
-            write!(opening, " class=\"{}\"", escaped_attr(&class))
-                .map_err(|_| invalid("SVG component formatting failed"))?;
+            write!(self.output, " class=\"{}\"", escaped_attr(&class))?;
         }
-        opening.push_str("/>");
-        self.output.push_str(&opening)?;
+        self.output.push_str("/>")?;
         Ok(true)
+    }
+
+    fn write_pie_paint(&mut self, paint: Option<&Paint>) -> Result<()> {
+        match paint {
+            None => self.output.push_str("none"),
+            Some(Paint::Solid { color }) => write!(
+                self.output,
+                "rgba({},{},{},{})",
+                color.red,
+                color.green,
+                color.blue,
+                fmt(f64::from(color.alpha) / 255.0)
+            ),
+            Some(Paint::Resource { id }) => {
+                let id = self.svg_resource_id(id.as_str())?;
+                write!(self.output, "url(#{})", escaped_attr(id))
+            }
+        }
     }
 
     pub(super) fn emit_compact_pie_text(

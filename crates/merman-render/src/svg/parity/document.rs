@@ -5200,18 +5200,28 @@ mod tests {
         let path = [PathSegment::MoveTo {
             to: Point::new(12345.0, 67890.0),
         }];
-        for image in [false, true] {
+        for encoding in ["path", "pie-path", "image"] {
             let environment = RenderEnvironment::deterministic().with_resource_policy(
                 RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxSvgBytes, if image { 32 } else { 8 })
+                    .with_limit(
+                        ResourceLimitId::MaxSvgBytes,
+                        if encoding == "image" { 32 } else { 8 },
+                    )
                     .unwrap(),
             );
             let session = environment.begin_session().unwrap();
             let mut output = SvgOutput::new(&session);
-            let error = if image {
+            let error = if encoding == "image" {
                 output.write_fmt(format_args!(
                     "{}",
                     escaped_attr(data_uri("image/png", &[42; 64]))
+                ))
+            } else if encoding == "pie-path" {
+                output.write_fmt(format_args!(
+                    "{}",
+                    escaped_attr(super::super::curve::drawing_path_segments_d_unrounded(
+                        &path
+                    ))
                 ))
             } else {
                 output.write_fmt(format_args!("{}", escaped_attr(path_d(&path))))

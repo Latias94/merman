@@ -201,64 +201,78 @@ fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cub
 pub(in crate::svg::parity) fn drawing_path_segments_d(
     segments: &[merman_display_list::PathSegment],
 ) -> String {
-    drawing_path_segments_d_with(segments, fmt_path_into)
+    let mut out = String::with_capacity(segments.len().saturating_mul(48));
+    // String's formatting sink cannot reject a write.
+    let _ = write_drawing_path_segments(&mut out, segments, |out, value| {
+        fmt_path_into(out, value);
+        Ok(())
+    });
+    out
 }
 
 /// Serializes typed geometry with Mermaid's ordinary JavaScript-number spelling rather than
 /// D3-path's three-decimal projection. Pie's hand-built arc strings use this form upstream.
 pub(in crate::svg::parity) fn drawing_path_segments_d_unrounded(
     segments: &[merman_display_list::PathSegment],
-) -> String {
-    drawing_path_segments_d_with(segments, fmt_into)
+) -> impl std::fmt::Display + '_ {
+    UnroundedDrawingPath(segments)
 }
 
-fn drawing_path_segments_d_with(
+struct UnroundedDrawingPath<'a>(&'a [merman_display_list::PathSegment]);
+
+impl std::fmt::Display for UnroundedDrawingPath<'_> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write_drawing_path_segments(out, self.0, |out, value| write!(out, "{}", fmt(value)))
+    }
+}
+
+fn write_drawing_path_segments<W: std::fmt::Write>(
+    out: &mut W,
     segments: &[merman_display_list::PathSegment],
-    write_number: fn(&mut String, f64),
-) -> String {
+    mut write_number: impl FnMut(&mut W, f64) -> std::fmt::Result,
+) -> std::fmt::Result {
     use merman_display_list::PathSegment;
 
-    fn write_point(
-        out: &mut String,
+    fn write_point<W: std::fmt::Write>(
+        out: &mut W,
         command: char,
         point: merman_display_list::Point,
-        write_number: fn(&mut String, f64),
-    ) {
-        out.push(command);
-        write_number(out, point.x);
-        out.push(',');
-        write_number(out, point.y);
+        write_number: &mut impl FnMut(&mut W, f64) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        out.write_char(command)?;
+        write_number(out, point.x)?;
+        out.write_char(',')?;
+        write_number(out, point.y)
     }
 
-    let mut out = String::with_capacity(segments.len().saturating_mul(48));
     for segment in segments {
         match *segment {
-            PathSegment::MoveTo { to } => write_point(&mut out, 'M', to, write_number),
-            PathSegment::LineTo { to } => write_point(&mut out, 'L', to, write_number),
+            PathSegment::MoveTo { to } => write_point(out, 'M', to, &mut write_number)?,
+            PathSegment::LineTo { to } => write_point(out, 'L', to, &mut write_number)?,
             PathSegment::QuadTo { control, to } => {
-                out.push('Q');
-                write_number(&mut out, control.x);
-                out.push(',');
-                write_number(&mut out, control.y);
-                out.push(' ');
-                write_number(&mut out, to.x);
-                out.push(',');
-                write_number(&mut out, to.y);
+                out.write_char('Q')?;
+                write_number(out, control.x)?;
+                out.write_char(',')?;
+                write_number(out, control.y)?;
+                out.write_char(' ')?;
+                write_number(out, to.x)?;
+                out.write_char(',')?;
+                write_number(out, to.y)?;
             }
             PathSegment::CubicTo {
                 control1,
                 control2,
                 to,
             } => {
-                out.push('C');
+                out.write_char('C')?;
                 for (index, value) in [control1.x, control1.y, control2.x, control2.y, to.x, to.y]
                     .into_iter()
                     .enumerate()
                 {
                     if index > 0 {
-                        out.push(',');
+                        out.write_char(',')?;
                     }
-                    write_number(&mut out, value);
+                    write_number(out, value)?;
                 }
             }
             PathSegment::ArcTo {
@@ -269,23 +283,129 @@ fn drawing_path_segments_d_with(
                 sweep_clockwise,
                 to,
             } => {
-                out.push('A');
+                out.write_char('A')?;
                 for value in [radius_x, radius_y, x_axis_rotation_degrees] {
-                    write_number(&mut out, value);
-                    out.push(',');
+                    write_number(out, value)?;
+                    out.write_char(',')?;
                 }
-                out.push(if large_arc { '1' } else { '0' });
-                out.push(',');
-                out.push(if sweep_clockwise { '1' } else { '0' });
-                out.push(',');
-                write_number(&mut out, to.x);
-                out.push(',');
-                write_number(&mut out, to.y);
+                out.write_char(if large_arc { '1' } else { '0' })?;
+                out.write_char(',')?;
+                out.write_char(if sweep_clockwise { '1' } else { '0' })?;
+                out.write_char(',')?;
+                write_number(out, to.x)?;
+                out.write_char(',')?;
+                write_number(out, to.y)?;
             }
-            PathSegment::Close => out.push('Z'),
+            PathSegment::Close => out.write_char('Z')?,
         }
     }
-    out
+    Ok(())
+}
+
+#[cfg(test)]
+mod drawing_path_tests {
+    use super::*;
+    use merman_display_list::{PathSegment, Point};
+
+    #[test]
+    fn drawing_path_number_modes_preserve_segment_spelling() {
+        let segments = [
+            PathSegment::MoveTo {
+                to: Point {
+                    x: 1.23456,
+                    y: -0.0,
+                },
+            },
+            PathSegment::LineTo {
+                to: Point { x: 3.0, y: 4.0 },
+            },
+            PathSegment::QuadTo {
+                control: Point { x: 5.0, y: 6.0 },
+                to: Point { x: 7.0, y: 8.0 },
+            },
+            PathSegment::CubicTo {
+                control1: Point { x: 9.0, y: 10.0 },
+                control2: Point { x: 11.0, y: 12.0 },
+                to: Point { x: 13.0, y: 14.0 },
+            },
+            PathSegment::ArcTo {
+                radius_x: 15.0,
+                radius_y: 16.0,
+                x_axis_rotation_degrees: 17.0,
+                large_arc: true,
+                sweep_clockwise: false,
+                to: Point { x: 18.0, y: 19.0 },
+            },
+            PathSegment::Close,
+        ];
+        assert_eq!(
+            drawing_path_segments_d_unrounded(&segments).to_string(),
+            "M1.23456,0L3,4Q5,6 7,8C9,10,11,12,13,14A15,16,17,1,0,18,19Z"
+        );
+        assert_eq!(
+            drawing_path_segments_d(&segments),
+            "M1.235,0L3,4Q5,6 7,8C9,10,11,12,13,14A15,16,17,1,0,18,19Z"
+        );
+    }
+
+    #[test]
+    fn unrounded_drawing_path_preserves_ordinary_number_normalization() {
+        for value in [
+            -0.0,
+            1e-10,
+            1.0000001,
+            -1.23456789,
+            51.248178375505404,
+            1e20,
+            f64::INFINITY,
+            f64::NAN,
+        ] {
+            let segments = [PathSegment::MoveTo {
+                to: Point { x: value, y: value },
+            }];
+            let mut expected = String::from("M");
+            fmt_into(&mut expected, value);
+            expected.push(',');
+            fmt_into(&mut expected, value);
+            assert_eq!(
+                drawing_path_segments_d_unrounded(&segments).to_string(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn unrounded_drawing_path_stops_at_the_first_rejected_piece() {
+        #[derive(Default)]
+        struct RejectSecondWrite {
+            calls: usize,
+            accepted: String,
+        }
+
+        impl std::fmt::Write for RejectSecondWrite {
+            fn write_str(&mut self, piece: &str) -> std::fmt::Result {
+                self.calls += 1;
+                if self.calls >= 2 {
+                    return Err(std::fmt::Error);
+                }
+                self.accepted.push_str(piece);
+                Ok(())
+            }
+        }
+
+        let segments = [
+            PathSegment::MoveTo {
+                to: Point { x: 1.23456, y: 2.0 },
+            },
+            PathSegment::LineTo {
+                to: Point { x: 3.0, y: 4.0 },
+            },
+        ];
+        let mut sink = RejectSecondWrite::default();
+        assert!(write!(sink, "{}", drawing_path_segments_d_unrounded(&segments)).is_err());
+        assert_eq!(sink.accepted, "M");
+        assert_eq!(sink.calls, 2);
+    }
 }
 
 pub(super) fn curve_monotone_path_d_and_bounds(

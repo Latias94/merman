@@ -111,6 +111,13 @@ CSS/HTML component strings and metadata still materialize before append and need
 integration as migration proceeds. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain.
 None of these local corrections admits another SVG family or completes the all-family goal.
 
+Pie path elements now stream geometry, inline paint, dash entries, transform, and opacity directly
+into that buffer without intermediate path/CSS/element strings. Rounded and ordinary-number path
+formatting share the same segment traversal; exact spelling tests retain their distinct number
+policies, and a rejecting sink checks that formatting stops at the first failed write. The nested
+formatter resource-error test also exercises Pie geometry. The remaining component-string caveat
+above still applies to stylesheets and other family projections.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
