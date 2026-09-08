@@ -35,7 +35,111 @@ fn compact_stroke(stroke: &StrokeStyle) -> bool {
         && stroke.miter_limit == 4.0
 }
 
+fn rough_scope<'a>(
+    commands: &'a [DrawingCommand],
+    index: usize,
+    area: &str,
+) -> Option<(&'a ResourceId, &'a StrokeStyle, f64, usize)> {
+    let (path, style, opacity, count) = paint_scope(commands, index)?;
+    if style.fill.is_some()
+        || style.fill_rule != FillRule::NonZero
+        || ![".rough-fill", ".rough-outline"]
+            .iter()
+            .any(|suffix| path.as_str().strip_suffix(suffix) == Some(area))
+    {
+        return None;
+    }
+    Some((
+        path,
+        style
+            .stroke
+            .as_ref()
+            .filter(|stroke| compact_stroke(stroke))?,
+        opacity,
+        count,
+    ))
+}
+
 impl DocumentSvgEncoder<'_> {
+    /// Preserve Rough.js's structural wrapper, using only the public paint scopes.
+    pub(super) fn emit_venn_rough_group(&mut self, index: usize) -> Result<Option<usize>> {
+        let SvgStructureBody::Venn(body) = self.svg_body else {
+            return Ok(None);
+        };
+        if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
+            return Ok(None);
+        }
+        let Some(area) = self
+            .current_semantic_id()
+            .filter(|id| body.semantic_data_sets.contains_key(*id))
+        else {
+            return Ok(None);
+        };
+        let Some(first) = rough_scope(&self.document.commands, index, area) else {
+            return Ok(None);
+        };
+        let second = if first.0.as_str().ends_with(".rough-fill") {
+            rough_scope(&self.document.commands, index + first.3, area)
+                .filter(|scope| scope.0.as_str().ends_with(".rough-outline"))
+        } else {
+            None
+        };
+        self.output.push_str("<g>")?;
+        let mut consumed = 0;
+        for (path, stroke, opacity, count) in [Some(first), second].into_iter().flatten() {
+            self.write_venn_rough_path(path, stroke, opacity)?;
+            consumed += count;
+        }
+        self.output.push_str("</g>")?;
+        Ok(Some(consumed))
+    }
+
+    fn write_venn_rough_path(
+        &mut self,
+        id: &ResourceId,
+        stroke: &StrokeStyle,
+        opacity: f64,
+    ) -> Result<()> {
+        let path = self.path_resource(id)?;
+        self.output.push_str("<path d=\"")?;
+        for (index, segment) in path.segments.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            if index != 0 {
+                self.output.push(' ')?;
+            }
+            // Keep Rough.js's round-trippable coordinate spelling without rebuilding OpSets.
+            match segment {
+                PathSegment::MoveTo { to } => write!(self.output, "M{} {}", to.x, to.y)?,
+                PathSegment::LineTo { to } => write!(self.output, "L{} {}", to.x, to.y)?,
+                PathSegment::CubicTo {
+                    control1,
+                    control2,
+                    to,
+                } => write!(
+                    self.output,
+                    "C{} {}, {} {}, {} {}",
+                    control1.x, control1.y, control2.x, control2.y, to.x, to.y
+                )?,
+                // An edited public resource may contain other valid segment types.
+                other => write!(self.output, "{}", path_d(std::slice::from_ref(other)))?,
+            }
+        }
+        let Paint::Solid { color } = stroke.paint else {
+            return Err(invalid("compact Venn rough stroke must be solid"));
+        };
+        write!(
+            self.output,
+            "\" stroke=\"rgba({}, {}, {}, {})\" stroke-width=\"{}\" fill=\"none\"",
+            color.red,
+            color.green,
+            color.blue,
+            opacity * f64::from(color.alpha) / 255.0,
+            fmt(stroke.width)
+        )?;
+        self.write_transform_and_blend()?;
+        self.output.push_str("/>")
+    }
+
     pub(super) fn begin_venn_semantic_group(
         &mut self,
         id: &str,

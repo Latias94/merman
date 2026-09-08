@@ -3650,6 +3650,138 @@ mod tests {
     }
 
     #[test]
+    fn venn_rough_svg_projects_public_paths_paint_and_source_groups() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let input = "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 1\n---\nvenn-beta\nset A\nset B\nunion A,B\nstyle A,B fill:#ffe66d\n";
+        let prepare_input = || {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            prepare(parsed, &LayoutOptions::default(), session()).unwrap()
+        };
+        let source = prepare_input()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let source = roxmltree::Document::parse(source.svg()).unwrap();
+        let artifact = prepare_input();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                &json!({}),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let svg = roxmltree::Document::parse(&svg).unwrap();
+        for sets in ["A", "B", "A_B"] {
+            let paths = |doc: &roxmltree::Document<'_>| {
+                let area = doc
+                    .descendants()
+                    .find(|node| node.attribute("data-venn-sets") == Some(sets))
+                    .unwrap();
+                let group = area
+                    .children()
+                    .find(|node| node.has_tag_name("g"))
+                    .expect("source rough wrapper");
+                group
+                    .children()
+                    .filter(|node| node.has_tag_name("path"))
+                    .map(|node| {
+                        let color = merman_core::theme_color::ThemeColor::parse(
+                            node.attribute("stroke").unwrap(),
+                        )
+                        .unwrap()
+                        .rgba_channels();
+                        (
+                            node.attribute("d").unwrap().to_owned(),
+                            node.attribute("stroke-width").unwrap().to_owned(),
+                            node.attribute("fill").unwrap().to_owned(),
+                            [color.red.round(), color.green.round(), color.blue.round()],
+                            color.alpha,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let actual = paths(&svg);
+            let expected = paths(&source);
+            assert_eq!(actual.len(), expected.len(), "rough group {sets}");
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert_eq!(actual.0, expected.0, "path geometry for {sets}");
+                assert_eq!(actual.1, expected.1, "stroke width for {sets}");
+                assert_eq!(actual.2, expected.2, "fill for {sets}");
+                assert_eq!(actual.3, expected.3, "8-bit RGB for {sets}");
+                assert!((actual.4 - expected.4).abs() < 1e-12, "alpha for {sets}");
+            }
+        }
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "venn.area.0.rough-fill"
+            {
+                let stroke = style.stroke.as_mut().unwrap();
+                stroke.paint = Paint::Solid {
+                    color: Color {
+                        red: 12,
+                        green: 34,
+                        blue: 56,
+                        alpha: 255,
+                    },
+                };
+                stroke.width = 3.25;
+            }
+        }
+        let edited = render(&document);
+        let edited = roxmltree::Document::parse(&edited).unwrap();
+        let area = edited
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        let path = area
+            .descendants()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        let color = merman_core::theme_color::ThemeColor::parse(path.attribute("stroke").unwrap())
+            .unwrap()
+            .rgba_channels();
+        assert_eq!([color.red, color.green, color.blue], [12.0, 34.0, 56.0]);
+        assert!((color.alpha - 0.3).abs() < 1e-12);
+        assert_eq!(path.attribute("stroke-width"), Some("3.25"));
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "venn.area.0.rough-fill"
+            {
+                style.stroke.as_mut().unwrap().line_cap = merman_display_list::LineCap::Round;
+            }
+        }
+        let edited = render(&document);
+        let edited = roxmltree::Document::parse(&edited).unwrap();
+        let area = edited
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        let path = area
+            .descendants()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap();
+        assert_eq!(
+            path.attribute("stroke-linecap"),
+            Some("round"),
+            "edited strokes must use the general projection without losing their cap"
+        );
+    }
+
+    #[test]
     fn venn_document_styles_do_not_reinterpret_external_config() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(

@@ -334,7 +334,14 @@ styled intersections use `transparentize(fill, 0.3)`, without applying classic `
 alpha. Direct-vs-legacy SVG tests compare every rough path, color, width, opacity, and painter
 order for seeded and fallback-random cases. Public tests reject the first path segment over the
 caller limit, and cancellation is armed after layout to exercise document construction.
-This vector admission does not admit Venn's canonical SVG serializer.
+The candidate SVG serializer now projects nonempty rough paint scopes into the source's nested
+`g/path` structure directly from public resources. It streams round-trippable Rough.js coordinate
+spelling without rebuilding operation sets, preserves fill-before-outline order, and combines the
+stroke color's alpha with the public scope opacity once. Direct serializer evidence compares circle
+and custom-intersection path bytes and paint against the existing SVG, then edits public paint to
+prove those edits reach SVG. Noncompact edited strokes retain the general canonical projection.
+Empty hand-drawn intersections and full text-node DOM parity still need family-level evidence.
+This vector/projection work does not admit Venn's canonical SVG serializer.
 The new roughr API also needs its independently versioned package release before a Merman
 release can resolve this implementation from the registry.
 

@@ -513,6 +513,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 consumed_until = index + count;
                 continue;
             }
+            if let Some(count) = self.emit_venn_rough_group(index)? {
+                consumed_until = index + count;
+                continue;
+            }
             if let Some(count) = self.emit_venn_fill_and_stroke(index)? {
                 consumed_until = index + count;
                 continue;
