@@ -542,9 +542,9 @@ impl<'a> DrawingListBuilder<'a> {
             }
             DrawingCommand::Restore => self.preview_restore(),
             DrawingCommand::EndSemanticGroup => self.preview_scope_pop(BuildScope::Semantic),
-            DrawingCommand::BeginLayer { .. }
-            | DrawingCommand::EndLayer
-            | DrawingCommand::ClipPath { .. } => Err(contract_error(
+            DrawingCommand::BeginLayer { .. } => Ok(ScopeChange::Push(BuildScope::Layer)),
+            DrawingCommand::EndLayer => self.preview_scope_pop(BuildScope::Layer),
+            DrawingCommand::ClipPath { .. } => Err(contract_error(
                 "DrawingList builder scope kind is not admitted by the current family cohort",
             )),
             _ => Ok(ScopeChange::None),
@@ -575,7 +575,7 @@ impl<'a> DrawingListBuilder<'a> {
             .any(|scope| *scope != BuildScope::Clip)
         {
             return Err(contract_error(
-                "DrawingList restore crosses an open semantic group",
+                "DrawingList restore crosses an open semantic group or layer",
             ));
         }
         Ok(ScopeChange::PopState {
@@ -604,6 +604,7 @@ impl<'a> DrawingListBuilder<'a> {
 enum BuildScope {
     Save,
     Semantic,
+    Layer,
     Clip,
 }
 
@@ -1217,20 +1218,42 @@ mod tests {
                 semantic_id: "document".to_string(),
             })
             .unwrap();
-        let nesting_error = builder
-            .push_control(DrawingCommand::BeginSemanticGroup {
+        for command in [
+            DrawingCommand::BeginSemanticGroup {
                 semantic_id: "nested".to_string(),
+            },
+            DrawingCommand::BeginLayer {
+                bounds: merman_display_list::Rect::new(0.0, 0.0, 20.0, 20.0),
+                opacity: 0.8,
+                blend_mode: merman_display_list::BlendMode::Normal,
+            },
+        ] {
+            let nesting_error = builder.push_control(command).unwrap_err();
+            assert!(matches!(
+                nesting_error,
+                Error::DrawingListContract(DrawingListError::ResourceLimit {
+                    resource: "nesting_depth",
+                    actual: 3,
+                    maximum: 2,
+                })
+            ));
+            assert_eq!(builder.commands.len(), 2);
+        }
+        builder
+            .push_control(DrawingCommand::EndSemanticGroup)
+            .unwrap();
+        builder
+            .push_control(DrawingCommand::BeginLayer {
+                bounds: merman_display_list::Rect::new(0.0, 0.0, 20.0, 20.0),
+                opacity: 0.8,
+                blend_mode: merman_display_list::BlendMode::Normal,
             })
-            .unwrap_err();
-        assert!(matches!(
-            nesting_error,
-            Error::DrawingListContract(DrawingListError::ResourceLimit {
-                resource: "nesting_depth",
-                actual: 3,
-                maximum: 2,
-            })
-        ));
-        assert_eq!(builder.commands.len(), 2);
+            .unwrap();
+        assert!(builder.push_control(DrawingCommand::Restore).is_err());
+        assert_eq!(builder.commands.len(), 4);
+        builder.push_control(DrawingCommand::EndLayer).unwrap();
+        builder.push_control(DrawingCommand::Restore).unwrap();
+        assert!(builder.scopes.is_empty());
 
         let session = make_session(&environment, OperationControl::new());
         let mut builder =

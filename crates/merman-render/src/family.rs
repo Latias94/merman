@@ -2015,7 +2015,7 @@ mod tests {
                 ParseOptions::strict(),
             ).unwrap().unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
-        let document = crate::drawing_list::build_for_family(
+        let mut document = crate::drawing_list::build_for_family(
             &artifact.family,
             &artifact.metadata,
             DrawingListPolicy::VectorOnly,
@@ -2034,7 +2034,62 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
+        let alternate_theme = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions {
+                diagram_id: Some("compact".to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+            &json!({
+                "securityLevel": "loose",
+                "theme": "dark",
+                "themeVariables": {
+                    "fontFamily": "Courier",
+                    "gridColor": "#123456",
+                    "taskBkgColor": "#abcdef",
+                    "textColor": "#fedcba"
+                }
+            }),
+            &artifact.session,
+        )
+        .unwrap();
+        assert!(
+            rendered == alternate_theme,
+            "Gantt serialization must not reinterpret theme configuration outside its document"
+        );
         let svg = roxmltree::Document::parse(&rendered).unwrap();
+        let ticks = svg
+            .descendants()
+            .filter(|node| {
+                node.attribute("class")
+                    .is_some_and(|class| class.split_whitespace().any(|token| token == "tick"))
+            })
+            .collect::<Vec<_>>();
+        assert!(!ticks.is_empty());
+        for tick in ticks {
+            let layer = tick
+                .children()
+                .find(|node| node.attribute("class") == Some("merman-layer"))
+                .unwrap();
+            assert_eq!(layer.attribute("opacity"), Some("0.8"));
+            assert!(layer.children().any(|node| node.has_tag_name("line")));
+            assert!(layer.children().any(|node| node.has_tag_name("text")));
+            assert!(
+                layer
+                    .children()
+                    .filter(|node| node.is_element())
+                    .all(|node| node.attribute("opacity").is_none()),
+                "opacity must be applied once to the shared layer"
+            );
+        }
+        assert!(
+            !svg.descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .filter_map(|node| node.text())
+                .any(|css| css.contains("opacity:")),
+            "CSS must not reapply public opacity"
+        );
         let mut ids = std::collections::BTreeSet::new();
         for node in svg.descendants() {
             if let Some(id) = node.attribute("id") {
@@ -2054,6 +2109,39 @@ mod tests {
                 node.attribute("class")
                     .is_some_and(|class| class.contains("clickable"))
             );
+        }
+        for command in &mut document.public.commands {
+            match command {
+                merman_display_list::DrawingCommand::BeginLayer { opacity, .. } => *opacity = 0.35,
+                merman_display_list::DrawingCommand::DrawText { run } => {
+                    run.style.fill = merman_display_list::Paint::solid(
+                        merman_display_list::Color::rgba(18, 52, 86, 128),
+                    );
+                    run.style.font_size = 17.0;
+                    run.style.font.weight = 500;
+                }
+                _ => {}
+            }
+        }
+        let edited = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        for layer in xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-layer"))
+        {
+            assert_eq!(layer.attribute("opacity"), Some("0.35"));
+        }
+        for text in xml.descendants().filter(|node| node.has_tag_name("text")) {
+            assert_eq!(text.attribute("fill"), Some("#123456"));
+            assert_eq!(text.attribute("font-size"), Some("17"));
+            assert_eq!(text.attribute("font-weight"), Some("500"));
         }
     }
 

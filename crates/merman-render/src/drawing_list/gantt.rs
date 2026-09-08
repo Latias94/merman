@@ -32,6 +32,10 @@ use std::collections::BTreeMap;
 
 type GanttPair = FamilyPair<GanttDiagramRenderModel, GanttDiagramLayout>;
 
+// D3's domain and tick lines specify currentColor themselves; the parent tick's gridColor
+// stroke is not inherited by them. The isolated source SVG has no authored CSS color override.
+const AXIS_CURRENT_COLOR: Color = Color::rgba(0, 0, 0, 255);
+
 pub(crate) fn build_gantt_document(
     pair: &GanttPair,
     metadata: &ParseMetadata,
@@ -59,7 +63,6 @@ struct GanttBuilder<'a> {
     title_fill: Color,
     title_text_fill: Color,
     text_fill: Color,
-    grid_fill: Color,
     today_fill: Color,
     task_text_dark_fill: Color,
     task_text_clickable_fill: Color,
@@ -139,7 +142,6 @@ impl<'a> GanttBuilder<'a> {
             title_fill: color("titleColor", &theme.title_color)?,
             title_text_fill: color("titleColor", &theme.title_text_color)?,
             text_fill: color("textColor", &theme.text_color)?,
-            grid_fill: color("gridColor", &theme.grid_color)?,
             today_fill: color("todayLineColor", &theme.today_line_color)?,
             task_text_dark_fill: color("taskTextDarkColor", &theme.task_text_dark_color)?,
             task_text_clickable_fill: color(
@@ -327,12 +329,29 @@ impl<'a> GanttBuilder<'a> {
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: None,
-                stroke: Some(stroke(self.grid_fill, 0.0)),
+                stroke: Some(stroke(AXIS_CURRENT_COLOR, 0.0)),
             },
         )?;
 
         for (index, tick) in ticks.iter().enumerate() {
             let x = tick.x + 0.5;
+            let text_y = if bottom { y + 13.0 } else { y - 3.0 };
+            let text_spec = TextEmitSpec {
+                origin: Point::new(x, text_y),
+                font_size: 10.0,
+                weight: 400,
+                color: self.text_fill,
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Alphabetic,
+                italic: false,
+            };
+            let text_bounds = self.measure_text_bounds(&tick.label, &text_spec)?;
+            // The source applies opacity to the tick group after painting both children.
+            // A layer retains that compositing order rather than fading each child separately.
+            let left = text_bounds.x.min(x - 0.5);
+            let top = text_bounds.y.min(y.min(y + tick_size) - 0.5);
+            let right = (text_bounds.x + text_bounds.width).max(x + 0.5);
+            let bottom_edge = (text_bounds.y + text_bounds.height).max(y.max(y + tick_size) + 0.5);
             let tick_semantic_id = format!("{axis_semantic_id}.tick.{index}");
             self.semantic_classes
                 .insert(tick_semantic_id.clone(), "tick".to_string());
@@ -340,9 +359,11 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: tick_semantic_id.clone(),
                 })?;
-            self.document.push_control(DrawingCommand::Save)?;
-            self.document
-                .push_control(DrawingCommand::SetOpacity { opacity: 0.8 })?;
+            self.document.push_control(DrawingCommand::BeginLayer {
+                bounds: Rect::new(left, top, right - left, bottom_edge - top),
+                opacity: 0.8,
+                blend_mode: merman_display_list::BlendMode::Normal,
+            })?;
             let tick_path_id = format!("gantt.axis.{axis_name}.tick.{index}");
             self.add_path(
                 tick_path_id,
@@ -357,25 +378,16 @@ impl<'a> GanttBuilder<'a> {
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: None,
-                    stroke: Some(stroke(self.grid_fill, 1.0)),
+                    stroke: Some(stroke(AXIS_CURRENT_COLOR, 1.0)),
                 },
             )?;
-            self.document.push_control(DrawingCommand::Restore)?;
-
-            let text_y = if bottom { y + 13.0 } else { y - 3.0 };
-            self.emit_text(
+            self.emit_text_in_bounds(
                 &format!("{tick_semantic_id}.label"),
                 &tick.label,
-                TextEmitSpec {
-                    origin: Point::new(x, text_y),
-                    font_size: 10.0,
-                    weight: 400,
-                    color: self.text_fill,
-                    anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Alphabetic,
-                    italic: false,
-                },
+                text_spec,
+                text_bounds,
             )?;
+            self.document.push_control(DrawingCommand::EndLayer)?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
@@ -691,23 +703,22 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
-        let TextEmitSpec {
-            origin,
-            font_size,
-            weight,
-            color,
-            anchor,
-            baseline,
-            italic,
-        } = spec;
         if text.is_empty() {
             return Ok(());
         }
+        let bounds = self.measure_text_bounds(text, &spec)?;
+        self.emit_text_in_bounds(semantic_id, text, spec, bounds)
+    }
+
+    fn measure_text_bounds(&self, text: &str, spec: &TextEmitSpec) -> Result<Rect> {
+        if text.is_empty() {
+            return Ok(Rect::new(spec.origin.x, spec.origin.y, 0.0, 0.0));
+        }
         let measurement_style = MeasurementTextStyle {
             font_family: Some(self.theme.font_family.clone()),
-            font_size,
-            font_weight: Some(weight.to_string()),
-            font_style: italic.then(|| "italic".to_string()),
+            font_size: spec.font_size,
+            font_weight: Some(spec.weight.to_string()),
+            font_style: spec.italic.then(|| "italic".to_string()),
         };
         let measurer = self
             .session
@@ -718,16 +729,38 @@ impl<'a> GanttBuilder<'a> {
         let height = measurer
             .measure_svg_simple_text_bbox_height_px(text, &measurement_style)
             .max(1.0);
-        let bounds = Rect::new(
-            match anchor {
-                TextAnchor::Start => origin.x,
-                TextAnchor::Middle => origin.x - width / 2.0,
-                TextAnchor::End => origin.x - width,
+        self.session.checkpoint(OperationPhase::Emit)?;
+        Ok(Rect::new(
+            match spec.anchor {
+                TextAnchor::Start => spec.origin.x,
+                TextAnchor::Middle => spec.origin.x - width / 2.0,
+                TextAnchor::End => spec.origin.x - width,
             },
-            origin.y - height / 2.0,
+            spec.origin.y - height / 2.0,
             width,
             height,
-        );
+        ))
+    }
+
+    fn emit_text_in_bounds(
+        &mut self,
+        semantic_id: &str,
+        text: &str,
+        spec: TextEmitSpec,
+        bounds: Rect,
+    ) -> Result<()> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        let TextEmitSpec {
+            origin,
+            font_size,
+            weight,
+            color,
+            anchor,
+            baseline,
+            italic,
+        } = spec;
         let font = self.font.clone();
         let obligation = self.text_obligation.clone();
         self.document.draw_host_text(text, move |owned| TextRun {
@@ -1161,6 +1194,7 @@ mod tests {
         let parsed = Engine::new()
             .with_site_config(MermaidConfig::from_value(json!({
                 "securityLevel": "loose",
+                "themeVariables": { "gridColor": "#ff0000" },
                 "gantt": { "displayMode": "compact", "useWidth": 800 }
             })))
             .parse_diagram_for_render_model_sync(COMPACT_TASKS, ParseOptions::strict())
@@ -1170,6 +1204,61 @@ mod tests {
             .begin_session_with_control(OperationControl::new())
             .unwrap();
         crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap()
+    }
+
+    #[test]
+    fn axis_ticks_composite_lines_and_labels_in_one_public_layer() {
+        let artifact = compact_artifact();
+        let rendered = artifact
+            .render_drawing_list(
+                DrawingListPolicy::VectorOnly,
+                merman_display_list::DrawingListLimits::default(),
+            )
+            .unwrap();
+        let mut in_tick = false;
+        let mut layer = None;
+        let mut tick_texts = 0;
+        for command in &rendered.document().commands {
+            match command {
+                DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                    in_tick = semantic_id.contains(".tick.");
+                }
+                DrawingCommand::EndSemanticGroup => in_tick = false,
+                DrawingCommand::BeginLayer {
+                    bounds,
+                    opacity,
+                    blend_mode,
+                } if in_tick => {
+                    assert_eq!(*opacity, 0.8);
+                    assert_eq!(*blend_mode, merman_display_list::BlendMode::Normal);
+                    layer = Some(*bounds);
+                }
+                DrawingCommand::EndLayer => {
+                    layer.take().unwrap();
+                }
+                DrawingCommand::DrawPath { style, .. } if in_tick => {
+                    assert!(
+                        layer.is_some(),
+                        "tick lines require group opacity, not per-path opacity"
+                    );
+                    assert_eq!(
+                        style.stroke.as_ref().unwrap().paint,
+                        Paint::solid(Color::rgba(0, 0, 0, 255)),
+                        "D3 line currentColor does not inherit the tick group's gridColor stroke"
+                    );
+                }
+                DrawingCommand::DrawText { run } if in_tick => {
+                    let bounds = layer.expect("tick text must share the line's opacity layer");
+                    assert!(bounds.x <= run.bounds.x && bounds.y <= run.bounds.y);
+                    assert!(bounds.x + bounds.width >= run.bounds.x + run.bounds.width);
+                    assert!(bounds.y + bounds.height >= run.bounds.y + run.bounds.height);
+                    tick_texts += 1;
+                }
+                _ => {}
+            }
+        }
+        assert!(tick_texts > 0);
+        assert!(layer.is_none());
     }
 
     #[test]

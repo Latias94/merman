@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 mod cynefin;
+mod gantt;
 mod info;
 mod pie;
 mod sankey;
@@ -808,6 +809,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
             return self.write_venn_style();
         }
+        if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            return self.write_gantt_style();
+        }
         let css = match self.svg_body {
             SvgStructureBody::Error(_) => Some((
                 false,
@@ -909,10 +913,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.diagram_id.as_str(),
                     self.effective_config,
                 ),
-            )),
-            SvgStructureBody::Gantt(_) => Some((
-                false,
-                super::gantt::canonical_gantt_css(self.diagram_id.as_str(), self.effective_config),
             )),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();

@@ -108,7 +108,8 @@ before appending, preserving cancellation/resource errors across formatting. Pat
 escaping, and image/font Base64 emission stream into that buffer; existing icon byte reservations
 are not charged twice. This bounds retained SVG output, not total process memory. Some family
 CSS/HTML component strings and metadata still materialize before append and need further resource
-integration as migration proceeds. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain.
+integration as migration proceeds. The Gantt paint correction below removes its repeated CSS
+interpretation; the earlier Radar candidate SVG opacity/CSS issue remains.
 None of these local corrections admits another SVG family or completes the all-family goal.
 
 Pie path elements now stream geometry, inline paint, dash entries, transform, and opacity directly
@@ -143,6 +144,27 @@ browser-computed-style equivalence. This advances default canonical admission to
 not completion of the remaining 28 family migrations.
 The existing `boundary_fixtures_render_typed_resvg_safe` test also passed with `png`, covering
 the boundary corpus (Error, Info, ZenUML) through terminal SVG validation and nonblank raster output.
+
+### Gantt paint and group-opacity correction
+
+Gantt ticks now put their line and label in one public `BeginLayer`/`EndLayer` opacity scope.
+The source's `.grid .tick { opacity: 0.8 }` composites the group, not each primitive independently.
+Previously the public line had per-command opacity while the public label did not; the candidate
+SVG then applied another parent opacity through legacy CSS. The new layer carries the union of
+the stroke-expanded line bounds and reserved text bounds. Layer scopes use the existing builder's
+nesting budget and LIFO checks; restore cannot cross an unfinished layer.
+
+The candidate serializer no longer re-runs the Gantt theme stylesheet. Paint, fonts, opacity and
+milestone geometry come only from public commands, while source cursor and rasterization hints
+stream through the bounded SVG writer. A document/config independence regression and public paint
+mutations verify this boundary without using the legacy route. Source-browser inspection also
+confirmed that D3 tick lines own `stroke="currentColor"`; their parent `gridColor` stroke is not
+inherited, and the isolated SVG resolves the lines to black. Labels retain their explicit
+`stroke="none"` and theme text fill. A nondefault `gridColor` regression prevents restoring the
+incorrect inherited paint.
+
+This fixes direct DrawingList behavior and the candidate's paint ownership. Gantt remains a
+legacy-bridge SVG family until its source DOM projection and full-family gates are complete.
 
 ### Journey color correction
 
