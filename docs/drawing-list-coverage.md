@@ -259,6 +259,21 @@ the original `DrawingListUnavailable` family/effect message).  This distinction 
 migration telemetry and prevents an effect-specific fallback from being mistaken for complete
 canonical coverage.
 
+### Venn paint and style migration
+
+Classic Venn paths preserve independent fill and stroke opacity with exact command-state values,
+not rounded color alpha. Both draws reference one path resource; transparent intersections retain
+an unpainted path inside their semantic group. Public facade tests cover custom `0.42` fill and
+`0.95` stroke opacity, while the direct serializer test covers default paints and transparent
+intersection geometry. The latter also checks that external configuration cannot override public
+text/paint edits and that only an unchanged full-viewport white command projects into the root
+background style. Candidate SVG no longer regenerates Venn visual CSS from configuration.
+
+This is not full-family admission: Venn remains on the explicit legacy SVG route. Source DOM
+projection, wrapped text layout/text-area geometry, and typed RoughJS path projection remain
+migration work. Those features are not inherently outside the vector protocol; their current
+DrawingList errors identify missing direct implementations rather than silently dropping output.
+
 ## Exercised effect accounting
 
 `fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by

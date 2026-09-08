@@ -1,8 +1,8 @@
 //! Renderer-neutral Venn adapter.
 //!
 //! Classic Venn output already owns deterministic area paths and label coordinates. This adapter
-//! projects those typed values directly. Browser-wrapped text nodes and RoughJS remain explicit
-//! capability boundaries until the canonical document can describe them without SVG semantics.
+//! projects those typed values directly. Wrapped text layout and RoughJS path projection remain
+//! explicit migration boundaries until their direct document adapters are implemented.
 
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, VennSvgBody, parse_font_families_for,
@@ -87,7 +87,7 @@ impl<'a> VennBuilder<'a> {
             || !layout.text_areas.is_empty()
         {
             return Err(unavailable(
-                "Venn text nodes require foreignObject and browser wrapping that DrawingList v1 cannot preserve",
+                "Venn foreignObject and browser wrapping require text-layout and text-area projections that are not yet implemented",
             ));
         }
         validate_layout(layout)?;
@@ -280,10 +280,8 @@ impl<'a> VennBuilder<'a> {
                 .map(|color| (color, fill_opacity))
         };
         let area_stroke = self.resolve_stroke(presentation, &styles)?;
-        if fill.is_some() || area_stroke.is_some() {
-            let segments = parse_svg_path(&area.path)?;
-            self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
-        }
+        let segments = parse_svg_path(&area.path)?;
+        self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
 
         let label = svg_plain_text(venn_area_label(area));
         if !label.is_empty()
@@ -351,37 +349,64 @@ impl<'a> VennBuilder<'a> {
         fill: Option<(Color, f64)>,
         area_stroke: Option<(StrokeStyle, f64)>,
     ) -> Result<bool> {
-        let visible_fill = fill.is_some_and(|(_, opacity)| opacity > 0.0);
-        let visible_stroke = area_stroke
-            .as_ref()
-            .is_some_and(|(stroke, opacity)| stroke.width > 0.0 && *opacity > 0.0);
-        if segments.is_empty() || (!visible_fill && !visible_stroke) {
+        if segments.is_empty() {
             return Ok(false);
         }
 
         let id = ResourceId::new(id);
-        let mut styles = Vec::with_capacity(2);
-        if let Some((color, opacity)) = fill.filter(|(_, opacity)| *opacity > 0.0) {
-            styles.push(PathStyle {
-                fill_rule: FillRule::NonZero,
-                fill: Some(Paint::solid(with_alpha(color, opacity))),
-                stroke: None,
+        let fill = fill
+            .filter(|(_, opacity)| *opacity > 0.0)
+            .map(|(color, opacity)| {
+                (
+                    PathStyle {
+                        fill_rule: FillRule::NonZero,
+                        fill: Some(Paint::solid(color)),
+                        stroke: None,
+                    },
+                    opacity,
+                )
             });
-        }
-        if let Some((area_stroke, opacity)) =
-            area_stroke.filter(|(stroke, opacity)| stroke.width > 0.0 && *opacity > 0.0)
-        {
-            let mut area_stroke = area_stroke;
-            if let Paint::Solid { color } = &area_stroke.paint {
-                area_stroke.paint = Paint::solid(with_alpha(*color, opacity));
+        let stroke = area_stroke
+            .filter(|(stroke, opacity)| stroke.width > 0.0 && *opacity > 0.0)
+            .map(|(stroke, opacity)| {
+                (
+                    PathStyle {
+                        fill_rule: FillRule::NonZero,
+                        fill: None,
+                        stroke: Some(stroke),
+                    },
+                    opacity,
+                )
+            });
+        let mut segments = Some(segments);
+        for (style, opacity) in [fill, stroke].into_iter().flatten() {
+            // Keep independent CSS paint opacity exact, without quantizing it into color alpha.
+            if opacity != 1.0 {
+                self.output.push_control(DrawingCommand::Save)?;
+                self.output
+                    .push_control(DrawingCommand::SetOpacity { opacity })?;
             }
-            styles.push(PathStyle {
-                fill_rule: FillRule::NonZero,
-                fill: None,
-                stroke: Some(area_stroke),
-            });
+            if let Some(segments) = segments.take() {
+                self.output.draw_path(id.clone(), segments, style)?;
+            } else {
+                self.output.draw_path_reference(id.clone(), style)?;
+            }
+            if opacity != 1.0 {
+                self.output.push_control(DrawingCommand::Restore)?;
+            }
         }
-        self.output.draw_path_layers(id, segments, styles)?;
+        if let Some(segments) = segments {
+            // Transparent intersections still have source geometry and semantic ownership.
+            self.output.draw_path(
+                id,
+                segments,
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: None,
+                },
+            )?;
+        }
         Ok(true)
     }
 
@@ -518,16 +543,6 @@ fn translate(x: f64, y: f64) -> Transform {
         e: x,
         f: y,
     }
-}
-
-fn with_alpha(color: Color, opacity: f64) -> Color {
-    let opacity = opacity.clamp(0.0, 1.0);
-    Color::rgba(
-        color.red,
-        color.green,
-        color.blue,
-        (f64::from(color.alpha) * opacity).round().clamp(0.0, 255.0) as u8,
-    )
 }
 
 fn invalid(message: impl Into<String>) -> Error {

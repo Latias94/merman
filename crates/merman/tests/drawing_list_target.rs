@@ -2637,36 +2637,39 @@ style A,B fill:#00ffcc, color:#003333
             merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id
         )));
     }
+    let area_draws = document
+        .commands
+        .iter()
+        .enumerate()
+        .filter_map(|(index, command)| {
+            if let merman_display_list::DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "venn.area.0.shape"
+            {
+                Some((index, style))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
     assert_eq!(
-        document
-            .commands
-            .iter()
-            .filter(|command| matches!(
-                command,
-                merman_display_list::DrawingCommand::DrawPath { path, .. }
-                    if path.as_str() == "venn.area.0.shape"
-            ))
-            .count(),
+        area_draws.len(),
         2,
         "Venn fill and stroke opacity must remain independently painted"
     );
-    let fill_alphas = document
-        .commands
-        .iter()
-        .filter_map(|command| match command {
-            merman_display_list::DrawingCommand::DrawPath { style, .. } => {
-                match style.fill.as_ref() {
-                    Some(merman_display_list::Paint::Solid { color }) => Some(color.alpha),
-                    _ => None,
-                }
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert!(
-        fill_alphas.contains(&107),
-        "Venn fill opacity 0.42 must be encoded in paint alpha"
-    );
+    for ((index, style), opacity) in area_draws.iter().zip([0.42, 0.95]) {
+        assert!(matches!(document.commands[index - 1],
+            merman_display_list::DrawingCommand::SetOpacity { opacity: actual } if actual == opacity));
+        assert!(matches!(
+            document.commands[index + 1],
+            merman_display_list::DrawingCommand::Restore
+        ));
+        let paint = style
+            .fill
+            .as_ref()
+            .or_else(|| style.stroke.as_ref().map(|stroke| &stroke.paint))
+            .unwrap();
+        assert!(matches!(paint, merman_display_list::Paint::Solid { color } if color.alpha == 255));
+    }
     assert!(document.commands.iter().any(|command| matches!(
         command,
         merman_display_list::DrawingCommand::ConcatTransform { transform }

@@ -3363,6 +3363,133 @@ mod tests {
     }
 
     #[test]
+    fn venn_document_styles_do_not_reinterpret_external_config() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "venn-beta\n title Product Surface\n set A[\"Core\"]:20\n set B[\"Editor\"]:14\n union A,B[\"Shared\"]:4\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                config,
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let config = artifact.metadata.effective_config.as_value();
+        let svg = render(&document, config);
+        let conflicting = json!({"themeVariables": {"fontFamily": "monospace", "titleColor": "red", "vennSetTextColor": "blue"}});
+        assert!(
+            svg == render(&document, &conflicting),
+            "Venn SVG must consume resolved document styles, not external theme CSS"
+        );
+        let area_draws: Vec<_> = document
+            .public
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(index, command)| {
+                if let DrawingCommand::DrawPath { path, style } = command
+                    && path.as_str() == "venn.area.0.shape"
+                {
+                    Some((index, style))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(area_draws.len(), 2);
+        for ((index, style), opacity) in area_draws.iter().zip([0.1, 0.95]) {
+            assert!(
+                matches!(document.public.commands[index - 1], DrawingCommand::SetOpacity { opacity: value } if value == opacity)
+            );
+            assert!(matches!(
+                document.public.commands[index + 1],
+                DrawingCommand::Restore
+            ));
+            let paint = style
+                .fill
+                .as_ref()
+                .or_else(|| style.stroke.as_ref().map(|stroke| &stroke.paint))
+                .unwrap();
+            assert!(matches!(paint, Paint::Solid { color } if color.alpha == 255));
+        }
+        assert!(document.public.commands.iter().any(|command| matches!(command,
+            DrawingCommand::DrawPath { path, style } if path.as_str() == "venn.area.2.shape" && style.fill.is_none() && style.stroke.is_none()
+        )), "transparent intersection must retain its geometry");
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            xml.root_element()
+                .attribute("style")
+                .unwrap()
+                .contains("background-color: white")
+        );
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("data-merman-resource") == Some("venn.background"))
+        );
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } => {
+                    run.style.fill = Paint::solid(Color::rgba(11, 22, 33, 128));
+                    run.style.font_size = 27.0;
+                }
+                DrawingCommand::DrawPath { path, style } if path.as_str() == "venn.background" => {
+                    style.fill = Some(Paint::solid(Color::rgba(11, 22, 33, 128)));
+                }
+                _ => {}
+            }
+        }
+        let svg = render(&document, &conflicting);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !xml.root_element()
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("background-color")
+        );
+        let mut text_count = 0;
+        for node in xml.descendants().filter(|node| node.has_tag_name("text")) {
+            text_count += 1;
+            assert_eq!(node.attribute("font-size"), Some("27"));
+            assert_eq!(node.attribute("fill"), Some("#0b1621"));
+        }
+        assert_eq!(text_count, 4);
+        assert!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .all(|node| node.text().unwrap_or_default().is_empty())
+        );
+        let background = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some("venn.background"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("#0b1621"));
+        assert!(
+            (background
+                .attribute("fill-opacity")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                - 128.0 / 255.0)
+                .abs()
+                < 0.001
+        );
+    }
+
+    #[test]
     fn cynefin_fill_opacity_is_exact_and_independent_of_strokes() {
         use merman_display_list::{DrawingCommand, Paint};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(

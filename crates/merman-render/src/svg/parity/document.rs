@@ -651,10 +651,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
-            SvgStructureBody::Venn(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )),
+            SvgStructureBody::Venn(body) => {
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width);
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Railroad(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -744,6 +748,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Packet(_) => ("packet.document", "packet.background"),
             SvgStructureBody::Pie(_) => ("pie.document", "pie.background"),
             SvgStructureBody::Cynefin(_) => ("cynefin.document", "cynefin.background"),
+            SvgStructureBody::Venn(_) => ("venn.document", "venn.background"),
             SvgStructureBody::Sankey(_) => ("sankey.document", "sankey.background"),
             _ => return false,
         };
@@ -773,6 +778,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
             return self.write_cynefin_styles();
+        }
+        if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
+            // Venn text and paints are already resolved in the public commands. Importing the
+            // original theme stylesheet would reinterpret and override their explicit values.
+            return self.output.push_str("<style></style><g/>");
         }
         let css = match self.svg_body {
             SvgStructureBody::Error(_) => Some((
@@ -846,10 +856,6 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Er(_) => Some((
                 false,
                 super::er_css(self.diagram_id.as_str(), self.effective_config)?,
-            )),
-            SvgStructureBody::Venn(_) => Some((
-                false,
-                super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)?,
             )),
             SvgStructureBody::Railroad(_) => Some((
                 false,
@@ -961,7 +967,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                     | SvgStructureBody::Requirement(_)
                     | SvgStructureBody::State(_)
                     | SvgStructureBody::Er(_)
-                    | SvgStructureBody::Venn(_)
                     | SvgStructureBody::Railroad(_)
                     | SvgStructureBody::EventModeling(_)
                     | SvgStructureBody::Ishikawa(_)

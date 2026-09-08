@@ -183,7 +183,7 @@ fn root_open(
         )
 }
 
-pub(super) fn venn_css<I>(diagram_id: I, theme: &VennTheme) -> String
+fn venn_css<I>(diagram_id: I, theme: &VennTheme) -> String
 where
     I: Copy + std::fmt::Display,
 {
