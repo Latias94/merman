@@ -17,7 +17,7 @@ use crate::er::{
     measure_entity_box,
 };
 use crate::family::{FamilyPair, RenderFamilyKind};
-use crate::model::{Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutNode};
+use crate::model::{Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::render_geometry::{FlowchartCurveKind, emit_flowchart_curve_segments};
 use crate::text::TextMeasurer as _;
 use crate::{Error, Result};
@@ -705,25 +705,30 @@ impl<'a> ErBuilder<'a> {
         marker: &str,
         start: bool,
     ) -> Result<()> {
-        let (tip, tangent) = if start {
-            (&edge.points[0], &edge.points[1])
-        } else {
-            let last = edge.points.len() - 1;
-            (&edge.points[last], &edge.points[last - 1])
-        };
-        let segments = cardinality_path(
-            Point::new(tip.x, tip.y),
-            Point::new(tangent.x, tangent.y),
-            marker,
-        )?;
-        if segments.is_empty() {
-            return Ok(());
+        let (tip, tangent) = cardinality_tangent(&edge.points, start)?;
+        let (segments, circle) = cardinality_path(tip, tangent, marker)?;
+        let path_id = format!(
+            "{semantic_id}.marker.{}",
+            if start { "start" } else { "end" }
+        );
+        if let Some(circle) = circle {
+            // Upstream zero-cardinality circles have an explicit white fill so that the
+            // relationship line is not visible through their interiors.
+            self.add_path(
+                format!(
+                    "{semantic_id}.circle.marker.{}",
+                    if start { "start" } else { "end" }
+                ),
+                circle,
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(Color::rgba(255, 255, 255, 255))),
+                    stroke: Some(stroke(self.line_color, 1.0)),
+                },
+            )?;
         }
         self.add_path(
-            format!(
-                "{semantic_id}.marker.{}",
-                if start { "start" } else { "end" }
-            ),
+            path_id,
             segments,
             PathStyle {
                 fill_rule: FillRule::NonZero,
@@ -1365,11 +1370,31 @@ fn line_path(start: Point, end: Point) -> Vec<PathSegment> {
     ]
 }
 
-fn cardinality_path(tip: Point, tangent: Point, marker: &str) -> Result<Vec<PathSegment>> {
-    let dx = tip.x - tangent.x;
-    let dy = tip.y - tangent.y;
-    let length = (dx * dx + dy * dy).sqrt();
-    if !length.is_finite() || length <= f64::EPSILON {
+fn cardinality_tangent(points: &[LayoutPoint], start: bool) -> Result<(Point, Point)> {
+    let endpoint = if start { points.first() } else { points.last() }
+        .ok_or_else(|| invalid("ER cardinality marker has no endpoint"))?;
+    let distinct = |point: &&LayoutPoint| point.x != endpoint.x || point.y != endpoint.y;
+    let neighbor = if start {
+        points.iter().find(distinct)
+    } else {
+        points.iter().rev().find(distinct)
+    }
+    .ok_or_else(|| invalid("ER cardinality marker has a degenerate tangent"))?;
+    Ok((
+        Point::new(endpoint.x, endpoint.y),
+        Point::new(neighbor.x, neighbor.y),
+    ))
+}
+
+type CardinalityPaths = (Vec<PathSegment>, Option<Vec<PathSegment>>);
+
+fn cardinality_path(tip: Point, tangent: Point, marker: &str) -> Result<CardinalityPaths> {
+    // Both endpoint frames point away from the entity and into the relationship. Mermaid's
+    // Start marker coordinates use x - refX; End coordinates are their reflection around refX.
+    let dx = tangent.x - tip.x;
+    let dy = tangent.y - tip.y;
+    let length = dx.hypot(dy);
+    if !length.is_finite() || length == 0.0 {
         return Err(invalid("ER cardinality marker has a degenerate tangent"));
     }
     let ux = dx / length;
@@ -1383,59 +1408,78 @@ fn cardinality_path(tip: Point, tangent: Point, marker: &str) -> Result<Vec<Path
         )
     };
     let mut path = Vec::new();
-    let marker = marker.to_ascii_uppercase();
-    let has_circle = marker.contains("ZERO_OR_ONE") || marker.contains("ZERO_OR_MORE");
-    let has_bar = marker.contains("ONLY_ONE") || marker.contains("ZERO_OR_ONE");
-    let has_crow = marker.contains("ONE_OR_MORE") || marker.contains("ZERO_OR_MORE");
-    if has_circle {
-        let center = local(7.0, 0.0);
-        let radius = 5.5;
-        path.push(PathSegment::MoveTo {
-            to: Point::new(center.x + radius, center.y),
-        });
-        path.push(PathSegment::ArcTo {
-            radius_x: radius,
-            radius_y: radius,
-            x_axis_rotation_degrees: 0.0,
-            large_arc: true,
-            sweep_clockwise: true,
-            to: Point::new(center.x - radius, center.y),
-        });
-        path.push(PathSegment::ArcTo {
-            radius_x: radius,
-            radius_y: radius,
-            x_axis_rotation_degrees: 0.0,
-            large_arc: true,
-            sweep_clockwise: true,
-            to: Point::new(center.x + radius, center.y),
-        });
-    }
-    if has_bar {
-        for along in [0.0, 7.0] {
-            path.push(PathSegment::MoveTo {
-                to: local(along, -7.0),
-            });
-            path.push(PathSegment::LineTo {
-                to: local(along, 7.0),
-            });
+    let marker = marker_type_name(marker)
+        .ok_or_else(|| unavailable("ER relationship uses unknown cardinality marker"))?;
+    // These coordinates are the pinned rendering-elements/markers.js classic ER definitions
+    // translated by refX/refY. The relationship stroke width is 1, matching markerUnits' default.
+    let bar_offsets: &[f64] = match marker {
+        "onlyOne" => &[9.0, 15.0],
+        "zeroOrOne" => &[9.0],
+        "oneOrMore" => &[24.0],
+        "zeroOrMore" => &[],
+        _ => {
+            return Err(unavailable(
+                "ER relationship uses unsupported cardinality marker",
+            ));
         }
-    }
-    if has_crow {
-        let root = local(0.0, 0.0);
-        let left = local(14.0, 8.0);
-        let right = local(14.0, -8.0);
+    };
+    if matches!(marker, "oneOrMore" | "zeroOrMore") {
         path.extend([
-            PathSegment::MoveTo { to: root },
-            PathSegment::LineTo { to: left },
-            PathSegment::MoveTo { to: root },
-            PathSegment::LineTo {
-                to: local(16.0, 0.0),
+            PathSegment::MoveTo {
+                to: local(-18.0, 0.0),
             },
-            PathSegment::MoveTo { to: root },
-            PathSegment::LineTo { to: right },
+            PathSegment::QuadTo {
+                control: local(0.0, -18.0),
+                to: local(18.0, 0.0),
+            },
+            PathSegment::QuadTo {
+                control: local(0.0, 18.0),
+                to: local(-18.0, 0.0),
+            },
         ]);
     }
-    Ok(path)
+    for &along in bar_offsets {
+        path.extend([
+            PathSegment::MoveTo {
+                to: local(along, -9.0),
+            },
+            PathSegment::LineTo {
+                to: local(along, 9.0),
+            },
+        ]);
+    }
+    let circle_offset = match marker {
+        "zeroOrOne" => Some(21.0),
+        "zeroOrMore" => Some(30.0),
+        _ => None,
+    };
+    let circle = circle_offset.map(|along| {
+        let center = local(along, 0.0);
+        let radius = 6.0;
+        vec![
+            PathSegment::MoveTo {
+                to: Point::new(center.x + radius, center.y),
+            },
+            PathSegment::ArcTo {
+                radius_x: radius,
+                radius_y: radius,
+                x_axis_rotation_degrees: 0.0,
+                large_arc: true,
+                sweep_clockwise: true,
+                to: Point::new(center.x - radius, center.y),
+            },
+            PathSegment::ArcTo {
+                radius_x: radius,
+                radius_y: radius,
+                x_axis_rotation_degrees: 0.0,
+                large_arc: true,
+                sweep_clockwise: true,
+                to: Point::new(center.x + radius, center.y),
+            },
+            PathSegment::Close,
+        ]
+    });
+    Ok((path, circle))
 }
 
 fn validate_layout_node(node: &LayoutNode) -> Result<()> {
@@ -1504,5 +1548,166 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: RenderFamilyKind::Er.as_str().to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use merman_core::{Engine, OperationControl, ParseOptions};
+    use merman_display_list::DrawingResource;
+
+    #[test]
+    fn er_cardinality_only_one_stays_outside_both_entities() {
+        for direction in ["TB", "BT", "LR", "RL"] {
+            let source = format!("erDiagram\n direction {direction}\n A ||--|| B : rel");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::lenient())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .begin_session_with_control(OperationControl::new())
+                .unwrap();
+            let output = crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                .unwrap()
+                .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+                .unwrap();
+            let document = output.document();
+            let rectangles: Vec<_> = document
+                .resources
+                .iter()
+                .filter_map(|resource| {
+                    let DrawingResource::Path(path) = resource else {
+                        return None;
+                    };
+                    if !path.id.as_str().starts_with("er.entity.")
+                        || !path.id.as_str().ends_with(".box")
+                    {
+                        return None;
+                    }
+                    let [
+                        PathSegment::MoveTo { to: top_left },
+                        _,
+                        PathSegment::LineTo { to: bottom_right },
+                        ..,
+                    ] = path.segments.as_slice()
+                    else {
+                        panic!("entity box must expose its rectangle");
+                    };
+                    Some((*top_left, *bottom_right))
+                })
+                .collect();
+            assert_eq!(rectangles.len(), 2);
+            for suffix in ["start", "end"] {
+                let id = format!("er.edge.0.marker.{suffix}");
+                let marker = document
+                    .resources
+                    .iter()
+                    .find_map(|resource| match resource {
+                        DrawingResource::Path(path) if path.id.as_str() == id => Some(path),
+                        _ => None,
+                    })
+                    .expect("both ends carry cardinality paths");
+                assert!(document.commands.iter().any(|command| matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == id
+                )));
+                assert_eq!(marker.segments.len(), 4, "exactly one has two bars");
+                for segment in &marker.segments {
+                    let (PathSegment::MoveTo { to } | PathSegment::LineTo { to }) = segment else {
+                        panic!("exactly one only has straight bars");
+                    };
+                    for (min, max) in &rectangles {
+                        assert!(
+                            to.x <= min.x || to.x >= max.x || to.y <= min.y || to.y >= max.y,
+                            "{direction} {suffix}: marker point {to:?} is hidden inside {min:?}..{max:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn er_cardinality_paths_preserve_source_symbols_and_reference_offsets() {
+        for (tip, tangent, suffix, sign) in [
+            (Point::new(0.0, 0.0), Point::new(100.0, 0.0), "START", 1.0),
+            (Point::new(100.0, 0.0), Point::new(0.0, 0.0), "END", -1.0),
+        ] {
+            for (kind, bars, circle_offset, many) in [
+                ("ONLY_ONE", &[9.0, 15.0][..], None, false),
+                ("ZERO_OR_ONE", &[9.0][..], Some(21.0), false),
+                ("ONE_OR_MORE", &[24.0][..], None, true),
+                ("ZERO_OR_MORE", &[][..], Some(30.0), true),
+            ] {
+                let (path, circle) =
+                    cardinality_path(tip, tangent, &format!("{kind}_{suffix}")).unwrap();
+                let mut expected = Vec::new();
+                let local = |x, y| Point::new(tip.x + sign * x, sign * y);
+                if many {
+                    expected.extend([
+                        PathSegment::MoveTo {
+                            to: local(-18.0, 0.0),
+                        },
+                        PathSegment::QuadTo {
+                            control: local(0.0, -18.0),
+                            to: local(18.0, 0.0),
+                        },
+                        PathSegment::QuadTo {
+                            control: local(0.0, 18.0),
+                            to: local(-18.0, 0.0),
+                        },
+                    ]);
+                }
+                for &x in bars {
+                    expected.extend([
+                        PathSegment::MoveTo { to: local(x, -9.0) },
+                        PathSegment::LineTo { to: local(x, 9.0) },
+                    ]);
+                }
+                assert_eq!(path, expected, "{kind}_{suffix}");
+                if let Some(offset) = circle_offset {
+                    let circle = circle.expect("zero cardinality has a distinct circle");
+                    let center_x = tip.x + sign * offset;
+                    assert_eq!(
+                        circle[0],
+                        PathSegment::MoveTo {
+                            to: Point::new(center_x + 6.0, 0.0)
+                        }
+                    );
+                    assert!(
+                        matches!(circle[1], PathSegment::ArcTo { radius_x: 6.0, radius_y: 6.0, to, .. } if to == Point::new(center_x - 6.0, 0.0))
+                    );
+                    assert_eq!(circle.last(), Some(&PathSegment::Close));
+                } else {
+                    assert!(circle.is_none(), "{kind} must not introduce optionality");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn er_cardinality_tangent_skips_repeated_endpoints_without_inventing_direction() {
+        let points = [
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 0.0, y: 0.0 },
+            LayoutPoint { x: 40.0, y: 30.0 },
+            LayoutPoint { x: 40.0, y: 30.0 },
+        ];
+        for start in [true, false] {
+            let (tip, tangent) = cardinality_tangent(&points, start).unwrap();
+            let (path, _) = cardinality_path(tip, tangent, "ONLY_ONE_START").unwrap();
+            for segment in path {
+                let (PathSegment::MoveTo { to } | PathSegment::LineTo { to }) = segment else {
+                    unreachable!()
+                };
+                assert!(
+                    (to.x - tip.x) * (tangent.x - tip.x) + (to.y - tip.y) * (tangent.y - tip.y)
+                        > 0.0
+                );
+            }
+            assert!(cardinality_tangent(&points[..2], start).is_err());
+        }
+        assert!(cardinality_tangent(&[], true).is_err());
     }
 }
