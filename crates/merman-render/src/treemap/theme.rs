@@ -170,7 +170,7 @@ impl TreemapResolvedTextStyle {
 pub(crate) struct TreemapTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     text_fill: Option<DirectStaticPaint>,
-    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
+    text_rules: Box<[(usize, TreemapRuleObservation)]>,
     label_config_owns_text_fill: bool,
     value_config_owns_text_fill: bool,
     root_font_size_px: f64,
@@ -191,39 +191,65 @@ impl TreemapTypographyThemePlan {
     ) -> crate::Result<Self> {
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let text_fill = theme.and_then(|theme| {
-            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+        let text_style = theme
+            .map(|theme| {
+                theme.style_with_work_meter(
+                    ThemeTarget::Text,
+                    ThemeVariant::Default,
+                    None,
+                    &work_meter,
+                )
+            })
+            .transpose()?;
+        let text_fill = theme.zip(text_style.as_ref()).and_then(|(theme, style)| {
             resolve_direct_static_fill(
                 theme,
-                &style,
+                style,
                 &[ThemeTarget::Text],
                 DirectStaticSelectorDomain::Default,
             )
         });
-        let text_fill_routes = theme
-            .map(|theme| {
-                theme
-                    .family_mechanism_routes()
-                    .iter()
-                    .copied()
-                    .filter_map(|route| match route.mechanism() {
-                        FamilyThemeMechanism::RuleFacet {
-                            rule_index,
-                            target: ThemeTarget::Text,
-                            selector:
-                                FamilyThemeSelectorShape::Static {
-                                    variant: None | Some(ThemeVariant::Default),
-                                },
-                            facet: FamilyThemeRuleFacet::Fill(_),
-                        } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
-                            Some((theme.family_mechanism_key(route), rule_index))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-            })
-            .unwrap_or_default();
+        let mut text_rules = BTreeMap::<usize, TreemapRuleObservation>::new();
+        if let Some((theme, style)) = theme.zip(text_style.as_ref()) {
+            work_meter.charge(theme.family_mechanism_routes().len())?;
+            let winners = style
+                .winner_rule_properties()
+                .map(|(property, origin)| (origin.rule_index(), property))
+                .collect::<BTreeSet<_>>();
+            for route in theme.family_mechanism_routes().iter().copied() {
+                let FamilyThemeMechanism::RuleFacet {
+                    rule_index,
+                    target: ThemeTarget::Text,
+                    selector: FamilyThemeSelectorShape::Static { variant },
+                    facet,
+                } = route.mechanism()
+                else {
+                    continue;
+                };
+                let observation = text_rules.entry(rule_index).or_default();
+                if !matches!(variant, None | Some(ThemeVariant::Default))
+                    || !winners.contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                {
+                    continue;
+                }
+                observation.applicable = true;
+                match (route.disposition(), facet) {
+                    (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Fill(_))
+                        if text_fill
+                            .as_ref()
+                            .is_some_and(|fill| fill.rule_index() == rule_index) =>
+                    {
+                        observation.fill_pending = true;
+                    }
+                    (FamilyThemeDisposition::Unsupported, facet) => {
+                        observation
+                            .residual
+                            .get_or_insert(unsupported_residual_for_facet(facet));
+                    }
+                    _ => observation.incomplete = true,
+                }
+            }
+        }
         let theme_text_color_is_source_owned =
             merman_core::__private::config_path_overrides_typed_default(
                 effective_config,
@@ -296,7 +322,7 @@ impl TreemapTypographyThemePlan {
         Ok(Self {
             inherited_font_stack,
             text_fill,
-            text_fill_routes,
+            text_rules: text_rules.into_iter().collect(),
             label_config_owns_text_fill,
             value_config_owns_text_fill,
             root_font_size_px,
@@ -413,7 +439,7 @@ impl TreemapTypographyThemePlan {
         &self,
         layout: &TreemapDiagramLayout,
     ) -> Option<TreemapTypographyThemeReceipt<'_>> {
-        (self.inherited_font_stack.typography_requested() || !self.text_fill_routes.is_empty())
+        (self.inherited_font_stack.typography_requested() || !self.text_rules.is_empty())
             .then(|| TreemapTypographyThemeReceipt::new(self, layout))
     }
 
@@ -441,12 +467,20 @@ impl TreemapTypographyThemePlan {
                     FamilyThemeResidualReason::UnsupportedTypography,
                 );
             }
-            for (key, _) in &self.text_fill_routes {
-                if self.label_config_owns_text_fill && self.value_config_owns_text_fill {
-                    evidence.mark_not_applicable(key.clone());
+            for (index, observation) in &self.text_rules {
+                let key = FamilyThemeMechanismKey::Rule {
+                    index: *index,
+                    target: ThemeTarget::Text,
+                };
+                if !observation.applicable {
+                    evidence.mark_not_applicable(key);
                 } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                    evidence.mark_residual(
+                        key,
+                        observation
+                            .residual
+                            .unwrap_or(FamilyThemeResidualReason::UnsupportedPaint),
+                    );
                 }
             }
             return evidence;
@@ -490,22 +524,28 @@ impl TreemapTypographyThemePlan {
                 }
             }
         }
-        for (key, rule_index) in &self.text_fill_routes {
-            if self.label_config_owns_text_fill && self.value_config_owns_text_fill {
-                evidence.mark_not_applicable(key.clone());
-            } else if self
-                .text_fill
-                .as_ref()
-                .is_some_and(|fill| fill.rule_index() == *rule_index && receipt.text_fill_proven)
-            {
+        for (index, observation) in &self.text_rules {
+            let key = FamilyThemeMechanismKey::Rule {
+                index: *index,
+                target: ThemeTarget::Text,
+            };
+            if !observation.applicable || receipt.text_participating_count == 0 {
+                evidence.mark_not_applicable(key);
+            } else if let Some(reason) = observation.residual {
+                evidence.mark_residual(key, reason);
+            } else if observation.incomplete {
+                // A fill receipt cannot certify a sibling facet without a terminal owner.
+            } else if self.label_config_owns_text_fill && self.value_config_owns_text_fill {
+                evidence.mark_not_applicable(key);
+            } else if observation.fill_pending && receipt.text_fill_proven {
                 let fill = self.text_fill.as_ref().expect("matching Treemap text fill");
-                evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+                evidence.mark_applied_with_capabilities(key, [fill.capability()]);
             } else if receipt.typed_text_fill_terminal_count == 0 {
-                evidence.mark_not_applicable(key.clone());
+                evidence.mark_not_applicable(key);
             } else if !receipt.text_fill_proven {
-                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
             } else {
-                evidence.mark_not_applicable(key.clone());
+                evidence.mark_not_applicable(key);
             }
         }
         evidence
@@ -626,6 +666,7 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
     value_text_fill_terminal_count: usize,
     terminal_matches: bool,
     participating_count: usize,
+    text_participating_count: usize,
     source_owned_count: usize,
     unverified_count: usize,
 }
@@ -633,6 +674,7 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
 #[derive(Debug)]
 struct TreemapTypographyTerminalSeal {
     participating_count: usize,
+    text_participating_count: usize,
     source_owned_count: usize,
     unverified_count: usize,
     typed_text_fill_terminal_count: usize,
@@ -661,6 +703,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             value_text_fill_terminal_count: 0,
             terminal_matches: true,
             participating_count: 0,
+            text_participating_count: 0,
             source_owned_count: 0,
             unverified_count: 0,
         }
@@ -731,6 +774,9 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             return;
         }
         self.participating_count = self.participating_count.saturating_add(1);
+        if role != TreemapTextRole::Title {
+            self.text_participating_count = self.text_participating_count.saturating_add(1);
+        }
         match role {
             TreemapTextRole::SectionLabel | TreemapTextRole::LeafLabel
                 if self.expected_label_text_fill_css.is_some() =>
@@ -777,6 +823,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             && self.next_role == self.expected_terminal_count())
         .then_some(TreemapTypographyTerminalSeal {
             participating_count: self.participating_count,
+            text_participating_count: self.text_participating_count,
             source_owned_count: self.source_owned_count,
             unverified_count: self.unverified_count,
             typed_text_fill_terminal_count: self
@@ -990,7 +1037,7 @@ impl TreemapTitleThemePlan {
         let source_owned_fill = [config_owns_fill];
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let mut observations = BTreeMap::<usize, TreemapTitleRuleObservation>::new();
+        let mut observations = BTreeMap::<usize, TreemapRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -1176,7 +1223,7 @@ impl TreemapTitleThemeReceipt {
 }
 
 #[derive(Debug, Default)]
-struct TreemapTitleRuleObservation {
+struct TreemapRuleObservation {
     applicable: bool,
     fill_config_owned: bool,
     incomplete: bool,

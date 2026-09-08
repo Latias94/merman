@@ -964,7 +964,7 @@ pub(crate) fn render_treemap_diagram_svg(
             if let Some(receipt) = typography_theme_receipt.as_mut() {
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::SectionLabel,
-                    true,
+                    !label_text.trim().is_empty(),
                     &section_label_text_style,
                     true,
                 );
@@ -1207,7 +1207,7 @@ pub(crate) fn render_treemap_diagram_svg(
         if let Some(receipt) = typography_theme_receipt.as_mut() {
             receipt.record_text(
                 crate::treemap::TreemapTextRole::LeafLabel,
-                label_font_size_mutated && !leaf.name.trim().is_empty(),
+                !label_hidden && !leaf.name.trim().is_empty(),
                 &final_label_text_style,
                 label_measurement_matches,
             );
@@ -1305,7 +1305,7 @@ pub(crate) fn render_treemap_diagram_svg(
             if let Some(receipt) = typography_theme_receipt.as_mut() {
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::LeafValue,
-                    !label_hidden && !value_text.is_empty(),
+                    !value_hidden && !value_text.is_empty(),
                     &final_value_text_style,
                     true,
                 );

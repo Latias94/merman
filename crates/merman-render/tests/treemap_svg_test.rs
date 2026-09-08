@@ -1,6 +1,6 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, Specified,
     ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     ThemeTextStyle, TypographySpec,
 };
@@ -451,6 +451,228 @@ fn treemap_text_fill_reaches_label_and_value_terminals() {
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn treemap_mixed_text_rule_does_not_certify_unsupported_typography() {
+    let source = "treemap\n\"Section\"\n  \"Leaf\": 12\n";
+    for font_stack in [false, true] {
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        if font_stack {
+            patch.typography.font_stack =
+                Specified::Value(FontStack::single("UnimplementedRuleFace").unwrap());
+        } else {
+            patch.typography.font_size_px = Specified::Value(40.0);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(ThemeTarget::Text, patch).for_family(DiagramFamilyId::TREEMAP),
+                )),
+            )
+            .unwrap();
+        let rendered = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let label = text_tag_by_text(rendered.svg(), "Leaf");
+        assert!(
+            label.contains("#123456") || label.contains("rgb(18, 52, 86)"),
+            "{label}"
+        );
+        assert_ne!(font_size_px(label), Some(40.0));
+        assert!(!label.contains("UnimplementedRuleFace"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(
+            evidence.applied_count(),
+            0,
+            "fill cannot certify the rule's font facet"
+        );
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let error = try_render_treemap_with_theme_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .err()
+        .expect("mixed rule must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREEMAP, 1))
+        );
+    }
+}
+
+#[test]
+fn treemap_text_rule_accounts_only_its_winning_facets() {
+    let mut mixed = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    mixed.typography.font_size_px = Specified::Value(40.0);
+    let mut later_font = ThemeStylePatch::default();
+    later_font.typography.font_size_px = Specified::Value(50.0);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(ThemeTarget::Text, mixed)
+                            .for_family(DiagramFamilyId::TREEMAP),
+                    )
+                    .with_rule(
+                        ThemeRule::new(ThemeTarget::Text, later_font)
+                            .for_family(DiagramFamilyId::TREEMAP),
+                    ),
+            ),
+        )
+        .unwrap();
+    let source = "treemap\n\"Section\"\n  \"Leaf\": 12\n";
+    let rendered = try_render_treemap_with_theme_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(
+        evidence.applied_count(),
+        1,
+        "the first rule's remaining winning fill is supported"
+    );
+    assert_eq!(
+        evidence.theme_residual_count(),
+        1,
+        "only the later rule owns unsupported size"
+    );
+
+    let hidden = "---\nconfig:\n  treemap:\n    nodeWidth: 1\n    nodeHeight: 1\n---\ntreemap\ntitle Visible title\n\"Leaf\": 12\n";
+    let rendered = render_treemap_with_theme(hidden, &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.attribute("class") == Some("treemapTitle"))
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(
+        evidence.not_applicable_count(),
+        2,
+        "a title is not a Text terminal"
+    );
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn treemap_label_hidden_after_fitting_does_not_prove_text_fill() {
+    let theme = treemap_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    let source = "---\nconfig:\n  treemap:\n    nodeWidth: 8\n    nodeHeight: 20\n    showValues: false\n---\ntreemap\n\"A very long label that cannot fit at the minimum font size\": 12\n";
+    let rendered = render_treemap_with_theme(source, &theme, Engine::new());
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let leaf_label = document
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("treemapLabel")
+                && node.text() == Some("A very long label that cannot fit at the minimum font size")
+        })
+        .unwrap();
+    assert!(
+        leaf_label
+            .attribute("style")
+            .unwrap()
+            .contains("display: none")
+    );
+    assert_eq!(
+        font_size_px(text_tag_by_text(
+            rendered.svg(),
+            "A very long label that cannot fit at the minimum font size"
+        )),
+        Some(8.0)
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn treemap_receipts_exclude_hidden_values_and_empty_truncated_sections() {
+    struct WideTextHost {
+        every_text: bool,
+    }
+    impl HostTextMeasurer for WideTextHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(
+                (request.operation == TextMeasurementOperation::ComputedLength
+                    && (self.every_text || request.text == "12"))
+                    .then_some(HostTextMeasurement::Length(1e8)),
+            )
+        }
+    }
+    let theme = treemap_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for every_text in [false, true] {
+        let (source, config) = if every_text {
+            (
+                "treemap\n\"Section\"\n  \"Leaf\": 12\n",
+                serde_json::json!({"treemap": {"showValues": false}}),
+            )
+        } else {
+            (
+                "treemap\n\"Leaf\": 12\n",
+                serde_json::json!({"treemap": {"labelColor": "#abcdef"}}),
+            )
+        };
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.treemap-visibility").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(WideTextHost { every_text }),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        if every_text {
+            let sections: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("treemapSectionLabel"))
+                .collect();
+            assert!(!sections.is_empty());
+            assert!(
+                sections
+                    .iter()
+                    .all(|node| node.text().is_none_or(str::is_empty))
+            );
+        } else {
+            let label = text_tag_by_text(rendered.svg(), "Leaf");
+            assert!(!label.contains("display: none"));
+            let value = text_tag_by_text(rendered.svg(), "12");
+            assert!(value.contains("display: none"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "every_text={every_text}");
+        assert_eq!(evidence.not_applicable_count(), 1);
+    }
 }
 
 #[test]
