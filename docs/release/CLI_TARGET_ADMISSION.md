@@ -4,41 +4,54 @@ This record governs precompiled `merman-cli` and `merman-lsp` release targets. A
 cross-build is not sufficient: a target is public only after the final archives execute on that
 target and the platform resource contract is proven.
 
-## 2026-09-08: Linux ARM64 is admitted
+## 2026-09-08: Linux ARM64 admission pending native preflight
 
 **Candidate:** `aarch64-unknown-linux-gnu`
 
-**Decision:** Add the target to cargo-dist, `cli-analysis`, `cli-release`, `lsp-stdio-release`, the
-host-execution allowlist, the CI artifact-profile matrix, and the release native verification
-matrix. The target is published only through the same gates the existing four targets pass; nothing
-in this change lets an unexecuted archive reach the release.
+**Decision:** Configure the candidate atomically in cargo-dist, `cli-analysis`, `cli-release`,
+`lsp-stdio-release`, the host-execution allowlist, and the CI, preflight, and release native
+matrices. Configuration is not successful admission evidence. Before merging the candidate, run
+the non-publishing `Release Preflight` workflow against its exact source commit and record the
+native archive results below. Publication still requires the complete release verification gate.
 
-The remaining evidence is produced by the same jobs that already prove the other targets, on native
-ARM64 GitHub-hosted runners rather than through cross-compilation or emulation:
+The `cli-and-lsp-archives` preflight matrix builds and executes the final cargo-dist archives on
+`ubuntu-24.04` and `ubuntu-24.04-arm`. It runs the full non-publishing `dist plan` first and checks
+the candidate's archive inventory, runner, and host before building. It does not require creating
+or pushing a release tag, and does not publish or attest anything.
+
+No successful ARM64 preflight run is recorded here yet. A workflow definition or a passing
+Python contract test must not be reported as a native execution result.
 
 | Admission gate | Result | Evidence |
 | --- | --- | --- |
-| Matching native runner | Pass | `ubuntu-24.04-arm` builds the archives and `ubuntu-24.04-arm` executes them in `verify-release-archives-native`. |
+| Matching native runner | Configured | The preflight ARM64 job uses `ubuntu-24.04-arm` and rejects a cargo-dist plan with a different runner, host, or container. |
 | CLI/LSP descriptor symmetry | Pass | `cli-release` and `lsp-stdio-release` declare the same five triples; `scripts/cli_installation_contract.py` and the release bundle contract reject a divergence. |
-| Final CLI archive execution | Gated | `verify-release-archives-native` runs `scripts/verify_cli_release_archive.py --execute` for the candidate on `ubuntu-24.04-arm`, covering version, capabilities, completion, SVG, PNG, JPEG, and PDF smokes. |
-| Final LSP archive execution | Gated | The same job runs `scripts/verify_lsp_release_archive.py --execute`, covering the stdio initialize, shutdown, and exit lifecycle. |
-| glibc compatibility floor | Pass by symmetry | The candidate builds and executes on `ubuntu-24.04-arm`, the ARM64 image of the same `ubuntu-24.04` build environment that defines the published `x86_64-unknown-linux-gnu` floor. The two Linux targets therefore share one documented floor rather than introducing a second, weaker one. |
-| TLS and system certificates | Gated | The complete CLI enables `network-icons`; the candidate's `--execute` smoke exercises the same resource contract as the x86_64 Linux archive on the ARM64 runner. |
-| System font discovery | Gated | The same `--execute` smoke records system-font discovery across the SVG and bitmap/PDF output paths. |
-| cargo-dist and bundle closure | Gated | `dist plan`, exact archive naming, checksums, hardened installers, the immutable bundle, and attestation all treat the candidate as one more member of the declared target set. |
+| Final CLI archive execution | Pending run | Preflight runs `scripts/verify_cli_release_archive.py --execute`, covering version, capabilities, completion, SVG, PNG, JPEG, PDF, and rustdoc smokes. |
+| Final LSP archive execution | Pending run | Preflight runs `scripts/verify_lsp_release_archive.py --execute`, covering the stdio initialize, shutdown, and exit lifecycle. |
+| glibc compatibility floor | Pending run | Build and execution use the native Ubuntu 24.04 image for each Linux architecture; a successful ARM64 result is still required. No older distribution is claimed. |
+| TLS and system certificates | Not proven by archive smokes | `network-icons` is enabled, but the current archive verifier does not make an HTTPS request through the system trust store. Separate runtime evidence is required. |
+| System font discovery | Not proven independently | Archive smokes check capability metadata and render outputs, not a dedicated system-font discovery assertion. Separate resource evidence is required. |
+| cargo-dist plan and local archive checksums | Pending run | Preflight validates the full planned asset contract and native routing, then verifies both final archives and adjacent checksums. |
+| Global installers, immutable bundle, and attestation | Release-only gates | These require the complete release matrix and remain owned by `release.yml`; the local-archive preflight is not evidence that they have run. |
 
 `scripts/release_process.py` admits `("linux", "aarch64", "gnu")`, so the archive verifiers execute
 the candidate only on a matching native host and continue to refuse a mismatched or musl host. A
-failure in any gate above fails the release closed through `release-verification-gate`; there is no
-path that publishes the candidate without its native execution result.
+failure in the release archive matrix fails the release closed through `release-verification-gate`;
+there is no path that publishes the candidate without its native execution result. That final
+gate does not replace the pre-merge admission evidence.
+
+For a completed preflight, record the run URL, exact source SHA, version, target, runner, and the
+`preflight-cli-lsp-<target>` artifact. Keep the successful job logs with the archived plan,
+build manifest, final archives, and checksums. Resource claims need their own evidence; do not
+mark them passed merely because the archive jobs are green.
 
 Windows ARM64 (`aarch64-pc-windows-msvc`) remains unadmitted and is out of scope for this decision.
 It requires its own runner, archive, installer, and native execution evidence.
 
-## 2026-07-30: Linux ARM64 remains unadmitted (superseded)
+## 2026-07-30: Linux ARM64 remains unadmitted (historical)
 
-**Superseded by the 2026-09-08 decision above.** The record is kept because it states the evidence
-the candidate had to produce.
+**Historical baseline for the 2026-09-08 candidate above.** The record is kept because it states
+the evidence gaps; adding the candidate's configuration does not itself close them.
 
 **Candidate:** `aarch64-unknown-linux-gnu`
 
@@ -64,7 +77,10 @@ incomplete:
 Failing closed keeps the published contract truthful. It also avoids a descriptor split in which
 the CLI advertises a target that the LSP, installers, or final native gate cannot support.
 
-## Current public target set
+## Configured release target set
+
+The configuration below includes the pending Linux ARM64 candidate. It is not a claim that an
+existing release contains that archive or that the candidate's admission evidence is complete.
 
 ```text
 aarch64-apple-darwin
@@ -80,21 +96,22 @@ CLI/LSP target-set mismatch before publication.
 
 ## Retry conditions for a future candidate
 
-Evaluate any further candidate only after a non-publishing workflow has produced all of the
-following on one source commit:
+Prepare each candidate as one focused change to cargo-dist, the artifact profiles, installation
+metadata, native runner matrices, package candidates where applicable, and their exact tests.
+Keep its admission status pending until a non-publishing workflow has produced all of the
+following on one source commit, before merging that change:
 
-1. An `aarch64-unknown-linux-gnu` CLI and LSP build from a controlled glibc baseline.
-2. Execution of both final cargo-dist archives on the oldest supported ARM64 Linux environment.
+1. CLI and LSP builds for the candidate target triple from a controlled platform and ABI baseline.
+2. Execution of both final cargo-dist archives on the candidate's oldest supported native environment.
 3. The complete CLI runtime contract, including deterministic HTTPS/system-certificate and
    system-font resource smokes.
 4. The complete LSP stdio lifecycle and clean termination check.
-5. Exact cargo-dist plan, archive, checksum, hardened installer, immutable-bundle, isolated native
-   matrix, aggregate, and attestation closure for the candidate.
+5. The exact cargo-dist plan, candidate runner/host routing, archive inventory, and adjacent checksums.
 
-Only after that evidence is green should one change add the target atomically to
-`dist-workspace.toml`, both artifact profiles, release surfaces, cargo-binstall metadata, the
-native runner matrix, package candidates, and their exact tests. The 2026-09-08 Linux ARM64
-admission followed that shape.
+Record the successful run and source identity before marking the candidate admitted. On release,
+the full target matrix must still pass hardened installer generation, immutable-bundle assembly,
+isolated native execution, aggregation, and attestation. These release-only gates are not replaced
+by a candidate-local preflight, and a pending candidate must not be described as having passed them.
 
 ## Sources
 

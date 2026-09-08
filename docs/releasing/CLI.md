@@ -117,13 +117,13 @@ manifest, archive, and adjacent checksum are checked for mutual consistency, but
 not establish independent provenance because cargo-dist produced all three.
 
 The central verifier is the independent trust boundary. It binds every raw archive to its adjacent
-checksum, safely validates the structure and product contract of all four CLI and all four LSP
-archives, and copies the accepted bytes into a verified snapshot. Global installer and checksum
+checksum, safely validates the structure and product contract of every configured CLI and LSP
+archive, and copies the accepted bytes into a verified snapshot. Global installer and checksum
 generation receives only those snapshot archives. The final bundle derives its exact asset inventory
 from the validated cargo-dist plan and is uploaded as one read-only `verified-release-assets`
 workflow artifact. This central phase never executes target binaries.
 
-Eight target-native jobs consume only that bundle: one isolated job for each product and target.
+Target-native jobs consume only that bundle: one isolated job for each product and target.
 CLI jobs execute version, capability, completion, SVG, PNG, JPEG, and PDF smokes. LSP jobs execute
 initialize, initialized, shutdown, and exit. Each job reports only one product, so no product's
 verification result is produced after another product's binary runs in the same writable job. A
@@ -137,7 +137,8 @@ remain workflow artifacts for external submission; they are not uploaded as prod
 
 ## cargo-binstall
 
-`crates/merman-cli/Cargo.toml` resolves the five published targets as follows:
+`crates/merman-cli/Cargo.toml` resolves the five configured targets as follows. Linux ARM64 remains
+pending native admission evidence; consult the selected release's asset inventory for availability.
 
 | Target | Format | Executable path inside the archive |
 | --- | --- | --- |
@@ -157,7 +158,7 @@ The metadata disables cargo-binstall's third-party QuickInstall strategy. If an 
 is absent, cargo-binstall falls back to `cargo install` instead of silently substituting an
 uncontrolled binary. Do not disable the `compile` strategy.
 
-Linux ARM64 is published under the same generic `pkg-url`, `pkg-fmt`, and `bin-dir` templates as
+Linux ARM64 uses the same generic `pkg-url`, `pkg-fmt`, and `bin-dir` templates as
 the other Unix targets; only Windows keeps an override. The admission record for that target is
 [`docs/release/CLI_TARGET_ADMISSION.md`](../release/CLI_TARGET_ADMISSION.md). A Homebrew ARM64 Linux
 bottle belongs to a different build and verification channel.
