@@ -150,6 +150,28 @@ impl<'a> DrawingListBuilder<'a> {
         Ok(())
     }
 
+    /// Paints existing geometry without allocating or charging its resource a second time.
+    /// Final document validation checks the reference; admission here bounds command payload.
+    pub(crate) fn draw_path_reference(&mut self, id: ResourceId, style: PathStyle) -> Result<()> {
+        let mut next = self.usage;
+        checked_increment(&mut next.commands, 1, "command count")?;
+        if let Some(stroke) = &style.stroke {
+            checked_increment(
+                &mut next.stroke_dash_entries,
+                stroke.dash_array.len(),
+                "stroke dash entry count",
+            )?;
+        }
+        self.preflight(next)?;
+        self.commands
+            .try_reserve(1)
+            .map_err(|_| allocation_failed("commands"))?;
+        self.commands
+            .push(DrawingCommand::DrawPath { path: id, style });
+        self.usage = next;
+        Ok(())
+    }
+
     /// Adds one path resource with multiple paint commands, preserving source painter order.
     ///
     /// Some SVG families paint a shape fill and stroke as separate elements while sharing the
@@ -614,6 +636,51 @@ mod tests {
                 },
             },
         }
+    }
+
+    #[test]
+    fn path_references_charge_commands_not_resources_and_reject_atomically() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits {
+                max_commands: 2,
+                max_resources: 1,
+                max_path_segments: 1,
+                ..DrawingListLimits::default()
+            },
+            &session,
+        );
+        let id = ResourceId::new("path");
+        builder
+            .draw_path(
+                id.clone(),
+                vec![PathSegment::MoveTo {
+                    to: Point::new(0.0, 0.0),
+                }],
+                path_style(),
+            )
+            .unwrap();
+        builder
+            .draw_path_reference(id.clone(), path_style())
+            .unwrap();
+        assert_eq!(builder.resources.len(), 1);
+        assert_eq!(builder.usage.path_segments, 1);
+        assert_eq!(builder.usage.commands, 2);
+        let before = builder.usage;
+        assert!(matches!(
+            builder.draw_path_reference(id, path_style()),
+            Err(Error::DrawingListContract(
+                DrawingListError::ResourceLimit {
+                    resource: "commands",
+                    actual: 3,
+                    maximum: 2
+                }
+            ))
+        ));
+        assert_eq!(builder.usage, before);
+        assert_eq!(builder.commands.len(), 2);
     }
 
     #[test]

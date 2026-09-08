@@ -1245,6 +1245,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
         family,
         RenderFamilyKind::Error
             | RenderFamilyKind::Info
+            | RenderFamilyKind::Cynefin
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie
             | RenderFamilyKind::Sankey
@@ -3069,6 +3070,7 @@ mod tests {
                 "marker paint comes from the resolved class rule"
             );
             assert_eq!(marker_path.attribute("stroke"), None);
+            assert!(marker_path.attribute("d").unwrap().ends_with('z'));
             let arrow_line = xml
                 .descendants()
                 .find(|node| node.attribute("class") == Some("cynefinArrowLine"))
@@ -3226,8 +3228,9 @@ mod tests {
                         changed += 1;
                     }
                     DrawingCommand::DrawPath { path, style }
-                        if path.as_str() == "cynefin.item.0.shape"
-                            || path.as_str() == "cynefin.background" =>
+                        if style.fill.is_some()
+                            && (path.as_str() == "cynefin.item.0.shape"
+                                || path.as_str() == "cynefin.background") =>
                     {
                         style.fill = Some(Paint::solid(Color::rgba(18, 52, 86, 128)));
                         changed += 1;
@@ -3275,7 +3278,8 @@ mod tests {
                     .unwrap()
                     .parse::<f64>()
                     .unwrap();
-                assert!((alpha - 128.0 / 255.0).abs() < 0.001);
+                let fill_opacity = if class == "cynefinItem" { 0.95 } else { 1.0 };
+                assert!((alpha - fill_opacity * 128.0 / 255.0).abs() < 0.001);
             }
             let index = document
                 .public
@@ -3354,6 +3358,214 @@ mod tests {
                 let expected = 128.0 / 255.0 * if with_stroke { 1.0 } else { 0.4 };
                 assert!((alpha - expected).abs() < 0.001);
                 assert_eq!(domain.attribute("opacity"), with_stroke.then_some("0.4"));
+            }
+        }
+    }
+
+    #[test]
+    fn cynefin_fill_opacity_is_exact_and_independent_of_strokes() {
+        use merman_display_list::{DrawingCommand, Paint};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "cynefin-beta\ncomplex\n  \"Observe\"\nconfusion\n  \"A\"\n  \"B\"\n  \"C\"\n  \"D\"\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let crate::drawing_list::SvgStructureBody::Cynefin(body) = &document.svg.body else {
+            panic!("expected Cynefin sidecar");
+        };
+        let mut observed = std::collections::BTreeSet::new();
+        for (id, class) in &body.path_classes {
+            let opacity = match class.as_str() {
+                "cynefinConfusion" => 0.5,
+                "cynefinItem" => 0.95,
+                "cynefinItemOverflow" => 0.6,
+                _ => continue,
+            };
+            observed.insert(class.as_str());
+            let index = document
+                .public
+                .commands
+                .iter()
+                .position(|command| {
+                    matches!(command,
+                DrawingCommand::DrawPath { path, .. } if path.as_str() == id)
+                })
+                .unwrap();
+            let [
+                DrawingCommand::Save,
+                DrawingCommand::SetOpacity { opacity: actual },
+                DrawingCommand::DrawPath {
+                    path: fill_id,
+                    style: fill,
+                },
+                DrawingCommand::Restore,
+                DrawingCommand::DrawPath {
+                    path: stroke_id,
+                    style: stroke,
+                },
+            ] = &document.public.commands[index - 2..index + 3]
+            else {
+                panic!("{id} must carry exact fill opacity separately from stroke");
+            };
+            assert_eq!(*actual, opacity);
+            assert_eq!(fill_id, stroke_id);
+            assert!(fill.stroke.is_none());
+            assert!(matches!(fill.fill, Some(Paint::Solid { color }) if color.alpha == 255));
+            assert!(stroke.fill.is_none() && stroke.stroke.is_some());
+        }
+        assert_eq!(observed.len(), 3);
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        for (class, opacity) in [
+            ("cynefinConfusion", "0.5"),
+            ("cynefinItem", "0.95"),
+            ("cynefinItemOverflow", "0.6"),
+        ] {
+            let nodes: Vec<_> = xml
+                .descendants()
+                .filter(|node| node.attribute("class") == Some(class))
+                .collect();
+            assert_eq!(
+                nodes.len(),
+                body.path_classes
+                    .values()
+                    .filter(|value| value.as_str() == class)
+                    .count()
+            );
+            for node in nodes {
+                assert_eq!(node.attribute("fill-opacity"), Some(opacity));
+                assert_eq!(node.attribute("opacity"), None);
+                assert_eq!(node.attribute("stroke"), None);
+            }
+        }
+
+        let fill_index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "cynefin.item.0.shape")
+            })
+            .unwrap();
+        for edit in [
+            "opacity",
+            "added-stroke",
+            "removed-stroke",
+            "outer-opacity",
+            "outer-blend",
+        ] {
+            let mut edited = document.clone();
+            match edit {
+                "opacity" => {
+                    edited.public.commands[fill_index - 1] =
+                        DrawingCommand::SetOpacity { opacity: 0.37 }
+                }
+                "added-stroke" => {
+                    let DrawingCommand::DrawPath { style: stroke, .. } =
+                        &document.public.commands[fill_index + 2]
+                    else {
+                        unreachable!()
+                    };
+                    let DrawingCommand::DrawPath { style, .. } =
+                        &mut edited.public.commands[fill_index]
+                    else {
+                        unreachable!()
+                    };
+                    style.stroke = stroke.stroke.clone();
+                    style.stroke.as_mut().unwrap().width = 3.0;
+                }
+                "removed-stroke" => {
+                    edited.public.commands.remove(fill_index + 2);
+                }
+                "outer-opacity" | "outer-blend" => {
+                    edited
+                        .public
+                        .commands
+                        .insert(fill_index + 3, DrawingCommand::Restore);
+                    edited.public.commands.insert(
+                        fill_index - 2,
+                        if edit == "outer-opacity" {
+                            DrawingCommand::SetOpacity { opacity: 0.4 }
+                        } else {
+                            DrawingCommand::SetBlendMode {
+                                blend_mode: merman_display_list::BlendMode::Multiply,
+                            }
+                        },
+                    );
+                    edited
+                        .public
+                        .commands
+                        .insert(fill_index - 2, DrawingCommand::Save);
+                }
+                _ => unreachable!(),
+            }
+            let svg = render(&edited);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let label = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Observe"))
+                .unwrap();
+            let shapes: Vec<_> = label
+                .parent()
+                .unwrap()
+                .children()
+                .filter(|node| node.attribute("class") == Some("cynefinItem"))
+                .collect();
+            let split = matches!(edit, "added-stroke" | "outer-opacity" | "outer-blend");
+            assert_eq!(shapes.len(), if split { 2 } else { 1 }, "{edit}");
+            if edit == "opacity" {
+                assert_eq!(shapes[0].attribute("fill-opacity"), Some("0.37"));
+                continue;
+            }
+            assert!(
+                !svg.contains(".cynefinItem{"),
+                "{edit}: fallback must not inherit sibling stroke CSS"
+            );
+            assert_eq!(shapes[0].attribute("opacity"), Some("0.95"));
+            assert_eq!(
+                shapes[0].attribute("stroke"),
+                if edit == "added-stroke" {
+                    Some("#333333")
+                } else {
+                    Some("none")
+                }
+            );
+            if split {
+                assert_eq!(shapes[1].attribute("fill"), Some("none"));
+                assert_eq!(
+                    shapes[1].attribute("opacity"),
+                    if edit == "outer-opacity" {
+                        Some("0.4")
+                    } else {
+                        None
+                    }
+                );
+            }
+            if edit == "outer-blend" {
+                assert!(
+                    shapes
+                        .iter()
+                        .all(|shape| shape.attribute("style") == Some("mix-blend-mode: multiply;"))
+                );
             }
         }
     }

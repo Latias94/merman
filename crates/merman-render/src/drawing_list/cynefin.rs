@@ -361,24 +361,19 @@ impl<'a> CynefinBuilder<'a> {
             "cynefin.domain.confusion.background".to_string(),
             "cynefinConfusion".to_string(),
         );
-        self.add_generated_path(
+        self.add_fill_and_stroke(
             "cynefin.domain.confusion.background",
-            &generate_confusion_path(
+            parse_svg_path(&generate_confusion_path(
                 self.layout.width / 2.0,
                 self.layout.height / 2.0,
                 self.layout.width * 0.15,
                 self.layout.height * 0.15,
-            ),
-            PathStyle {
-                fill_rule: FillRule::NonZero,
-                fill: Some(Paint::solid(with_alpha(
-                    self.domain_fills["confusion"],
-                    0.5,
-                ))),
-                stroke: Some(StrokeStyle {
-                    dash_array: vec![4.0, 2.0],
-                    ..stroke(self.boundary_color, 1.5)
-                }),
+            ))?,
+            self.domain_fills["confusion"],
+            0.5,
+            StrokeStyle {
+                dash_array: vec![4.0, 2.0],
+                ..stroke(self.boundary_color, 1.5)
             },
         )
     }
@@ -507,7 +502,7 @@ impl<'a> CynefinBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            self.add_path(
+            self.add_fill_and_stroke(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(
                     item.width / 2.0,
@@ -516,20 +511,15 @@ impl<'a> CynefinBuilder<'a> {
                     item.height,
                     4.0,
                 ),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(with_alpha(
-                        fill,
-                        if item.overflow { 0.6 } else { 0.95 },
-                    ))),
-                    stroke: Some(StrokeStyle {
-                        dash_array: if item.overflow {
-                            vec![3.0, 2.0]
-                        } else {
-                            Vec::new()
-                        },
-                        ..stroke(self.boundary_color, 1.0)
-                    }),
+                fill,
+                if item.overflow { 0.6 } else { 0.95 },
+                StrokeStyle {
+                    dash_array: if item.overflow {
+                        vec![3.0, 2.0]
+                    } else {
+                        Vec::new()
+                    },
+                    ..stroke(self.boundary_color, 1.0)
                 },
             )?;
             self.emit_text(
@@ -781,6 +771,38 @@ impl<'a> CynefinBuilder<'a> {
         Ok(())
     }
 
+    fn add_fill_and_stroke(
+        &mut self,
+        id: impl Into<String>,
+        segments: Vec<PathSegment>,
+        fill: Color,
+        opacity: f64,
+        stroke: StrokeStyle,
+    ) -> Result<()> {
+        let id = ResourceId::new(id.into());
+        self.document.push_control(DrawingCommand::Save)?;
+        self.document
+            .push_control(DrawingCommand::SetOpacity { opacity })?;
+        self.document.draw_path(
+            id.clone(),
+            segments,
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(fill)),
+                stroke: None,
+            },
+        )?;
+        self.document.push_control(DrawingCommand::Restore)?;
+        self.document.draw_path_reference(
+            id,
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: None,
+                stroke: Some(stroke),
+            },
+        )
+    }
+
     fn add_generated_path(&mut self, id: &str, data: &str, style: PathStyle) -> Result<()> {
         self.add_path(id, parse_svg_path(data)?, style)
     }
@@ -824,17 +846,6 @@ fn rectangle_path(x: f64, y: f64, width: f64, height: f64) -> Vec<PathSegment> {
         Point::new(x + width, y + height),
         Point::new(x, y + height),
     ])
-}
-
-fn with_alpha(color: Color, opacity: f64) -> Color {
-    Color::rgba(
-        color.red,
-        color.green,
-        color.blue,
-        (f64::from(color.alpha) * opacity.clamp(0.0, 1.0))
-            .round()
-            .clamp(0.0, 255.0) as u8,
-    )
 }
 
 fn validate_layout(layout: &CynefinDiagramLayout) -> Result<()> {

@@ -1265,19 +1265,31 @@ fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
     let svg = render_svg(
-        "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+        "cynefin-beta\n  accTitle: Practices\n  accDescr: Moving between domains\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
         "cynefin-parity",
     );
     let document = roxmltree::Document::parse(&svg).expect("canonical Cynefin SVG is XML");
     let root = document.root_element();
 
     assert_eq!(root.attribute("aria-roledescription"), Some("cynefin"));
-    assert!(root.attribute("viewBox").is_some());
+    assert_eq!(root.attribute("class"), None);
+    assert_eq!(root.attribute("viewBox"), Some("0 0 880 680"));
+    assert_eq!(
+        root.attribute("aria-labelledby"),
+        Some("chart-title-cynefin-parity")
+    );
+    assert_eq!(
+        root.attribute("aria-describedby"),
+        Some("chart-desc-cynefin-parity")
+    );
     for class in [
-        "cynefin",
+        "cynefin-backgrounds",
+        "cynefin-boundaries",
+        "cynefin-labels",
+        "cynefin-items",
+        "cynefin-arrows",
         "cynefinDomain",
         "cynefinBoundary",
         "cynefinCliff",
@@ -1297,17 +1309,41 @@ fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
             "expected canonical Cynefin class {class:?}"
         );
     }
-    assert!(
-        document.descendants().any(|node| {
-            node.attribute("data-merman-semantic-id") == Some("cynefin.transition.0")
-        })
+    let arrow = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("cynefinArrowLine"))
+        .unwrap();
+    assert_eq!(
+        arrow.parent().unwrap().attribute("class"),
+        Some("cynefin-arrows")
     );
+    assert_eq!(
+        arrow.attribute("marker-end"),
+        Some("url(#cynefin-arrow-cynefin-parity)")
+    );
+    let marker = document
+        .descendants()
+        .find(|node| node.has_tag_name("marker"))
+        .unwrap();
+    assert_eq!(marker.attribute("id"), Some("cynefin-arrow-cynefin-parity"));
+    assert_eq!(marker.parent().unwrap().tag_name().name(), "defs");
+    assert_eq!(marker.parent().unwrap().parent(), Some(root));
+    for (tag, text) in [("title", "Practices"), ("desc", "Moving between domains")] {
+        let nodes: Vec<_> = root
+            .children()
+            .filter(|node| node.has_tag_name(tag))
+            .collect();
+        assert_eq!(nodes.len(), 2);
+        assert!(nodes.iter().all(|node| node.text() == Some(text)));
+        assert!(nodes[0].attribute("id").is_some());
+        assert!(nodes[1].attribute("id").is_none());
+    }
     assert!(
         document
             .descendants()
             .any(|node| { node.has_tag_name("text") && node.text() == Some("Observe") })
     );
-    assert!(!svg.contains("<marker") && !svg.contains("NaN") && !svg.contains("Infinity"));
+    assert!(!svg.contains("NaN") && !svg.contains("Infinity"));
 }
 
 #[test]

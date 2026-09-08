@@ -502,6 +502,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 continue;
             }
             if matches!(self.svg_body, SvgStructureBody::Cynefin(_))
+                && self.emit_cynefin_fill_and_stroke(index)?
+            {
+                consumed_until = index + 5;
+                continue;
+            }
+            if matches!(self.svg_body, SvgStructureBody::Cynefin(_))
                 && self.emit_cynefin_marked_edge(index)?
             {
                 consumed_until = index + 5;
@@ -4952,14 +4958,27 @@ fn offset_path_segments(segments: &[PathSegment], dx: f64, dy: f64) -> Vec<PathS
 }
 
 fn path_d(segments: &[PathSegment]) -> PathData<'_> {
-    PathData(segments)
+    PathData {
+        segments,
+        lowercase_close: false,
+    }
 }
 
-struct PathData<'a>(&'a [PathSegment]);
+struct PathData<'a> {
+    segments: &'a [PathSegment],
+    lowercase_close: bool,
+}
+
+impl PathData<'_> {
+    fn with_lowercase_close(mut self) -> Self {
+        self.lowercase_close = true;
+        self
+    }
+}
 
 impl std::fmt::Display for PathData<'_> {
     fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (index, segment) in self.0.iter().enumerate() {
+        for (index, segment) in self.segments.iter().enumerate() {
             if index != 0 {
                 output.write_str(" ")?;
             }
@@ -5006,7 +5025,9 @@ impl std::fmt::Display for PathData<'_> {
                     fmt(to.x),
                     fmt(to.y)
                 ),
-                PathSegment::Close => write!(output, "Z"),
+                PathSegment::Close => {
+                    output.write_str(if self.lowercase_close { "z" } else { "Z" })
+                }
             }?;
         }
         Ok(())

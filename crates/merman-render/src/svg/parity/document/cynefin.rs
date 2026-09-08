@@ -10,16 +10,110 @@ pub(super) struct PathCssStyle<'a> {
     marker_fill: Option<&'a Paint>,
 }
 
+struct FillAndStroke<'a> {
+    path: &'a ResourceId,
+    class: &'a str,
+    fill: &'a Paint,
+    stroke: &'a StrokeStyle,
+    opacity: f64,
+    fill_rule: FillRule,
+}
+
+/// Shared by CSS collection and emission: either both see one paint operation or neither does.
+fn fill_and_stroke<'a>(
+    commands: &'a [DrawingCommand],
+    index: usize,
+    body: &'a crate::drawing_list::CynefinSvgBody,
+    state: GraphicsState,
+) -> Option<FillAndStroke<'a>> {
+    if state.opacity != 1.0 || state.blend_mode != BlendMode::Normal {
+        return None;
+    }
+    let [
+        DrawingCommand::Save,
+        DrawingCommand::SetOpacity { opacity },
+        DrawingCommand::DrawPath { path, style: fill },
+        DrawingCommand::Restore,
+        DrawingCommand::DrawPath {
+            path: stroke_path,
+            style: stroke,
+        },
+    ] = commands.get(index..index.checked_add(5)?)?
+    else {
+        return None;
+    };
+    let class = body.path_classes.get(path.as_str())?;
+    if !matches!(
+        class.as_str(),
+        "cynefinConfusion" | "cynefinItem" | "cynefinItemOverflow"
+    ) || path != stroke_path
+        || fill.fill_rule != stroke.fill_rule
+        || fill.stroke.is_some()
+        || stroke.fill.is_some()
+        || !matches!(fill.fill, Some(Paint::Solid { .. }))
+    {
+        return None;
+    }
+    Some(FillAndStroke {
+        path,
+        class,
+        fill: fill.fill.as_ref()?,
+        stroke: stroke.stroke.as_ref()?,
+        opacity: *opacity,
+        fill_rule: fill.fill_rule,
+    })
+}
+
 pub(super) fn shared_path_styles<'a>(
     document: &'a DrawingListDocument,
-    body: &crate::drawing_list::CynefinSvgBody,
+    body: &'a crate::drawing_list::CynefinSvgBody,
     session: &RenderSession,
 ) -> Result<BTreeMap<String, Option<PathCssStyle<'a>>>> {
     let mut styles = BTreeMap::new();
-    for command in &document.commands {
+    let mut state = GraphicsState::default();
+    let mut saves = Vec::new();
+    let mut index = 0;
+    while index < document.commands.len() {
         session.checkpoint(OperationPhase::Emit)?;
-        let DrawingCommand::DrawPath { path, style } = command else {
-            continue;
+        let combined = fill_and_stroke(&document.commands, index, body, state);
+        let (path, fill_rule, stroke, fill) = if let Some(combined) = combined {
+            index += 5;
+            (
+                combined.path,
+                combined.fill_rule,
+                Some(combined.stroke),
+                Some(combined.fill),
+            )
+        } else {
+            let command = &document.commands[index];
+            index += 1;
+            match command {
+                DrawingCommand::Save => {
+                    saves.try_reserve(1).map_err(|_| {
+                        crate::Error::DrawingListAllocationFailed {
+                            collection: "SVG paint scopes",
+                        }
+                    })?;
+                    saves.push(state);
+                }
+                DrawingCommand::Restore => {
+                    state = saves
+                        .pop()
+                        .ok_or_else(|| invalid("SVG paint restore has no save"))?
+                }
+                DrawingCommand::SetOpacity { opacity } => state.opacity = *opacity,
+                DrawingCommand::SetBlendMode { blend_mode } => state.blend_mode = *blend_mode,
+                _ => {}
+            }
+            let DrawingCommand::DrawPath { path, style } = command else {
+                continue;
+            };
+            (
+                path,
+                style.fill_rule,
+                style.stroke.as_ref(),
+                style.fill.as_ref(),
+            )
         };
         let Some(class) = body.path_classes.get(path.as_str()) else {
             continue;
@@ -37,17 +131,12 @@ pub(super) fn shared_path_styles<'a>(
         ) {
             continue;
         }
-        let marker_fill = (class == "cynefinArrowHead")
-            .then_some(style.fill.as_ref())
-            .flatten();
-        let candidate = (style.fill_rule == FillRule::NonZero
-            && style
-                .stroke
-                .as_ref()
-                .is_none_or(|stroke| matches!(stroke.paint, Paint::Solid { .. }))
+        let marker_fill = (class == "cynefinArrowHead").then_some(fill).flatten();
+        let candidate = (fill_rule == FillRule::NonZero
+            && stroke.is_none_or(|stroke| matches!(stroke.paint, Paint::Solid { .. }))
             && marker_fill.is_none_or(|paint| matches!(paint, Paint::Solid { .. })))
         .then_some(PathCssStyle {
-            stroke: style.stroke.as_ref(),
+            stroke,
             marker_fill,
         });
         styles
@@ -113,6 +202,70 @@ pub(super) fn shared_text_styles<'a>(
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_cynefin_fill_and_stroke(&mut self, index: usize) -> Result<bool> {
+        let SvgStructureBody::Cynefin(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(combined) = fill_and_stroke(&self.document.commands, index, body, self.state)
+        else {
+            return Ok(false);
+        };
+        let path = self.path_resource(combined.path)?;
+        let rounded = if matches!(combined.class, "cynefinItem" | "cynefinItemOverflow") {
+            rounded_rectangle_from_path(path)
+        } else {
+            None
+        };
+        if let Some((bounds, radius)) = rounded {
+            write!(
+                self.output,
+                "<rect class=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"",
+                combined.class,
+                fmt(bounds.x),
+                fmt(bounds.y),
+                fmt(bounds.width),
+                fmt(bounds.height),
+                fmt(radius),
+                fmt(radius)
+            )?;
+        } else {
+            write!(
+                self.output,
+                "<path class=\"{}\" d=\"{}\"",
+                combined.class,
+                path_d(&path.segments)
+            )?;
+        }
+        let Paint::Solid { color } = combined.fill else {
+            return Err(invalid("Cynefin combined fill must be solid"));
+        };
+        write!(
+            self.output,
+            " fill=\"{}\" fill-opacity=\"{}\"",
+            color_css(*color),
+            fmt(combined.opacity * f64::from(color.alpha) / 255.0)
+        )?;
+        let shared = self
+            .cynefin_path_styles
+            .get(combined.class)
+            .and_then(Option::as_ref);
+        if !shared.is_some_and(|style| style.stroke == Some(combined.stroke)) {
+            // An edited sibling disables class sharing. Explicit stroke paint must not
+            // overwrite the independently resolved fill opacity above.
+            self.write_stroke_style(Some(combined.stroke))?;
+        }
+        if combined.fill_rule != FillRule::NonZero {
+            write!(
+                self.output,
+                " fill-rule=\"{}\"",
+                fill_rule_name(combined.fill_rule)
+            )?;
+        }
+        self.write_state_attrs()?;
+        self.output.push_str("/>")?;
+        Ok(true)
+    }
+
     pub(super) fn write_cynefin_accessibility_copies(
         &mut self,
         title: Option<&str>,
@@ -418,12 +571,12 @@ impl DocumentSvgEncoder<'_> {
         {
             format!(
                 "<path d=\"{}\" class=\"cynefinArrowHead\"/>",
-                path_d(&arrow.segments)
+                path_d(&arrow.segments).with_lowercase_close()
             )
         } else {
             format!(
                 "<path d=\"{}\" class=\"cynefinArrowHead\" fill=\"{}\" fill-opacity=\"{}\" fill-rule=\"{}\" stroke=\"none\"/>",
-                escaped_attr(&path_d(&arrow.segments)),
+                escaped_attr(path_d(&arrow.segments).with_lowercase_close()),
                 color_css(*color),
                 fmt(f64::from(color.alpha) / 255.0),
                 fill_rule_name(arrow_style.fill_rule),

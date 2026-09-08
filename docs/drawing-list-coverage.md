@@ -24,7 +24,7 @@ inventory row fails at test time.  The current inventory is:
 | Architecture | yes | legacy bridge |
 | Class | yes | legacy bridge |
 | C4 | yes | legacy bridge |
-| Cynefin | yes | legacy bridge |
+| Cynefin | yes | canonical |
 | Wardley | yes | legacy bridge |
 | Railroad | yes | legacy bridge |
 | Kanban | yes | legacy bridge |
@@ -215,74 +215,40 @@ stroke/rasterization-hint attributes. The local diagnostic report is
 
 ### Cynefin migration evidence
 
-The candidate serializer is exercised directly by
-`cynefin_document_projects_source_groups_and_distinct_text_baselines`, without allowing the public
-SVG bridge to satisfy its assertions. Canonical commands now own content scopes and item-local
-translations; the SVG projection retains the source group classes, rounded badge rectangles,
-distinct `middle`/`central` text baselines, and explicit accessibility-title exposure. The same
-test verifies that changing external configuration after construction cannot change the SVG,
-while edits to public text, paint, and background commands do change the serialized result.
-Resolved command styles replace the legacy theme stylesheet in the candidate serializer;
-identical styles may share source class rules. The public DrawingList regression also checks
-normal and overflow badge centers against their text.
+Cynefin is admitted after the September 8, 2026 full-family structure and parity-root runs:
+`target/compare/cynefin_exact_alpha_structure.md` and
+`target/compare/cynefin_exact_alpha_parity_root.md`. Each selected and rendered all 13 fixtures
+with canonical route evidence and zero skips; parity-root also checked all 13 root viewports.
+The restored public SVG test asserts the canonical route, source marker references, content
+groups, and accessibility metadata. This evidence does not admit other families.
 
-Marker definitions now reuse public local paths and paint with the source `refX`/`refY` placement.
-The marker-edit regression checks deduplication, changed shape/color, removed drawing commands,
-and a non-clipping ordinary-path projection for edits outside the marker viewBox.
+Canonical commands own content scopes, item translations, domain/boundary geometry, and resolved
+text and paint. The SVG sidecar retains structural identity/classes, root width policy, and title exposure.
+The Confusion overlay follows boundaries and precedes labels. Both source accessibility DOM
+copies consume the same public semantics. Direct serializer tests verify that external config
+cannot reinterpret the document, while public color, font, geometry, and command edits do affect
+the output. Normal and overflow badge centers are also checked through the public DrawingList API.
 
-Cynefin default boundary seeding now consumes the normalized render-instance identity before
-document construction. SVG passes its resolved ID to the common builder; DrawingList exposes
-`DrawingListRequest.diagram_id` and the renderer's `render_drawing_list_with_diagram_id` entry.
-The shared binding facade forwards the existing `svg.diagram_id` option without adding another
-ABI record or option namespace. Default family identity, explicit empty identity, normalized
-identity, and explicit Mermaid seed precedence remain distinct and tested. The boundary-path
-regression compares DrawingList resources against the source-shaped SVG path segments directly.
+Independent fill opacity is represented exactly with Save/SetOpacity/fill-only DrawPath/Restore,
+then a stroke-only DrawPath referencing the same resource. No extra resource or protocol variant
+is needed. This removes the former `0.5 → 0.502` and `0.95 → 0.949` quantization rather than accepting
+it as a browser residual. SVG and shared CSS use one complete-window recognizer; only equivalent
+normal-blend operations with unchanged external opacity coalesce into a source element. Edits
+to opacity, added/removed strokes, or external opacity/blend retain their actual public-command
+semantics. Command/dash admission is checked before appending a resource reference.
 
-Cynefin remains bridged. The September 8, 2026 candidate structure run selected and rendered all
-13 fixtures with canonical route evidence, zero skips, and no residual policy, but all 13 still
-had structural differences. The temporary admission was removed. The report is
-`target/compare/cynefin_identity_structure.md`; remaining work includes source-shaped default
-attributes and marker attributes. Direct source/local DOM inspection confirmed that quadrant
-background order was already correct; attribute differences affected comparator node pairing.
-No comparator normalization was changed to accept these differences.
+Identical registered styles may share class CSS; heterogeneous styles retain explicit attributes.
+Marker definitions reuse public paths and paint with the source refX/refY and close-command
+spelling. Mutation tests cover deduplication, changed/removed geometry and paint, unregistered
+transition IDs, and non-clipping fallback outside the source marker viewBox. The comparator only
+normalizes valid hex-fill letter case on four source element classes; distinct color channels,
+alpha, dynamic/invalid paints, other families, and Strict mode remain sensitive.
 
-The Confusion overlay is now a direct child of the translated content group, immediately after
-the boundaries group and before labels, matching the pinned renderer. Geometry and paint order
-are unchanged. Identical public text styles may project into source class CSS; heterogeneous
-styles, strokes, resource fonts/paints, or noncompact state retain explicit command serialization.
-The existing candidate regression checks this overlay placement, source text attributes, distinct
-middle/central baselines, mutated class color/alpha/font size, and heterogeneous-style fallback.
-It still proves that changing external config cannot reinterpret the resolved document. These
-local corrections do not establish complete family parity or admit Cynefin's public SVG route.
-The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
-it is not evidence for the candidate serializer.
-
-Shared path strokes and marker fills now also project into class rules only when all registered
-commands agree. Heterogeneous boundary strokes keep explicit attributes; added public transition
-paths remain independent of registered marker classes and their CSS. The marker mutation test
-first reproduced the unregistered-path CSS leak, then verified the ordinary-path fallback.
-The root-level empty group following the stylesheet is retained. A subsequent full candidate
-structure run selected/rendered 13 fixtures without skips but still failed; see
-`target/compare/cynefin_path_projection_structure.md`. The remaining reported differences include
-hex color spelling and `fill-opacity` versus `opacity` projection. Temporary canonical admission
-was removed again; no comparator normalization or residual exception was added.
-
-The next candidate run passed all 13 structure fixtures after projecting solid, stroke-free
-domain opacity into `fill-opacity` and restoring the source's two accessibility DOM copies.
-Both metadata copies read the public document semantics, not sidecar text. Domain projection
-preserves color alpha; adding a stroke retains element opacity instead of changing compositing.
-The comparator normalizes only valid hex-fill letter case on four Cynefin source element classes;
-different channels, alpha, dynamic/invalid paints, other families, and Strict mode remain distinct.
-Reports: `target/compare/cynefin_fill_projection_structure.md` and
-`target/compare/cynefin_fill_projection_parity_root.md`. Both selected/rendered all 13 fixtures,
-without skips. The parity-root run still failed: item/confusion fill opacity was quantized into
-8-bit color alpha (`0.95` to `0.949`, `0.5` to `0.502`), and marker close-command spelling differed.
-These are not accepted browser residuals. Cynefin remains bridged pending an exact public-command
-representation of independent fill opacity and a source-shaped marker path projection.
-The existing protocol can express this without a new paint variant: save state, set exact fill
-opacity, paint a fill-only path, restore state, then stroke the same resource. Source-shaped SVG
-coalescing must recognize the complete public command window; shared class CSS must use that same
-eligibility decision so edited or uncoalesced paths cannot regain disabled fills or strokes.
+Default boundary seeding consumes normalized render-instance identity before construction.
+DrawingList exposes `DrawingListRequest.diagram_id`; bindings forward the existing `svg.diagram_id`
+option. Default, empty, normalized identity, and explicit Mermaid seed precedence are tested
+against source-shaped boundary segments. Unsupported browser effects retain the explicit
+policy/error bridge described below; default canonical admission is not an all-effects claim.
 
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the
