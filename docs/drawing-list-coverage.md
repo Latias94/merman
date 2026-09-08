@@ -269,10 +269,27 @@ intersection geometry. The latter also checks that external configuration cannot
 text/paint edits and that only an unchanged full-viewport white command projects into the root
 background style. Candidate SVG no longer regenerates Venn visual CSS from configuration.
 
-This is not full-family admission: Venn remains on the explicit legacy SVG route. Source DOM
-projection, wrapped text layout/text-area geometry, and typed RoughJS path projection remain
-migration work. Those features are not inherently outside the vector protocol; their current
-DrawingList errors identify missing direct implementations rather than silently dropping output.
+The candidate now projects the content translation and area groups from public semantic scopes,
+coalesces equivalent independent fill/stroke scopes into one source path, and emits single-line
+labels as text/tspan pairs. Empty intersection labels keep public text geometry rather than
+putting coordinates in the sidecar. Accessibility metadata precedes styles; structural content
+is not hidden by the cluster debug filter. Edited transforms, alpha, stroke caps, text styles,
+text blend modes, and title positions retain their public-command meaning. External `themeCSS`
+is not reapplied at the end of canonical serialization.
+
+The September 8, 2026 candidate structure run selected all 12 fixtures: the seven classic fixtures
+rendered canonically without structural mismatches, while three hand-drawn and two text-node
+fixtures failed the canonical route requirement. The command therefore failed overall. The report
+is `target/compare/venn_migration_candidate_structure.md`; the companion stricter report is
+`target/compare/venn_migration_candidate_parity_root.md`. Temporary route/inventory admission used
+for this diagnostic was withdrawn; neither run is evidence of full-family readiness.
+
+This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
+candidate parity-root comparison still reports circle path command spelling and title
+presentation-attribute/style differences. These have not been accepted as residuals or hidden by
+normalization. Wrapped area labels, text-node layout/text-area geometry, and typed RoughJS path
+projection also remain migration work. These features are not inherently outside the vector
+protocol; missing implementations must be resolved before full-family admission.
 
 ## Exercised effect accounting
 

@@ -32,6 +32,7 @@ mod cynefin;
 mod info;
 mod pie;
 mod sankey;
+mod venn;
 
 /// Serializes one validated canonical document to SVG.
 pub(crate) fn render_document_svg(
@@ -52,6 +53,7 @@ pub(crate) fn render_document_svg(
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::Sankey(_)
             | SvgStructureBody::Journey(_)
+            | SvgStructureBody::Venn(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
@@ -456,7 +458,10 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         if matches!(
             self.svg_body,
-            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
+            SvgStructureBody::Packet(_)
+                | SvgStructureBody::Pie(_)
+                | SvgStructureBody::Cynefin(_)
+                | SvgStructureBody::Venn(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -478,7 +483,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_defs()?;
         if !matches!(
             self.svg_body,
-            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
+            SvgStructureBody::Packet(_)
+                | SvgStructureBody::Pie(_)
+                | SvgStructureBody::Cynefin(_)
+                | SvgStructureBody::Venn(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -499,6 +507,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 continue;
             }
             if root_background && index == 2 {
+                continue;
+            }
+            if let Some(count) = self.emit_venn_fill_and_stroke(index)? {
+                consumed_until = index + count;
                 continue;
             }
             if matches!(self.svg_body, SvgStructureBody::Cynefin(_))
@@ -1517,6 +1529,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             return self.begin_sankey_semantic_group(semantic_id);
         }
+        if self.begin_venn_semantic_group(semantic_id, semantic)? {
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
             let emitted = semantic_id == "pie.content"
                 || semantic_id == "pie.plot"
@@ -2054,6 +2069,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_path(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        if self.emit_venn_path(path_id, style)? {
+            return Ok(());
+        }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             self.write_sankey_referenced_gradient(style)?;
             if self.emit_compact_sankey_link(path_id, style)? {
@@ -3177,6 +3195,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         }
         if self.emit_compact_cynefin_text(run, semantic_id.as_deref())? {
+            return Ok(());
+        }
+        if self.emit_compact_venn_text(run, semantic_id.as_deref())? {
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {

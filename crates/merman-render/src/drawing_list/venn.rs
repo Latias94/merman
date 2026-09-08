@@ -141,6 +141,17 @@ impl<'a> VennBuilder<'a> {
         self.output.push_control(DrawingCommand::ConcatTransform {
             transform: translate(0.0, self.layout.title_height),
         })?;
+        self.output.push_semantic(SemanticAnnotation {
+            id: "venn.content".to_string(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        })?;
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: "venn.content".to_string(),
+            })?;
 
         let style_by_key = venn_style_by_key(self.model);
         let mut circle_index = 0usize;
@@ -161,6 +172,7 @@ impl<'a> VennBuilder<'a> {
             }
         }
 
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
@@ -284,9 +296,7 @@ impl<'a> VennBuilder<'a> {
         self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
 
         let label = svg_plain_text(venn_area_label(area));
-        if !label.is_empty()
-            && let Some(fill) = styles.optional_color("label color", &presentation.text_color)?
-        {
+        if let Some(fill) = styles.optional_color("label color", &presentation.text_color)? {
             let font_size = 48.0 * self.layout.scale;
             // The child tspan resets y and applies Mermaid's single `.35em` centering offset.
             self.emit_text(

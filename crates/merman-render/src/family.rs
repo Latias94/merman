@@ -3390,7 +3390,7 @@ mod tests {
         };
         let config = artifact.metadata.effective_config.as_value();
         let svg = render(&document, config);
-        let conflicting = json!({"themeVariables": {"fontFamily": "monospace", "titleColor": "red", "vennSetTextColor": "blue"}});
+        let conflicting = json!({"themeCSS": "text { fill: red !important; }", "themeVariables": {"fontFamily": "monospace", "titleColor": "red", "vennSetTextColor": "blue"}});
         assert!(
             svg == render(&document, &conflicting),
             "Venn SVG must consume resolved document styles, not external theme CSS"
@@ -3430,6 +3430,72 @@ mod tests {
             DrawingCommand::DrawPath { path, style } if path.as_str() == "venn.area.2.shape" && style.fill.is_none() && style.stroke.is_none()
         )), "transparent intersection must retain its geometry");
         let xml = roxmltree::Document::parse(&svg).unwrap();
+        let root = xml.root_element();
+        assert_eq!(
+            root.children()
+                .filter(|node| node.is_element())
+                .map(|node| node.tag_name().name())
+                .collect::<Vec<_>>(),
+            ["style", "g", "text", "g"]
+        );
+        let content = root
+            .children()
+            .filter(|node| node.is_element())
+            .next_back()
+            .unwrap();
+        assert_eq!(content.attribute("transform"), Some("translate(0, 24)"));
+        assert_eq!(
+            root.children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("x"),
+            Some("50%")
+        );
+        let without_clusters = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions {
+                include_clusters: false,
+                ..Default::default()
+            },
+            config,
+            &artifact.session,
+        )
+        .unwrap();
+        let without_clusters = roxmltree::Document::parse(&without_clusters).unwrap();
+        assert!(
+            without_clusters
+                .descendants()
+                .all(|node| node.attribute("display") != Some("none")),
+            "structural content must not be treated as a cluster"
+        );
+        let areas = content
+            .children()
+            .filter(|node| node.is_element())
+            .collect::<Vec<_>>();
+        assert_eq!(areas.len(), 3);
+        for area in areas {
+            assert!(area.attribute("class").unwrap().starts_with("venn-area "));
+            assert!(area.attribute("data-venn-sets").is_some());
+            assert_eq!(
+                area.children()
+                    .filter(|node| node.is_element())
+                    .map(|node| node.tag_name().name())
+                    .collect::<Vec<_>>(),
+                ["path", "text"]
+            );
+            let label = area
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(label.attribute("class"), Some("label"));
+            assert_eq!(label.children().filter(|node| node.is_element()).count(), 1);
+            assert!(
+                label.children().any(
+                    |node| node.has_tag_name("tspan") && node.attribute("dy") == Some("0.35em")
+                )
+            );
+        }
         assert!(
             xml.root_element()
                 .attribute("style")
@@ -3445,6 +3511,7 @@ mod tests {
                 DrawingCommand::DrawText { run } => {
                     run.style.fill = Paint::solid(Color::rgba(11, 22, 33, 128));
                     run.style.font_size = 27.0;
+                    run.origin.x += 13.0;
                 }
                 DrawingCommand::DrawPath { path, style } if path.as_str() == "venn.background" => {
                     style.fill = Some(Paint::solid(Color::rgba(11, 22, 33, 128)));
@@ -3463,8 +3530,11 @@ mod tests {
         let mut text_count = 0;
         for node in xml.descendants().filter(|node| node.has_tag_name("text")) {
             text_count += 1;
-            assert_eq!(node.attribute("font-size"), Some("27"));
-            assert_eq!(node.attribute("fill"), Some("#0b1621"));
+            let style = node.attribute("style").unwrap();
+            assert!(style.contains("font-size: 27px;") && style.contains("fill: #0b1621;"));
+            if node.attribute("class") == Some("venn-title") {
+                assert_eq!(node.attribute("x"), Some("413"));
+            }
         }
         assert_eq!(text_count, 4);
         assert!(
@@ -3487,6 +3557,171 @@ mod tests {
                 .abs()
                 < 0.001
         );
+    }
+
+    #[test]
+    fn venn_projection_preserves_empty_labels_and_edited_paint_scopes() {
+        use merman_display_list::{Color, DrawingCommand, LineCap, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "venn-beta\nset A\nset B\nunion A,B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let semantic = document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|semantic| semantic.id == "venn.document")
+            .unwrap();
+        semantic.title = Some("Accessible Venn".to_owned());
+        semantic.description = Some("Two sets".to_owned());
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            xml.root_element()
+                .children()
+                .filter(|node| node.is_element())
+                .map(|node| node.tag_name().name())
+                .collect::<Vec<_>>(),
+            ["title", "desc", "style", "g", "g"]
+        );
+        assert_eq!(
+            xml.root_element().attribute("aria-labelledby"),
+            Some("chart-title-venn")
+        );
+        let intersection = xml
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A_B"))
+            .unwrap();
+        let empty = intersection
+            .descendants()
+            .find(|node| node.has_tag_name("tspan"))
+            .unwrap();
+        assert_eq!(empty.text().unwrap_or_default(), "");
+        assert!(empty.attribute("x").is_some() && empty.attribute("y").is_some());
+
+        let fill_index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == "venn.area.0.shape"
+                )
+            })
+            .unwrap();
+        if let DrawingCommand::SetOpacity { opacity } =
+            &mut document.public.commands[fill_index - 1]
+        {
+            *opacity = 0.37;
+        } else {
+            panic!("fill opacity scope")
+        }
+        if let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[fill_index] {
+            style.fill = Some(Paint::solid(Color::rgba(11, 22, 33, 128)));
+        }
+        for command in &mut document.public.commands {
+            if let DrawingCommand::ConcatTransform { transform } = command {
+                transform.f = 37.0;
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let area = xml
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        assert_eq!(
+            area.parent().unwrap().attribute("transform"),
+            Some("translate(0, 37)")
+        );
+        let paths = area
+            .children()
+            .filter(|node| node.has_tag_name("path"))
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 1);
+        let styles = paths[0].attribute("style").unwrap();
+        let alpha: f64 = styles
+            .split(';')
+            .find_map(|item| item.trim().strip_prefix("fill-opacity:"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!((alpha - 128.0 / 255.0 * 0.37).abs() < 0.001);
+        assert!(styles.contains("fill: #0b1621") && styles.contains("stroke-opacity: 0.95"));
+        assert!(
+            area.children()
+                .filter(|node| node.is_element())
+                .all(|node| node.attribute("transform").is_none())
+        );
+
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "venn.area.0.shape"
+                && let Some(stroke) = &mut style.stroke
+            {
+                stroke.line_cap = LineCap::Round;
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let area = xml
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        assert_eq!(
+            area.children()
+                .filter(|node| node.has_tag_name("path"))
+                .count(),
+            2
+        );
+        assert!(
+            area.children()
+                .any(|node| node.attribute("stroke-linecap") == Some("round")
+                    && node.attribute("opacity") == Some("0.95"))
+        );
+        let text_index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| matches!(command, DrawingCommand::DrawText { .. }))
+            .unwrap();
+        document.public.commands.insert(
+            text_index,
+            DrawingCommand::SetBlendMode {
+                blend_mode: merman_display_list::BlendMode::Multiply,
+            },
+        );
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(xml.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("mix-blend-mode: multiply;"))
+        }));
     }
 
     #[test]
