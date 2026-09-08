@@ -261,6 +261,49 @@ fn measure_treemap_computed_length(
     Ok(measurer.measure_svg_text_computed_length_px(text, style))
 }
 
+fn fit_treemap_label_height(
+    font_size: f64,
+    available_height: f64,
+    min_label_size: f64,
+    base_value_size: f64,
+    min_value_size: f64,
+    spacing: f64,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> Result<f64> {
+    let combined_height = |size: f64| {
+        size + spacing
+            + (size * 0.6)
+                .round()
+                .min(base_value_size)
+                .max(min_value_size)
+    };
+    work_meter.charge_emit_work(1)?;
+    if font_size <= min_label_size || combined_height(font_size) <= available_height {
+        return Ok(font_size);
+    }
+    if combined_height(min_label_size) > available_height {
+        return Ok(min_label_size);
+    }
+
+    // Font sizes are truncated before fitting. The original decrement loop selects the
+    // greatest fitting integer, or the minimum even when it does not fit. Search the same
+    // monotone predicate without assuming that subtracting 1 changes a large f64.
+    let mut fitting = min_label_size;
+    let mut too_large = font_size;
+    loop {
+        work_meter.charge_emit_work(1)?;
+        let candidate = (fitting + (too_large - fitting) / 2.0).floor();
+        if candidate <= fitting || candidate >= too_large {
+            return Ok(fitting);
+        }
+        if combined_height(candidate) <= available_height {
+            fitting = candidate;
+        } else {
+            too_large = candidate;
+        }
+    }
+}
+
 fn write_treemap_leaf_group_open(
     out: &mut impl SvgOutput,
     group_class: &str,
@@ -1084,24 +1127,16 @@ pub(crate) fn render_treemap_diagram_svg(
                 expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
             }
 
-            let mut prospective_value_font_size = (label_font_size * value_scale_factor)
-                .round()
-                .min(base_value_font_size)
-                .max(min_value_font_size);
-            let mut combined_h =
-                label_font_size + spacing_between_label_and_value + prospective_value_font_size;
-
-            while combined_h > available_h && label_font_size > min_label_font_size {
-                label_font_size -= 1.0;
-                style.font_size = label_font_size;
-                expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
-                prospective_value_font_size = (label_font_size * value_scale_factor)
-                    .round()
-                    .min(base_value_font_size)
-                    .max(min_value_font_size);
-                combined_h =
-                    label_font_size + spacing_between_label_and_value + prospective_value_font_size;
-            }
+            label_font_size = fit_treemap_label_height(
+                label_font_size,
+                available_h,
+                min_label_font_size,
+                base_value_font_size,
+                min_value_font_size,
+                spacing_between_label_and_value,
+                options.work_meter(),
+            )?;
+            expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
 
             style.font_size = label_font_size;
             if is_complex_treemap {
@@ -1303,6 +1338,76 @@ mod tests {
     use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
     use std::fmt;
     use std::ops::Range;
+
+    #[test]
+    fn treemap_height_search_matches_decrement_and_bounds_extreme_work() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        for (minimum, base_value, min_value, spacing) in
+            [(8.0, 28.0, 6.0, 2.0), (4.0, 14.0, 4.0, 1.0)]
+        {
+            for initial in 1..=128 {
+                for height in 0..=256 {
+                    for fraction in [0.0, 0.25, 0.999999] {
+                        let height = height as f64 + fraction;
+                        let mut expected = initial as f64;
+                        while expected > minimum
+                            && expected
+                                + spacing
+                                + (expected * 0.6).round().min(base_value).max(min_value)
+                                > height
+                        {
+                            expected -= 1.0;
+                        }
+                        let actual = fit_treemap_label_height(
+                            initial as f64,
+                            height,
+                            minimum,
+                            base_value,
+                            min_value,
+                            spacing,
+                            &meter,
+                        )
+                        .unwrap();
+                        assert_eq!(
+                            actual, expected,
+                            "initial={initial}, height={height}, minimum={minimum}"
+                        );
+                    }
+                }
+            }
+        }
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1100)
+            .unwrap();
+        for initial in [1e20, 1e100, f64::MAX] {
+            let meter = OperationWorkMeter::new(policy);
+            assert_eq!(
+                fit_treemap_label_height(initial, 100.0, 8.0, 28.0, 6.0, 2.0, &meter).unwrap(),
+                70.0
+            );
+            assert!(meter.used() <= 1100);
+        }
+        let meter = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+                .unwrap(),
+        );
+        assert!(matches!(
+            fit_treemap_label_height(1e20, 100.0, 8.0, 28.0, 6.0, 2.0, &meter),
+            Err(crate::Error::ResourceLimitExceeded(_))
+        ));
+        let control = merman_core::OperationControl::new();
+        control.cancel();
+        let meter = OperationWorkMeter::new_with_control(policy, control);
+        let Err(crate::Error::Cancelled(error)) =
+            fit_treemap_label_height(1e20, 100.0, 8.0, 28.0, 6.0, 2.0, &meter)
+        else {
+            panic!("height fitting must observe cancellation before searching");
+        };
+        assert_eq!(error.phase, merman_core::OperationPhase::Emit);
+        assert_eq!(meter.used(), 0);
+    }
 
     #[test]
     fn treemap_value_formats_match_mermaid_special_cases() {

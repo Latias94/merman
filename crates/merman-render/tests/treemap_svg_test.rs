@@ -970,6 +970,47 @@ fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
 }
 
 #[test]
+fn treemap_huge_source_font_finishes_height_fitting() {
+    struct NarrowTextHost;
+    impl HostTextMeasurer for NarrowTextHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            Ok(match request.operation {
+                TextMeasurementOperation::ComputedLength => Some(HostTextMeasurement::Length(1.0)),
+                _ => None,
+            })
+        }
+    }
+    let source = "treemap\nclassDef huge font-size:100000000000000000000px;\n\"Leaf\": 42:::huge\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.treemap-narrow").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(NarrowTextHost),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session()
+        .unwrap();
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let label = text_tag_by_text(rendered.svg(), "Leaf");
+    assert!(
+        font_size_px(label).is_some_and(|size| size >= 8.0 && size < 1000.0),
+        "{label}"
+    );
+    assert!(!label.contains("display: none"));
+}
+
+#[test]
 fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
     let tag = text_tag_by_text(&svg, "Accessories");
