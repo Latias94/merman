@@ -1,6 +1,7 @@
 use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::theme::VennTheme;
 use super::super::*;
+use crate::venn::rough::{circle_geometry, intersection_fill_geometry};
 use crate::venn::{
     VennStrokeWidth, venn_area_label, venn_area_presentation, venn_stable_sets_key,
     venn_style_by_key, venn_style_value, venn_title,
@@ -16,12 +17,6 @@ fn escape_css_attr(value: &str) -> String {
 
 fn data_sets_attr(sets: &[String]) -> String {
     sets.join("_")
-}
-
-fn invalid_rough_options(context: &str, error: impl std::fmt::Display) -> Error {
-    Error::InvalidModel {
-        message: format!("invalid Venn {context} RoughJS options: {error}"),
-    }
 }
 
 fn rough_color(value: &str) -> Result<roughr::Srgba> {
@@ -46,90 +41,6 @@ fn parse_stroke_width(value: &str) -> Option<f32> {
         .rev()
         .find_map(|end| value[..end].parse::<f32>().ok())
         .filter(|value| value.is_finite())
-}
-
-fn rough_circle_paths(
-    circle: &crate::model::VennCircleLayout,
-    base_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    hachure_angle: f32,
-    randomness: &roughr::core::RoughRandomness,
-) -> Result<(String, String)> {
-    let options = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(0.7)
-        .bowing(1.0)
-        .fill(rough_color(base_color)?)
-        .fill_style(roughr::core::FillStyle::Hachure)
-        .fill_weight(2.0)
-        .hachure_gap(8.0)
-        .hachure_angle(hachure_angle)
-        .stroke(rough_color(stroke_color)?)
-        .stroke_width(stroke_width)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .map_err(|error| invalid_rough_options("circle", error))?;
-    let drawable = roughr::generator::Generator::default().circle::<f64>(
-        circle.x,
-        circle.y,
-        circle.radius * 2.0,
-        &Some(options),
-    );
-    let mut fill_path = None;
-    let mut stroke_path = None;
-    for set in drawable.sets {
-        match set.op_set_type {
-            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
-                fill_path = Some(ops_to_svg_path_d(&set));
-            }
-            roughr::core::OpSetType::Path => {
-                stroke_path = Some(ops_to_svg_path_d(&set));
-            }
-        }
-    }
-    match (fill_path, stroke_path) {
-        (Some(fill_path), Some(stroke_path)) => Ok((fill_path, stroke_path)),
-        _ => Err(Error::InvalidModel {
-            message: "Venn RoughJS circle did not produce fill and stroke paths".to_string(),
-        }),
-    }
-}
-
-fn rough_intersection_fill_path(
-    path: &str,
-    fill: &str,
-    randomness: &roughr::core::RoughRandomness,
-) -> Result<String> {
-    let mut options = roughr::core::OptionsBuilder::default()
-        .randomness(randomness.clone())
-        .roughness(0.7)
-        .bowing(1.0)
-        .fill(rough_color(fill)?)
-        .fill_style(roughr::core::FillStyle::CrossHatch)
-        .fill_weight(2.0)
-        .hachure_gap(6.0)
-        .hachure_angle(60.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .map_err(|error| invalid_rough_options("intersection", error))?;
-    options.stroke = None;
-
-    let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
-    let polygons =
-        roughr::points_on_path::points_on_path::<f64>(path.to_string(), Some(1.0), Some(distance));
-    // RoughJS computes the outline even when `stroke: none`, so its PRNG state advances before
-    // the cross-hatch fill is generated. The discarded operation is part of seeded parity.
-    let _discarded_outline = roughr::renderer::svg_path::<f64>(path.to_string(), &mut options);
-    let fill_path = roughr::renderer::pattern_fill_polygons(polygons, &mut options);
-    if fill_path.op_set_type != roughr::core::OpSetType::FillSketch {
-        return Err(Error::InvalidModel {
-            message: "Venn RoughJS intersection did not produce a sketch fill path".to_string(),
-        });
-    }
-    Ok(ops_to_svg_path_d(&fill_path))
 }
 
 fn write_area_label(
@@ -323,10 +234,10 @@ pub(crate) fn render_venn_diagram_svg_model(
                             "Venn set `{sets_key}` has invalid stroke width `{stroke_width}`"
                         ),
                     })?;
-                let (fill_path, stroke_path) = rough_circle_paths(
+                let geometry = circle_geometry(
                     circle,
-                    &presentation.fill_color,
-                    stroke_color,
+                    rough_color(&presentation.fill_color)?,
+                    rough_color(stroke_color)?,
                     stroke_width_value,
                     -41.0 + circle_index as f32 * 60.0,
                     &hand_drawn_seed,
@@ -335,9 +246,9 @@ pub(crate) fn render_venn_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/><path d="{stroke_path}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/></g>"#,
-                    fill_path = escape_attr(&fill_path),
+                    fill_path = escape_attr(&ops_to_svg_path_d(&geometry.fill)),
                     fill_stroke = escape_attr(&fill_stroke),
-                    stroke_path = escape_attr(&stroke_path),
+                    stroke_path = escape_attr(&ops_to_svg_path_d(&geometry.outline)),
                     stroke = escape_attr(stroke_color),
                     stroke_width = fmt(stroke_width_value as f64),
                 );
@@ -369,16 +280,16 @@ pub(crate) fn render_venn_diagram_svg_model(
             );
             if is_hand_drawn {
                 if presentation.has_custom_fill {
-                    let fill_path = rough_intersection_fill_path(
+                    let fill_geometry = intersection_fill_geometry(
                         &area.path,
-                        &presentation.fill_color,
+                        rough_color(&presentation.fill_color)?,
                         &hand_drawn_seed,
                     )?;
                     let fill_stroke = transparentize(&presentation.fill_color, 0.3)?;
                     let _ = write!(
                         &mut out,
                         r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/></g>"#,
-                        fill_path = escape_attr(&fill_path),
+                        fill_path = escape_attr(&ops_to_svg_path_d(&fill_geometry)),
                         fill_stroke = escape_attr(&fill_stroke),
                     );
                 } else {

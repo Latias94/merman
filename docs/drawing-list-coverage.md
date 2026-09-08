@@ -291,6 +291,15 @@ normalization. Full text-node DOM comparison and typed RoughJS path projection a
 migration work. These features are not inherently outside the vector protocol; missing
 implementations must be resolved before full-family admission.
 
+Venn's hand-drawn circle and intersection generators now return typed Rough.js operation sets
+from `venn/rough.rs`; the legacy SVG renderer only formats those operations. This removes the
+SVG-string boundary for the pending direct adapter, but does not make generation bounded.
+Ellipse sampling, hachure scan rows (including empty rows), and intersection curve subdivision
+still need fallible production before the public hand-drawn DrawingList gate can be removed.
+The two crosshatch passes must share the same work budget and preserve outline-before-fill
+random-number consumption. Do not replace this with a guessed geometry-size cutoff or a final
+post-allocation footprint check.
+
 ### Venn text-layout source characterization
 
 The September 8, 2026 Chromium 151 probe corrected the earlier assumption that ordinary area

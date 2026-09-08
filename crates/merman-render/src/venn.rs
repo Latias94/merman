@@ -25,6 +25,7 @@ const SMALL: f64 = 1e-10;
 const REFERENCE_WIDTH: f64 = 1600.0;
 
 mod config;
+pub(crate) mod rough;
 
 use config::VennConfigView;
 
