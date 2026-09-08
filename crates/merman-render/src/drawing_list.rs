@@ -125,6 +125,28 @@ pub(crate) struct RenderDocument {
 }
 
 impl RenderDocument {
+    /// Applies target-independent document limits and charges the operation once per encoding.
+    pub(crate) fn admit_serialization(
+        &self,
+        limits: &DrawingListLimits,
+        session: &RenderSession,
+    ) -> Result<()> {
+        session.checkpoint(OperationPhase::Emit)?;
+        let footprint = self
+            .public
+            .footprint()
+            .map_err(Error::DrawingListContract)?;
+        // Reject cumulative protocol limits before charging an unreturnable candidate.
+        footprint
+            .check_limits(limits)
+            .map_err(Error::DrawingListContract)?;
+        let units = footprint.work_units().map_err(Error::DrawingListContract)?;
+        session
+            .work_meter()
+            .charge_at(units, OperationPhase::Emit)?;
+        session.checkpoint(OperationPhase::Emit)
+    }
+
     pub(crate) fn into_public(self) -> DrawingListDocument {
         let SvgStructureSidecar { family, body } = &self.svg;
         debug_assert!(match (family, body) {

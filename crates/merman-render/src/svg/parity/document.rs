@@ -38,6 +38,7 @@ pub(crate) fn render_document_svg(
     effective_config: &Value,
     session: &RenderSession,
 ) -> Result<String> {
+    document.admit_serialization(&merman_display_list::DrawingListLimits::default(), session)?;
     let svg =
         DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
     if matches!(

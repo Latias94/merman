@@ -982,21 +982,7 @@ impl FamilyRenderArtifact {
             limits,
             &self.session,
         )?;
-        self.session.checkpoint(OperationPhase::Emit)?;
-        let footprint = document
-            .public
-            .footprint()
-            .map_err(Error::DrawingListContract)?;
-        // Reject cumulative protocol budgets before charging the operation for a document that
-        // cannot be returned.  Exact serialized bytes remain checked by the bounded writer below.
-        footprint
-            .check_limits(&limits)
-            .map_err(Error::DrawingListContract)?;
-        let work_units = footprint.work_units().map_err(Error::DrawingListContract)?;
-        self.session
-            .work_meter()
-            .charge_at(work_units, OperationPhase::Emit)?;
-        self.session.checkpoint(OperationPhase::Emit)?;
+        document.admit_serialization(&limits, &self.session)?;
         let json = document
             .public
             .canonical_json_bytes_with_limits(&limits)
@@ -2005,6 +1991,55 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn canonical_svg_and_drawing_list_charge_the_same_document_work() {
+        let prepare_packet = || {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    "packet-beta\n0-7: \"Header\"\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            prepare(parsed, &LayoutOptions::default(), session()).unwrap()
+        };
+        let probe = prepare_packet();
+        let document = crate::drawing_list::build_for_family(
+            &probe.family,
+            &probe.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &probe.session,
+        )
+        .unwrap();
+        let expected = document.public.footprint().unwrap().work_units().unwrap();
+        assert!(expected > 0);
+        let svg_artifact = prepare_packet();
+        let svg_before = svg_artifact.session.report().layout_work_units();
+        let svg = svg_artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        assert_eq!(
+            svg.serialization_route(),
+            SvgSerializationRoute::CanonicalDocument
+        );
+        let svg_work = svg.session.report().layout_work_units() - svg_before;
+        let list_artifact = prepare_packet();
+        let list_before = list_artifact.session.report().layout_work_units();
+        let list = list_artifact
+            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .unwrap();
+        let list_work = list.session.report().layout_work_units() - list_before;
+        assert!(
+            svg_work >= expected,
+            "SVG skipped canonical document work: {svg_work} < {expected}"
+        );
+        assert_eq!(
+            svg_work, list_work,
+            "target selection must not change document work charges"
+        );
     }
 
     #[test]
