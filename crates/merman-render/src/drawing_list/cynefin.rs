@@ -20,6 +20,7 @@ use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligatio
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{CynefinDiagramLayout, CynefinDomainLayout};
+use crate::render_geometry::cynefin::{marker_path, marker_transform};
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
@@ -586,21 +587,26 @@ impl<'a> CynefinBuilder<'a> {
                     stroke: Some(stroke(self.arrow_color, self.theme.arrow_width)),
                 },
             )?;
+            let transform = marker_transform(
+                Point::new(transition.x1, transition.y1),
+                Point::new(transition.cpx, transition.cpy),
+                Point::new(transition.x2, transition.y2),
+                self.theme.arrow_width,
+            )
+            .ok_or_else(|| invalid("Cynefin transition has no arrowhead tangent"))?;
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::ConcatTransform { transform })?;
             self.add_path(
                 format!("{semantic_id}.arrowhead"),
-                arrowhead_path(
-                    transition.cpx,
-                    transition.cpy,
-                    transition.x2,
-                    transition.y2,
-                    self.theme.arrow_width,
-                )?,
+                marker_path(),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(self.arrow_color)),
                     stroke: None,
                 },
             )?;
+            self.document.push_control(DrawingCommand::Restore)?;
             if let Some(label) = transition
                 .label
                 .as_deref()
@@ -791,40 +797,6 @@ impl<'a> CynefinBuilder<'a> {
             .iter()
             .find(|domain| domain.name == name)
     }
-}
-
-fn arrowhead_path(
-    control_x: f64,
-    control_y: f64,
-    end_x: f64,
-    end_y: f64,
-    stroke_width: f64,
-) -> Result<Vec<PathSegment>> {
-    let dx = end_x - control_x;
-    let dy = end_y - control_y;
-    let length = dx.hypot(dy);
-    if !length.is_finite() || length <= f64::EPSILON {
-        return Err(invalid("Cynefin transition has no arrowhead tangent"));
-    }
-    let unit_x = dx / length;
-    let unit_y = dy / length;
-    let normal_x = -unit_y;
-    let normal_y = unit_x;
-    let arrow_length = 6.0 * stroke_width.max(0.1);
-    let half_width = 3.0 * stroke_width.max(0.1);
-    let base_x = end_x - unit_x * arrow_length;
-    let base_y = end_y - unit_y * arrow_length;
-    Ok(polygon_path(&[
-        Point::new(end_x, end_y),
-        Point::new(
-            base_x + normal_x * half_width,
-            base_y + normal_y * half_width,
-        ),
-        Point::new(
-            base_x - normal_x * half_width,
-            base_y - normal_y * half_width,
-        ),
-    ]))
 }
 
 fn translate(x: f64, y: f64) -> Transform {

@@ -2078,6 +2078,26 @@ mod tests {
             )
             .unwrap();
             let xml = roxmltree::Document::parse(&svg).unwrap();
+            let marker = xml
+                .descendants()
+                .find(|node| node.has_tag_name("marker"))
+                .expect("canonical Cynefin keeps the upstream SVG marker contract");
+            assert_eq!(marker.attribute("id"), Some("cynefin-arrow-cynefin"));
+            assert_eq!(marker.attribute("viewBox"), Some("0 0 10 10"));
+            assert_eq!(marker.attribute("refX"), Some("9"));
+            assert_eq!(marker.attribute("refY"), Some("5"));
+            assert_eq!(marker.attribute("markerWidth"), Some("6"));
+            assert_eq!(marker.attribute("markerHeight"), Some("6"));
+            assert_eq!(marker.attribute("orient"), Some("auto-start-reverse"));
+            assert!(marker.parent().unwrap().parent().unwrap() == xml.root_element());
+            let arrow_line = xml
+                .descendants()
+                .find(|node| node.attribute("class") == Some("cynefinArrowLine"))
+                .unwrap();
+            assert_eq!(
+                arrow_line.attribute("marker-end"),
+                Some("url(#cynefin-arrow-cynefin)")
+            );
             assert_eq!(xml.root_element().attribute("aria-labelledby"), title_id);
             if let Some(id) = title_id {
                 let title = xml
@@ -2219,6 +2239,181 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn cynefin_marker_projection_follows_public_path_and_paint_edits() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingResource, Paint, PathSegment, Point,
+        };
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "cynefin-beta\ncomplex --> clear\nclear --> complicated\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("marker"))
+                .count(),
+            1,
+            "identical public marker bodies should share the source definition"
+        );
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.attribute("marker-end").is_some())
+                .count(),
+            2
+        );
+        let marker_id = "cynefin.transition.0.arrowhead";
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == marker_id
+            {
+                path.segments[1] = PathSegment::LineTo {
+                    to: Point::new(8.0, 5.0),
+                };
+            }
+        }
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == marker_id
+            {
+                style.fill = Some(Paint::solid(Color::rgba(11, 22, 33, 128)));
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("marker"))
+                .count(),
+            2
+        );
+        let edited = xml
+            .descendants()
+            .find(|node| node.attribute("fill") == Some("#0b1621"))
+            .unwrap();
+        assert!(edited.parent().unwrap().has_tag_name("marker"));
+        assert!(edited.attribute("d").unwrap().contains("L 8 5"));
+        assert!(
+            (edited
+                .attribute("fill-opacity")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                - 128.0 / 255.0)
+                .abs()
+                < 0.001
+        );
+
+        // An edited marker outside the original viewBox must stay an ordinary public path,
+        // otherwise the SVG marker viewport would silently clip geometry.
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == marker_id
+            {
+                path.segments[1] = PathSegment::LineTo {
+                    to: Point::new(12.0, 5.0),
+                };
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let edited = xml
+            .descendants()
+            .find(|node| node.attribute("fill") == Some("#0b1621"))
+            .unwrap();
+        assert!(!edited.parent().unwrap().has_tag_name("marker"));
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.attribute("marker-end").is_some())
+                .count(),
+            1
+        );
+
+        document.public.commands.retain(|command| {
+            !matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == marker_id)
+        });
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("fill") == Some("#0b1621"))
+        );
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("marker"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.attribute("marker-end").is_some())
+                .count(),
+            1
+        );
+
+        let edge_index = document.public.commands.iter().position(|command| matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "cynefin.transition.1.line"
+        )).unwrap();
+        document
+            .public
+            .commands
+            .insert(edge_index, DrawingCommand::SetOpacity { opacity: 0.5 });
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("marker-end").is_some())
+        );
+        let arrow = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("cynefinArrowHead"))
+            .unwrap();
+        assert_eq!(arrow.attribute("opacity"), Some("0.5"));
+        document.public.commands[edge_index] = DrawingCommand::SetBlendMode {
+            blend_mode: merman_display_list::BlendMode::Multiply,
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("marker-end").is_some())
+        );
+        let arrow = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("cynefinArrowHead"))
+            .unwrap();
+        assert!(
+            arrow
+                .attribute("style")
+                .unwrap()
+                .contains("mix-blend-mode: multiply")
+        );
     }
 
     #[test]

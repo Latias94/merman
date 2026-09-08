@@ -6,6 +6,8 @@
 use crate::model::LayoutPoint;
 use merman_display_list::{PathSegment, Point};
 
+pub(crate) mod cynefin;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FlowchartCurveKind {
     Linear,

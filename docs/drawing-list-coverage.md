@@ -68,8 +68,12 @@ Resolved presentation attributes replace the legacy theme stylesheet in the cand
 the empty style element remains structural only. The public DrawingList regression also checks
 normal and overflow badge centers against their text.
 
-Cynefin remains bridged. Marker definitions and diagram-ID-dependent default boundary seeding
-still need migration before complete family comparison can admit its canonical SVG route.
+Marker definitions now reuse public local paths and paint with the source `refX`/`refY` placement.
+The marker-edit regression checks deduplication, changed shape/color, removed drawing commands,
+and a non-clipping ordinary-path projection for edits outside the marker viewBox.
+
+Cynefin remains bridged. Diagram-ID-dependent default boundary seeding still needs migration
+before complete family comparison can admit its canonical SVG route.
 The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
 it is not evidence for the candidate serializer.
 

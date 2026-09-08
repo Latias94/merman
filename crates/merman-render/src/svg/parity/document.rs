@@ -72,6 +72,7 @@ struct DocumentSvgEncoder<'a> {
     error_projection: Option<super::error::ErrorProjection<'a>>,
     packet_styles: Option<super::packet::PacketSvgStyles<'a>>,
     pie_styles: Option<super::pie::PieSvgStyles<'a>>,
+    cynefin_marker_definitions: BTreeMap<String, String>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -203,6 +204,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 None
             },
             state: GraphicsState::default(),
+            cynefin_marker_definitions: BTreeMap::new(),
             saves: Vec::new(),
             groups: Vec::new(),
             semantic_text_counts: BTreeMap::new(),
@@ -412,12 +414,25 @@ impl<'a> DocumentSvgEncoder<'a> {
             );
         }
         let root_background = self.document_background_is_root_paint();
+        let mut consumed_until = 0;
         for (index, command) in self.document.commands.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
+            if index < consumed_until {
+                continue;
+            }
             if root_background && index == 2 {
                 continue;
             }
+            if matches!(self.svg_body, SvgStructureBody::Cynefin(_))
+                && self.emit_cynefin_marked_edge(index)?
+            {
+                consumed_until = index + 5;
+                continue;
+            }
             self.emit_command(command)?;
+        }
+        if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            self.write_cynefin_marker_defs()?;
         }
 
         // Mermaid places Wardley's marker definitions after the map layers.  They are referenced
