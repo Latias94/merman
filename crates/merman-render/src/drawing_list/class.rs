@@ -25,10 +25,9 @@ use merman_core::ParseMetadata;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
 use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -43,7 +42,7 @@ pub(crate) fn build_class_document(
     pair: &ClassPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = ClassBuilder::new(pair, metadata, policy, limits, session)?;
@@ -91,7 +90,7 @@ impl<'a> ClassBuilder<'a> {
         pair: &'a ClassPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -1258,7 +1257,10 @@ mod tests {
             .unwrap();
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)?
-            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .render_drawing_list(
+                DrawingListPolicy::VectorOnly,
+                merman_display_list::DrawingListLimits::default(),
+            )
     }
 
     #[test]

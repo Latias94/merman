@@ -25,10 +25,9 @@ use merman_core::diagrams::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -42,7 +41,7 @@ pub(crate) fn build_state_document(
     pair: &StatePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = StateBuilder::new(pair, metadata, policy, limits, session)?;
@@ -84,7 +83,7 @@ impl<'a> StateBuilder<'a> {
         pair: &'a StatePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

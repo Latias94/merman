@@ -24,10 +24,9 @@ use crate::{Error, Result};
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -43,7 +42,7 @@ pub(crate) fn build_tree_view_document(
     pair: &TreeViewPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     TreeViewBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -76,7 +75,7 @@ impl<'a> TreeViewBuilder<'a> {
         pair: &'a TreeViewPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

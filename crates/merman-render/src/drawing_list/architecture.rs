@@ -32,10 +32,9 @@ use merman_core::diagrams::architecture::{
     ArchitectureRenderNode, ArchitectureRenderNodeType,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -59,7 +58,7 @@ pub(crate) fn build_architecture_document(
     pair: &ArchitecturePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     ArchitectureBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -107,7 +106,7 @@ impl<'a> ArchitectureBuilder<'a> {
         pair: &'a ArchitecturePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

@@ -28,10 +28,9 @@ use merman_core::diagrams::er::{
     ErAttributeRenderModel, ErDiagramRenderModel, ErEntityRenderModel, ErRelationshipRenderModel,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -42,7 +41,7 @@ pub(crate) fn build_er_document(
     pair: &ErPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = ErBuilder::new(pair, metadata, policy, limits, session)?;
@@ -133,7 +132,7 @@ impl<'a> ErBuilder<'a> {
         pair: &'a ErPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -1571,7 +1570,10 @@ mod tests {
                 .unwrap();
             let output = crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
                 .unwrap()
-                .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+                .render_drawing_list(
+                    DrawingListPolicy::VectorOnly,
+                    merman_display_list::DrawingListLimits::default(),
+                )
                 .unwrap();
             let document = output.document();
             let rectangles: Vec<_> = document

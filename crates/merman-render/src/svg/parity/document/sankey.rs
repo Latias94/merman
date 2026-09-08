@@ -142,20 +142,17 @@ impl DocumentSvgEncoder<'_> {
             .as_ref()
             .ok_or_else(|| invalid("projected Sankey link has no stroke"))?;
         let path = self.path_resource(path_id)?;
-        write!(self.output, "<path d=\"{}\"", path_d(&path.segments))
-            .map_err(|_| invalid("Sankey link geometry"))?;
+        write!(self.output, "<path d=\"{}\"", path_d(&path.segments))?;
         self.write_paint("stroke", &stroke.paint)?;
-        write!(self.output, " stroke-width=\"{}\"", fmt(stroke.width))
-            .map_err(|_| invalid("Sankey link width"))?;
+        write!(self.output, " stroke-width=\"{}\"", fmt(stroke.width))?;
         if self.state.transform != Transform::IDENTITY {
             write!(
                 self.output,
                 " transform=\"matrix({})\"",
                 matrix_attr(self.state.transform)
-            )
-            .map_err(|_| invalid("Sankey link transform"))?;
+            )?;
         }
-        self.output.push_str("/>");
+        self.output.push_str("/>")?;
         Ok(true)
     }
 
@@ -172,8 +169,7 @@ impl DocumentSvgEncoder<'_> {
             return Err(invalid("Sankey shared text paint must be solid"));
         };
         let font = self.font_families(&style.font)?;
-        write!(css,
-            "#{} .node-labels{{font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;fill:{};fill-opacity:{};}}",
+        write!(css, "#{} .node-labels{{font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;fill:{};fill-opacity:{};}}",
             self.diagram_id,
             font,
             style.font.weight,
@@ -181,7 +177,7 @@ impl DocumentSvgEncoder<'_> {
             fmt(style.letter_spacing),
             color_css(color),
             fmt(f64::from(color.alpha) / 255.0),
-        ).map_err(|_| invalid("Sankey label stylesheet"))?;
+        ).map_err(|_| invalid("SVG component formatting failed"))?;
         Ok(css)
     }
 
@@ -209,11 +205,9 @@ impl DocumentSvgEncoder<'_> {
             fmt(run.origin.y - body.label_dy_em * run.style.font_size),
             fmt(body.label_dy_em),
             text_anchor(run.anchor)
-        )
-        .map_err(|_| invalid("Sankey label position"))?;
+        )?;
         if let Some(class) = semantic_id.and_then(|id| body.semantic_classes.get(id)) {
-            write!(self.output, " class=\"{}\"", escaped_attr(class))
-                .map_err(|_| invalid("Sankey label class"))?;
+            write!(self.output, " class=\"{}\"", escaped_attr(class))?;
         }
         if let Some(stroke) = &run.style.stroke {
             self.write_stroke_style(Some(stroke))?;
@@ -221,13 +215,12 @@ impl DocumentSvgEncoder<'_> {
                 merman_display_list::TextPaintOrder::FillThenStroke => "fill stroke",
                 merman_display_list::TextPaintOrder::StrokeThenFill => "stroke fill",
             };
-            write!(self.output, " paint-order=\"{order}\"")
-                .map_err(|_| invalid("Sankey text paint order"))?;
+            write!(self.output, " paint-order=\"{order}\"")?;
         }
-        self.write_state_attrs();
-        self.output.push('>');
-        escape_xml_into(&mut self.output, &run.text);
-        self.output.push_str("</text>");
+        self.write_state_attrs()?;
+        self.output.push('>')?;
+        output::escape_xml(&mut self.output, &run.text)?;
+        self.output.push_str("</text>")?;
         Ok(true)
     }
 
@@ -267,26 +260,23 @@ impl DocumentSvgEncoder<'_> {
         let emitted = class.is_some();
         let mut projected_transform = Transform::IDENTITY;
         if let Some(class) = class {
-            write!(self.output, "<g class=\"{}\"", escaped_attr(&class))
-                .map_err(|_| invalid("Sankey semantic group"))?;
+            write!(self.output, "<g class=\"{}\"", escaped_attr(&class))?;
             if let Some(projection) = &self.sankey_links {
                 if self.command_index == projection.collection {
                     write!(
                         self.output,
                         " fill=\"none\" stroke-opacity=\"{}\"",
                         fmt(projection.opacity)
-                    )
-                    .map_err(|_| invalid("Sankey shared link paint"))?;
+                    )?;
                 }
                 if let Some(blend) = projection.group_blend(self.command_index) {
-                    write_blend_style(&mut self.output, blend);
+                    write_blend_style(&mut self.output, blend)?;
                 }
             }
             if semantic_id == "sankey.labels"
                 && let Some(style) = self.sankey_label_style
             {
-                write!(self.output, " font-size=\"{}\"", fmt(style.font_size))
-                    .map_err(|_| invalid("Sankey label group font size"))?;
+                write!(self.output, " font-size=\"{}\"", fmt(style.font_size))?;
             }
             if let Some(index) = semantic_id
                 .strip_prefix("sankey.node.")
@@ -298,8 +288,7 @@ impl DocumentSvgEncoder<'_> {
                 } else {
                     String::new()
                 };
-                write!(self.output, " id=\"{}node-{index}\"", escaped_attr(&prefix))
-                    .map_err(|_| invalid("Sankey node ID"))?;
+                write!(self.output, " id=\"{}node-{index}\"", escaped_attr(&prefix))?;
                 let transform = self.state.transform;
                 if transform.a == 1.0
                     && transform.b == 0.0
@@ -313,20 +302,18 @@ impl DocumentSvgEncoder<'_> {
                         fmt(transform.f),
                         fmt(transform.e),
                         fmt(transform.f)
-                    )
-                    .map_err(|_| invalid("Sankey node translation"))?;
+                    )?;
                 } else {
                     write!(
                         self.output,
                         " transform=\"matrix({})\"",
                         matrix_attr(transform)
-                    )
-                    .map_err(|_| invalid("Sankey node transform"))?;
+                    )?;
                 }
                 projected_transform = transform;
                 self.state.transform = Transform::IDENTITY;
             }
-            self.output.push('>');
+            self.output.push('>')?;
         }
         self.groups.push(GroupKind::Semantic {
             linked: false,
@@ -343,27 +330,25 @@ impl DocumentSvgEncoder<'_> {
             "<rect height=\"{}\" width=\"{}\"",
             fmt(bounds.height),
             fmt(bounds.width)
-        )
-        .map_err(|_| invalid("Sankey node rectangle"))?;
+        )?;
         if bounds.x != 0.0 || bounds.y != 0.0 {
             write!(
                 self.output,
                 " x=\"{}\" y=\"{}\"",
                 fmt(bounds.x),
                 fmt(bounds.y)
-            )
-            .map_err(|_| invalid("Sankey edited rectangle origin"))?;
+            )?;
         }
         if let Some(fill) = &style.fill {
             self.write_paint("fill", fill)?;
         } else {
-            self.output.push_str(" fill=\"none\"");
+            self.output.push_str(" fill=\"none\"")?;
         }
         if style.stroke.is_some() {
             self.write_stroke_style(style.stroke.as_ref())?;
         }
-        self.write_state_attrs();
-        self.output.push_str("/>");
+        self.write_state_attrs()?;
+        self.output.push_str("/>")?;
         Ok(())
     }
 }

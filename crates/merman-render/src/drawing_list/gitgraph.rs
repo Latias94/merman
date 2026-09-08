@@ -25,10 +25,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::git_graph::GitGraphRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, GradientSpread, GradientStop, LineCap, LineJoin, Paint, PathSegment, PathStyle,
-    Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, GradientSpread,
+    GradientStop, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
+    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
+    TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -45,7 +45,7 @@ pub(crate) fn build_gitgraph_document(
     pair: &GitGraphPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     GitGraphBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -365,7 +365,7 @@ impl<'a> GitGraphBuilder<'a> {
         pair: &'a GitGraphPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

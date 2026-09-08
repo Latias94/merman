@@ -1,4 +1,4 @@
-use super::super::util::{escape_attr_into, escape_xml_into, fmt};
+use super::super::util::fmt;
 use crate::drawing_list::{ERROR_ICON_PATHS, ErrorSvgBody};
 use crate::portable_font::PortableFontFamilies;
 use crate::{Error, Result};
@@ -9,7 +9,6 @@ use merman_display_list::{
     TextObligation, TextPaintOrder, TextRun,
 };
 use serde_json::{Map, Value};
-use std::fmt::Write as _;
 
 const ERROR_DOCUMENT_ID: &str = "error.document";
 const ERROR_TITLE: &str = "Syntax error in text";
@@ -302,27 +301,28 @@ fn error_color_css(color: Color) -> String {
 }
 
 pub(in crate::svg::parity) fn write_error_path(
-    output: &mut String,
+    output: &mut impl crate::svg::parity::output::SvgBuffer,
     path_id: &ResourceId,
 ) -> Result<()> {
     let source = error_icon_source(path_id)?;
-    output.push_str(r#"<path class="error-icon" d=""#);
-    escape_attr_into(output, source);
-    output.push_str("\"/>");
+    output.append(r#"<path class="error-icon" d=""#)?;
+    crate::svg::parity::output::escape_attr(output, source)?;
+    output.append("\"/>")?;
     Ok(())
 }
 
-pub(in crate::svg::parity) fn write_error_text(output: &mut String, run: &TextRun) -> Result<()> {
-    write!(
-        output,
+pub(in crate::svg::parity) fn write_error_text(
+    output: &mut impl crate::svg::parity::output::SvgBuffer,
+    run: &TextRun,
+) -> Result<()> {
+    output.append_fmt(format_args!(
         r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">"#,
         fmt(run.origin.x),
         fmt(run.origin.y),
         fmt(run.style.font_size),
-    )
-    .map_err(|_| invalid("failed to write Error text"))?;
-    escape_xml_into(output, run.text.as_str());
-    output.push_str("</text>");
+    ))?;
+    crate::svg::parity::output::escape_xml(output, run.text.as_str())?;
+    output.append("</text>")?;
     Ok(())
 }
 

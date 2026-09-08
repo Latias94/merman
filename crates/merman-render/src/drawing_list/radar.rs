@@ -27,10 +27,10 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
+    Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -45,7 +45,7 @@ pub(crate) fn build_radar_document(
     pair: &RadarPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     RadarBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -80,7 +80,7 @@ impl<'a> RadarBuilder<'a> {
         pair: &'a RadarPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

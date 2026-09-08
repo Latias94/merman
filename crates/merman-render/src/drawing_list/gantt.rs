@@ -23,10 +23,9 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 use merman_core::svg_security::MermaidNavigationSecurity;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
-    Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -37,7 +36,7 @@ pub(crate) fn build_gantt_document(
     pair: &GanttPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     GanttBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -97,7 +96,7 @@ impl<'a> GanttBuilder<'a> {
         pair: &'a GanttPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -1187,7 +1186,10 @@ mod tests {
         assert!(first.label.x + first.label.width > next.bar.x);
 
         let rendered = artifact
-            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .render_drawing_list(
+                DrawingListPolicy::VectorOnly,
+                merman_display_list::DrawingListLimits::default(),
+            )
             .unwrap();
         let document = rendered.document();
         let mut scopes = Vec::new();

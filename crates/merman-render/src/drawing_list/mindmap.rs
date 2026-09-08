@@ -25,11 +25,11 @@ use merman_core::diagrams::mindmap::{
     MindmapDiagramRenderEdge, MindmapDiagramRenderModel, MindmapDiagramRenderNode,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, GradientSpread, GradientStop, LineCap, LineJoin, LinearGradientResource,
-    MeasurementProvenance, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
-    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, GradientSpread,
+    GradientStop, LineCap, LineJoin, LinearGradientResource, MeasurementProvenance, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
+    Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -75,7 +75,7 @@ pub(crate) fn build_mindmap_document(
     pair: &MindmapPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = MindmapBuilder::new(pair, metadata, policy, limits, session)?;
@@ -113,7 +113,7 @@ impl<'a> MindmapBuilder<'a> {
         pair: &'a MindmapPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -1441,7 +1441,7 @@ mod tests {
                     .unwrap()
                     .render_drawing_list(
                         DrawingListPolicy::VectorOnly,
-                        DrawingListLimits::default(),
+                        merman_display_list::DrawingListLimits::default(),
                     )
                     .unwrap();
             let widths = rendered

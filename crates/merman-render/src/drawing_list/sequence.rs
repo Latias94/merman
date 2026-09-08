@@ -35,10 +35,9 @@ use merman_core::diagrams::sequence::{
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -135,7 +134,7 @@ pub(crate) fn build_sequence_document(
     pair: &SequencePair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     SequenceBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -164,7 +163,7 @@ impl<'a> SequenceBuilder<'a> {
         pair: &'a SequencePair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -2230,7 +2229,7 @@ mod tests {
     #[test]
     fn point_message_public_markers_preserve_concave_geometry_and_direction() {
         use merman_display_list::{
-            Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, DrawingResource, Paint,
+            Color, DrawingCommand, DrawingListPolicy, DrawingResource, Paint,
         };
 
         for (message, right_angles) in [
@@ -2262,7 +2261,7 @@ mod tests {
                     .unwrap()
                     .render_drawing_list(
                         DrawingListPolicy::VectorOnly,
-                        DrawingListLimits::default(),
+                        merman_display_list::DrawingListLimits::default(),
                     )
                     .unwrap();
             let document = rendered.document();

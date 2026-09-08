@@ -27,10 +27,9 @@ use crate::{Error, Result};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -44,7 +43,7 @@ pub(crate) fn build_kanban_document(
     pair: &KanbanPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     KanbanBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -112,7 +111,7 @@ impl<'a> KanbanBuilder<'a> {
         pair: &'a KanbanPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

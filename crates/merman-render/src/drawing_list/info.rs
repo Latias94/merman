@@ -19,9 +19,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
 use merman_display_list::{
-    DrawingCommand, DrawingListLimits, DrawingListPolicy, FontDescriptor, FontStyle, Paint,
-    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
-    TextBaseline, TextDirection, TextRun, TextStyle, Viewport,
+    DrawingCommand, DrawingListPolicy, FontDescriptor, FontStyle, Paint, PathSegment, PathStyle,
+    Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
+    TextDirection, TextRun, TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -41,7 +41,7 @@ pub(crate) fn build_info_document(
     pair: &InfoPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     session.checkpoint(OperationPhase::Emit)?;

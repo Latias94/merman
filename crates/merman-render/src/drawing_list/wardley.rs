@@ -24,10 +24,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::wardley::WardleyDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
-    TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
+    Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -45,7 +45,7 @@ pub(crate) fn build_wardley_document(
     pair: &WardleyPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     WardleyBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -79,7 +79,7 @@ impl<'a> WardleyBuilder<'a> {
         pair: &'a WardleyPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

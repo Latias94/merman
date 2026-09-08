@@ -32,10 +32,10 @@ use merman_core::diagrams::block::{
     BlockDiagramRenderModel, BlockEdgeRenderModel, BlockNodeRenderModel,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
-    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle as DisplayTextStyle, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, LineCap,
+    LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -126,7 +126,7 @@ pub(crate) fn build_block_document(
     pair: &BlockPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     BlockBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -137,7 +137,7 @@ impl<'a> BlockBuilder<'a> {
         pair: &'a BlockPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

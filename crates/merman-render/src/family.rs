@@ -982,7 +982,7 @@ impl FamilyRenderArtifact {
             limits,
             &self.session,
         )?;
-        document.admit_serialization(&limits, &self.session)?;
+        document.admit_serialization(limits, &self.session)?;
         let json = document
             .public
             .canonical_json_bytes_with_limits(&limits)
@@ -1165,7 +1165,7 @@ fn render_family_artifact_svg(
         &artifact.family,
         &artifact.metadata,
         DrawingListPolicy::AllowRasterSubtree,
-        DrawingListLimits::default(),
+        crate::drawing_list::DocumentBudget::SvgOperation,
         &artifact.session,
     ) {
         Ok(document) => crate::svg::render_document_svg(

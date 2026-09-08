@@ -5,8 +5,9 @@
 //! SVG.  The private sidecar is used for the root's family/a11y role, never as a second geometry
 //! or paint source.
 
+use super::output::{self, SvgOutput};
 use super::root_svg;
-use super::util::{escape_attr_into, escape_xml_into, fmt};
+use super::util::{escape_attr_into, fmt};
 use super::{SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
 use crate::drawing_list::{BlockInlinePathProperty, RenderDocument, SvgStructureBody};
 use crate::environment::RenderSession;
@@ -39,9 +40,9 @@ pub(crate) fn render_document_svg(
     effective_config: &Value,
     session: &RenderSession,
 ) -> Result<String> {
-    document.admit_serialization(&merman_display_list::DrawingListLimits::default(), session)?;
-    let svg =
-        DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
+    let encoder = DocumentSvgEncoder::new(document, options, debug, effective_config, session)?;
+    document.admit_serialization(crate::drawing_list::DocumentBudget::SvgOperation, session)?;
+    let svg = encoder.render()?;
     if matches!(
         document.svg.body,
         SvgStructureBody::Packet(_)
@@ -87,7 +88,7 @@ struct DocumentSvgEncoder<'a> {
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
     semantic_text_counts: BTreeMap<String, usize>,
-    output: String,
+    output: SvgOutput<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -133,10 +134,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         effective_config: &'a Value,
         session: &'a RenderSession,
     ) -> Result<Self> {
-        document
-            .public
-            .validate()
-            .map_err(Error::DrawingListContract)?;
+        crate::drawing_list::DocumentBudget::SvgOperation.validate(&document.public, session)?;
         let error_projection = match &document.svg.body {
             SvgStructureBody::Error(body) => Some(
                 super::error::validate_error_projection_contract(&document.public, body)?,
@@ -264,7 +262,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             saves: Vec::new(),
             groups: Vec::new(),
             semantic_text_counts: BTreeMap::new(),
-            output: String::new(),
+            output: SvgOutput::new(session),
         })
     }
 
@@ -445,7 +443,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 description.as_deref(),
                 title_id.as_deref(),
                 description_id.as_deref(),
-            );
+            )?;
         }
         self.write_family_style()?;
         if matches!(
@@ -455,7 +453,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             // Preserve the empty structural group emitted before the family body by Mermaid's
             // Error and Info renderers. It is part of their established DOM shape and carries no
             // visual content.
-            self.output.push_str("<g/>");
+            self.output.push_str("<g/>")?;
         }
         self.write_defs()?;
         if !matches!(
@@ -467,7 +465,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 description.as_deref(),
                 title_id.as_deref(),
                 description_id.as_deref(),
-            );
+            )?;
         }
         let root_background = self.document_background_is_root_paint();
         let mut consumed_until = 0;
@@ -496,10 +494,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         // by the canonical line elements above, and SVG permits forward references, so retain
         // that source-backed root order without changing the renderer-neutral command stream.
         if matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
-            self.write_wardley_marker_defs();
+            self.write_wardley_marker_defs()?;
         }
         if matches!(self.svg_body, SvgStructureBody::Er(_)) {
-            self.write_er_marker_defs();
+            self.write_er_marker_defs()?;
         }
 
         if !self.saves.is_empty() || !self.groups.is_empty() {
@@ -507,9 +505,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 "canonical SVG command stream ended with unbalanced state",
             ));
         }
-        self.output.push_str("</svg>");
+        self.output.push_str("</svg>")?;
         root_document
-            .complete(self.output)?
+            .complete(self.output.finish()?)?
             .into_string_for(self.family)
     }
 
@@ -789,8 +787,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 super::treemap::canonical_treemap_css(
                     self.diagram_id.as_str(),
                     self.effective_config,
-                )
-                .map_err(|_| invalid("failed to write Treemap stylesheet"))?,
+                )?,
             )),
             SvgStructureBody::Kanban(_) => Some((
                 false,
@@ -814,8 +811,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             )),
             SvgStructureBody::Venn(_) => Some((
                 false,
-                super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)
-                    .map_err(|_| invalid("failed to write Venn stylesheet"))?,
+                super::venn::canonical_venn_css(self.diagram_id.as_str(), self.effective_config)?,
             )),
             SvgStructureBody::Railroad(_) => Some((
                 false,
@@ -898,9 +894,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         };
         if xhtml_namespace {
             self.output
-                .push_str(r#"<style xmlns="http://www.w3.org/1999/xhtml">"#);
+                .push_str(r#"<style xmlns="http://www.w3.org/1999/xhtml">"#)?;
         } else {
-            self.output.push_str("<style>");
+            self.output.push_str("<style>")?;
         }
         self.session
             .work_meter()
@@ -910,8 +906,8 @@ impl<'a> DocumentSvgEncoder<'a> {
                 OperationPhase::Emit,
             )
             .map_err(Error::from)?;
-        self.output.push_str(&css);
-        self.output.push_str("</style>");
+        self.output.push_str(&css)?;
+        self.output.push_str("</style>")?;
         #[cfg(feature = "layout-cytoscape")]
         let architecture = matches!(self.svg_body, SvgStructureBody::Architecture(_));
         #[cfg(not(feature = "layout-cytoscape"))]
@@ -944,7 +940,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     | SvgStructureBody::C4(_)
             )
         {
-            self.output.push_str("<g/>");
+            self.output.push_str("<g/>")?;
         }
         Ok(())
     }
@@ -1015,29 +1011,31 @@ impl<'a> DocumentSvgEncoder<'a> {
         description: Option<&str>,
         title_id: Option<&str>,
         description_id: Option<&str>,
-    ) {
+    ) -> Result<()> {
         if let (Some(title), Some(id)) = (title, title_id) {
-            self.output.push_str("<title id=\"");
-            escape_attr_into(&mut self.output, id);
-            self.output.push_str("\">");
-            escape_xml_into(&mut self.output, title);
-            self.output.push_str("</title>");
+            self.output.push_str("<title id=\"")?;
+            output::escape_attr(&mut self.output, id)?;
+            self.output.push_str("\">")?;
+            output::escape_xml(&mut self.output, title)?;
+            self.output.push_str("</title>")?;
         }
         if let (Some(description), Some(id)) = (description, description_id) {
-            self.output.push_str("<desc id=\"");
-            escape_attr_into(&mut self.output, id);
-            self.output.push_str("\">");
-            escape_xml_into(&mut self.output, description);
-            self.output.push_str("</desc>");
+            self.output.push_str("<desc id=\"")?;
+            output::escape_attr(&mut self.output, id)?;
+            self.output.push_str("\">")?;
+            output::escape_xml(&mut self.output, description)?;
+            self.output.push_str("</desc>")?;
         }
+        Ok(())
     }
 
     fn write_defs(&mut self) -> Result<()> {
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
-            self.output.push_str(&super::mindmap::mindmap_gradient_defs(
-                self.diagram_id.as_str(),
-                self.effective_config,
-            ));
+            self.output
+                .push_str(&super::mindmap::mindmap_gradient_defs(
+                    self.diagram_id.as_str(),
+                    self.effective_config,
+                ))?;
             return Ok(());
         }
         let clip_paths = self
@@ -1064,7 +1062,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if !has_defs {
             return Ok(());
         }
-        self.output.push_str("<defs>");
+        self.output.push_str("<defs>")?;
         let resources = self
             .resources
             .iter()
@@ -1100,31 +1098,32 @@ impl<'a> DocumentSvgEncoder<'a> {
         let paths = self
             .resources
             .iter()
-            .filter_map(|(raw_id, resource)| match resource {
+            .filter_map(|(raw_id, resource)| match *resource {
                 DrawingResource::Path(path) if clip_paths.contains(raw_id) => {
-                    Some((raw_id.clone(), path.segments.clone()))
+                    Some((raw_id.clone(), path.segments.as_slice()))
                 }
                 _ => None,
             })
             .collect::<Vec<_>>();
         for (raw_id, segments) in paths {
             let clip_id = self.clip_svg_id(raw_id.as_str())?;
-            self.output.push_str("<clipPath id=\"");
-            escape_attr_into(&mut self.output, clip_id.as_str());
-            self.output.push_str("\" clipPathUnits=\"userSpaceOnUse\">");
-            self.output.push_str("<path d=\"");
-            let path_data = path_d(&segments);
-            escape_attr_into(&mut self.output, path_data.as_str());
-            self.output.push_str("\"/>");
-            self.output.push_str("</clipPath>");
+            self.output.push_str("<clipPath id=\"")?;
+            output::escape_attr(&mut self.output, clip_id.as_str())?;
+            self.output
+                .push_str("\" clipPathUnits=\"userSpaceOnUse\">")?;
+            self.output.push_str("<path d=\"")?;
+            let path_data = path_d(segments);
+            output::escape_attr(&mut self.output, &path_data)?;
+            self.output.push_str("\"/>")?;
+            self.output.push_str("</clipPath>")?;
         }
-        self.output.push_str("</defs>");
+        self.output.push_str("</defs>")?;
         Ok(())
     }
 
-    fn write_wardley_marker_defs(&mut self) {
+    fn write_wardley_marker_defs(&mut self) -> Result<()> {
         let theme = WardleyTheme::from_config(self.effective_config);
-        self.output.push_str("<defs>");
+        self.output.push_str("<defs>")?;
         write!(
             self.output,
             "<marker id=\"arrow-{}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"none\"/></marker><marker id=\"link-arrow-end-{}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"none\"/></marker><marker id=\"link-arrow-start-{}\" viewBox=\"0 0 10 10\" refX=\"1\" refY=\"5\" markerWidth=\"5\" markerHeight=\"5\" orient=\"auto\"><path d=\"M 10 0 L 0 5 L 10 10 z\" fill=\"{}\" stroke=\"none\"/></marker>",
@@ -1134,62 +1133,58 @@ impl<'a> DocumentSvgEncoder<'a> {
             escaped_attr(theme.link_stroke.as_str()),
             escaped_attr(self.diagram_id.as_str()),
             escaped_attr(theme.link_stroke.as_str()),
-        )
-        .expect("writing to String cannot fail");
-        self.output.push_str("</defs>");
+        )?;
+        self.output.push_str("</defs>")?;
+        Ok(())
     }
 
-    fn write_er_marker_defs(&mut self) {
+    fn write_er_marker_defs(&mut self) -> Result<()> {
         let SvgStructureBody::Er(body) = self.svg_body else {
-            return;
+            return Ok(());
         };
         if body.marker_types.is_empty() {
-            return;
+            return Ok(());
         }
         let diagram_id = escaped_attr(self.diagram_id.as_str());
         let diagram_type = escaped_attr(body.diagram_type.as_str());
-        self.output.push_str("<defs>");
+        self.output.push_str("<defs>")?;
         for marker_type in &body.marker_types {
             match marker_type.as_str() {
                 "mdParent" => {
                     write!(
                         self.output,
                         "<marker id=\"{diagram_id}_{diagram_type}-mdParentStart\" class=\"marker mdParent er\" refX=\"0\" refY=\"7\" markerWidth=\"190\" markerHeight=\"240\" orient=\"auto\"><path d=\"M 18,7 L9,13 L1,7 L9,1 Z\"/></marker><marker id=\"{diagram_id}_{diagram_type}-mdParentEnd\" class=\"marker mdParent er\" refX=\"19\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L1,7 L9,1 Z\"/></marker>"
-                    )
-                    .expect("writing to String cannot fail");
+                    )?;
                 }
                 "onlyOne" => {
                     write!(
                         self.output,
                         "<marker id=\"{diagram_id}_{diagram_type}-onlyOneStart\" class=\"marker onlyOne er\" refX=\"0\" refY=\"9\" markerWidth=\"18\" markerHeight=\"18\" orient=\"auto\"><path d=\"M9,0 L9,18 M15,0 L15,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-onlyOneEnd\" class=\"marker onlyOne er\" refX=\"18\" refY=\"9\" markerWidth=\"18\" markerHeight=\"18\" orient=\"auto\"><path d=\"M3,0 L3,18 M9,0 L9,18\"/></marker>"
-                    )
-                    .expect("writing to String cannot fail");
+                    )?;
                 }
                 "zeroOrOne" => {
                     write!(
                         self.output,
                         "<marker id=\"{diagram_id}_{diagram_type}-zeroOrOneStart\" class=\"marker zeroOrOne er\" refX=\"0\" refY=\"9\" markerWidth=\"30\" markerHeight=\"18\" orient=\"auto\"><circle fill=\"white\" cx=\"21\" cy=\"9\" r=\"6\"/><path d=\"M9,0 L9,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-zeroOrOneEnd\" class=\"marker zeroOrOne er\" refX=\"30\" refY=\"9\" markerWidth=\"30\" markerHeight=\"18\" orient=\"auto\"><circle fill=\"white\" cx=\"9\" cy=\"9\" r=\"6\"/><path d=\"M21,0 L21,18\"/></marker>"
-                    )
-                    .expect("writing to String cannot fail");
+                    )?;
                 }
                 "oneOrMore" => {
                     write!(
                         self.output,
                         "<marker id=\"{diagram_id}_{diagram_type}-oneOrMoreStart\" class=\"marker oneOrMore er\" refX=\"18\" refY=\"18\" markerWidth=\"45\" markerHeight=\"36\" orient=\"auto\"><path d=\"M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27\"/></marker><marker id=\"{diagram_id}_{diagram_type}-oneOrMoreEnd\" class=\"marker oneOrMore er\" refX=\"27\" refY=\"18\" markerWidth=\"45\" markerHeight=\"36\" orient=\"auto\"><path d=\"M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18\"/></marker>"
-                    )
-                    .expect("writing to String cannot fail");
+                    )?;
                 }
                 "zeroOrMore" => {
                     write!(
                         self.output,
                         "<marker id=\"{diagram_id}_{diagram_type}-zeroOrMoreStart\" class=\"marker zeroOrMore er\" refX=\"18\" refY=\"18\" markerWidth=\"57\" markerHeight=\"36\" orient=\"auto\"><circle fill=\"white\" cx=\"48\" cy=\"18\" r=\"6\"/><path d=\"M0,18 Q18,0 36,18 Q18,36 0,18\"/></marker><marker id=\"{diagram_id}_{diagram_type}-zeroOrMoreEnd\" class=\"marker zeroOrMore er\" refX=\"39\" refY=\"18\" markerWidth=\"57\" markerHeight=\"36\" orient=\"auto\"><circle fill=\"white\" cx=\"9\" cy=\"18\" r=\"6\"/><path d=\"M21,18 Q39,0 57,18 Q39,36 21,18\"/></marker>"
-                    )
-                    .expect("writing to String cannot fail");
+                    )?;
                 }
                 _ => {}
             }
         }
-        self.output.push_str("</defs>");
+        self.output.push_str("</defs>")?;
+        Ok(())
     }
 
     fn write_linear_gradient(
@@ -1204,12 +1199,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             escaped_attr(id),
             fmt(gradient.start.x),
             fmt(gradient.end.x),
-        )
-        .map_err(|_| invalid("failed to write linear gradient"))?;
+        )?;
         for (name, value) in [("y1", gradient.start.y), ("y2", gradient.end.y)] {
             if !compact || value != 0.0 {
-                write!(self.output, " {name}=\"{}\"", fmt(value))
-                    .map_err(|_| invalid("linear gradient ordinate"))?;
+                write!(self.output, " {name}=\"{}\"", fmt(value))?;
             }
         }
         if !compact || gradient.transform != Transform::IDENTITY {
@@ -1217,20 +1210,18 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.output,
                 " gradientTransform=\"matrix({})\"",
                 matrix_attr(gradient.transform)
-            )
-            .map_err(|_| invalid("linear gradient transform"))?;
+            )?;
         }
         if !compact || gradient.spread != GradientSpread::Pad {
             write!(
                 self.output,
                 " spreadMethod=\"{}\"",
                 spread_method(gradient.spread)
-            )
-            .map_err(|_| invalid("linear gradient spread"))?;
+            )?;
         }
-        self.output.push('>');
-        self.write_stops(&gradient.stops, compact);
-        self.output.push_str("</linearGradient>");
+        self.output.push('>')?;
+        self.write_stops(&gradient.stops, compact)?;
+        self.output.push_str("</linearGradient>")?;
         Ok(())
     }
 
@@ -1250,10 +1241,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(gradient.radius),
             matrix_attr(gradient.transform),
             spread_method(gradient.spread),
-        )
-        .map_err(|_| invalid("failed to write radial gradient"))?;
-        self.write_stops(&gradient.stops, false);
-        self.output.push_str("</radialGradient>");
+        )?;
+        self.write_stops(&gradient.stops, false)?;
+        self.output.push_str("</radialGradient>")?;
         Ok(())
     }
 
@@ -1261,7 +1251,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         &mut self,
         stops: &[merman_display_list::GradientStop],
         percentage_offsets: bool,
-    ) {
+    ) -> Result<()> {
         for stop in stops {
             let color = color_css(stop.color);
             write!(
@@ -1275,9 +1265,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 if percentage_offsets { "%" } else { "" },
                 color,
                 opacity_attr(stop.color.alpha),
-            )
-            .expect("writing to String cannot fail");
+            )?;
         }
+        Ok(())
     }
 
     fn write_pattern(
@@ -1325,33 +1315,30 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(width),
             fmt(height),
             matrix_attr(pattern.transform),
-        )
-        .map_err(|_| invalid("failed to write pattern"))?;
+        )?;
         write!(
             self.output,
             "<image href=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\"/>",
-            escaped_attr(image_uri.as_str()),
+            escaped_attr(image_uri),
             fmt(pattern.tile.x),
             fmt(pattern.tile.y),
             fmt(f64::from(pixel_width)),
             fmt(f64::from(pixel_height)),
-        )
-        .map_err(|_| invalid("failed to write pattern image"))?;
-        self.output.push_str("</pattern>");
+        )?;
+        self.output.push_str("</pattern>")?;
         Ok(())
     }
 
     fn write_font(&mut self, id: &str, font: &merman_display_list::FontResource) -> Result<()> {
         let media_type = safe_media_type(&font.font.media_type);
-        let encoded = STANDARD.encode(&font.font.data);
+        let encoded = base64::display::Base64Display::new(&font.font.data, &STANDARD);
         write!(
             self.output,
             "<style>@font-face{{font-family:\"{}\";src:url(\"data:{};base64,{}\");}}</style>",
             escaped_css_string(id),
             escaped_css_string(media_type.as_str()),
             encoded,
-        )
-        .map_err(|_| invalid("failed to write font resource"))?;
+        )?;
         Ok(())
     }
 
@@ -1401,11 +1388,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             .ok_or_else(|| invalid("SVG restore has no matching save"))?;
         while self.groups.len() > save.group_len {
             match self.groups.pop() {
-                Some(GroupKind::Clip) => self.output.push_str("</g>"),
+                Some(GroupKind::Clip) => self.output.push_str("</g>")?,
                 Some(GroupKind::Semantic { .. }) | Some(GroupKind::Layer) => {
                     return Err(invalid(
                         "SVG restore crossed an open semantic or layer group",
-                    ));
+                    ))?;
                 }
                 None => break,
             }
@@ -1426,10 +1413,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.width),
             fmt(bounds.height),
             fmt(opacity),
-        )
-        .map_err(|_| invalid("failed to write SVG layer"))?;
-        write_blend_style(&mut self.output, blend_mode);
-        self.output.push('>');
+        )?;
+        write_blend_style(&mut self.output, blend_mode)?;
+        self.output.push('>')?;
         self.groups.push(GroupKind::Layer);
         Ok(())
     }
@@ -1437,7 +1423,7 @@ impl<'a> DocumentSvgEncoder<'a> {
     fn end_layer(&mut self) -> Result<()> {
         match self.groups.pop() {
             Some(GroupKind::Layer) => {
-                self.output.push_str("</g>");
+                self.output.push_str("</g>")?;
                 Ok(())
             }
             Some(other) => {
@@ -1458,8 +1444,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             "<g clip-path=\"url(#{})\" data-fill-rule=\"{}\"",
             escaped_attr(clip_id.as_str()),
             fill_rule_name(fill_rule),
-        )
-        .map_err(|_| invalid("failed to write SVG clip group"))?;
+        )?;
         // Clip resources use user-space coordinates. Preserve the transform that was active at
         // the ClipPath command on the wrapper group, then render clipped children relative to the
         // new group coordinate system. This keeps local family clips (for example Treemap label
@@ -1469,11 +1454,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.output,
                 " transform=\"matrix({})\"",
                 matrix_attr(self.state.transform),
-            )
-            .map_err(|_| invalid("failed to write SVG clip transform"))?;
+            )?;
             self.state.transform = Transform::IDENTITY;
         }
-        self.output.push('>');
+        self.output.push('>')?;
         self.groups.push(GroupKind::Clip);
         Ok(())
     }
@@ -1503,10 +1487,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 Transform::IDENTITY
             };
             if emitted {
-                self.output.push_str("<g");
+                self.output.push_str("<g")?;
                 if let Some(class) = self.semantic_extra_class(semantic_id).map(str::to_owned) {
-                    write!(self.output, " class=\"{}\"", escaped_attr(&class))
-                        .map_err(|_| invalid("Pie group class"))?;
+                    write!(self.output, " class=\"{}\"", escaped_attr(&class))?;
                 }
                 if self.state.transform != Transform::IDENTITY {
                     let transform = self.state.transform;
@@ -1520,19 +1503,17 @@ impl<'a> DocumentSvgEncoder<'a> {
                             " transform=\"translate({},{})\"",
                             fmt(transform.e),
                             fmt(transform.f)
-                        )
-                        .map_err(|_| invalid("Pie group transform"))?;
+                        )?;
                     } else {
                         write!(
                             self.output,
                             " transform=\"matrix({})\"",
                             matrix_attr(transform)
-                        )
-                        .map_err(|_| invalid("Pie group transform"))?;
+                        )?;
                     }
                     self.state.transform = Transform::IDENTITY;
                 }
-                self.output.push('>');
+                self.output.push('>')?;
             }
             self.groups.push(GroupKind::Semantic {
                 linked: false,
@@ -1545,7 +1526,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Packet(_)) {
             let emitted = semantic_id.starts_with("packet.word.");
             if emitted {
-                self.output.push_str("<g>");
+                self.output.push_str("<g>")?;
             }
             self.groups.push(GroupKind::Semantic {
                 linked: false,
@@ -1562,7 +1543,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             // wrappers that the source renderer never emits.
             let emitted = semantic_id == "info.document";
             if emitted {
-                self.output.push_str("<g>");
+                self.output.push_str("<g>")?;
             }
             self.groups.push(GroupKind::Semantic {
                 linked: false,
@@ -1581,7 +1562,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             // Mermaid exposes the Error body as one ordinary group. Keep the semantic scope in
             // the canonical command stream, but do not invent DOM metadata or accessibility
             // children that the source renderer does not emit.
-            self.output.push_str("<g>");
+            self.output.push_str("<g>")?;
             self.groups.push(GroupKind::Semantic {
                 linked: false,
                 emitted: true,
@@ -1606,41 +1587,41 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .and_then(|value| prepare_mermaid_navigation_uri(value, security));
             let linked = link.is_some();
             if let Some(link) = link {
-                self.output.push_str("<a href=\"");
-                escape_attr_into(&mut self.output, link.as_str());
-                self.output.push_str("\">");
+                self.output.push_str("<a href=\"")?;
+                output::escape_attr(&mut self.output, link.as_str())?;
+                self.output.push_str("\">")?;
             }
-            self.output.push_str("<g class=\"");
-            escape_attr_into(&mut self.output, class.as_str());
-            self.output.push('"');
-            self.output.push_str(" id=\"");
+            self.output.push_str("<g class=\"")?;
+            output::escape_attr(&mut self.output, class.as_str())?;
+            self.output.push('"')?;
+            self.output.push_str(" id=\"")?;
             let svg_id = self.semantic_svg_id(semantic_id)?;
-            escape_attr_into(&mut self.output, svg_id.as_str());
-            self.output.push('"');
+            output::escape_attr(&mut self.output, svg_id.as_str())?;
+            self.output.push('"')?;
             if let SvgStructureBody::Zenuml(body) = self.svg_body
                 && let Some(statement_id) = body.semantic_data_statements.get(semantic_id)
             {
-                self.output.push_str(" data-statement=\"");
-                escape_attr_into(&mut self.output, statement_id);
-                self.output.push('"');
+                self.output.push_str(" data-statement=\"")?;
+                output::escape_attr(&mut self.output, statement_id)?;
+                self.output.push('"')?;
             }
             self.output
-                .push_str(" role=\"group\" data-merman-semantic-id=\"");
-            escape_attr_into(&mut self.output, semantic_id);
-            self.output.push('"');
+                .push_str(" role=\"group\" data-merman-semantic-id=\"")?;
+            output::escape_attr(&mut self.output, semantic_id)?;
+            self.output.push('"')?;
             if !visible {
-                self.output.push_str(" display=\"none\"");
+                self.output.push_str(" display=\"none\"")?;
             }
-            self.output.push('>');
+            self.output.push('>')?;
             if let Some(title) = semantic.title.as_deref() {
-                self.output.push_str("<title>");
-                escape_xml_into(&mut self.output, title);
-                self.output.push_str("</title>");
+                self.output.push_str("<title>")?;
+                output::escape_xml(&mut self.output, title)?;
+                self.output.push_str("</title>")?;
             }
             if let Some(description) = semantic.description.as_deref() {
-                self.output.push_str("<desc>");
-                escape_xml_into(&mut self.output, description);
-                self.output.push_str("</desc>");
+                self.output.push_str("<desc>")?;
+                output::escape_xml(&mut self.output, description)?;
+                self.output.push_str("</desc>")?;
             }
             self.groups.push(GroupKind::Semantic {
                 linked,
@@ -1680,32 +1661,31 @@ impl<'a> DocumentSvgEncoder<'a> {
         let kanban_ticket_anchor = kanban_ticket_href.is_some();
         let linked = link.is_some() || kanban_ticket_anchor;
         if kanban_ticket_anchor {
-            self.output.push_str("<a class=\"kanban-ticket-link\"");
+            self.output.push_str("<a class=\"kanban-ticket-link\"")?;
             if let Some(href) = kanban_ticket_href.flatten() {
-                self.output.push_str(" xlink:href=\"");
+                self.output.push_str(" xlink:href=\"")?;
                 // DrawingList stores the logical URI; serialize it exactly once at the SVG
                 // attribute boundary.
-                escape_attr_into(&mut self.output, href.as_str());
-                self.output.push('"');
+                output::escape_attr(&mut self.output, href.as_str())?;
+                self.output.push('"')?;
             }
             if security == MermaidNavigationSecurity::Loose {
-                self.output.push_str(" target=\"_blank\"");
+                self.output.push_str(" target=\"_blank\"")?;
             }
-            self.output.push('>');
+            self.output.push('>')?;
         } else if let Some(link) = link {
-            self.output.push_str("<a href=\"");
-            escape_attr_into(&mut self.output, link.as_str());
-            self.output.push_str("\">");
+            self.output.push_str("<a href=\"")?;
+            output::escape_attr(&mut self.output, link.as_str())?;
+            self.output.push_str("\">")?;
         }
-        write!(self.output, "<g id=\"{}\"", escaped_attr(svg_id.as_str()))
-            .map_err(|_| invalid("failed to write semantic group"))?;
+        write!(self.output, "<g id=\"{}\"", escaped_attr(svg_id.as_str()))?;
         if let SvgStructureBody::Kanban(body) = self.svg_body
             && semantic_id.starts_with("kanban.section.")
         {
             // Preserve Mermaid's stable section attribute ordering for DOM consumers.
-            self.output.push_str(" data-look=\"");
-            escape_attr_into(&mut self.output, body.look.as_str());
-            self.output.push('"');
+            self.output.push_str(" data-look=\"")?;
+            output::escape_attr(&mut self.output, body.look.as_str())?;
+            self.output.push('"')?;
         }
         let semantic_extra_class = self.semantic_extra_class(semantic_id).map(str::to_owned);
         #[cfg(feature = "layout-cytoscape")]
@@ -1721,8 +1701,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
                 escaped_attr(semantic.id.as_str()),
                 escaped_attr(class),
-            )
-            .map_err(|_| invalid("failed to write ER container semantic group"))?;
+            )?;
         } else if matches!(self.svg_body, SvgStructureBody::Timeline(_))
             && let Some(class) = semantic_extra_class.as_deref()
         {
@@ -1734,8 +1713,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
                 escaped_attr(semantic.id.as_str()),
                 class,
-            )
-            .map_err(|_| invalid("failed to write Timeline semantic group"))?;
+            )?;
         } else if (exact_family_class
             || matches!(
                 self.svg_body,
@@ -1748,8 +1726,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 " role=\"group\" data-merman-semantic-id=\"{}\" class=\"{}\"",
                 escaped_attr(semantic.id.as_str()),
                 escaped_attr(class),
-            )
-            .map_err(|_| invalid("failed to write family semantic group"))?;
+            )?;
         } else {
             write!(
                 self.output,
@@ -1759,31 +1736,30 @@ impl<'a> DocumentSvgEncoder<'a> {
                     .as_deref()
                     .map_or_else(String::new, |class| format!(" {class}")),
                 escaped_attr(semantic.id.as_str()),
-            )
-            .map_err(|_| invalid("failed to write semantic group"))?;
+            )?;
         }
         let requirement_semantic_attrs = self.requirement_semantic_attrs(semantic_id);
-        self.output.push_str(&requirement_semantic_attrs);
+        self.output.push_str(&requirement_semantic_attrs)?;
         if let SvgStructureBody::Venn(body) = self.svg_body
             && let Some(sets) = body.semantic_data_sets.get(semantic_id)
         {
-            self.output.push_str(" data-venn-sets=\"");
-            escape_attr_into(&mut self.output, sets);
-            self.output.push('"');
+            self.output.push_str(" data-venn-sets=\"")?;
+            output::escape_attr(&mut self.output, sets)?;
+            self.output.push('"')?;
         }
         if !visible {
-            self.output.push_str(" display=\"none\"");
+            self.output.push_str(" display=\"none\"")?;
         }
-        self.output.push('>');
+        self.output.push('>')?;
         if let Some(title) = semantic.title.as_deref() {
-            self.output.push_str("<title>");
-            escape_xml_into(&mut self.output, title);
-            self.output.push_str("</title>");
+            self.output.push_str("<title>")?;
+            output::escape_xml(&mut self.output, title)?;
+            self.output.push_str("</title>")?;
         }
         if let Some(description) = semantic.description.as_deref() {
-            self.output.push_str("<desc>");
-            escape_xml_into(&mut self.output, description);
-            self.output.push_str("</desc>");
+            self.output.push_str("<desc>")?;
+            output::escape_xml(&mut self.output, description)?;
+            self.output.push_str("</desc>")?;
         }
         self.groups.push(GroupKind::Semantic {
             linked,
@@ -1831,12 +1807,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                             semantic.id
                         ))
                     })?;
-                    write!(
-                        fragment,
-                        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                    write!(fragment, r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
                         escaped_attr(edge.data_id.as_str()),
-                    )
-                    .map_err(|_| invalid("failed to write Mindmap edge label shell"))?;
+                    ).map_err(|_| invalid("SVG component formatting failed"))?;
                 }
                 true
             }
@@ -1848,9 +1821,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 let node = body.nodes.get(semantic_id).ok_or_else(|| {
                     invalid(format!("Mindmap SVG sidecar is missing node {semantic_id}"))
                 })?;
-                write!(
-                    fragment,
-                    "<g class=\"{}\" id=\"{}-{}\" data-look=\"{}\" transform=\"translate({}, {})\" role=\"group\" data-merman-semantic-id=\"{}\"",
+                write!(fragment, "<g class=\"{}\" id=\"{}-{}\" data-look=\"{}\" transform=\"translate({}, {})\" role=\"group\" data-merman-semantic-id=\"{}\"",
                     escaped_attr(node.class.as_str()),
                     escaped_attr(self.diagram_id.as_str()),
                     escaped_attr(node.dom_id.as_str()),
@@ -1858,8 +1829,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     fmt(node.origin.x),
                     fmt(node.origin.y),
                     escaped_attr(semantic_id),
-                )
-                .map_err(|_| invalid("failed to write Mindmap node group"))?;
+                ).map_err(|_| invalid("SVG component formatting failed"))?;
                 if !visible {
                     fragment.push_str(" display=\"none\"");
                 }
@@ -1875,7 +1845,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 )));
             }
         };
-        self.output.push_str(&fragment);
+        self.output.push_str(&fragment)?;
         self.groups.push(GroupKind::Semantic {
             linked: false,
             emitted,
@@ -2015,19 +1985,21 @@ impl<'a> DocumentSvgEncoder<'a> {
                         multiply_transform(projected_transform, self.state.transform);
                 }
                 if emitted {
-                    self.output.push_str("</g>");
+                    self.output.push_str("</g>")?;
                     if linked {
-                        self.output.push_str("</a>");
+                        self.output.push_str("</a>")?;
                     }
                 }
                 if matches!(self.svg_body, SvgStructureBody::Mindmap(_))
                     && semantic_id == "mindmap.document"
                 {
+                    let mut shadow_defs = String::new();
                     super::mindmap::push_mindmap_shadow_defs(
-                        &mut self.output,
+                        &mut shadow_defs,
                         self.diagram_id.as_str(),
                         self.effective_config,
                     );
+                    self.output.push_str(&shadow_defs)?;
                 }
                 Ok(())
             }
@@ -2241,10 +2213,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                         fmt(bounds.y),
                         fmt(bounds.width),
                         fmt(bounds.height)
-                    )
-                    .map_err(|_| invalid("failed to write Packet block"))?;
-                    self.write_state_attrs();
-                    self.output.push_str("/>");
+                    )?;
+                    self.write_state_attrs()?;
+                    self.output.push_str("/>")?;
                     return Ok(());
                 }
                 return self.emit_rect(path_id, bounds, style);
@@ -2473,35 +2444,37 @@ impl<'a> DocumentSvgEncoder<'a> {
                 return self.emit_rect(path_id, bounds, style);
             }
         }
-        let path_data = {
+        self.output.push_str("<path d=\"")?;
+        {
             let path = self.path_resource(path_id)?;
             if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
-                super::curve::drawing_path_segments_d_unrounded(&path.segments)
+                output::escape_attr(
+                    &mut self.output,
+                    super::curve::drawing_path_segments_d_unrounded(&path.segments),
+                )?;
             } else {
-                path_d(&path.segments)
+                output::escape_attr(&mut self.output, path_d(&path.segments))?;
             }
         };
-        self.output.push_str("<path d=\"");
-        escape_attr_into(&mut self.output, path_data.as_str());
-        self.output.push('"');
-        self.write_gantt_dom_id(path_id.as_str());
-        self.write_journey_dom_id(path_id.as_str());
-        self.write_sidecar_dom_id(path_id.as_str());
-        self.write_er_edge_attrs(path_id.as_str());
-        self.write_block_edge_attrs(path_id.as_str());
+        self.output.push('"')?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        self.write_journey_dom_id(path_id.as_str())?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
+        self.write_er_edge_attrs(path_id.as_str())?;
+        self.write_block_edge_attrs(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2566,7 +2539,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             write!(
                 self.output,
                 "<path d=\"{}\" id=\"{}-{}\" class=\"{}\" data-look=\"{}\" data-edge=\"true\" data-et=\"edge\" data-id=\"{}\" data-points=\"{}\" data-merman-semantic-id=\"{}\"{} data-merman-resource=\"{}\"/>",
-                escaped_attr(path_d(&path.segments).as_str()),
+                escaped_attr(path_d(&path.segments)),
                 escaped_attr(self.diagram_id.as_str()),
                 escaped_attr(edge.dom_id.as_str()),
                 escaped_attr(edge.class.as_str()),
@@ -2576,8 +2549,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 escaped_attr(semantic_id.as_str()),
                 if visible { "" } else { " display=\"none\"" },
                 escaped_attr(path_id.as_str()),
-            )
-            .map_err(|_| invalid("failed to write Mindmap edge path"))?;
+            )?;
             return Ok(());
         }
 
@@ -2603,8 +2575,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fmt(end.x),
                 fmt(end.y),
                 escaped_attr(raw_id),
-            )
-            .map_err(|_| invalid("failed to write Mindmap divider"))?;
+            )?;
             return Ok(());
         }
         if !raw_id.ends_with(".shape.outer") {
@@ -2620,10 +2591,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                     "<path id=\"{}-{}\" class=\"node-bkg node-0\" style=\"\" d=\"{}\" data-merman-resource=\"{}\"/>",
                     escaped_attr(self.diagram_id.as_str()),
                     escaped_attr(node.dom_id.as_str()),
-                    escaped_attr(path_d(&local_path.segments).as_str()),
+                    escaped_attr(path_d(&local_path.segments)),
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to write default Mindmap node"))?;
+                )?;
             }
             "rect" => {
                 let bounds = rectangle_from_path(&local_path)
@@ -2636,8 +2606,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     fmt(bounds.width),
                     fmt(bounds.height),
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to write rectangular Mindmap node"))?;
+                )?;
             }
             "rounded" => {
                 let (bounds, radius) = rounded_rectangle_from_path(&local_path)
@@ -2652,8 +2621,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     fmt(bounds.width),
                     fmt(bounds.height),
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to write rounded Mindmap node"))?;
+                )?;
             }
             "mindmapCircle" => {
                 let (center, radius) = circle_from_path(&local_path)
@@ -2665,35 +2633,31 @@ impl<'a> DocumentSvgEncoder<'a> {
                     fmt(center.x),
                     fmt(center.y),
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to write circular Mindmap node"))?;
+                )?;
             }
             "hexagon" => {
                 let points = polygon_from_path(&local_path)
                     .ok_or_else(|| invalid("Mindmap hexagon node is not polygonal"))?;
-                self.output.push_str("<polygon points=\"");
+                self.output.push_str("<polygon points=\"")?;
                 for (index, point) in points.iter().enumerate() {
                     if index > 0 {
-                        self.output.push(' ');
+                        self.output.push(' ')?;
                     }
-                    write!(self.output, "{},{}", fmt(point.x), fmt(point.y))
-                        .map_err(|_| invalid("failed to write Mindmap hexagon points"))?;
+                    write!(self.output, "{},{}", fmt(point.x), fmt(point.y))?;
                 }
                 write!(
                     self.output,
                     "\" class=\"label-container\" data-merman-resource=\"{}\"/>",
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to finish Mindmap hexagon"))?;
+                )?;
             }
             "cloud" | "bang" => {
                 write!(
                     self.output,
                     "<path class=\"basic label-container\" style=\"\" d=\"{}\" data-merman-resource=\"{}\"/>",
-                    escaped_attr(path_d(&local_path.segments).as_str()),
+                    escaped_attr(path_d(&local_path.segments)),
                     escaped_attr(raw_id),
-                )
-                .map_err(|_| invalid("failed to write Mindmap path node"))?;
+                )?;
             }
             other => {
                 return Err(invalid(format!(
@@ -2721,34 +2685,31 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let path_data = path_d(&path.segments);
         self.output
-            .push_str("<g class=\"treeView-node-icon\" transform=\"translate(");
-        write!(self.output, "{},{}\">", fmt(transform.e), fmt(transform.f))
-            .map_err(|_| invalid("failed to write TreeView icon transform"))?;
+            .push_str("<g class=\"treeView-node-icon\" transform=\"translate(")?;
+        write!(self.output, "{},{}\">", fmt(transform.e), fmt(transform.f))?;
         if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
             // The icon group is emitted inside the current state, so preserve state attributes on
             // the nested SVG rather than changing the path's resolved geometry.
             self.output.pop();
-            self.output.push(' ');
+            self.output.push(' ')?;
             if self.state.opacity != 1.0 {
-                write!(self.output, "opacity=\"{}\"", fmt(self.state.opacity))
-                    .map_err(|_| invalid("failed to write TreeView icon opacity"))?;
+                write!(self.output, "opacity=\"{}\"", fmt(self.state.opacity))?;
             }
-            write_blend_style(&mut self.output, self.state.blend_mode);
-            self.output.push('>');
+            write_blend_style(&mut self.output, self.state.blend_mode)?;
+            self.output.push('>')?;
         }
         write!(
             self.output,
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 24 24\"><path d=\"{}\"",
             fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
             fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
-            escaped_attr(path_data.as_str()),
-        )
-        .map_err(|_| invalid("failed to write TreeView icon SVG"))?;
+            escaped_attr(&path_data),
+        )?;
         self.write_path_style(style)?;
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
-        self.output.push_str("</svg></g>");
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
+        self.output.push_str("</svg></g>")?;
         Ok(())
     }
 
@@ -2759,25 +2720,25 @@ impl<'a> DocumentSvgEncoder<'a> {
         style: &PathStyle,
     ) -> Result<()> {
         let path_data = path_d(&path.segments);
-        self.output.push_str("<path d=\"");
-        escape_attr_into(&mut self.output, path_data.as_str());
-        self.output.push('"');
-        self.write_gantt_dom_id(path_id.as_str());
-        self.write_journey_dom_id(path_id.as_str());
-        self.write_sidecar_dom_id(path_id.as_str());
+        self.output.push_str("<path d=\"")?;
+        output::escape_attr(&mut self.output, &path_data)?;
+        self.output.push('"')?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        self.write_journey_dom_id(path_id.as_str())?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2790,15 +2751,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             "<rect width=\"{}\" height=\"{}\" class=\"background\"",
             fmt(bounds.width),
             fmt(bounds.height),
-        )
-        .map_err(|_| invalid("failed to write XYChart background"))?;
+        )?;
         self.write_paint("fill", fill)?;
-        self.output.push_str("/>");
+        self.output.push_str("/>")?;
         Ok(())
     }
 
     fn emit_rect(&mut self, path_id: &ResourceId, bounds: Rect, style: &PathStyle) -> Result<()> {
-        self.output.push_str("<rect x=\"");
+        self.output.push_str("<rect x=\"")?;
         write!(
             self.output,
             "{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
@@ -2806,23 +2766,22 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.y),
             fmt(bounds.width),
             fmt(bounds.height),
-        )
-        .map_err(|_| invalid("failed to write SVG rectangle"))?;
-        self.write_gantt_dom_id(path_id.as_str());
-        self.write_journey_dom_id(path_id.as_str());
-        self.write_sidecar_dom_id(path_id.as_str());
+        )?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        self.write_journey_dom_id(path_id.as_str())?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2833,7 +2792,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         radius: f64,
         style: &PathStyle,
     ) -> Result<()> {
-        self.output.push_str("<rect x=\"");
+        self.output.push_str("<rect x=\"")?;
         write!(
             self.output,
             "{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"",
@@ -2843,25 +2802,24 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.height),
             fmt(radius),
             fmt(radius),
-        )
-        .map_err(|_| invalid("failed to write rounded SVG rectangle"))?;
-        self.write_gantt_dom_id(path_id.as_str());
-        self.write_journey_dom_id(path_id.as_str());
-        self.write_sidecar_dom_id(path_id.as_str());
+        )?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        self.write_journey_dom_id(path_id.as_str())?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2878,22 +2836,21 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(center.x),
             fmt(center.y),
             fmt(radius),
-        )
-        .map_err(|_| invalid("failed to write SVG circle"))?;
-        self.write_sidecar_dom_id(path_id.as_str());
+        )?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2913,23 +2870,22 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(center.y),
             fmt(radius_x),
             fmt(radius_y),
-        )
-        .map_err(|_| invalid("failed to write SVG ellipse"))?;
-        self.write_sidecar_dom_id(path_id.as_str());
+        )?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(12.0);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2939,27 +2895,26 @@ impl<'a> DocumentSvgEncoder<'a> {
         points: &[Point],
         style: &PathStyle,
     ) -> Result<()> {
-        self.output.push_str("<polygon points=\"");
+        self.output.push_str("<polygon points=\"")?;
         for (index, point) in points.iter().enumerate() {
             if index > 0 {
-                self.output.push(' ');
+                self.output.push(' ')?;
             }
-            write!(self.output, "{},{}", fmt(point.x), fmt(point.y))
-                .map_err(|_| invalid("failed to write SVG polygon"))?;
+            write!(self.output, "{},{}", fmt(point.x), fmt(point.y))?;
         }
-        self.output.push('"');
-        self.write_sidecar_dom_id(path_id.as_str());
+        self.output.push('"')?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -2977,24 +2932,23 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(start.y),
             fmt(end.x),
             fmt(end.y),
-        )
-        .map_err(|_| invalid("failed to write SVG line"))?;
-        self.write_gantt_dom_id(path_id.as_str());
-        self.write_journey_dom_id(path_id.as_str());
-        self.write_sidecar_dom_id(path_id.as_str());
+        )?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        self.write_journey_dom_id(path_id.as_str())?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         if let Some(class) = self.path_class(path_id) {
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_ref());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
         }
-        self.write_wardley_marker_attributes(path_id.as_str());
-        self.write_zenuml_path_attrs(path_id.as_str());
+        self.write_wardley_marker_attributes(path_id.as_str())?;
+        self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_fill_stroke_style(style)?;
-        self.write_state_attrs();
-        self.output.push_str(" data-merman-resource=\"");
-        escape_attr_into(&mut self.output, path_id.as_str());
-        self.output.push_str("\"/>");
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
         Ok(())
     }
 
@@ -3013,73 +2967,75 @@ impl<'a> DocumentSvgEncoder<'a> {
             && (raw_id.ends_with(".marker.start") || raw_id.ends_with(".marker.end"))
     }
 
-    fn write_er_edge_attrs(&mut self, raw_id: &str) {
+    fn write_er_edge_attrs(&mut self, raw_id: &str) -> Result<()> {
         let SvgStructureBody::Er(body) = self.svg_body else {
-            return;
+            return Ok(());
         };
         let Some(metadata) = body.edge_metadata.get(raw_id) else {
-            return;
+            return Ok(());
         };
-        self.output.push_str(" id=\"");
-        escape_attr_into(
+        self.output.push_str(" id=\"")?;
+        output::escape_attr(
             &mut self.output,
             format!("{}-{}", self.diagram_id, metadata.dom_id).as_str(),
-        );
-        self.output.push_str("\" style=\"undefined;;;undefined\"");
+        )?;
+        self.output.push_str("\" style=\"undefined;;;undefined\"")?;
         self.output
-            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"");
-        escape_attr_into(&mut self.output, metadata.dom_id.as_str());
-        self.output.push_str("\" data-points=\"");
-        escape_attr_into(&mut self.output, metadata.data_points.as_str());
-        self.output.push_str("\" data-look=\"");
-        escape_attr_into(&mut self.output, body.data_look.as_str());
-        self.output.push('"');
+            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"")?;
+        output::escape_attr(&mut self.output, metadata.dom_id.as_str())?;
+        self.output.push_str("\" data-points=\"")?;
+        output::escape_attr(&mut self.output, metadata.data_points.as_str())?;
+        self.output.push_str("\" data-look=\"")?;
+        output::escape_attr(&mut self.output, body.data_look.as_str())?;
+        self.output.push('"')?;
         if let Some(marker) = metadata.start_marker.as_deref()
             && let Some(marker_id) =
                 er_marker_svg_id(self.diagram_id.as_str(), body.diagram_type.as_str(), marker)
         {
-            self.output.push_str(" marker-start=\"url(#");
-            escape_attr_into(&mut self.output, marker_id.as_str());
-            self.output.push_str(")\"");
+            self.output.push_str(" marker-start=\"url(#")?;
+            output::escape_attr(&mut self.output, marker_id.as_str())?;
+            self.output.push_str(")\"")?;
         }
         if let Some(marker) = metadata.end_marker.as_deref()
             && let Some(marker_id) =
                 er_marker_svg_id(self.diagram_id.as_str(), body.diagram_type.as_str(), marker)
         {
-            self.output.push_str(" marker-end=\"url(#");
-            escape_attr_into(&mut self.output, marker_id.as_str());
-            self.output.push_str(")\"");
+            self.output.push_str(" marker-end=\"url(#")?;
+            output::escape_attr(&mut self.output, marker_id.as_str())?;
+            self.output.push_str(")\"")?;
         }
+        Ok(())
     }
 
-    fn write_block_edge_attrs(&mut self, raw_id: &str) {
+    fn write_block_edge_attrs(&mut self, raw_id: &str) -> Result<()> {
         let SvgStructureBody::Block(body) = self.svg_body else {
-            return;
+            return Ok(());
         };
         let Some(metadata) = body.edge_metadata.get(raw_id) else {
-            return;
+            return Ok(());
         };
         let data_id = format!("{}-{}", self.diagram_id, metadata.source_id);
-        self.output.push_str(" id=\"");
-        escape_attr_into(
+        self.output.push_str(" id=\"")?;
+        output::escape_attr(
             &mut self.output,
             format!("{}-{data_id}", self.diagram_id).as_str(),
-        );
-        self.output.push_str("\" style=\"undefined;;;undefined\"");
+        )?;
+        self.output.push_str("\" style=\"undefined;;;undefined\"")?;
         self.output
-            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"");
-        escape_attr_into(&mut self.output, data_id.as_str());
-        self.output.push_str("\" data-points=\"");
+            .push_str(" data-edge=\"true\" data-et=\"edge\" data-id=\"")?;
+        output::escape_attr(&mut self.output, data_id.as_str())?;
+        self.output.push_str("\" data-points=\"")?;
         let data_points = STANDARD.encode(super::util::json_stringify_points(
             metadata.points.as_slice(),
         ));
-        escape_attr_into(&mut self.output, data_points.as_str());
-        self.output.push('"');
+        output::escape_attr(&mut self.output, data_points.as_str())?;
+        self.output.push('"')?;
+        Ok(())
     }
 
-    fn write_wardley_marker_attributes(&mut self, raw_id: &str) {
+    fn write_wardley_marker_attributes(&mut self, raw_id: &str) -> Result<()> {
         if !matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
-            return;
+            return Ok(());
         }
         let (prefix, is_link) = if let Some(prefix) = raw_id.strip_suffix(".line") {
             if prefix.starts_with("wardley.link.") {
@@ -3087,10 +3043,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             } else if prefix.starts_with("wardley.trend.") {
                 (prefix, false)
             } else {
-                return;
+                return Ok(());
             }
         } else {
-            return;
+            return Ok(());
         };
 
         let has_marker = |suffix: &str| self.resources.contains_key(&format!("{prefix}{suffix}"));
@@ -3099,8 +3055,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.output,
                 " marker-start=\"url(#{})\"",
                 escaped_attr(format!("link-arrow-start-{}", self.diagram_id).as_str())
-            )
-            .expect("writing to String cannot fail");
+            )?;
         }
         if has_marker(".end") {
             let marker_id = if is_link {
@@ -3112,9 +3067,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.output,
                 " marker-end=\"url(#{})\"",
                 escaped_attr(marker_id.as_str())
-            )
-            .expect("writing to String cannot fail");
+            )?;
         }
+        Ok(())
     }
 
     fn emit_text(&mut self, run: &TextRun) -> Result<()> {
@@ -3168,12 +3123,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 class,
                 baseline,
                 text_anchor(run.anchor)
-            )
-            .map_err(|_| invalid("failed to write Packet text"))?;
-            self.write_state_attrs();
-            self.output.push('>');
-            escape_xml_into(&mut self.output, &run.text);
-            self.output.push_str("</text>");
+            )?;
+            self.write_state_attrs()?;
+            self.output.push('>')?;
+            output::escape_xml(&mut self.output, &run.text)?;
+            self.output.push_str("</text>")?;
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
@@ -3183,10 +3137,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fmt(run.origin.x),
                 fmt(run.origin.y),
                 fmt(run.style.font_size),
-            )
-            .map_err(|_| invalid("failed to write Info text"))?;
-            escape_xml_into(&mut self.output, run.text.as_str());
-            self.output.push_str("</text>");
+            )?;
+            output::escape_xml(&mut self.output, run.text.as_str())?;
+            self.output.push_str("</text>")?;
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
@@ -3214,21 +3167,21 @@ impl<'a> DocumentSvgEncoder<'a> {
             return self.emit_zenuml_text(run, semantic_id.as_deref(), text_index);
         }
 
-        self.output.push_str("<text");
+        self.output.push_str("<text")?;
         if let Some(semantic_id) = semantic_id.as_deref() {
-            self.write_gantt_dom_id(semantic_id);
+            self.write_gantt_dom_id(semantic_id)?;
             #[cfg(feature = "layout-cytoscape")]
             if !matches!(self.svg_body, SvgStructureBody::Architecture(_)) {
-                self.write_sidecar_dom_id(semantic_id);
+                self.write_sidecar_dom_id(semantic_id)?;
             }
             #[cfg(not(feature = "layout-cytoscape"))]
-            self.write_sidecar_dom_id(semantic_id);
+            self.write_sidecar_dom_id(semantic_id)?;
         }
         if let Some(class) = self.text_class(run, text_index) {
             let class = class.into_owned();
-            self.output.push_str(" class=\"");
-            self.output.push_str(class.as_str());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_str())?;
+            self.output.push('"')?;
         }
         let font_size = if matches!(self.svg_body, SvgStructureBody::Error(_)) {
             format!("{}px", fmt(run.style.font_size))
@@ -3265,8 +3218,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 text_direction(run.direction),
                 font_size,
                 fmt(run.style.letter_spacing),
-            )
-            .map_err(|_| invalid("failed to write GitGraph branch label style"))?;
+            )?;
         } else {
             write!(
                 self.output,
@@ -3278,13 +3230,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 text_direction(run.direction),
                 font_size,
                 fmt(run.style.letter_spacing),
-            )
-            .map_err(|_| invalid("failed to write text style"))?;
+            )?;
         }
         let families = self.font_families(&run.style.font)?;
-        self.output.push_str(" font-family=\"");
-        escape_attr_into(&mut self.output, families.as_str());
-        self.output.push('"');
+        self.output.push_str(" font-family=\"")?;
+        output::escape_attr(&mut self.output, families.as_str())?;
+        self.output.push('"')?;
         write!(
             self.output,
             " font-weight=\"{}\" font-style=\"{}\" data-merman-bounds=\"{},{},{},{}\" data-merman-text-obligation=\"host_text\"",
@@ -3294,12 +3245,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.bounds.y),
             fmt(run.bounds.width),
             fmt(run.bounds.height),
-        )
-        .map_err(|_| invalid("failed to write text metadata"))?;
+        )?;
         if let Some(language) = run.language.as_deref() {
-            self.output.push_str(" xml:lang=\"");
-            escape_attr_into(&mut self.output, language);
-            self.output.push('"');
+            self.output.push_str(" xml:lang=\"")?;
+            output::escape_attr(&mut self.output, language)?;
+            self.output.push('"')?;
         }
         if let SvgStructureBody::Gantt(body) = self.svg_body
             && self
@@ -3311,8 +3261,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .current_semantic_id()
                 .is_some_and(|id| id.starts_with("gantt.task."))
         {
-            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))
-                .map_err(|_| invalid("failed to write Gantt task text height"))?;
+            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))?;
         }
         self.write_paint("fill", &run.style.fill)?;
         if let Some(stroke) = &run.style.stroke {
@@ -3321,33 +3270,31 @@ impl<'a> DocumentSvgEncoder<'a> {
                 merman_display_list::TextPaintOrder::FillThenStroke => "fill stroke",
                 merman_display_list::TextPaintOrder::StrokeThenFill => "stroke fill",
             };
-            write!(self.output, " paint-order=\"{order}\"")
-                .map_err(|_| invalid("text paint order"))?;
+            write!(self.output, " paint-order=\"{order}\"")?;
         }
-        self.write_state_attrs();
-        self.output.push('>');
+        self.write_state_attrs()?;
+        self.output.push('>')?;
 
         let mut lines = run.text.split('\n');
         if gitgraph_branch_label {
             if let Some(first) = lines.next() {
                 self.output
-                    .push_str(r#"<tspan xml:space="preserve" dy="1em" x="0" class="row">"#);
-                escape_xml_into(&mut self.output, first);
-                self.output.push_str("</tspan>");
+                    .push_str(r#"<tspan xml:space="preserve" dy="1em" x="0" class="row">"#)?;
+                output::escape_xml(&mut self.output, first)?;
+                self.output.push_str("</tspan>")?;
             }
             for line in lines {
                 write!(
                     self.output,
                     "<tspan x=\"0\" dy=\"{}\" class=\"row\">",
                     fmt(run.style.line_height),
-                )
-                .map_err(|_| invalid("failed to write GitGraph multiline text"))?;
-                escape_xml_into(&mut self.output, line);
-                self.output.push_str("</tspan>");
+                )?;
+                output::escape_xml(&mut self.output, line)?;
+                self.output.push_str("</tspan>")?;
             }
         } else {
             if let Some(first) = lines.next() {
-                escape_xml_into(&mut self.output, first);
+                output::escape_xml(&mut self.output, first)?;
             }
             for line in lines {
                 write!(
@@ -3355,13 +3302,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                     "<tspan x=\"{}\" dy=\"{}\">",
                     fmt(run.origin.x),
                     fmt(run.style.line_height),
-                )
-                .map_err(|_| invalid("failed to write multiline text"))?;
-                escape_xml_into(&mut self.output, line);
-                self.output.push_str("</tspan>");
+                )?;
+                output::escape_xml(&mut self.output, line)?;
+                self.output.push_str("</tspan>")?;
             }
         }
-        self.output.push_str("</text>");
+        self.output.push_str("</text>")?;
         Ok(())
     }
 
@@ -3371,7 +3317,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         semantic_id: Option<&str>,
         text_index: Option<usize>,
     ) -> Result<()> {
-        self.output.push_str("<text");
+        self.output.push_str("<text")?;
         let families = self.font_families(&run.style.font)?;
         write!(
             self.output,
@@ -3390,35 +3336,34 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.bounds.y),
             fmt(run.bounds.width),
             fmt(run.bounds.height),
-        )
-        .map_err(|_| invalid("failed to write ZenUML text attributes"))?;
+        )?;
         if let Some(language) = run.language.as_deref() {
-            self.output.push_str(" xml:lang=\"");
-            escape_attr_into(&mut self.output, language);
-            self.output.push('"');
+            self.output.push_str(" xml:lang=\"")?;
+            output::escape_attr(&mut self.output, language)?;
+            self.output.push('"')?;
         }
         if let Some(semantic_id) = semantic_id
             && let SvgStructureBody::Zenuml(body) = self.svg_body
             && let Some(statement_id) = body.semantic_data_statements.get(semantic_id)
         {
-            self.output.push_str(" data-statement=\"");
-            escape_attr_into(&mut self.output, statement_id);
-            self.output.push('"');
+            self.output.push_str(" data-statement=\"")?;
+            output::escape_attr(&mut self.output, statement_id)?;
+            self.output.push('"')?;
         }
         self.write_paint("fill", &run.style.fill)?;
-        self.write_state_attrs();
+        self.write_state_attrs()?;
         if let Some(class) = self
             .text_class(run, text_index)
             .map(|class| class.into_owned())
         {
-            self.output.push_str(" class=\"");
-            escape_attr_into(&mut self.output, class.as_str());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            output::escape_attr(&mut self.output, class.as_str())?;
+            self.output.push('"')?;
         }
-        self.output.push('>');
+        self.output.push('>')?;
         let mut lines = run.text.split('\n');
         if let Some(first) = lines.next() {
-            escape_xml_into(&mut self.output, first);
+            output::escape_xml(&mut self.output, first)?;
         }
         for line in lines {
             write!(
@@ -3426,12 +3371,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 "<tspan x=\"{}\" dy=\"{}\">",
                 fmt(run.origin.x),
                 fmt(run.style.line_height),
-            )
-            .map_err(|_| invalid("failed to write ZenUML multiline text"))?;
-            escape_xml_into(&mut self.output, line);
-            self.output.push_str("</tspan>");
+            )?;
+            output::escape_xml(&mut self.output, line)?;
+            self.output.push_str("</tspan>")?;
         }
-        self.output.push_str("</text>");
+        self.output.push_str("</text>")?;
         Ok(())
     }
 
@@ -3472,46 +3416,43 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.bounds.height),
             fmt(bounds.width),
             fmt(bounds.height),
-        )
-        .map_err(|_| invalid("failed to write Mindmap label shell"))?;
+        )?;
         if wrap_container {
             write!(
                 self.output,
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
                 fmt(max_width),
                 fmt(max_width),
-            )
-            .map_err(|_| invalid("failed to write wrapped Mindmap label style"))?;
+            )?;
         } else {
             write!(
                 self.output,
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
                 fmt(max_width),
-            )
-            .map_err(|_| invalid("failed to write Mindmap label style"))?;
+            )?;
         }
         self.output
-            .push_str(r#""><span class="nodeLabel markdown-node-label">"#);
+            .push_str(r#""><span class="nodeLabel markdown-node-label">"#)?;
         self.output.push_str(&super::mindmap::mindmap_label_xhtml(
             node.label_source.as_str(),
             self.mermaid_config
                 .as_ref()
                 .ok_or_else(|| invalid("Mindmap SVG serializer is missing effective config"))?,
             None,
-        )?);
-        self.output.push_str("</span></div></foreignObject></g>");
+        )?)?;
+        self.output.push_str("</span></div></foreignObject></g>")?;
         Ok(())
     }
 
     fn emit_c4_text(&mut self, run: &TextRun, text_index: Option<usize>) -> Result<()> {
-        self.output.push_str("<text");
+        self.output.push_str("<text")?;
         if let Some(class) = self
             .text_class(run, text_index)
             .map(|class| class.into_owned())
         {
-            self.output.push_str(" class=\"");
-            escape_attr_into(&mut self.output, class.as_str());
-            self.output.push('"');
+            self.output.push_str(" class=\"")?;
+            output::escape_attr(&mut self.output, class.as_str())?;
+            self.output.push('"')?;
         }
         write!(
             self.output,
@@ -3524,15 +3465,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.bounds.y),
             fmt(run.bounds.width),
             fmt(run.bounds.height),
-        )
-        .map_err(|_| invalid("failed to write C4 text metadata"))?;
+        )?;
         if let Some(language) = run.language.as_deref() {
-            self.output.push_str(" xml:lang=\"");
-            escape_attr_into(&mut self.output, language);
-            self.output.push('"');
+            self.output.push_str(" xml:lang=\"")?;
+            output::escape_attr(&mut self.output, language)?;
+            self.output.push('"')?;
         }
         let families = self.font_families(&run.style.font)?;
-        self.output.push_str(" style=\"");
+        self.output.push_str(" style=\"")?;
         write!(
             self.output,
             "text-anchor: {}; font-size: {}px; font-weight: {}; font-family: {};",
@@ -3540,37 +3480,34 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(run.style.font_size),
             run.style.font.weight,
             escaped_attr(families.as_str()),
-        )
-        .map_err(|_| invalid("failed to write C4 text style"))?;
+        )?;
         if self
             .current_semantic_id()
             .is_some_and(|id| id.starts_with("c4.shape."))
             && let Paint::Solid { color } = &run.style.fill
         {
-            write!(self.output, " fill: {} !important;", color_css(*color),)
-                .map_err(|_| invalid("failed to write C4 shape text fill"))?;
+            write!(self.output, " fill: {} !important;", color_css(*color),)?;
         }
-        self.output.push('"');
+        self.output.push('"')?;
         self.write_paint("fill", &run.style.fill)?;
-        self.write_state_attrs();
-        self.output.push('>');
+        self.write_state_attrs()?;
+        self.output.push('>')?;
         for (index, line) in run.text.split('\n').enumerate() {
-            self.output.push_str("<tspan");
+            self.output.push_str("<tspan")?;
             if index > 0 {
                 write!(
                     self.output,
                     " x=\"{}\" dy=\"{}\"",
                     fmt(run.origin.x),
                     fmt(run.style.line_height),
-                )
-                .map_err(|_| invalid("failed to write multiline C4 text"))?;
+                )?;
             }
             self.output
-                .push_str(" alignment-baseline=\"mathematical\">");
-            escape_xml_into(&mut self.output, line);
-            self.output.push_str("</tspan>");
+                .push_str(" alignment-baseline=\"mathematical\">")?;
+            output::escape_xml(&mut self.output, line)?;
+            self.output.push_str("</tspan>")?;
         }
-        self.output.push_str("</text>");
+        self.output.push_str("</text>")?;
         Ok(())
     }
 
@@ -3582,7 +3519,8 @@ impl<'a> DocumentSvgEncoder<'a> {
     ) -> Result<()> {
         let class = self
             .text_class(run, text_index)
-            .unwrap_or(Cow::Borrowed("nodeLabel"));
+            .unwrap_or(Cow::Borrowed("nodeLabel"))
+            .into_owned();
         let wrapper_class = if semantic_id.is_some_and(|id| id.ends_with(".label")) {
             "label edgeLabel"
         } else {
@@ -3601,16 +3539,15 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.height),
             fmt(bounds.width.max(0.0)),
             fmt(bounds.height.max(0.0)),
-            escaped_attr(class.as_ref()),
-        )
-        .map_err(|_| invalid("failed to write ER HTML text wrapper"))?;
+            escaped_attr(class.as_str()),
+        )?;
         for (index, line) in run.text.split('\n').enumerate() {
             if index > 0 {
-                self.output.push_str("<br/>");
+                self.output.push_str("<br/>")?;
             }
-            escape_xml_into(&mut self.output, line);
+            output::escape_xml(&mut self.output, line)?;
         }
-        self.output.push_str("</span></div></foreignObject></g>");
+        self.output.push_str("</span></div></foreignObject></g>")?;
         Ok(())
     }
 
@@ -3651,11 +3588,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         let bounds = run.bounds;
 
         if semantic_id.starts_with("block.edge.") && semantic_id.ends_with(".label") {
-            self.output.push_str("<g class=\"label\"");
+            self.output.push_str("<g class=\"label\"")?;
             if let Some(data_id) = data_id.as_deref() {
-                self.output.push_str(" data-id=\"");
-                escape_attr_into(&mut self.output, data_id);
-                self.output.push('"');
+                self.output.push_str(" data-id=\"")?;
+                output::escape_attr(&mut self.output, data_id)?;
+                self.output.push('"')?;
             }
             write!(
                 self.output,
@@ -3666,16 +3603,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fmt(bounds.height.max(0.0)),
                 fmt(max_width),
                 escaped_attr(class.as_str()),
-            )
-            .map_err(|_| invalid("failed to write Block edge label shell"))?;
-            escape_xml_into(&mut self.output, run.text.as_str());
+            )?;
+            output::escape_xml(&mut self.output, run.text.as_str())?;
             self.output
-                .push_str("</p></span></div></foreignObject></g>");
+                .push_str("</p></span></div></foreignObject></g>")?;
             return Ok(());
         }
 
-        self.output.push_str("<g class=\"label\" style=\"");
-        escape_attr_into(&mut self.output, text_style.as_str());
+        self.output.push_str("<g class=\"label\" style=\"")?;
+        output::escape_attr(&mut self.output, text_style.as_str())?;
         write!(
             self.output,
             "\" transform=\"translate({}, {})\"><rect/><foreignObject width=\"{}\" height=\"{}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" style=\"",
@@ -3683,24 +3619,22 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.y),
             fmt(bounds.width.max(0.0)),
             fmt(bounds.height.max(0.0)),
-        )
-        .map_err(|_| invalid("failed to write Block node label shell"))?;
-        escape_attr_into(&mut self.output, div_prefix.as_str());
+        )?;
+        output::escape_attr(&mut self.output, div_prefix.as_str())?;
         write!(
             self.output,
             "display: table-cell; white-space: nowrap; line-height: 1.5;\"><span class=\"{}\"",
             escaped_attr(class.as_str()),
-        )
-        .map_err(|_| invalid("failed to write Block node label style"))?;
+        )?;
         if !text_style.is_empty() {
-            self.output.push_str(" style=\"");
-            escape_attr_into(&mut self.output, text_style.as_str());
-            self.output.push('"');
+            self.output.push_str(" style=\"")?;
+            output::escape_attr(&mut self.output, text_style.as_str())?;
+            self.output.push('"')?;
         }
-        self.output.push_str("><p>");
-        escape_xml_into(&mut self.output, run.text.as_str());
+        self.output.push_str("><p>")?;
+        output::escape_xml(&mut self.output, run.text.as_str())?;
         self.output
-            .push_str("</p></span></div></foreignObject></g>");
+            .push_str("</p></span></div></foreignObject></g>")?;
         Ok(())
     }
 
@@ -3845,48 +3779,51 @@ impl<'a> DocumentSvgEncoder<'a> {
         None
     }
 
-    fn write_zenuml_path_attrs(&mut self, path_id: &str) {
+    fn write_zenuml_path_attrs(&mut self, path_id: &str) -> Result<()> {
         let SvgStructureBody::Zenuml(body) = self.svg_body else {
-            return;
+            return Ok(());
         };
         if let Some(icon) = body.path_data_icons.get(path_id) {
-            self.output.push_str(" data-icon=\"");
-            escape_attr_into(&mut self.output, icon);
-            self.output.push('"');
+            self.output.push_str(" data-icon=\"")?;
+            output::escape_attr(&mut self.output, icon)?;
+            self.output.push('"')?;
         }
+        Ok(())
     }
 
-    fn write_gantt_dom_id(&mut self, key: &str) {
+    fn write_gantt_dom_id(&mut self, key: &str) -> Result<()> {
         let Some(raw_id) = (match self.svg_body {
             SvgStructureBody::Gantt(body) => body.dom_ids.get(key),
             _ => None,
         })
         .cloned() else {
-            return;
+            return Ok(());
         };
-        self.output.push_str(" id=\"");
-        escape_attr_into(&mut self.output, self.diagram_id.as_str());
-        self.output.push('-');
-        escape_attr_into(&mut self.output, raw_id.as_str());
-        self.output.push('"');
+        self.output.push_str(" id=\"")?;
+        output::escape_attr(&mut self.output, self.diagram_id.as_str())?;
+        self.output.push('-')?;
+        output::escape_attr(&mut self.output, raw_id.as_str())?;
+        self.output.push('"')?;
+        Ok(())
     }
 
-    fn write_journey_dom_id(&mut self, key: &str) {
+    fn write_journey_dom_id(&mut self, key: &str) -> Result<()> {
         let Some(raw_id) = (match self.svg_body {
             SvgStructureBody::Journey(body) => body.dom_ids.get(key),
             _ => None,
         })
         .cloned() else {
-            return;
+            return Ok(());
         };
-        self.output.push_str(" id=\"");
-        escape_attr_into(&mut self.output, self.diagram_id.as_str());
-        self.output.push('-');
-        escape_attr_into(&mut self.output, raw_id.as_str());
-        self.output.push('"');
+        self.output.push_str(" id=\"")?;
+        output::escape_attr(&mut self.output, self.diagram_id.as_str())?;
+        self.output.push('-')?;
+        output::escape_attr(&mut self.output, raw_id.as_str())?;
+        self.output.push('"')?;
+        Ok(())
     }
 
-    fn write_sidecar_dom_id(&mut self, key: &str) {
+    fn write_sidecar_dom_id(&mut self, key: &str) -> Result<()> {
         let raw_id = match self.svg_body {
             SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
             SvgStructureBody::Er(body) => body.dom_ids.get(key),
@@ -3896,13 +3833,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             _ => None,
         };
         let Some(raw_id) = raw_id else {
-            return;
+            return Ok(());
         };
-        self.output.push_str(" id=\"");
-        escape_attr_into(&mut self.output, self.diagram_id.as_str());
-        self.output.push('-');
-        escape_attr_into(&mut self.output, raw_id.as_str());
-        self.output.push('"');
+        self.output.push_str(" id=\"")?;
+        output::escape_attr(&mut self.output, self.diagram_id.as_str())?;
+        self.output.push('-')?;
+        output::escape_attr(&mut self.output, raw_id.as_str())?;
+        self.output.push('"')?;
+        Ok(())
     }
 
     fn write_block_inline_path_style(
@@ -3968,7 +3906,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                                 declarations.push(',');
                             }
                             write!(declarations, "{}", fmt(*value))
-                                .expect("writing to String cannot fail");
+                                .map_err(|_| invalid("SVG component formatting failed"))?;
                         }
                     } else {
                         declarations.push_str("none");
@@ -4031,12 +3969,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                     ))
                 ),
             }
-            .map_err(|_| invalid("failed to write Block inline path style"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
         }
 
-        self.output.push_str(" style=\"");
-        escape_attr_into(&mut self.output, declarations.as_str());
-        self.output.push('"');
+        self.output.push_str(" style=\"")?;
+        output::escape_attr(&mut self.output, declarations.as_str())?;
+        self.output.push('"')?;
         Ok(())
     }
 
@@ -4073,21 +4011,20 @@ impl<'a> DocumentSvgEncoder<'a> {
         let fill = paint_css(fill)?;
         let stroke = paint_css(&stroke.paint)?;
 
-        self.output.push_str(" style=\"fill:");
-        escape_attr_into(&mut self.output, fill.as_str());
-        self.output.push_str(" !important;stroke:");
-        escape_attr_into(&mut self.output, stroke.as_str());
-        self.output.push_str(" !important");
+        self.output.push_str(" style=\"fill:")?;
+        output::escape_attr(&mut self.output, fill.as_str())?;
+        self.output.push_str(" !important;stroke:")?;
+        output::escape_attr(&mut self.output, stroke.as_str())?;
+        self.output.push_str(" !important")?;
         if let Some(radius) = radius {
             write!(
                 self.output,
                 ";rx:{}px !important;ry:{}px !important",
                 fmt(radius),
                 fmt(radius),
-            )
-            .map_err(|_| invalid("failed to write C4 shape radius style"))?;
+            )?;
         }
-        self.output.push('"');
+        self.output.push('"')?;
         Ok(())
     }
 
@@ -4236,14 +4173,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         write!(
             self.output,
             "<image href=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" opacity=\"{}\" preserveAspectRatio=\"none\"",
-            escaped_attr(uri.as_str()),
+            escaped_attr(uri),
             fmt(bounds.x),
             fmt(bounds.y),
             fmt(bounds.width),
             fmt(bounds.height),
             fmt(self.state.opacity * opacity),
-        )
-        .map_err(|_| invalid("failed to write SVG image"))?;
+        )?;
         if let Some(fallback) = fallback {
             write!(
                 self.output,
@@ -4251,11 +4187,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fallback_reason(fallback.reason),
                 escaped_attr(fallback.source.family.as_str()),
                 escaped_attr(fallback.source.effect.as_str()),
-            )
-            .map_err(|_| invalid("failed to write fallback metadata"))?;
+            )?;
         }
-        self.write_transform_and_blend();
-        self.output.push_str("/>");
+        self.write_transform_and_blend()?;
+        self.output.push_str("/>")?;
         Ok(())
     }
 
@@ -4273,9 +4208,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_path_style(&mut self, style: &PathStyle) -> Result<()> {
-        self.output.push_str(" fill-rule=\"");
-        self.output.push_str(fill_rule_name(style.fill_rule));
-        self.output.push('"');
+        self.output.push_str(" fill-rule=\"")?;
+        self.output.push_str(fill_rule_name(style.fill_rule))?;
+        self.output.push('"')?;
         self.write_fill_stroke_style(style)
     }
 
@@ -4283,7 +4218,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if let Some(fill) = style.fill.as_ref() {
             self.write_paint("fill", fill)?;
         } else {
-            self.output.push_str(" fill=\"none\"");
+            self.output.push_str(" fill=\"none\"")?;
         }
         self.write_stroke_style(style.stroke.as_ref())
     }
@@ -4301,69 +4236,64 @@ impl<'a> DocumentSvgEncoder<'a> {
                 line_cap(stroke.line_cap),
                 line_join(stroke.line_join),
                 fmt(stroke.miter_limit),
-            )
-            .map_err(|_| invalid("failed to write stroke style"))?;
+            )?;
             if !stroke.dash_array.is_empty() {
-                self.output.push_str(" stroke-dasharray=\"");
+                self.output.push_str(" stroke-dasharray=\"")?;
                 for (index, value) in stroke.dash_array.iter().enumerate() {
                     if index > 0 {
-                        self.output.push(',');
+                        self.output.push(',')?;
                     }
-                    write!(self.output, "{}", fmt(*value))
-                        .map_err(|_| invalid("failed to write stroke dash"))?;
+                    write!(self.output, "{}", fmt(*value))?;
                 }
-                self.output.push('"');
+                self.output.push('"')?;
             }
             if stroke.dash_offset != 0.0 {
                 write!(
                     self.output,
                     " stroke-dashoffset=\"{}\"",
                     fmt(stroke.dash_offset)
-                )
-                .map_err(|_| invalid("failed to write stroke dash offset"))?;
+                )?;
             }
         } else {
-            self.output.push_str(" stroke=\"none\"");
+            self.output.push_str(" stroke=\"none\"")?;
         }
         Ok(())
     }
 
     fn write_paint(&mut self, attribute: &str, paint: &Paint) -> Result<()> {
-        self.output.push(' ');
-        self.output.push_str(attribute);
-        self.output.push_str("=\"");
+        self.output.push(' ')?;
+        self.output.push_str(attribute)?;
+        self.output.push_str("=\"")?;
         match paint {
             Paint::Solid { color } => {
-                self.output.push_str(color_css(*color).as_str());
-                self.output.push('"');
+                self.output.push_str(color_css(*color).as_str())?;
+                self.output.push('"')?;
                 if color.alpha != u8::MAX {
                     write!(
                         self.output,
                         " {}-opacity=\"{}\"",
                         attribute,
                         fmt(f64::from(color.alpha) / 255.0),
-                    )
-                    .map_err(|_| invalid("failed to write paint opacity"))?;
+                    )?;
                 }
             }
             Paint::Resource { id } => {
                 let svg_id = self.svg_resource_id(id.as_str())?;
-                write!(self.output, "url(#{})\"", escaped_attr(svg_id.as_str()))
-                    .map_err(|_| invalid("failed to write resource paint"))?;
+                write!(self.output, "url(#{})\"", escaped_attr(svg_id.as_str()))?;
             }
         }
         Ok(())
     }
 
-    fn write_state_attrs(&mut self) {
-        self.write_transform_and_blend();
+    fn write_state_attrs(&mut self) -> Result<()> {
+        self.write_transform_and_blend()?;
         if self.state.opacity != 1.0 {
-            write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))
-                .expect("writing to String cannot fail");
+            write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
         }
+        Ok(())
     }
 
-    fn write_transform_and_blend(&mut self) {
+    fn write_transform_and_blend(&mut self) -> Result<()> {
         let family_text = self
             .current_semantic_id()
             .is_some_and(|id| match self.svg_body {
@@ -4388,17 +4318,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fmt(transform.e),
                 fmt(transform.f),
                 fmt(rotation),
-            )
-            .expect("writing to String cannot fail");
+            )?;
         } else if self.state.transform != Transform::IDENTITY {
             write!(
                 self.output,
                 " transform=\"matrix({})\"",
                 matrix_attr(self.state.transform)
-            )
-            .expect("writing to String cannot fail");
+            )?;
         }
-        write_blend_style(&mut self.output, self.state.blend_mode);
+        write_blend_style(&mut self.output, self.state.blend_mode)?;
+        Ok(())
     }
 
     fn font_families(&self, font: &merman_display_list::FontDescriptor) -> Result<String> {
@@ -4433,7 +4362,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
     }
 
-    fn path_resource(&self, id: &ResourceId) -> Result<&PathResource> {
+    fn path_resource(&self, id: &ResourceId) -> Result<&'a PathResource> {
         match self.resources.get(id.as_str()) {
             Some(DrawingResource::Path(path)) => Ok(path),
             Some(_) => Err(invalid(format!("resource {} is not a path", id.as_str()))),
@@ -4441,7 +4370,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
     }
 
-    fn image_resource(&self, id: &ResourceId) -> Result<&merman_display_list::ImageResource> {
+    fn image_resource(&self, id: &ResourceId) -> Result<&'a merman_display_list::ImageResource> {
         match self.resources.get(id.as_str()) {
             Some(DrawingResource::Image(image)) => Ok(image),
             Some(_) => Err(invalid(format!("resource {} is not an image", id.as_str()))),
@@ -4932,10 +4861,8 @@ fn invalid(message: impl Into<String>) -> Error {
     }
 }
 
-fn escaped_attr(value: &str) -> String {
-    let mut output = String::new();
-    escape_attr_into(&mut output, value);
-    output
+fn escaped_attr(value: impl std::fmt::Display) -> impl std::fmt::Display {
+    super::util::escape_attr_display(value)
 }
 
 fn escaped_css_string(value: &str) -> String {
@@ -4998,60 +4925,66 @@ fn offset_path_segments(segments: &[PathSegment], dx: f64, dy: f64) -> Vec<PathS
         .collect()
 }
 
-fn path_d(segments: &[PathSegment]) -> String {
-    let mut output = String::new();
-    for segment in segments {
-        if !output.is_empty() {
-            output.push(' ');
+fn path_d(segments: &[PathSegment]) -> PathData<'_> {
+    PathData(segments)
+}
+
+struct PathData<'a>(&'a [PathSegment]);
+
+impl std::fmt::Display for PathData<'_> {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (index, segment) in self.0.iter().enumerate() {
+            if index != 0 {
+                output.write_str(" ")?;
+            }
+            match segment {
+                PathSegment::MoveTo { to } => write!(output, "M {} {}", fmt(to.x), fmt(to.y)),
+                PathSegment::LineTo { to } => write!(output, "L {} {}", fmt(to.x), fmt(to.y)),
+                PathSegment::QuadTo { control, to } => write!(
+                    output,
+                    "Q {} {} {} {}",
+                    fmt(control.x),
+                    fmt(control.y),
+                    fmt(to.x),
+                    fmt(to.y)
+                ),
+                PathSegment::CubicTo {
+                    control1,
+                    control2,
+                    to,
+                } => write!(
+                    output,
+                    "C {} {} {} {} {} {}",
+                    fmt(control1.x),
+                    fmt(control1.y),
+                    fmt(control2.x),
+                    fmt(control2.y),
+                    fmt(to.x),
+                    fmt(to.y)
+                ),
+                PathSegment::ArcTo {
+                    radius_x,
+                    radius_y,
+                    x_axis_rotation_degrees,
+                    large_arc,
+                    sweep_clockwise,
+                    to,
+                } => write!(
+                    output,
+                    "A {} {} {} {} {} {} {}",
+                    fmt(*radius_x),
+                    fmt(*radius_y),
+                    fmt(*x_axis_rotation_degrees),
+                    u8::from(*large_arc),
+                    u8::from(*sweep_clockwise),
+                    fmt(to.x),
+                    fmt(to.y)
+                ),
+                PathSegment::Close => write!(output, "Z"),
+            }?;
         }
-        match segment {
-            PathSegment::MoveTo { to } => write!(output, "M {} {}", fmt(to.x), fmt(to.y)),
-            PathSegment::LineTo { to } => write!(output, "L {} {}", fmt(to.x), fmt(to.y)),
-            PathSegment::QuadTo { control, to } => write!(
-                output,
-                "Q {} {} {} {}",
-                fmt(control.x),
-                fmt(control.y),
-                fmt(to.x),
-                fmt(to.y)
-            ),
-            PathSegment::CubicTo {
-                control1,
-                control2,
-                to,
-            } => write!(
-                output,
-                "C {} {} {} {} {} {}",
-                fmt(control1.x),
-                fmt(control1.y),
-                fmt(control2.x),
-                fmt(control2.y),
-                fmt(to.x),
-                fmt(to.y)
-            ),
-            PathSegment::ArcTo {
-                radius_x,
-                radius_y,
-                x_axis_rotation_degrees,
-                large_arc,
-                sweep_clockwise,
-                to,
-            } => write!(
-                output,
-                "A {} {} {} {} {} {} {}",
-                fmt(*radius_x),
-                fmt(*radius_y),
-                fmt(*x_axis_rotation_degrees),
-                u8::from(*large_arc),
-                u8::from(*sweep_clockwise),
-                fmt(to.x),
-                fmt(to.y)
-            ),
-            PathSegment::Close => write!(output, "Z"),
-        }
-        .expect("writing to String cannot fail");
+        Ok(())
     }
-    output
 }
 
 fn matrix_attr(transform: Transform) -> String {
@@ -5189,11 +5122,11 @@ fn blend_css(blend_mode: BlendMode) -> Option<&'static str> {
     }
 }
 
-fn write_blend_style(output: &mut String, blend_mode: BlendMode) {
+fn write_blend_style(output: &mut SvgOutput<'_>, blend_mode: BlendMode) -> Result<()> {
     if let Some(value) = blend_css(blend_mode) {
-        write!(output, " style=\"mix-blend-mode: {};\"", value)
-            .expect("writing to String cannot fail");
+        write!(output, " style=\"mix-blend-mode: {};\"", value)?;
     }
+    Ok(())
 }
 
 fn spread_method(spread: GradientSpread) -> &'static str {
@@ -5220,12 +5153,25 @@ fn fallback_reason(reason: merman_display_list::FallbackReason) -> &'static str 
     }
 }
 
-fn data_uri(media_type: &str, data: &[u8]) -> String {
-    format!(
-        "data:{};base64,{}",
-        safe_media_type(media_type),
-        STANDARD.encode(data)
-    )
+fn data_uri<'a>(media_type: &str, data: &'a [u8]) -> impl std::fmt::Display + 'a {
+    struct DataUri<'a> {
+        media_type: String,
+        data: &'a [u8],
+    }
+    impl std::fmt::Display for DataUri<'_> {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                formatter,
+                "data:{};base64,{}",
+                self.media_type,
+                base64::display::Base64Display::new(self.data, &STANDARD)
+            )
+        }
+    }
+    DataUri {
+        media_type: safe_media_type(media_type),
+        data,
+    }
 }
 
 fn safe_media_type(media_type: &str) -> String {
@@ -5241,8 +5187,43 @@ fn safe_media_type(media_type: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{matrix_attr, multiply_transform, path_d, wardley_text_baseline};
+    use super::{
+        SvgOutput, data_uri, escaped_attr, matrix_attr, multiply_transform, path_d,
+        wardley_text_baseline,
+    };
     use merman_display_list::{PathSegment, Point, TextBaseline, Transform};
+
+    #[test]
+    fn nested_path_and_base64_formatters_preserve_output_resource_errors() {
+        use crate::environment::RenderEnvironment;
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let path = [PathSegment::MoveTo {
+            to: Point::new(12345.0, 67890.0),
+        }];
+        for image in [false, true] {
+            let environment = RenderEnvironment::deterministic().with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxSvgBytes, if image { 32 } else { 8 })
+                    .unwrap(),
+            );
+            let session = environment.begin_session().unwrap();
+            let mut output = SvgOutput::new(&session);
+            let error = if image {
+                output.write_fmt(format_args!(
+                    "{}",
+                    escaped_attr(data_uri("image/png", &[42; 64]))
+                ))
+            } else {
+                output.write_fmt(format_args!("{}", escaped_attr(path_d(&path))))
+            }
+            .unwrap_err();
+            assert!(matches!(error, crate::Error::ResourceLimitExceeded(_)));
+            assert!(matches!(
+                output.finish(),
+                Err(crate::Error::ResourceLimitExceeded(_))
+            ));
+        }
+    }
 
     #[test]
     fn path_encoder_preserves_all_protocol_segments() {
@@ -5258,7 +5239,8 @@ mod tests {
                 to: Point::new(7.0, 8.0),
             },
             PathSegment::Close,
-        ]);
+        ])
+        .to_string();
         assert_eq!(d, "M 1 2 L 3 4 Q 5 6 7 8 Z");
     }
 

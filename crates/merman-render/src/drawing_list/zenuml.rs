@@ -27,10 +27,10 @@ use merman_core::diagrams::zenuml::{
     ZenumlDiagramRenderModel, ZenumlStatement, ZenumlStatementKind,
 };
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId,
-    SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection,
-    TextObligation, TextRun, TextStyle, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, LineCap,
+    LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Viewport,
 };
 use roxmltree::{Document as XmlDocument, Node};
 use serde_json::{Value, json};
@@ -73,7 +73,7 @@ pub(crate) fn build_zenuml_document(
     pair: &ZenumlPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     ZenUmlBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -135,7 +135,7 @@ impl<'a> ZenUmlBuilder<'a> {
         pair: &'a ZenumlPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

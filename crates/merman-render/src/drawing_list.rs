@@ -65,6 +65,90 @@ use zenuml::ZenumlSvgBody;
 
 use self::builder::DrawingListBuilder;
 
+/// Output-target admission policy, separate from document correctness.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DocumentBudget {
+    DrawingList(DrawingListLimits),
+    SvgOperation,
+}
+
+impl From<DrawingListLimits> for DocumentBudget {
+    fn from(limits: DrawingListLimits) -> Self {
+        Self::DrawingList(limits)
+    }
+}
+
+impl DocumentBudget {
+    fn check_footprint(
+        self,
+        footprint: &merman_display_list::DrawingListFootprint,
+        session: &RenderSession,
+    ) -> Result<()> {
+        if let Self::DrawingList(limits) = self {
+            footprint.check_limits(&limits).map_err(|error| {
+                operation_document_error(Error::DrawingListContract(error), session)
+            })?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate(
+        self,
+        document: &DrawingListDocument,
+        session: &RenderSession,
+    ) -> Result<()> {
+        document.validate_with_control(|event| {
+            session.checkpoint(OperationPhase::Emit)?;
+            match self {
+                Self::DrawingList(limits) => {
+                    limits.admit_validation_event(event).map_err(|error| {
+                        operation_document_error(Error::DrawingListContract(error), session)
+                    })
+                }
+                Self::SvgOperation => {
+                    if let merman_display_list::ValidationEvent::ResourceCount {
+                        resource,
+                        actual,
+                    } = event
+                    {
+                        // A category count is a lower-bound preflight, not a second charge. The
+                        // complete footprint is charged once, after validation and before encoding.
+                        let units = match resource {
+                            "text_bytes" | "font_bytes" | "image_bytes" | "image_pixels"
+                            | "fallback_pixels" => actual.div_ceil(1024),
+                            "commands"
+                            | "resources"
+                            | "fallbacks"
+                            | "path_segments"
+                            | "stroke_dash_entries"
+                            | "nesting_depth"
+                            | "glyphs" => actual,
+                            _ => {
+                                return Err(Error::DrawingListContract(
+                                    merman_display_list::DrawingListError::InvalidDocument(
+                                        "unknown validation resource category".into(),
+                                    ),
+                                ));
+                            }
+                        };
+                        let units = usize::try_from(units).map_err(|_| {
+                            Error::DrawingListContract(
+                                merman_display_list::DrawingListError::InvalidDocument(
+                                    "validation work count overflows usize".into(),
+                                ),
+                            )
+                        })?;
+                        session
+                            .work_meter()
+                            .preflight_at(units, OperationPhase::Emit)?;
+                    }
+                    Ok(())
+                }
+            }
+        })
+    }
+}
+
 /// The private SVG projection kept beside the public renderer-neutral document.
 #[derive(Debug, Clone)]
 pub(crate) struct SvgStructureSidecar {
@@ -125,10 +209,10 @@ pub(crate) struct RenderDocument {
 }
 
 impl RenderDocument {
-    /// Applies target-independent document limits and charges the operation once per encoding.
+    /// Applies target admission and charges shared document work once per encoding.
     pub(crate) fn admit_serialization(
         &self,
-        limits: &DrawingListLimits,
+        budget: impl Into<DocumentBudget>,
         session: &RenderSession,
     ) -> Result<()> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -137,9 +221,7 @@ impl RenderDocument {
             .footprint()
             .map_err(Error::DrawingListContract)?;
         // Reject cumulative protocol limits before charging an unreturnable candidate.
-        footprint.check_limits(limits).map_err(|error| {
-            operation_document_error(Error::DrawingListContract(error), session)
-        })?;
+        budget.into().check_footprint(&footprint, session)?;
         let units = footprint.work_units().map_err(Error::DrawingListContract)?;
         session
             .work_meter()
@@ -659,9 +741,10 @@ pub(crate) fn build_for_family(
     family: &BuiltinFamilyArtifact,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
+    let limits = limits.into();
     let family_kind = family.kind();
     if metadata
         .effective_config
@@ -809,7 +892,7 @@ fn build_error_document(
     layout: &ErrorDiagramLayout,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     session.checkpoint(OperationPhase::Emit)?;

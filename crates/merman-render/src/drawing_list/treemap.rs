@@ -25,10 +25,10 @@ use crate::{Error, Result};
 use merman_core::diagrams::treemap::TreemapDiagramRenderModel;
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    BlendMode, Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule,
-    FontDescriptor, FontStyle, LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect,
-    ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline,
-    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    BlendMode, Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle,
+    LineCap, LineJoin, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
+    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -48,7 +48,7 @@ pub(crate) fn build_treemap_document(
     pair: &TreemapPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     TreemapBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -77,7 +77,7 @@ impl<'a> TreemapBuilder<'a> {
         pair: &'a TreemapPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -1213,7 +1213,10 @@ mod tests {
             .expect("render session starts");
         family::prepare(parsed, &LayoutOptions::default(), session)
             .expect("Treemap layout succeeds")
-            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .render_drawing_list(
+                DrawingListPolicy::VectorOnly,
+                merman_display_list::DrawingListLimits::default(),
+            )
             .expect("Treemap DrawingList succeeds")
             .document()
             .clone()

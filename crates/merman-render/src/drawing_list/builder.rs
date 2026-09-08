@@ -1,11 +1,12 @@
 use crate::environment::RenderSession;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
+#[cfg(test)]
+use merman_display_list::DrawingListLimits;
 use merman_display_list::{
     CoordinateSystem, DRAWING_LIST_VERSION, DrawingCommand, DrawingListDocument, DrawingListError,
-    DrawingListFootprint, DrawingListLimits, DrawingListPolicy, DrawingResource,
-    LinearGradientResource, PathResource, PathSegment, PathStyle, ResourceId, SemanticAnnotation,
-    TextObligation, TextRun, Viewport,
+    DrawingListFootprint, DrawingListPolicy, DrawingResource, LinearGradientResource, PathResource,
+    PathSegment, PathStyle, ResourceId, SemanticAnnotation, TextObligation, TextRun, Viewport,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -16,7 +17,7 @@ use std::collections::BTreeMap;
 /// they introduce additional resource or scope kinds without weakening the final protocol
 /// validator.
 pub(crate) struct DrawingListBuilder<'a> {
-    limits: DrawingListLimits,
+    budget: super::DocumentBudget,
     session: &'a RenderSession,
     policy: DrawingListPolicy,
     usage: DrawingListFootprint,
@@ -29,11 +30,11 @@ pub(crate) struct DrawingListBuilder<'a> {
 impl<'a> DrawingListBuilder<'a> {
     pub(crate) fn new(
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Self {
         Self {
-            limits,
+            budget: limits.into(),
             session,
             policy,
             usage: DrawingListFootprint::default(),
@@ -438,12 +439,7 @@ impl<'a> DrawingListBuilder<'a> {
             fallbacks: Vec::new(),
             extensions,
         };
-        document.validate_with_control(|event| {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            self.limits.admit_validation_event(event).map_err(|error| {
-                super::operation_document_error(Error::DrawingListContract(error), self.session)
-            })
-        })?;
+        self.budget.validate(&document, self.session)?;
         let actual = document.footprint().map_err(Error::DrawingListContract)?;
         if actual != self.usage {
             return Err(contract_error(format!(
@@ -455,9 +451,12 @@ impl<'a> DrawingListBuilder<'a> {
     }
 
     fn preflight(&self, usage: DrawingListFootprint) -> Result<()> {
-        usage
-            .check_limits(&self.limits)
-            .map_err(Error::DrawingListContract)?;
+        // Keep construction rejection local; the family boundary latches protocol terminals.
+        if let super::DocumentBudget::DrawingList(limits) = self.budget {
+            usage
+                .check_limits(&limits)
+                .map_err(Error::DrawingListContract)?;
+        }
         let work = usage.work_units().map_err(Error::DrawingListContract)?;
         self.session
             .work_meter()
@@ -885,7 +884,11 @@ mod tests {
         assert_eq!(visited.get(), 2);
         assert!(builder.commands.is_empty());
 
-        builder.limits.max_commands = 0;
+        builder.budget = DrawingListLimits {
+            max_commands: 0,
+            ..DrawingListLimits::default()
+        }
+        .into();
         let parts = ["unused"]
             .into_iter()
             .inspect(|_| panic!("command budget must precede text scanning"));

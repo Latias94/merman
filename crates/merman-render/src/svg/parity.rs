@@ -47,6 +47,7 @@ mod label;
 mod layout_debug;
 mod markers;
 mod mindmap;
+mod output;
 mod packet;
 mod path_bounds;
 mod pie;

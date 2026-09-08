@@ -28,10 +28,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 use merman_display_list::{
-    DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor, FontStyle,
-    Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole,
-    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform,
-    Viewport,
+    DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint, PathSegment,
+    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
+    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -51,7 +50,7 @@ pub(crate) fn build_xychart_document(
     pair: &XyChartPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     XyChartBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -74,7 +73,7 @@ impl<'a> XyChartBuilder<'a> {
         pair: &'a XyChartPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

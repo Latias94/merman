@@ -32,7 +32,11 @@ fn render_svg(renderer: &Renderer, source: &str, request: SvgRequest) -> merman:
 
 #[test]
 fn completed_svg_evidence_records_the_canonical_execution_path() {
-    let output = render_svg(&Renderer::new(), "info", svg_request("info-evidence"));
+    let output = render_svg(
+        &Renderer::new(),
+        "packet-beta\n0-7: \"Header\"",
+        svg_request("packet-evidence"),
+    );
     assert_eq!(
         output.evidence().execution_path(),
         OperationExecutionPath::Renderer

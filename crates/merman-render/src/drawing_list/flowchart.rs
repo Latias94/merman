@@ -34,10 +34,10 @@ use merman_core::diagrams::flowchart::{
 use merman_core::svg_security::{MermaidNavigationSecurity, prepare_mermaid_navigation_uri};
 use merman_core::{OperationPhase, ParseMetadata};
 use merman_display_list::{
-    BlendMode, Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule,
-    FontDescriptor, FontStyle, LineCap, LineJoin, MeasurementProvenance, Paint, PathSegment,
-    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
-    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    BlendMode, Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle,
+    LineCap, LineJoin, MeasurementProvenance, Paint, PathSegment, PathStyle, Point, Rect,
+    ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor, TextBaseline,
+    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::{Value, json};
 use std::borrow::Cow;
@@ -54,7 +54,7 @@ pub(crate) fn build_flowchart_document(
     artifact: &FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = FlowchartBuilder::new(
@@ -78,7 +78,7 @@ pub(crate) fn build_swimlane_document(
     artifact: &FlowchartFamilyArtifact<SwimlaneLayout>,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let builder = FlowchartBuilder::new(
@@ -171,7 +171,7 @@ impl<'a> FlowchartBuilder<'a> {
         inputs: FlowchartBuilderInputs<'a>,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         let FlowchartBuilderInputs {
@@ -2756,7 +2756,7 @@ mod tests {
             },
             &metadata,
             DrawingListPolicy::VectorOnly,
-            DrawingListLimits::default(),
+            merman_display_list::DrawingListLimits::default(),
             &session,
         )
         .unwrap();
@@ -2814,7 +2814,7 @@ mod tests {
                 },
                 &metadata,
                 DrawingListPolicy::VectorOnly,
-                DrawingListLimits::default(),
+                merman_display_list::DrawingListLimits::default(),
                 &session,
             )
             .unwrap()
@@ -2926,7 +2926,7 @@ mod tests {
                 },
                 &metadata,
                 DrawingListPolicy::VectorOnly,
-                DrawingListLimits::default(),
+                merman_display_list::DrawingListLimits::default(),
                 &session,
             )
             .unwrap()

@@ -26,9 +26,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 use merman_display_list::{
-    Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, FillRule, FontDescriptor,
-    FontStyle, Paint, PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation,
-    SemanticRole, StrokeStyle, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle,
+    TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun,
     TextStyle as DisplayTextStyle, Viewport,
 };
 use serde_json::json;
@@ -46,7 +46,7 @@ pub(crate) fn build_journey_document(
     pair: &JourneyPair,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
-    limits: DrawingListLimits,
+    limits: impl Into<super::DocumentBudget>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     JourneyBuilder::new(pair, metadata, policy, limits, session)?.build()
@@ -92,7 +92,7 @@ impl<'a> JourneyBuilder<'a> {
         pair: &'a JourneyPair,
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
-        limits: DrawingListLimits,
+        limits: impl Into<super::DocumentBudget>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;

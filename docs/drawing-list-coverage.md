@@ -94,13 +94,21 @@ on cancellation. Focused tests retain the default decoder's nesting rejection, e
 in-memory admission policy without accepting invalid scopes, and reject/cancel PNG validation
 before or during pixel decoding. This is a validation foundation, not yet an SVG policy change.
 
-Caller control over canonical SVG document limits remains an open repair unit. SVG construction,
-pre-serialization admission, and encoder validation still apply protocol defaults; fixing only
-one boundary does not remove the hidden limit. The intended integration separates shared
-correctness validation from target policy: SVG uses the existing operation/work/output budgets,
-while DrawingList output and external decoding retain exact protocol limits. Bounded SVG writing
-and cancellation during expensive validation must remain part of that integration, not be bypassed
-with maximal numeric limits. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain.
+Canonical SVG construction, validation, and serialization admission now use `SvgOperation`, not
+the default DrawingList quantity limits. DrawingList output and external decoding retain their
+exact protocol limits. Both targets share correctness checks and the existing operation meter;
+validation preflights resource work and serialization charges the complete footprint once.
+The public Packet regression expands a roughly 2 KiB label source beyond 16 MiB of rendered text:
+it previously failed at the implicit protocol text ceiling even with both input and rendering
+profiles unbounded, and now requires an actual canonical SVG result. A separate exact-byte test
+checks success at the final SVG length and sticky resource rejection one byte below it.
+
+Canonical emission and root construction share a fallible buffer that admits absolute SVG bytes
+before appending, preserving cancellation/resource errors across formatting. Path data, attribute
+escaping, and image/font Base64 emission stream into that buffer; existing icon byte reservations
+are not charged twice. This bounds retained SVG output, not total process memory. Some family
+CSS/HTML component strings and metadata still materialize before append and need further resource
+integration as migration proceeds. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain.
 None of these local corrections admits another SVG family or completes the all-family goal.
 
 ### Journey color correction

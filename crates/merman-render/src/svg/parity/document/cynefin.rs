@@ -94,11 +94,10 @@ impl DocumentSvgEncoder<'_> {
             "<path class=\"cynefinArrowLine\" d=\"{}\" marker-end=\"url(#{})\"",
             escaped_attr(&path_data),
             escaped_attr(&marker_id)
-        )
-        .map_err(|_| invalid("Cynefin marked edge"))?;
+        )?;
         self.write_path_style(line_style)?;
-        self.write_state_attrs();
-        self.output.push_str("/>");
+        self.write_state_attrs()?;
+        self.output.push_str("/>")?;
         Ok(true)
     }
 
@@ -106,15 +105,22 @@ impl DocumentSvgEncoder<'_> {
         if self.cynefin_marker_definitions.is_empty() {
             return Ok(());
         }
-        self.output.push_str("<defs>");
+        self.output.push_str("<defs>")?;
         for (body, id) in &self.cynefin_marker_definitions {
             self.session.checkpoint(OperationPhase::Emit)?;
-            write!(self.output,
+            write!(
+                self.output,
                 "<marker id=\"{}\" viewBox=\"0 0 {} {}\" refX=\"{}\" refY=\"{}\" markerWidth=\"{}\" markerHeight=\"{}\" orient=\"auto-start-reverse\">{body}</marker>",
-                escaped_attr(id), fmt(VIEW_BOX_SIZE), fmt(VIEW_BOX_SIZE), fmt(REF_X), fmt(REF_Y), fmt(MARKER_SIZE), fmt(MARKER_SIZE))
-                .map_err(|_| invalid("Cynefin marker definition"))?;
+                escaped_attr(id),
+                fmt(VIEW_BOX_SIZE),
+                fmt(VIEW_BOX_SIZE),
+                fmt(REF_X),
+                fmt(REF_Y),
+                fmt(MARKER_SIZE),
+                fmt(MARKER_SIZE)
+            )?;
         }
-        self.output.push_str("</defs>");
+        self.output.push_str("</defs>")?;
         self.session.checkpoint(OperationPhase::Emit)?;
         Ok(())
     }
@@ -133,13 +139,12 @@ impl DocumentSvgEncoder<'_> {
             Transform::IDENTITY
         };
         if emitted {
-            self.output.push_str("<g");
+            self.output.push_str("<g")?;
             if role == SemanticRole::Group
                 && let Some(class) = self.semantic_extra_class(semantic_id).map(str::to_owned)
                 && !class.is_empty()
             {
-                write!(self.output, " class=\"{}\"", escaped_attr(&class))
-                    .map_err(|_| invalid("Cynefin group class"))?;
+                write!(self.output, " class=\"{}\"", escaped_attr(&class))?;
             }
             if projected_transform != Transform::IDENTITY {
                 let t = projected_transform;
@@ -149,15 +154,13 @@ impl DocumentSvgEncoder<'_> {
                         " transform=\"translate({}, {})\"",
                         fmt(t.e),
                         fmt(t.f)
-                    )
-                    .map_err(|_| invalid("Cynefin group translation"))?;
+                    )?;
                 } else {
-                    write!(self.output, " transform=\"matrix({})\"", matrix_attr(t))
-                        .map_err(|_| invalid("Cynefin group transform"))?;
+                    write!(self.output, " transform=\"matrix({})\"", matrix_attr(t))?;
                 }
                 self.state.transform = Transform::IDENTITY;
             }
-            self.output.push('>');
+            self.output.push('>')?;
         }
         self.groups.push(GroupKind::Semantic {
             linked: false,

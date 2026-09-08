@@ -34,8 +34,7 @@ impl DocumentSvgEncoder<'_> {
         );
         if let Some(stroke) = &style.stroke {
             write!(css, "stroke:{};stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
-                paint_css(self, Some(&stroke.paint))?, fmt(stroke.width), line_cap(stroke.line_cap), line_join(stroke.line_join), fmt(stroke.miter_limit), fmt(stroke.dash_offset))
-                .map_err(|_| invalid("Pie stroke style"))?;
+                paint_css(self, Some(&stroke.paint))?, fmt(stroke.width), line_cap(stroke.line_cap), line_join(stroke.line_join), fmt(stroke.miter_limit), fmt(stroke.dash_offset)).map_err(|_| invalid("SVG component formatting failed"))?;
             if stroke.dash_array.is_empty() {
                 css.push_str("none");
             }
@@ -43,13 +42,15 @@ impl DocumentSvgEncoder<'_> {
                 if index != 0 {
                     css.push(',');
                 }
-                write!(css, "{}", fmt(*dash)).map_err(|_| invalid("Pie dash style"))?;
+                write!(css, "{}", fmt(*dash))
+                    .map_err(|_| invalid("SVG component formatting failed"))?;
             }
             css.push(';');
         } else {
             css.push_str("stroke:none;");
         }
-        write!(css, "opacity:{};", fmt(self.state.opacity)).map_err(|_| invalid("Pie opacity"))?;
+        write!(css, "opacity:{};", fmt(self.state.opacity))
+            .map_err(|_| invalid("SVG component formatting failed"))?;
         if self.state.transform != Transform::IDENTITY {
             write!(
                 css,
@@ -61,10 +62,11 @@ impl DocumentSvgEncoder<'_> {
                 fmt(self.state.transform.e),
                 fmt(self.state.transform.f)
             )
-            .map_err(|_| invalid("Pie transform"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
         }
         if let Some(blend) = blend_css(self.state.blend_mode) {
-            write!(css, "mix-blend-mode:{blend};").map_err(|_| invalid("Pie blend style"))?;
+            write!(css, "mix-blend-mode:{blend};")
+                .map_err(|_| invalid("SVG component formatting failed"))?;
         }
         let path = self.path_resource(path_id)?;
         let mut opening = String::new();
@@ -79,7 +81,7 @@ impl DocumentSvgEncoder<'_> {
                 fmt(center.y),
                 fmt(radius)
             )
-            .map_err(|_| invalid("Pie outer circle"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
         } else if id.starts_with("pie.legend.") && id.ends_with(".swatch") {
             let Some(bounds) = rectangle_from_path(path) else {
                 return Ok(false);
@@ -90,10 +92,10 @@ impl DocumentSvgEncoder<'_> {
                 fmt(bounds.width),
                 fmt(bounds.height)
             )
-            .map_err(|_| invalid("Pie legend rectangle"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
             if bounds.x != 0.0 || bounds.y != 0.0 {
                 write!(opening, " x=\"{}\" y=\"{}\"", fmt(bounds.x), fmt(bounds.y))
-                    .map_err(|_| invalid("Pie legend origin"))?;
+                    .map_err(|_| invalid("SVG component formatting failed"))?;
             }
         } else if id.starts_with("pie.slice.") && id.ends_with(".shape") {
             write!(
@@ -101,10 +103,10 @@ impl DocumentSvgEncoder<'_> {
                 "<path d=\"{}\"",
                 super::super::curve::drawing_path_segments_d_unrounded(&path.segments)
             )
-            .map_err(|_| invalid("Pie slice path"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
             if let Some(Paint::Solid { color }) = &style.fill {
                 write!(opening, " fill=\"{}\"", color_css(*color))
-                    .map_err(|_| invalid("Pie slice fill"))?;
+                    .map_err(|_| invalid("SVG component formatting failed"))?;
             } else if style.fill.is_none() {
                 opening.push_str(" fill=\"none\"");
             }
@@ -112,13 +114,13 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         }
         write!(opening, " style=\"{}\"", escaped_attr(&css))
-            .map_err(|_| invalid("Pie path style"))?;
+            .map_err(|_| invalid("SVG component formatting failed"))?;
         if let Some(class) = self.path_class(path_id) {
             write!(opening, " class=\"{}\"", escaped_attr(&class))
-                .map_err(|_| invalid("Pie path class"))?;
+                .map_err(|_| invalid("SVG component formatting failed"))?;
         }
         opening.push_str("/>");
-        self.output.push_str(&opening);
+        self.output.push_str(&opening)?;
         Ok(true)
     }
 
@@ -161,36 +163,32 @@ impl DocumentSvgEncoder<'_> {
                 fmt(run.origin.x),
                 fmt(run.origin.y),
                 text_anchor(run.anchor)
-            )
-            .map_err(|_| invalid("Pie slice text"))?;
+            )?;
         } else {
             write!(
                 self.output,
                 "<text x=\"{}\" y=\"{}\"",
                 fmt(run.origin.x),
                 fmt(run.origin.y)
-            )
-            .map_err(|_| invalid("Pie text"))?;
+            )?;
             if run.anchor != TextAnchor::Start {
                 write!(
                     self.output,
                     " style=\"text-anchor: {};\"",
                     text_anchor(run.anchor)
-                )
-                .map_err(|_| invalid("Pie text anchor"))?;
+                )?;
             }
             if class != "legend text" {
-                write!(self.output, " class=\"{}\"", escaped_attr(&class))
-                    .map_err(|_| invalid("Pie text class"))?;
+                write!(self.output, " class=\"{}\"", escaped_attr(&class))?;
             }
         }
-        self.write_state_attrs();
+        self.write_state_attrs()?;
         if run.text.is_empty() {
-            self.output.push_str("/>");
+            self.output.push_str("/>")?;
         } else {
-            self.output.push('>');
-            escape_xml_into(&mut self.output, &run.text);
-            self.output.push_str("</text>");
+            self.output.push('>')?;
+            output::escape_xml(&mut self.output, &run.text)?;
+            self.output.push_str("</text>")?;
         }
         Ok(true)
     }
