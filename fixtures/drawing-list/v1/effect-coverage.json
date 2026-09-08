@@ -262,13 +262,12 @@
     },
     {
       "id": "foreign-object",
-      "disposition": "error",
+      "disposition": "vector",
       "family": "venn",
       "source": "venn-beta\nset A[\"Frontend\"]:20\n  text A1[\"React\"]\n",
-      "assertion": "error_message",
-      "expected_effects": [],
-      "expected_error": "foreignObject and browser wrapping",
-      "evidence": "structured DrawingListUnavailable before a partial document"
+      "assertion": "host_text",
+      "expected_effects": ["host_text", "opacity", "path"],
+      "evidence": "Venn plain HTML text resolves into positioned host-text lines without HTML interpretation or a second wrap"
     },
     {
       "id": "filter",

@@ -11,6 +11,8 @@ use merman_display_list::{
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+mod normal_text;
+
 /// Operation-local owner for one bounded DrawingList candidate.
 ///
 /// The backing collections never escape this module. Adapters can deepen this interface when
@@ -635,6 +637,263 @@ mod tests {
                     profile: "test".to_string(),
                 },
             },
+        }
+    }
+
+    #[derive(Default)]
+    struct NormalTextProbe {
+        lines: std::sync::Mutex<Vec<String>>,
+        cancel_on_line: Option<OperationControl>,
+    }
+
+    impl crate::text::TextMeasurer for NormalTextProbe {
+        fn measure(&self, text: &str, _style: &crate::text::TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMetrics {
+                width: text.chars().count() as f64 * 10.0,
+                height: 10.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_canvas_text_width_px(&self, text: &str, style: &crate::text::TextStyle) -> f64 {
+            if text == "a b" {
+                19.0
+            } else {
+                self.measure(text, style).width
+            }
+        }
+
+        fn measure_normal_line_metrics(
+            &self,
+            text: &str,
+            _style: &crate::text::TextStyle,
+        ) -> crate::text::NormalLineMetrics {
+            self.lines.lock().unwrap().push(text.to_owned());
+            if let Some(control) = &self.cancel_on_line {
+                control.cancel();
+            }
+            if text
+                .chars()
+                .any(|ch| ('\u{4e00}'..='\u{9fff}').contains(&ch))
+            {
+                crate::text::NormalLineMetrics {
+                    line_height: 20.0,
+                    baseline_offset: 13.0,
+                }
+            } else {
+                crate::text::NormalLineMetrics {
+                    line_height: 10.0,
+                    baseline_offset: 7.0,
+                }
+            }
+        }
+    }
+
+    fn normal_text_environment(probe: std::sync::Arc<NormalTextProbe>) -> RenderEnvironment {
+        use crate::environment::{
+            TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+        };
+        RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    crate::environment::MeasurementProfileId::new("normal-test").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                probe,
+            )),
+        )
+    }
+
+    #[test]
+    fn normal_text_wraps_unicode_preserves_literals_and_uses_complete_candidate_widths() {
+        let probe = std::sync::Arc::new(NormalTextProbe::default());
+        let environment = normal_text_environment(probe.clone());
+        for (source, width, expected) in [
+            ("  a\t b\nc  ", 19.0, vec!["a b", "c"]),
+            ("A B X", 20.0, vec!["A B", "X"]),
+            ("甲乙丙丁", 20.0, vec!["甲乙", "丙丁"]),
+            ("abcdefgh x", 20.0, vec!["abcdefgh", "x"]),
+            ("<br>", 20.0, vec!["<br>"]),
+            ("alpha-beta", 20.0, vec!["alpha-", "beta"]),
+            (" \t\r\n\u{c}", 20.0, vec![]),
+        ] {
+            probe.lines.lock().unwrap().clear();
+            let session = make_session(&environment, OperationControl::new());
+            let mut builder = DrawingListBuilder::new(
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &session,
+            );
+            let template = host_text_run(String::new());
+            builder
+                .draw_normal_text(
+                    source,
+                    Rect::new(10.0, 0.0, width, 100.0),
+                    &crate::text::TextStyle::default(),
+                    &template.style,
+                    &template.obligation,
+                )
+                .unwrap();
+            let runs: Vec<_> = builder
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    DrawingCommand::DrawText { run } => Some(run),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                runs.iter().map(|run| run.text.as_str()).collect::<Vec<_>>(),
+                expected,
+                "{source}"
+            );
+            assert_eq!(
+                *probe.lines.lock().unwrap(),
+                expected,
+                "metrics are requested only for finalized actual lines"
+            );
+            for run in &runs {
+                assert_eq!(run.origin.x, 10.0 + width / 2.0);
+                assert_eq!(run.bounds.x, run.origin.x - run.bounds.width / 2.0);
+            }
+            if source == "abcdefgh x" {
+                assert_eq!(runs[0].bounds.x, -20.0);
+            }
+            builder
+                .finish(
+                    Viewport::new(Rect::new(0.0, 0.0, 100.0, 100.0)),
+                    BTreeMap::new(),
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn normal_text_centers_the_sum_of_content_specific_atomic_line_boxes() {
+        let environment = normal_text_environment(std::sync::Arc::new(NormalTextProbe::default()));
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &session,
+        );
+        let template = host_text_run(String::new());
+        builder
+            .draw_normal_text(
+                "a 中文",
+                Rect::new(0.0, 0.0, 20.0, 40.0),
+                &crate::text::TextStyle::default(),
+                &template.style,
+                &template.obligation,
+            )
+            .unwrap();
+        let runs: Vec<_> = builder
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                DrawingCommand::DrawText { run } => Some(run),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(
+            (runs[0].bounds.y, runs[0].bounds.height, runs[0].origin.y),
+            (5.0, 10.0, 12.0)
+        );
+        assert_eq!(
+            (runs[1].bounds.y, runs[1].bounds.height, runs[1].origin.y),
+            (15.0, 20.0, 28.0)
+        );
+    }
+
+    #[test]
+    fn normal_text_candidate_measurement_is_charged_before_host_work() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let source = "a ".repeat(100);
+        let limit = 2_000;
+        let probe = std::sync::Arc::new(NormalTextProbe::default());
+        let environment = normal_text_environment(probe.clone()).with_resource_policy(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap(),
+        );
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &session,
+        );
+        let template = host_text_run(String::new());
+        let error = builder
+            .draw_normal_text(
+                &source,
+                Rect::new(0.0, 0.0, 10_000.0, 100.0),
+                &crate::text::TextStyle::default(),
+                &template.style,
+                &template.obligation,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("max_layout_work_units"));
+        assert!(session.report().layout_work_units() <= limit);
+        assert!(
+            probe.lines.lock().unwrap().is_empty(),
+            "candidate scanning exhausts work before final line metrics"
+        );
+        assert!(builder.commands.is_empty());
+    }
+
+    #[test]
+    fn normal_text_admits_exact_final_bytes_and_cancels_before_committing_lines() {
+        for (commands, bytes, cancel, succeeds) in [
+            (3, 3, false, true),
+            (2, 3, false, false),
+            (3, 2, false, false),
+            (3, 3, true, false),
+        ] {
+            let control = OperationControl::new();
+            let probe = std::sync::Arc::new(NormalTextProbe {
+                lines: Default::default(),
+                cancel_on_line: cancel.then(|| control.clone()),
+            });
+            let environment = normal_text_environment(probe.clone());
+            let session = make_session(&environment, control);
+            let mut builder = DrawingListBuilder::new(
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits {
+                    max_commands: commands,
+                    max_text_bytes: bytes,
+                    ..DrawingListLimits::default()
+                },
+                &session,
+            );
+            let template = host_text_run(String::new());
+            let result = builder.draw_normal_text(
+                "a b c",
+                Rect::new(0.0, 0.0, 10.0, 100.0),
+                &crate::text::TextStyle::default(),
+                &template.style,
+                &template.obligation,
+            );
+            assert_eq!(result.is_ok(), succeeds);
+            if !succeeds {
+                assert!(builder.commands.is_empty());
+                assert_eq!(builder.usage, DrawingListFootprint::default());
+            }
+            if bytes == 2 {
+                assert!(probe.lines.lock().unwrap().is_empty());
+            }
+            if cancel {
+                assert!(matches!(result, Err(Error::Cancelled(_))));
+            }
+            if succeeds {
+                builder
+                    .finish(
+                        Viewport::new(Rect::new(0.0, 0.0, 100.0, 100.0)),
+                        BTreeMap::new(),
+                    )
+                    .unwrap();
+            }
         }
     }
 

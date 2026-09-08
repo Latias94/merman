@@ -1,8 +1,8 @@
 //! Renderer-neutral Venn adapter.
 //!
 //! Classic Venn output already owns deterministic area paths and label coordinates. This adapter
-//! projects those typed values directly. Wrapped text layout and RoughJS path projection remain
-//! explicit migration boundaries until their direct document adapters are implemented.
+//! projects those typed values directly. Plain text nodes resolve normal line boxes through the
+//! operation's text provider. RoughJS paths remain an explicit migration boundary.
 
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, VennSvgBody, parse_font_families_for,
@@ -10,7 +10,7 @@ use super::{
 };
 use crate::config::config_diagram_look;
 use crate::drawing_list::builder::DrawingListBuilder;
-use crate::drawing_list::flowchart::polygon_path;
+use crate::drawing_list::flowchart::{ellipse_path, polygon_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, stroke, svg_plain_text, text_obligation,
 };
@@ -82,14 +82,6 @@ impl<'a> VennBuilder<'a> {
 
         let model = pair.semantic();
         let layout = pair.layout();
-        if !model.text_nodes.is_empty()
-            || !layout.text_nodes.is_empty()
-            || !layout.text_areas.is_empty()
-        {
-            return Err(unavailable(
-                "Venn foreignObject and browser wrapping require text-layout and text-area projections that are not yet implemented",
-            ));
-        }
         validate_layout(layout)?;
 
         let theme = PresentationTheme::new(config).venn()?;
@@ -172,6 +164,8 @@ impl<'a> VennBuilder<'a> {
             }
         }
 
+        self.emit_text_nodes()?;
+
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
@@ -184,7 +178,7 @@ impl<'a> VennBuilder<'a> {
                 json!({
                     "diagram_type": self.metadata.diagram_type,
                     "text_mode": "plain_host_text",
-                    "text_nodes": "rejected_browser_wrapping",
+                    "text_nodes": "resolved_normal_lines",
                     "use_max_width": self.layout.use_max_width,
                 }),
             )]),
@@ -203,6 +197,133 @@ impl<'a> VennBuilder<'a> {
                 }),
             },
         })
+    }
+
+    fn begin_text_group(&mut self, id: String, class: &str, title: Option<String>) -> Result<()> {
+        self.semantic_classes.insert(id.clone(), class.to_owned());
+        self.output.push_semantic(SemanticAnnotation {
+            id: id.clone(),
+            role: SemanticRole::Group,
+            title,
+            description: None,
+            link: None,
+        })?;
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup { semantic_id: id })
+    }
+
+    fn emit_text_nodes(&mut self) -> Result<()> {
+        if self.model.text_nodes.is_empty() {
+            return Ok(());
+        }
+        self.begin_text_group("venn.text-nodes".to_owned(), "venn-text-nodes", None)?;
+        let layout = self.layout;
+        let style_by_key = venn_style_by_key(self.model);
+        let styles = PortableStyleResolver::new("venn");
+        let mut node_index = 0usize;
+        for (area_index, area) in layout.text_areas.iter().enumerate() {
+            self.begin_text_group(
+                format!("venn.text-area.{area_index}"),
+                "venn-text-area",
+                None,
+            )?;
+            if layout.use_debug_layout {
+                let mut line = stroke(Color::rgba(128, 0, 128, 255), 1.5 * layout.scale);
+                line.dash_array = vec![6.0 * layout.scale, 4.0 * layout.scale];
+                self.output.draw_path(
+                    ResourceId::new(format!("venn.text-area.{area_index}.debug-circle")),
+                    ellipse_path(
+                        area.center_x,
+                        area.center_y,
+                        area.inner_radius,
+                        area.inner_radius,
+                    ),
+                    PathStyle {
+                        fill_rule: FillRule::NonZero,
+                        fill: None,
+                        stroke: Some(line),
+                    },
+                )?;
+            }
+            let mut cell_index = 0;
+            while let Some(node) = layout
+                .text_nodes
+                .get(node_index)
+                .filter(|node| node.sets == area.sets)
+            {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                // Upstream interleaves each debug cell and its node, rather than painting all
+                // debug cells over or under all labels as a separate pass.
+                if let Some(cell) = area
+                    .debug_cells
+                    .get(cell_index)
+                    .filter(|_| layout.use_debug_layout)
+                {
+                    let mut line = stroke(Color::rgba(0, 128, 128, 255), layout.scale);
+                    line.dash_array = vec![4.0 * layout.scale, 3.0 * layout.scale];
+                    self.output.draw_path(
+                        ResourceId::new(format!("venn.text.{node_index}.debug-cell")),
+                        polygon_path(&[
+                            Point::new(cell.x, cell.y),
+                            Point::new(cell.x + cell.width, cell.y),
+                            Point::new(cell.x + cell.width, cell.y + cell.height),
+                            Point::new(cell.x, cell.y + cell.height),
+                        ]),
+                        PathStyle {
+                            fill_rule: FillRule::NonZero,
+                            fill: None,
+                            stroke: Some(line),
+                        },
+                    )?;
+                }
+                let label = node.label.as_deref().unwrap_or(&node.id);
+                if label.contains(['\u{00ad}', '\u{0085}', '\u{2028}', '\u{2029}']) {
+                    return Err(unavailable(
+                        "Venn normal text with discretionary hyphens or Unicode hard line separators requires explicit line-break glyph projection",
+                    ));
+                }
+                let id = format!("venn.text.{node_index}");
+                self.begin_text_group(id.clone(), "venn-text-node-fo", Some(label.to_owned()))?;
+                self.text_classes.insert(id, "venn-text-node".to_owned());
+                let color = style_by_key
+                    .get(&node.id)
+                    .and_then(|style| style.get("color"))
+                    .map(String::as_str)
+                    .unwrap_or(&self.theme.set_text_color);
+                let fill = styles.color("text node color", color)?;
+                let measurement = MeasurementTextStyle {
+                    font_family: Some(self.font_family_css.clone()),
+                    font_size: area.font_size,
+                    font_weight: None,
+                    font_style: None,
+                };
+                self.output.draw_normal_text(
+                    label,
+                    Rect::new(node.x, node.y, node.width, node.height),
+                    &measurement,
+                    &TextStyle {
+                        font: self.font.clone(),
+                        font_size: area.font_size,
+                        letter_spacing: 0.0,
+                        line_height: 0.0,
+                        fill: Paint::solid(fill),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                    },
+                    &text_obligation(self.session, TextMeasurementPhase::Wrap),
+                )?;
+                self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+                node_index += 1;
+                cell_index += 1;
+            }
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        }
+        if node_index != layout.text_nodes.len() {
+            return Err(invalid(
+                "Venn text nodes do not follow their text-area layout groups",
+            ));
+        }
+        self.output.push_control(DrawingCommand::EndSemanticGroup)
     }
 
     fn emit_background(&mut self) -> Result<()> {
@@ -540,6 +661,37 @@ fn validate_layout(layout: &VennDiagramLayout) -> Result<()> {
         {
             return Err(invalid("Venn area geometry is invalid"));
         }
+    }
+    for area in &layout.text_areas {
+        if ![
+            area.center_x,
+            area.center_y,
+            area.inner_radius,
+            area.font_size,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+            || area.inner_radius < 0.0
+            || area.font_size <= 0.0
+        {
+            return Err(invalid("Venn text area geometry is invalid"));
+        }
+        for cell in &area.debug_cells {
+            validate_bounds(&Bounds {
+                min_x: cell.x,
+                min_y: cell.y,
+                max_x: cell.x + cell.width,
+                max_y: cell.y + cell.height,
+            })?;
+        }
+    }
+    for node in &layout.text_nodes {
+        validate_bounds(&Bounds {
+            min_x: node.x,
+            min_y: node.y,
+            max_x: node.x + node.width,
+            max_y: node.y + node.height,
+        })?;
     }
     Ok(())
 }

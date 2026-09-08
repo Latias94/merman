@@ -287,7 +287,7 @@ for this diagnostic was withdrawn; neither run is evidence of full-family readin
 This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
 candidate parity-root comparison still reports circle path command spelling and title
 presentation-attribute/style differences. These have not been accepted as residuals or hidden by
-normalization. Text-node layout/text-area geometry and typed RoughJS path projection also remain
+normalization. Text-node SVG shell projection and typed RoughJS path projection also remain
 migration work. These features are not inherently outside the vector protocol; missing
 implementations must be resolved before full-family admission.
 
@@ -308,11 +308,24 @@ breaking, intrinsic flex sizing, and `line-height: normal`, resolved after attac
 same browser probe a 20px node used two 23px line boxes, not 1.5em lines; this observation is not
 a portable font constant. Implementing this surface requires explicit normal-line metrics and
 resolved line positions. Existing SVG wrappers that split long words or interpret `<br>` are
-not behavior-equivalent substitutes, so text-node output remains an explicit capability error.
+not behavior-equivalent substitutes.
 
-[ADR-0088](adr/0088-atomic-normal-line-metrics.md) defines the missing atomic line-metrics
-measurement and its append-only native callback evolution. Neither the new operation nor Venn
-text-node support is admitted by that design record.
+[ADR-0088](adr/0088-atomic-normal-line-metrics.md) defines atomic line-metrics measurement and its
+append-only native callback evolution. The direct adapter now resolves normal text through that
+operation: HTML ASCII whitespace is collapsed, NBSP and literal markup are preserved, Unicode
+soft breaks and min-content width protect indivisible words, and each finalized line receives its
+own paired line height and baseline. Candidate widths use complete text runs, not summed token
+widths. Both candidate probes and final metric probes charge operation work before host calls.
+Normalized scratch bytes and line records are admitted before allocation; exact output quotas
+are checked using finalized lines, so discarded wrap spaces do not cause false quota rejections.
+
+Venn text nodes use their own theme/default or node-ID color override, follow the existing text-area
+grid, and retain interleaved debug circle/cell/text order. Discretionary hyphens and Unicode hard
+line separators remain explicit unsupported effects pending break-glyph projection, rather than
+being silently treated as ordinary soft breaks. Focused public and builder tests exercise literal
+markup, NBSP, CJK, long-word overflow, content-specific baseline pairs, exact budgets, and mid-layout
+cancellation. This admits ordinary text-node DrawingList output only: Venn SVG still uses its
+recorded legacy route while the source-shaped HTML shell and remaining family parity are migrated.
 
 ## Exercised effect accounting
 

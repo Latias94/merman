@@ -2749,21 +2749,90 @@ fn venn_area_labels_use_detached_js_whitespace_without_width_wrapping() {
 }
 
 #[test]
-fn venn_rejects_foreign_object_text_nodes_instead_of_dropping_them() {
-    let error = Renderer::new()
+fn venn_emits_normal_plain_text_nodes_without_losing_literal_content() {
+    let output = Renderer::new()
         .render(RenderRequest::drawing_list(
             r#"venn-beta
 set A["Frontend"]:20
-  text A1["React"]
+  text A1["React   <br>   A B"]
 "#,
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
-        .expect_err("Venn browser-wrapped text nodes must not disappear silently");
-    assert!(
-        error
-            .to_string()
-            .contains("foreignObject and browser wrapping")
+        .expect("Venn normal plain text must have resolved DrawingList lines");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList");
+    };
+    let mut in_text_node = false;
+    let mut lines = Vec::new();
+    for command in &output.document().commands {
+        match command {
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "venn.text.0" => {
+                in_text_node = true
+            }
+            DrawingCommand::EndSemanticGroup => in_text_node = false,
+            DrawingCommand::DrawText { run } if in_text_node => {
+                assert_eq!(run.baseline, merman_display_list::TextBaseline::Alphabetic);
+                assert!(run.style.line_height > 0.0);
+                lines.push(run.text.as_str());
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(lines.join(" "), "React <br> A B");
+}
+
+#[test]
+fn venn_text_nodes_keep_theme_color_overrides_and_interleaved_debug_cells() {
+    let output = Renderer::new()
+        .with_engine(
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "venn": {"useDebugLayout": true},
+                "themeVariables": {"vennSetTextColor": "#123456"}
+            }))),
+        )
+        .render(RenderRequest::drawing_list(
+            r##"venn-beta
+set A["Alpha"]:20
+  text A1["First"]
+  text A2["Second"]
+style A1 color:red
+"##,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .unwrap();
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList");
+    };
+    let mut order = Vec::new();
+    for command in &output.document().commands {
+        match command {
+            DrawingCommand::DrawPath { path, style } if path.as_str().contains(".debug-") => {
+                assert!(!style.stroke.as_ref().unwrap().dash_array.is_empty());
+                order.push(path.as_str().to_owned());
+            }
+            DrawingCommand::DrawText { run } if matches!(run.text.as_str(), "First" | "Second") => {
+                let expected = if run.text == "First" {
+                    merman_display_list::Color::rgba(255, 0, 0, 255)
+                } else {
+                    merman_display_list::Color::rgba(18, 52, 86, 255)
+                };
+                assert_eq!(run.style.fill, Paint::solid(expected));
+                order.push(run.text.clone());
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        order,
+        [
+            "venn.text-area.0.debug-circle",
+            "venn.text.0.debug-cell",
+            "First",
+            "venn.text.1.debug-cell",
+            "Second"
+        ]
     );
 }
 
