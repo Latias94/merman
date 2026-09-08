@@ -24,29 +24,29 @@ inventory row fails at test time.  The current inventory is:
 | Architecture | yes | legacy bridge |
 | Class | yes | legacy bridge |
 | C4 | yes | legacy bridge |
-| Cynefin | yes | legacy bridge |
+| Cynefin | yes | canonical |
 | Wardley | yes | legacy bridge |
 | Railroad | yes | legacy bridge |
-| Kanban | yes | legacy bridge |
-| Gantt | yes | legacy bridge |
+| Kanban | yes | canonical |
+| Gantt | yes | canonical |
 | Pie | yes | canonical |
 | Packet | yes | canonical |
 | Timeline | yes | legacy bridge |
-| Journey | yes | legacy bridge |
-| Requirement | yes | legacy bridge |
+| Journey | yes | canonical |
+| Requirement | yes | canonical |
 | Sankey | yes | legacy bridge |
-| Radar | yes | legacy bridge |
+| Radar | yes | canonical |
 | Info | yes | canonical |
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
 | QuadrantChart | yes | legacy bridge |
-| XYChart | yes | legacy bridge |
-| GitGraph | yes | legacy bridge |
-| TreeView | yes | legacy bridge |
-| Ishikawa | yes | legacy bridge |
-| EventModeling | yes | legacy bridge |
-| Venn | yes | legacy bridge |
+| XYChart | yes | canonical |
+| GitGraph | yes | canonical |
+| TreeView | yes | canonical |
+| Ishikawa | yes | canonical |
+| EventModeling | yes | canonical |
+| Venn | yes | canonical |
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

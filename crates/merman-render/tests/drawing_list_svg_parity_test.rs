@@ -6,7 +6,7 @@ use merman_core::{
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family::{
-    self, RenderFamilyKind, RenderedFamilySvg, SvgSerializationBridgeReason, SvgSerializationRoute,
+    self, RenderedFamilySvg, SvgSerializationBridgeReason, SvgSerializationRoute,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
@@ -44,20 +44,6 @@ fn render_svg(source: &str, diagram_id: &str) -> String {
         output.serialization_route(),
         SvgSerializationRoute::CanonicalDocument,
         "{diagram_id} must not silently pass parity through the legacy bridge"
-    );
-    output.svg().to_owned()
-}
-
-fn render_legacy_bridge_svg(source: &str, diagram_id: &str, family: RenderFamilyKind) -> String {
-    let output = render_family_svg(source, diagram_id);
-    assert_eq!(
-        output.serialization_route(),
-        SvgSerializationRoute::LegacyBridge,
-        "{diagram_id} is expected to remain behind the audited legacy bridge"
-    );
-    assert_eq!(
-        output.serialization_bridge_reason(),
-        Some(&SvgSerializationBridgeReason::LegacyFamily { family })
     );
     output.svg().to_owned()
 }
@@ -1284,11 +1270,10 @@ fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
 }
 
 #[test]
-fn gantt_svg_bridge_keeps_axes_tasks_states_ids_and_semantics() {
-    let svg = render_legacy_bridge_svg(
+fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
+    let svg = render_svg(
         "gantt\n  title Release Plan\n  dateFormat YYYY-MM-DD\n  topAxis\n  todayMarker off\n  section Core\n  Build :a1, 2026-01-01, 4d\n  Ship :crit, milestone, 2026-01-05, 1d\n  section Follow-up\n  Docs :done, 2026-01-06, 2d\n",
         "gantt-parity",
-        RenderFamilyKind::Gantt,
     );
     let document = roxmltree::Document::parse(&svg).expect("Gantt SVG is XML");
     let root = document.root_element();
