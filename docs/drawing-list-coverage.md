@@ -301,6 +301,13 @@ spelling and color-conversion roundoff. Changed RGB channels and opacity differe
 This is not a geometry or text residual waiver. The temporary route/inventory admission was again
 withdrawn, and the full-family gate remains unsuccessful.
 
+The native-text ownership follow-up (`target/compare/venn_canonical_native_text_parity_root.md`)
+again renders all 12 fixtures canonically, with nine passing. The text-area font attributes and
+direct `foreignObject` children now agree with the source. The three text-node fixtures still
+fail because the source span has direct text, whereas the candidate span contains the positioned
+SVG projection. This remaining structural difference is not an accepted normalization; temporary
+route/inventory admission was withdrawn after the diagnostic.
+
 The earlier classic circle/title mismatches are resolved without comparator changes. Source-shaped
 `M/m/a/a` paths are emitted only when the relative offsets reconstruct the public coordinates
 exactly. Otherwise the serializer retains absolute commands. Title CSS comes from the public
@@ -405,21 +412,32 @@ The candidate SVG now projects each text node's `foreignObject.venn-text-node-fo
 `span.venn-text-node` from a public, unpainted container rectangle. Inside that shell, positioned SVG
 text uses the same canonical origins, baselines, fonts, paint, and literal strings as DrawingList.
 The inner SVG has no viewBox or clipping; its translation cancels only the container origin.
-An adjacent native branch in a `switch` serializes the same runs for the existing resvg-safe
-pipeline. It does not reconstruct or measure an HTML label. Public title/description and debug
-visibility live once on the surrounding semantic group, outside both rendering branches.
+There is one native text group, not an adjacent duplicate branch. The internal marker
+`data-merman-native-text="v1"` declares the complete native projection in the foreignObject
+parent's coordinates. Readable processing skips guessed HTML overlays for that group; resvg-safe
+processing promotes it out of the browser-only positioning shells without remeasuring or
+regenerating its content. Public title/description use ARIA attributes on the group so metadata
+does not pollute the span's text content. The stable semantic ID and debug visibility survive
+promotion, including an empty text node. Ordinary unmarked HTML retains its existing fallback.
+Projection discovery and group matching use the existing markup scanner, so comments and CDATA
+cannot create or prematurely close a native projection.
+Text-area `font-size` attributes are derived from agreeing public text styles; a mixed-size area
+omits that shared attribute instead of overriding individual runs.
 
 This is an explicit structural change from upstream span-owned direct text: the identity shell
-contains an inner SVG, and a semantic wrapper/switch retains metadata and headless output. It is
+contains an inner SVG whose native group retains metadata and headless output. It is
 not byte-identical upstream DOM and has not been hidden by comparator normalization. Candidate
-mutation tests cover changed baselines, text, paint, container coordinates, metadata, and a box
+mutation tests cover changed baselines, text, font size, paint, container coordinates, metadata, and a box
 that becomes painted (which correctly falls back to generic canonical commands, not legacy).
-Chromium characterization of browser and native branches found identical text dimensions, color,
-and alpha; foreignObject layout introduced approximately 0.012px screen-coordinate rounding in
-the measured case. This is recorded browser-coordinate evidence, not a production offset.
+Chromium characterization of the new promotion path on the two-label docs fixture found identical
+text, font, and fill. The maximum bounding-box delta was 0.007568359375px; the linear transform was
+unchanged and the translation differed by up to 0.00757598876953125px. A trial 1e-6px equality
+assertion therefore failed. This is a recorded browser-coordinate residual, not a production
+offset or a claim of exact screen-coordinate equivalence.
 
 Quoted whitespace labels also preserve Mermaid's truthiness-before-normalization order: `[" "]`
-normalizes to an empty label and an empty shell, whereas `[""]` is absent and uses the node ID.
+normalizes to empty paint while retaining its semantic anchor, whereas `[""]` is absent and uses
+the node ID.
 
 ## Exercised effect accounting
 

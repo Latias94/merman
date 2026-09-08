@@ -89,7 +89,7 @@ struct DocumentSvgEncoder<'a> {
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
     info_text_style: Option<&'a merman_display_list::TextStyle>,
-    venn_title_style: Option<&'a merman_display_list::TextStyle>,
+    venn_text_styles: Option<venn::TextStyles<'a>>,
     sankey_links: Option<sankey::LinkProjection>,
     command_index: usize,
     state: GraphicsState,
@@ -277,8 +277,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             } else {
                 None
             },
-            venn_title_style: if matches!(document.svg.body, SvgStructureBody::Venn(_)) {
-                venn::shared_title_style(&document.public, session)?
+            venn_text_styles: if let SvgStructureBody::Venn(body) = &document.svg.body {
+                Some(venn::TextStyles::new(&document.public, body, session)?)
             } else {
                 None
             },

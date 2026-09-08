@@ -3,7 +3,60 @@
 use super::*;
 use merman_display_list::StrokeStyle;
 
-pub(super) fn shared_title_style<'a>(
+pub(super) struct TextStyles<'a> {
+    pub(super) title: Option<&'a merman_display_list::TextStyle>,
+    area_font_sizes: BTreeMap<&'a str, Option<f64>>,
+}
+
+impl<'a> TextStyles<'a> {
+    pub(super) fn new(
+        document: &'a DrawingListDocument,
+        body: &crate::drawing_list::VennSvgBody,
+        session: &RenderSession,
+    ) -> Result<Self> {
+        let mut area_font_sizes = BTreeMap::new();
+        let mut depth = 0;
+        let mut area = None;
+        for command in &document.commands {
+            session.checkpoint(OperationPhase::Emit)?;
+            match command {
+                DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                    depth += 1;
+                    if body.semantic_classes.get(semantic_id).map(String::as_str)
+                        == Some("venn-text-area")
+                    {
+                        area = Some((semantic_id.as_str(), depth));
+                    }
+                }
+                DrawingCommand::EndSemanticGroup => {
+                    if area.is_some_and(|(_, start)| start == depth) {
+                        area = None;
+                    }
+                    depth -= 1;
+                }
+                DrawingCommand::DrawText { run } => {
+                    if let Some((id, _)) = area {
+                        area_font_sizes
+                            .entry(id)
+                            .and_modify(|size| {
+                                if *size != Some(run.style.font_size) {
+                                    *size = None;
+                                }
+                            })
+                            .or_insert(Some(run.style.font_size));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(Self {
+            title: shared_title_style(document, session)?,
+            area_font_sizes,
+        })
+    }
+}
+
+fn shared_title_style<'a>(
     document: &'a DrawingListDocument,
     session: &RenderSession,
 ) -> Result<Option<&'a merman_display_list::TextStyle>> {
@@ -149,7 +202,11 @@ fn rough_scope<'a>(
 impl DocumentSvgEncoder<'_> {
     pub(super) fn write_venn_style(&mut self) -> Result<()> {
         self.output.push_str("<style>")?;
-        if let Some(style) = self.venn_title_style {
+        if let Some(style) = self
+            .venn_text_styles
+            .as_ref()
+            .and_then(|styles| styles.title)
+        {
             let font = self.font_families(&style.font)?;
             write!(
                 self.output,
@@ -283,6 +340,15 @@ impl DocumentSvgEncoder<'_> {
             if let Some(class) = body.semantic_classes.get(id) {
                 write!(self.output, " class=\"{}\"", escaped_attr(class))?;
             }
+            if let Some(size) = self
+                .venn_text_styles
+                .as_ref()
+                .and_then(|styles| styles.area_font_sizes.get(id))
+                .copied()
+                .flatten()
+            {
+                write!(self.output, " font-size=\"{}px\"", fmt(size))?;
+            }
             if let Some(sets) = body.semantic_data_sets.get(id) {
                 write!(self.output, " data-venn-sets=\"{}\"", escaped_attr(sets))?;
             }
@@ -315,7 +381,7 @@ impl DocumentSvgEncoder<'_> {
     }
 
     /// Retains the HTML identity shell without giving the browser a second wrapping job.
-    /// Both the browser branch and the native fallback serialize the same public text runs.
+    /// The browser and native postprocessor consume one embedded public text projection.
     pub(super) fn emit_venn_text_node(&mut self, index: usize) -> Result<Option<usize>> {
         let SvgStructureBody::Venn(body) = self.svg_body else {
             return Ok(None);
@@ -369,7 +435,6 @@ impl DocumentSvgEncoder<'_> {
         ) {
             return Ok(None);
         }
-        let has_text = first < end;
         let semantic = self
             .semantics
             .get(semantic_id)
@@ -378,7 +443,25 @@ impl DocumentSvgEncoder<'_> {
         let svg_id = self.semantic_svg_id(semantic_id)?;
         write!(
             self.output,
-            "<g id=\"{}\" class=\"merman-semantic {}\" role=\"group\" data-merman-semantic-id=\"{}\"",
+            "<foreignObject class=\"venn-text-node-fo\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" overflow=\"visible\"><span xmlns=\"http://www.w3.org/1999/xhtml\" class=\"venn-text-node\" style=\"display: block; position: relative; width: 100%; height: 100%;\">",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height)
+        )?;
+        // Cancel only the browser container translation. The marked inner group retains the
+        // public parent-space coordinates, so native output can promote it without measurement.
+        write!(
+            self.output,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" overflow=\"visible\" style=\"position: absolute; left: 0; top: 0; overflow: visible;\"><g transform=\"translate({}, {})\">",
+            fmt(bounds.width),
+            fmt(bounds.height),
+            fmt(-bounds.x),
+            fmt(-bounds.y)
+        )?;
+        write!(
+            self.output,
+            "<g data-merman-native-text=\"v1\" id=\"{}\" class=\"merman-semantic {}\" role=\"group\" data-merman-semantic-id=\"{}\"",
             escaped_attr(&svg_id),
             semantic_role_class(semantic.role),
             escaped_attr(semantic_id)
@@ -386,67 +469,31 @@ impl DocumentSvgEncoder<'_> {
         if !self.debug_visibility(semantic.role) {
             self.output.push_str(" display=\"none\"")?;
         }
-        self.output.push('>')?;
         if let Some(title) = semantic.title.as_deref() {
-            self.output.push_str("<title>")?;
-            output::escape_xml(&mut self.output, title)?;
-            self.output.push_str("</title>")?;
+            write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
         }
         if let Some(description) = semantic.description.as_deref() {
-            self.output.push_str("<desc>")?;
-            output::escape_xml(&mut self.output, description)?;
-            self.output.push_str("</desc>")?;
+            write!(
+                self.output,
+                " aria-description=\"{}\"",
+                escaped_attr(description)
+            )?;
         }
-        if has_text {
-            self.output.push_str("<switch>")?;
-        }
-        write!(
-            self.output,
-            "<foreignObject class=\"venn-text-node-fo\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" overflow=\"visible\"><span xmlns=\"http://www.w3.org/1999/xhtml\" class=\"venn-text-node\" style=\"display: block; position: relative; width: 100%; height: 100%;\">",
-            fmt(bounds.x),
-            fmt(bounds.y),
-            fmt(bounds.width),
-            fmt(bounds.height)
-        )?;
+        self.output.push('>')?;
         self.groups.push(GroupKind::Semantic {
             linked: false,
             emitted: true,
             semantic_id: semantic_id.clone(),
             projected_transform: Transform::IDENTITY,
         });
-        if has_text {
-            // Keep original coordinates and cancel only the foreignObject viewport translation.
-            // No viewBox, clipping, HTML line-height, or inferred baseline enters this projection.
-            write!(
-                self.output,
-                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" overflow=\"visible\" style=\"position: absolute; left: 0; top: 0; overflow: visible;\"><g transform=\"translate({}, {})\">",
-                fmt(bounds.width),
-                fmt(bounds.height),
-                fmt(-bounds.x),
-                fmt(-bounds.y)
-            )?;
-            for command in &self.document.commands[first..end] {
-                self.session.checkpoint(OperationPhase::Emit)?;
-                if let DrawingCommand::DrawText { run } = command {
-                    self.emit_text(run)?;
-                }
+        for command in &self.document.commands[first..end] {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            if let DrawingCommand::DrawText { run } = command {
+                self.emit_text(run)?;
             }
-            self.output.push_str("</g></svg>")?;
-        }
-        self.output.push_str("</span></foreignObject>")?;
-        if has_text {
-            // Existing resvg-safe processing unwraps a switch's native fallback rather than
-            // remeasuring its foreignObject. One group keeps multiple lines a single branch.
-            self.output.push_str("<g>")?;
-            for command in &self.document.commands[first..end] {
-                self.session.checkpoint(OperationPhase::Emit)?;
-                if let DrawingCommand::DrawText { run } = command {
-                    self.emit_text(run)?;
-                }
-            }
-            self.output.push_str("</g></switch>")?;
         }
         self.end_semantic_group()?;
+        self.output.push_str("</g></svg></span></foreignObject>")?;
         Ok(Some(end - index + 1))
     }
 
@@ -586,7 +633,12 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         };
         let title = class == "venn-title";
-        let shared_title = title && self.venn_title_style == Some(&run.style);
+        let shared_title = title
+            && self
+                .venn_text_styles
+                .as_ref()
+                .and_then(|styles| styles.title)
+                == Some(&run.style);
         if (!title && class != "label")
             || run.direction != TextDirection::Auto
             || run.language.is_some()

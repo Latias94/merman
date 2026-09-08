@@ -3401,6 +3401,15 @@ mod tests {
             .descendants()
             .find(|node| node.has_tag_name("foreignObject"))
             .unwrap();
+        assert_eq!(
+            initial_fo.parent().unwrap().attribute("class"),
+            Some("venn-text-area"),
+            "the source foreignObject must remain a direct text-area child"
+        );
+        assert_eq!(
+            initial_fo.parent().unwrap().attribute("font-size"),
+            Some("20px")
+        );
         assert!(
             initial_fo
                 .descendants()
@@ -3439,6 +3448,7 @@ mod tests {
                 run.origin.y += 17.0;
                 run.bounds.y -= 3.0;
                 run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+                run.style.font_size = 27.0;
                 run.text = "Edited <literal>".to_owned();
             }
         }
@@ -3463,8 +3473,8 @@ mod tests {
             .collect();
         assert_eq!(
             texts.len(),
-            2,
-            "HTML branch and native fallback share canonical text"
+            1,
+            "the HTML shell owns one canonical native text projection"
         );
         let run = document
             .public
@@ -3483,12 +3493,23 @@ mod tests {
             assert_eq!(text.attribute("fill"), Some("#123456"));
             assert_eq!(text.attribute("dominant-baseline"), Some("alphabetic"));
         }
+        let semantic = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-semantic-id") == Some("venn.text.0"))
+            .unwrap();
         assert_eq!(
-            xml.descendants()
-                .filter(|node| node.has_tag_name("desc")
-                    && node.text() == Some("Public node description"))
-                .count(),
-            1
+            semantic.attribute("aria-description"),
+            Some("Public node description")
+        );
+        assert!(
+            !span
+                .descendants()
+                .any(|node| node.is_text() && node.text() == Some("Public node description")),
+            "accessibility metadata must not pollute the HTML label text content"
+        );
+        assert!(
+            fo.parent().unwrap().attribute("font-size").is_none(),
+            "mixed public font sizes cannot share a parent font-size projection"
         );
         assert!(!xml.descendants().any(|node| node.has_tag_name("text")
             && node.text().is_some_and(|text| text.contains("First"))));
@@ -3542,6 +3563,14 @@ mod tests {
             .unwrap();
         let native_xml = roxmltree::Document::parse(&native).unwrap();
         assert!(!native.contains("<foreignObject"));
+        assert_eq!(
+            native_xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some("venn.text.0"))
+                .unwrap()
+                .attribute("aria-description"),
+            Some("Public node description")
+        );
         let native_text: Vec<_> = native_xml
             .descendants()
             .filter(|node| node.has_tag_name("text") && node.text() == Some("Edited <literal>"))
@@ -3644,7 +3673,17 @@ mod tests {
             .unwrap();
         let span = fo.children().find(|node| node.is_element()).unwrap();
         assert_eq!(span.attribute("class"), Some("venn-text-node"));
-        assert_eq!(span.children().count(), 0);
+        assert_eq!(
+            span.descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            0
+        );
+        assert!(
+            span.descendants()
+                .any(|node| node.attribute("data-merman-semantic-id") == Some("venn.text.0")),
+            "an empty label still retains its semantic anchor"
+        );
         assert!(!svg.contains("<switch>"));
         assert!(!svg.contains(">A1<"));
     }

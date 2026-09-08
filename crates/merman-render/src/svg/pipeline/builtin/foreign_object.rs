@@ -9,8 +9,8 @@ use std::collections::HashSet;
 use std::convert::Infallible;
 
 use super::util::{
-    checkpoint_loop, extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
-    rfind_with_checkpoints,
+    SvgTagScanner, checkpoint_loop, extract_quoted_attr, find_tag_end_with_checkpoints,
+    find_with_checkpoints, rfind_with_checkpoints,
 };
 use crate::svg::pipeline::final_validation::SvgStructureMetrics;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
@@ -204,12 +204,35 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
             cursor = open_end + 1;
             continue;
         };
+        if let Some(native) =
+            canonical_native_text_fragment(&svg[close_start..close_start + rel_close], checkpoint)?
+        {
+            out.push_str(native);
+        }
         cursor = close_start + rel_close + "</foreignObject>".len();
     }
 
     out.push_str(&svg[cursor..]);
     checkpoint()?;
     Ok(out)
+}
+
+/// A marked group is the complete native projection in the foreignObject parent's coordinates.
+/// Its surrounding HTML/SVG viewport shells are browser-only positioning, not native content.
+pub(crate) fn canonical_native_text_fragment<'a, E>(
+    inner: &'a str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Option<&'a str>, E> {
+    let mut scanner = SvgTagScanner::new(inner);
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if is_start_g_tag(tag.raw())
+            && extract_quoted_attr(tag.raw(), "data-merman-native-text") == Some("v1")
+        {
+            return Ok(find_matching_g_end(inner, tag.start(), checkpoint)?
+                .map(|(_, end)| &inner[tag.start()..end]));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]
@@ -455,27 +478,22 @@ fn find_matching_g_end<E>(
     }
 
     let mut depth = 1usize;
-    let mut cursor = open_end + 1;
-    while let Some(rel_tag) = find_with_checkpoints(&svg[cursor..], "<", checkpoint)? {
-        let tag_start = cursor + rel_tag;
-        let Some(tag_end) = find_tag_end_with_checkpoints(svg, tag_start, checkpoint)? else {
-            break;
-        };
-        let tag = &svg[tag_start..=tag_end];
-        if is_start_g_tag(tag) {
-            if !tag.trim_end().ends_with("/>") {
+    let mut scanner = SvgTagScanner::new(svg);
+    scanner.skip_to(open_end + 1);
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if is_start_g_tag(tag.raw()) {
+            if !tag.is_self_closing() {
                 depth += 1;
             }
-        } else if is_end_g_tag(tag) {
+        } else if is_end_g_tag(tag.raw()) {
             let Some(next_depth) = depth.checked_sub(1) else {
                 return Ok(None);
             };
             depth = next_depth;
             if depth == 0 {
-                return Ok(Some((tag_start, tag_end + 1)));
+                return Ok(Some((tag.start(), scanner.cursor())));
             }
         }
-        cursor = tag_end + 1;
     }
     Ok(None)
 }
@@ -523,6 +541,45 @@ mod tests {
 
     fn render_session() -> crate::environment::RenderSession {
         RenderEnvironment::deterministic().begin_session().unwrap()
+    }
+
+    #[test]
+    fn canonical_native_text_is_promoted_without_measurement_or_duplicates() {
+        let source = r#"<svg><g transform="translate(0,24)"><foreignObject x="10" y="20" width="80" height="40"><span xmlns="http://www.w3.org/1999/xhtml"><svg><g transform="translate(-10,-20)"><g data-merman-native-text="v1" id="label" role="group" data-merman-semantic-id="text.0"><title>Title</title><desc>Description</desc><text x="50" y="45">Canonical</text></g></g></svg></span></foreignObject></g></svg>"#;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let readable = foreign_object_fallback_svg(source, &CountingFallback(calls.clone()));
+        assert_eq!(
+            readable, source,
+            "canonical text needs no guessed HTML overlay"
+        );
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+        let native = strip_foreign_objects(&readable);
+        assert_eq!(
+            native,
+            r#"<svg><g transform="translate(0,24)"><g data-merman-native-text="v1" id="label" role="group" data-merman-semantic-id="text.0"><title>Title</title><desc>Description</desc><text x="50" y="45">Canonical</text></g></g></svg>"#
+        );
+    }
+
+    #[test]
+    fn canonical_native_text_recognizes_markup_not_comment_or_cdata_contents() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let marked = r#"<g data-merman-native-text="v1"><text>Canonical</text></g>"#;
+        for shell in [format!("<!--{marked}-->"), format!("<![CDATA[{marked}]]>")] {
+            assert_eq!(
+                infallible(canonical_native_text_fragment(&shell, &mut checkpoint)),
+                None,
+                "literal markup must not become a native projection"
+            );
+        }
+        for content in ["<!-- <g></g></g> -->", "<![CDATA[<g></g></g>]]>"] {
+            let group =
+                format!(r#"<g data-merman-native-text="v1">{content}<text>Canonical</text></g>"#);
+            assert_eq!(
+                infallible(canonical_native_text_fragment(&group, &mut checkpoint)),
+                Some(group.as_str()),
+                "literal closing tags must not truncate the native projection"
+            );
+        }
     }
 
     struct CancellingMissingHost {

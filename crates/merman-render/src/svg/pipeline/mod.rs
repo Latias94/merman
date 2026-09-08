@@ -5,6 +5,7 @@ mod policy;
 mod preset;
 mod static_validation;
 
+pub(crate) use builtin::foreign_object::canonical_native_text_fragment;
 pub(crate) use builtin::util::{
     SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
     escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,

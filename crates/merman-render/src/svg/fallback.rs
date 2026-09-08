@@ -169,6 +169,11 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 
             out.push_str(&svg[lt..i_next]);
 
+            if crate::svg::pipeline::canonical_native_text_fragment(inner, checkpoint)?.is_some() {
+                i = i_next;
+                continue;
+            }
+
             let from_switch =
                 is_foreign_object_switch_native_fallback(svg, lt, i_next, checkpoint)?;
 
