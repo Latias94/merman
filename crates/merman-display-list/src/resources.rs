@@ -202,6 +202,7 @@ pub enum PathSegment {
         sweep_clockwise: bool,
         to: Point,
     },
+    #[serde(deserialize_with = "crate::wire::deserialize_empty_object")]
     Close,
 }
 

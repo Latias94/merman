@@ -1,6 +1,7 @@
 use crate::{
-    DRAWING_LIST_VERSION, DrawingCommand, DrawingListError, DrawingListPolicy, DrawingResource,
-    PathSegment, Point, Rect, ResourceId, TextObligation, resources::canonical_base64_decoded_len,
+    DRAWING_LIST_MAX_EXTENSION_DEPTH, DRAWING_LIST_VERSION, DrawingCommand, DrawingListError,
+    DrawingListPolicy, DrawingResource, PathSegment, Point, Rect, ResourceId, TextObligation,
+    resources::canonical_base64_decoded_len,
 };
 use serde::{
     Deserialize, Serialize,
@@ -121,6 +122,7 @@ pub struct DrawingListDocument {
     pub commands: Vec<DrawingCommand>,
     pub semantics: Vec<SemanticAnnotation>,
     pub fallbacks: Vec<RasterFallback>,
+    #[serde(deserialize_with = "deserialize_extensions")]
     pub extensions: BTreeMap<String, Value>,
 }
 
@@ -1769,6 +1771,40 @@ fn validate_extensions(extensions: &BTreeMap<String, Value>) -> Result<(), Drawi
         return Err(DrawingListError::invalid(
             "only x-* metadata extensions are forward-compatible",
         ));
+    }
+    for value in extensions.values() {
+        validate_extension_depth(value, 0)?;
+    }
+    Ok(())
+}
+
+fn deserialize_extensions<'de, D>(deserializer: D) -> Result<BTreeMap<String, Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let extensions = BTreeMap::deserialize(deserializer)?;
+    validate_extensions(&extensions).map_err(de::Error::custom)?;
+    Ok(extensions)
+}
+
+fn validate_extension_depth(value: &Value, parent_depth: usize) -> Result<(), DrawingListError> {
+    if !matches!(value, Value::Array(_) | Value::Object(_)) {
+        return Ok(());
+    }
+    let depth = parent_depth + 1;
+    validate_count("extension_depth", depth, DRAWING_LIST_MAX_EXTENSION_DEPTH)?;
+    match value {
+        Value::Array(values) => {
+            for child in values {
+                validate_extension_depth(child, depth)?;
+            }
+        }
+        Value::Object(values) => {
+            for child in values.values() {
+                validate_extension_depth(child, depth)?;
+            }
+        }
+        _ => {}
     }
     Ok(())
 }

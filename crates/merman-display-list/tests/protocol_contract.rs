@@ -2,8 +2,8 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::{
-    DrawingCommand, DrawingListDocument, DrawingListLimits, Paint, ResourceId, StrokeStyle,
-    TextBaseline, TextPaintOrder,
+    DRAWING_LIST_MAX_EXTENSION_DEPTH, DrawingCommand, DrawingListDocument, DrawingListLimits,
+    MeasurementProvenance, Paint, ResourceId, StrokeStyle, TextBaseline, TextPaintOrder,
 };
 use serde_json::{Map, Value, json};
 
@@ -52,6 +52,106 @@ fn canonical_json_sorts_nested_extension_objects() {
         first < last,
         "nested extension keys must be emitted in canonical order: {json}"
     );
+}
+
+#[test]
+fn path_style_requires_explicit_nullable_fill_and_stroke() {
+    let document = serde_json::to_value(sample_document()).unwrap();
+    for field in ["fill", "stroke"] {
+        let mut missing = document.clone();
+        missing["commands"][3]["style"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        assert!(
+            DrawingListDocument::from_json_bytes(&serde_json::to_vec(&missing).unwrap()).is_err(),
+            "wire decoder must require path style {field}"
+        );
+        assert!(serde_json::from_value::<DrawingListDocument>(missing).is_err());
+    }
+
+    let mut unpainted = document;
+    unpainted["commands"][3]["style"]["fill"] = Value::Null;
+    unpainted["commands"][3]["style"]["stroke"] = Value::Null;
+    DrawingListDocument::from_json_bytes(&serde_json::to_vec(&unpainted).unwrap())
+        .expect("explicit null disables paint without omitting required fields");
+}
+
+#[test]
+fn close_segment_rejects_unknown_fields() {
+    let mut value = serde_json::to_value(sample_document()).unwrap();
+    value["resources"][0]["segments"][4]["future_geometry"] = json!(true);
+    assert!(DrawingListDocument::from_json_bytes(&serde_json::to_vec(&value).unwrap()).is_err());
+    assert!(serde_json::from_value::<DrawingListDocument>(value).is_err());
+}
+
+#[test]
+fn glyph_geometry_provenance_rejects_unknown_fields() {
+    let provenance = MeasurementProvenance::GlyphGeometry;
+    let bytes = serde_json::to_vec(&provenance).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<MeasurementProvenance>(&bytes).unwrap(),
+        provenance
+    );
+    let mut value = serde_json::to_value(sample_document()).unwrap();
+    value["commands"][5]["run"]["obligation"]["measurement"] =
+        json!({"kind": "glyph_geometry", "future_measurement": true});
+    assert!(DrawingListDocument::from_json_bytes(&serde_json::to_vec(&value).unwrap()).is_err());
+    assert!(serde_json::from_value::<DrawingListDocument>(value).is_err());
+}
+
+#[test]
+fn extension_depth_has_the_same_validation_encoding_and_decoding_boundary() {
+    assert_eq!(DRAWING_LIST_MAX_EXTENSION_DEPTH, 125);
+    for objects in [false, true] {
+        for depth in [0, 1, 124, 125, 126, 128] {
+            let mut nested = Value::Null;
+            for _ in 0..depth {
+                nested = if objects {
+                    json!({"child": nested})
+                } else {
+                    Value::Array(vec![nested])
+                };
+            }
+            let mut document = sample_document();
+            document.extensions.insert("x-depth".into(), nested);
+            let raw = serde_json::to_vec(&document).unwrap();
+            let accepted = depth <= 125;
+            assert_eq!(
+                document.validate().is_ok(),
+                accepted,
+                "validation at extension depth {depth}, objects={objects}"
+            );
+            let canonical = document.canonical_json_bytes();
+            assert_eq!(canonical.is_ok(), accepted, "encoding at depth {depth}");
+            let decoded = DrawingListDocument::from_json_bytes(&raw);
+            assert_eq!(decoded.is_ok(), accepted, "decoding at depth {depth}");
+            let decoded = serde_json::from_value::<DrawingListDocument>(
+                serde_json::to_value(&document).unwrap(),
+            );
+            assert_eq!(decoded.is_ok(), accepted, "value decoding at depth {depth}");
+            if let Ok(canonical) = canonical {
+                let decoded = DrawingListDocument::from_json_bytes(&canonical)
+                    .expect("every validated canonical document decodes");
+                assert_eq!(decoded.extensions, document.extensions);
+                assert_eq!(decoded.canonical_json_bytes().unwrap(), canonical);
+            }
+        }
+    }
+}
+
+#[test]
+fn canonical_encoding_never_accepts_an_undecodable_128_layer_extension() {
+    let mut nested = Value::Null;
+    for _ in 0..128 {
+        nested = Value::Array(vec![nested]);
+    }
+    let mut document = sample_document();
+    document.extensions.insert("x-depth".into(), nested);
+    if let Ok(bytes) = document.canonical_json_bytes() {
+        DrawingListDocument::from_json_bytes(&bytes)
+            .expect("successful canonical encoding must produce a decodable document");
+    }
 }
 
 #[test]

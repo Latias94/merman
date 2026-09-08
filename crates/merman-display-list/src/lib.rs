@@ -10,6 +10,7 @@ mod document;
 mod error;
 mod geometry;
 mod resources;
+mod wire;
 
 pub use commands::{
     BlendMode, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, LineCap,
@@ -31,6 +32,12 @@ pub use resources::{
 
 /// The current public DrawingList wire schema version.
 pub const DRAWING_LIST_VERSION: u32 = 1;
+
+/// Maximum nested object/array depth inside each metadata extension value.
+///
+/// Scalars have depth zero. The document and extensions objects use two additional levels,
+/// keeping canonical output within serde_json's default recursion limit.
+pub const DRAWING_LIST_MAX_EXTENSION_DEPTH: usize = 125;
 
 /// The media type returned by the generic binding operation.
 pub const DRAWING_LIST_MEDIA_TYPE: &str = "application/vnd.merman.drawing-list+json;version=1";

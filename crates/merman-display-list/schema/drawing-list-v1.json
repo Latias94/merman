@@ -39,6 +39,7 @@
     },
     "extensions": {
       "type": "object",
+      "$comment": "The protocol validator limits each extension value to 125 nested object/array levels (scalars have depth zero), excluding the document and extensions objects. This keeps validated canonical JSON within the decoder recursion limit.",
       "patternProperties": { "^x-": {} },
       "additionalProperties": false
     }

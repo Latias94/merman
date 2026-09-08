@@ -87,7 +87,10 @@ pub struct PathStyle {
     pub fill_rule: FillRule,
     /// `None` disables filling. With no stroke either, geometry and semantics remain present
     /// but the command produces no paint (for example an unpainted SVG interaction shape).
+    /// Both paint fields are required on the wire, even when their value is `null`.
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub fill: Option<crate::Paint>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub stroke: Option<StrokeStyle>,
 }
 
@@ -422,8 +425,13 @@ pub enum TextObligation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MeasurementProvenance {
-    HostCallback { profile: String },
-    DeterministicFallback { profile: String },
+    HostCallback {
+        profile: String,
+    },
+    DeterministicFallback {
+        profile: String,
+    },
+    #[serde(deserialize_with = "crate::wire::deserialize_empty_object")]
     GlyphGeometry,
 }
 
