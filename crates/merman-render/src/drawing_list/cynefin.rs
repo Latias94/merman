@@ -464,7 +464,13 @@ impl<'a> CynefinBuilder<'a> {
                 })?;
             self.add_path(
                 format!("{semantic_id}.shape"),
-                rounded_rect_path(item.x, item.y, item.width, item.height, 4.0),
+                rounded_rect_path(
+                    item.x + item.width / 2.0,
+                    item.y + item.height / 2.0,
+                    item.width,
+                    item.height,
+                    4.0,
+                ),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(with_alpha(

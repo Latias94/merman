@@ -3136,6 +3136,65 @@ fn cynefin_emits_domains_boundaries_transitions_and_overflow_items() {
     let document = output.document();
     assert_eq!(document.viewport.bounds.width, 880.0);
     assert_eq!(document.viewport.bounds.height, 680.0);
+    // Upstream badges use top-left layout coordinates with text centered inside the rect.
+    // Check both normal and overflow badges, not just the presence of path resources.
+    for item in document
+        .semantics
+        .iter()
+        .filter(|semantic| semantic.id.starts_with("cynefin.item."))
+    {
+        let path_id = format!("{}.shape", item.id);
+        let path = document
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == path_id => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .expect("item shape");
+        let run = document
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                merman_display_list::DrawingCommand::DrawText { run }
+                    if Some(run.text.as_str()) == item.title.as_deref() =>
+                {
+                    Some(run)
+                }
+                _ => None,
+            })
+            .expect("item label");
+        let mut left = f64::INFINITY;
+        let mut right = f64::NEG_INFINITY;
+        let mut top = f64::INFINITY;
+        let mut bottom = f64::NEG_INFINITY;
+        for segment in &path.segments {
+            use merman_display_list::PathSegment;
+            let point = match segment {
+                PathSegment::MoveTo { to }
+                | PathSegment::LineTo { to }
+                | PathSegment::ArcTo { to, .. } => to,
+                PathSegment::Close => continue,
+                _ => panic!("badge should be a rounded rectangle"),
+            };
+            left = left.min(point.x);
+            right = right.max(point.x);
+            top = top.min(point.y);
+            bottom = bottom.max(point.y);
+        }
+        assert!(
+            ((left + right) / 2.0 - run.origin.x).abs() < 1e-9,
+            "{} badge and label must share their horizontal center",
+            item.id
+        );
+        assert!(
+            ((top + bottom) / 2.0 - run.origin.y).abs() < 1e-9,
+            "{} badge and label must share their vertical center",
+            item.id
+        );
+    }
     for path_id in [
         "cynefin.boundary.fold",
         "cynefin.boundary.horizontal",
