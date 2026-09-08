@@ -537,6 +537,8 @@ impl TreemapTypographyThemePlan {
                 // A fill receipt cannot certify a sibling facet without a terminal owner.
             } else if self.label_config_owns_text_fill && self.value_config_owns_text_fill {
                 evidence.mark_not_applicable(key);
+            } else if observation.fill_pending && receipt.text_fill_unverified {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
             } else if observation.fill_pending && receipt.text_fill_proven {
                 let fill = self.text_fill.as_ref().expect("matching Treemap text fill");
                 evidence.mark_applied_with_capabilities(key, [fill.capability()]);
@@ -648,6 +650,14 @@ pub(crate) enum TreemapTextRole {
     LeafValue,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum TreemapTextFillOwnership {
+    #[default]
+    Generated,
+    SourceOwned,
+    Unverified,
+}
+
 #[derive(Debug)]
 pub(crate) struct TreemapTypographyThemeReceipt<'a> {
     expected_font_family_css: &'a str,
@@ -667,6 +677,7 @@ pub(crate) struct TreemapTypographyThemeReceipt<'a> {
     terminal_matches: bool,
     participating_count: usize,
     text_participating_count: usize,
+    text_fill_unverified: bool,
     source_owned_count: usize,
     unverified_count: usize,
 }
@@ -679,6 +690,7 @@ struct TreemapTypographyTerminalSeal {
     unverified_count: usize,
     typed_text_fill_terminal_count: usize,
     text_fill_proven: bool,
+    text_fill_unverified: bool,
 }
 
 impl<'a> TreemapTypographyThemeReceipt<'a> {
@@ -704,6 +716,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             terminal_matches: true,
             participating_count: 0,
             text_participating_count: 0,
+            text_fill_unverified: false,
             source_owned_count: 0,
             unverified_count: 0,
         }
@@ -764,6 +777,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
         &mut self,
         role: TreemapTextRole,
         participates: bool,
+        fill_ownership: TreemapTextFillOwnership,
         resolved: &TreemapResolvedTextStyle,
         measurement_matches: bool,
     ) {
@@ -781,14 +795,20 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
             TreemapTextRole::SectionLabel | TreemapTextRole::LeafLabel
                 if self.expected_label_text_fill_css.is_some() =>
             {
-                self.label_text_fill_terminal_count =
-                    self.label_text_fill_terminal_count.saturating_add(1);
+                self.text_fill_unverified |= fill_ownership == TreemapTextFillOwnership::Unverified;
+                if fill_ownership == TreemapTextFillOwnership::Generated {
+                    self.label_text_fill_terminal_count =
+                        self.label_text_fill_terminal_count.saturating_add(1);
+                }
             }
             TreemapTextRole::SectionValue | TreemapTextRole::LeafValue
                 if self.expected_value_text_fill_css.is_some() =>
             {
-                self.value_text_fill_terminal_count =
-                    self.value_text_fill_terminal_count.saturating_add(1);
+                self.text_fill_unverified |= fill_ownership == TreemapTextFillOwnership::Unverified;
+                if fill_ownership == TreemapTextFillOwnership::Generated {
+                    self.value_text_fill_terminal_count =
+                        self.value_text_fill_terminal_count.saturating_add(1);
+                }
             }
             TreemapTextRole::Title
             | TreemapTextRole::SectionLabel
@@ -824,6 +844,7 @@ impl<'a> TreemapTypographyThemeReceipt<'a> {
         .then_some(TreemapTypographyTerminalSeal {
             participating_count: self.participating_count,
             text_participating_count: self.text_participating_count,
+            text_fill_unverified: self.text_fill_unverified,
             source_owned_count: self.source_owned_count,
             unverified_count: self.unverified_count,
             typed_text_fill_terminal_count: self

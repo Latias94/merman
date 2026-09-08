@@ -17,7 +17,7 @@ mod theme;
 use config::TreemapConfigView;
 
 pub(crate) use theme::{
-    TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
+    TreemapTextFillOwnership, TreemapTextRole, TreemapTitleThemePlan, TreemapTypographyCssEmission,
     TreemapTypographyThemePlan,
 };
 

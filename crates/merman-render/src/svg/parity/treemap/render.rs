@@ -411,6 +411,8 @@ pub(crate) fn render_treemap_diagram_svg(
     struct TreemapCompiledStyles {
         label_styles: String,
         label_styles_without_font_size: String,
+        text_fill_ownership: crate::treemap::TreemapTextFillOwnership,
+        text_fill_without_font_size_ownership: crate::treemap::TreemapTextFillOwnership,
         node_styles: String,
         border_styles: Vec<String>,
     }
@@ -461,6 +463,10 @@ pub(crate) fn render_treemap_diagram_svg(
         let mut label_styles_without_font_size: Vec<String> = Vec::new();
         let mut node_styles: Vec<String> = Vec::new();
         let mut border_styles: Vec<String> = Vec::new();
+        let mut text_fill_ownership = crate::treemap::TreemapTextFillOwnership::Generated;
+        let mut text_fill_without_font_size_ownership = text_fill_ownership;
+        let mut label_styles_contain_color = false;
+        let mut label_styles_without_font_size_contain_color = false;
 
         for (k, v) in &m.order {
             if v.is_empty() {
@@ -474,8 +480,33 @@ pub(crate) fn render_treemap_diagram_svg(
             let decl = format!("{k}:{v}");
             let decl_imp = format!("{decl} !important");
             if treemap_is_label_style(k) {
+                if k == "color" {
+                    // The emitted suffix converts this declaration to fill and appends !important.
+                    // Dynamic or invalid values cannot prove that the generated fill is shadowed.
+                    text_fill_ownership = if crate::mermaid_style::is_supported_css_color_value(v)
+                        || v.eq_ignore_ascii_case("none")
+                    {
+                        crate::treemap::TreemapTextFillOwnership::SourceOwned
+                    } else {
+                        crate::treemap::TreemapTextFillOwnership::Unverified
+                    };
+                    text_fill_without_font_size_ownership = text_fill_ownership;
+                    // Preserve the writer's first-substring replacement, including values that
+                    // contain `color:` before the real declaration. Such output is not proof of
+                    // a source-owned fill; the two suffixes can have different first matches.
+                    if label_styles_contain_color {
+                        text_fill_ownership = crate::treemap::TreemapTextFillOwnership::Unverified;
+                    }
+                    if label_styles_without_font_size_contain_color {
+                        text_fill_without_font_size_ownership =
+                            crate::treemap::TreemapTextFillOwnership::Unverified;
+                    }
+                }
+                let contains_color = decl_imp.contains("color:");
+                label_styles_contain_color |= contains_color;
                 label_styles.push(decl_imp.clone());
                 if k.trim() != "font-size" {
+                    label_styles_without_font_size_contain_color |= contains_color;
                     label_styles_without_font_size.push(decl_imp);
                 }
             } else {
@@ -489,6 +520,8 @@ pub(crate) fn render_treemap_diagram_svg(
         Ok(TreemapCompiledStyles {
             label_styles: label_styles.join(";"),
             label_styles_without_font_size: label_styles_without_font_size.join(";"),
+            text_fill_ownership,
+            text_fill_without_font_size_ownership,
             node_styles: node_styles.join(";"),
             border_styles,
         })
@@ -747,6 +780,7 @@ pub(crate) fn render_treemap_diagram_svg(
             receipt.record_text(
                 crate::treemap::TreemapTextRole::Title,
                 true,
+                crate::treemap::TreemapTextFillOwnership::Generated,
                 title_text_style
                     .as_ref()
                     .expect("a visible Treemap title has a resolved text style"),
@@ -874,6 +908,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::SectionLabel,
                     false,
+                    compiled.text_fill_ownership,
                     &section_label_text_style,
                     true,
                 );
@@ -965,6 +1000,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::SectionLabel,
                     !label_text.trim().is_empty(),
+                    compiled.text_fill_ownership,
                     &section_label_text_style,
                     true,
                 );
@@ -1016,6 +1052,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::SectionValue,
                     section.depth != 0 && !value_text.is_empty(),
+                    compiled.text_fill_ownership,
                     &section_value_text_style,
                     true,
                 );
@@ -1059,6 +1096,8 @@ pub(crate) fn render_treemap_diagram_svg(
         let TreemapCompiledStyles {
             label_styles,
             label_styles_without_font_size,
+            text_fill_ownership,
+            text_fill_without_font_size_ownership,
             node_styles: leaf_rect_style,
             border_styles: _,
         } = treemap_styles2_string(leaf_css, options.work_meter())?;
@@ -1208,6 +1247,11 @@ pub(crate) fn render_treemap_diagram_svg(
             receipt.record_text(
                 crate::treemap::TreemapTextRole::LeafLabel,
                 !label_hidden && !leaf.name.trim().is_empty(),
+                if label_font_size_mutated {
+                    text_fill_without_font_size_ownership
+                } else {
+                    text_fill_ownership
+                },
                 &final_label_text_style,
                 label_measurement_matches,
             );
@@ -1306,6 +1350,11 @@ pub(crate) fn render_treemap_diagram_svg(
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::LeafValue,
                     !value_hidden && !value_text.is_empty(),
+                    if label_hidden {
+                        text_fill_ownership
+                    } else {
+                        text_fill_without_font_size_ownership
+                    },
                     &final_value_text_style,
                     true,
                 );

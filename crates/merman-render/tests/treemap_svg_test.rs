@@ -774,6 +774,86 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
 }
 
 #[test]
+fn treemap_source_text_colors_do_not_certify_typed_fill() {
+    let theme = treemap_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for (has_typed_leaf, style, color) in [
+        (false, "color:#abcdef", "#abcdef"),
+        (true, "color:#abcdef", "#abcdef"),
+        (false, "color:var(--missing),color:#abcdef", "#abcdef"),
+        (false, "color:#123456", "#123456"),
+        (false, "color:none", "none"),
+    ] {
+        let source = format!(
+            "treemap\nclassDef sourceColor {style};\n\"Section\":::sourceColor\n  \"Owned\": 12:::sourceColor\n{}",
+            if has_typed_leaf {
+                "  \"Typed\": 12\n"
+            } else {
+                ""
+            },
+        );
+        let rendered = render_treemap_with_theme(&source, &theme, Engine::new());
+        let owned = text_tag_by_text(rendered.svg(), "Owned");
+        assert!(
+            owned.contains(&format!("fill:{color} !important")),
+            "{owned}"
+        );
+        if has_typed_leaf {
+            let typed = text_tag_by_text(rendered.svg(), "Typed");
+            assert!(
+                typed.contains("#123456") || typed.contains("rgb(18, 52, 86)"),
+                "{typed}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(has_typed_leaf));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!has_typed_leaf)
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn treemap_uncertain_source_fill_does_not_certify_a_mixed_surface() {
+    let theme = treemap_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for style in [
+        "color:var(--missing-color)",
+        "color:currentColor",
+        "color:#abcdef !important",
+        "font-family:\"color:face\",color:#abcdef",
+    ] {
+        let source = format!(
+            "treemap\nclassDef uncertain {style};\n\"Uncertain\": 12:::uncertain\n\"Typed\": 12\n"
+        );
+        let rendered = try_render_treemap_with_theme_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "{style}");
+        assert_eq!(evidence.theme_residual_count(), 1, "{style}");
+        let error = try_render_treemap_with_theme_requirement(
+            &source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .err()
+        .expect("uncertain source paint must fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREEMAP, 1))
+        );
+    }
+}
+
+#[test]
 fn treemap_text_fill_is_not_applicable_without_visible_text_terminals() {
     let theme =
         treemap_text_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap text color"));
