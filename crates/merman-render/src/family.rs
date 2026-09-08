@@ -986,7 +986,12 @@ impl FamilyRenderArtifact {
         let json = document
             .public
             .canonical_json_bytes_with_limits(&limits)
-            .map_err(Error::DrawingListContract)?;
+            .map_err(|error| {
+                crate::drawing_list::operation_document_error(
+                    Error::DrawingListContract(error),
+                    &self.session,
+                )
+            })?;
         self.session.checkpoint(OperationPhase::Emit)?;
         let public = document.into_public();
         let family_kind = self.family.kind();
@@ -1978,6 +1983,57 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn gantt_candidate_split_task_scopes_keep_links_and_unique_ids() {
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
+            .parse_diagram_for_render_model_sync(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\nclick a href \"https://example.com/task\"\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let rendered = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions {
+                diagram_id: Some("compact".to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let svg = roxmltree::Document::parse(&rendered).unwrap();
+        let mut ids = std::collections::BTreeSet::new();
+        for node in svg.descendants() {
+            if let Some(id) = node.attribute("id") {
+                assert!(ids.insert(id), "duplicate SVG id: {id}");
+            }
+        }
+        for id in ["compact-a", "compact-a-text"] {
+            let node = svg
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            assert!(node.ancestors().any(|ancestor| {
+                ancestor.has_tag_name("a")
+                    && ancestor.attribute("href") == Some("https://example.com/task")
+            }));
+            assert!(
+                node.attribute("class")
+                    .is_some_and(|class| class.contains("clickable"))
+            );
+        }
     }
 
     #[test]

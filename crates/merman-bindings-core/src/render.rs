@@ -284,6 +284,14 @@ mod tests {
             .expect_err("a one-byte DrawingList budget must reject the complete document");
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         assert!(error.message().contains("serialized_bytes"), "{error:?}");
+        let details = error
+            .resource_details()
+            .expect("protocol quota keeps structured details");
+        assert_eq!(details.limit_id, "max_serialized_bytes");
+        assert_eq!(details.phase, "drawing-list-validation");
+        assert_eq!(details.max, 1);
+        assert!(details.actual > details.max);
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
     }
 
     #[cfg(feature = "svg")]

@@ -77,10 +77,21 @@ Mindmap depth-based edge widths, Flowchart node-label opacity isolation, Sequenc
 geometry, Journey background paints, Radar text fill inheritance, exact JSON float round trips,
 and Web/Python error-detail exports through direct-output or public binding tests.
 
-The remaining reported repair units are Gantt task/label ordering, Treemap fill/stroke compositing,
-Class relationship-label background selection, Architecture title baselines and bounds, caller
-control over canonical SVG document limits, and latching protocol-limit failures in operation
-control. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain part of their migration.
+The follow-up repair batch restores all-bars-before-labels Gantt ordering, single-object Treemap
+fill/stroke compositing, Class relationship-label backgrounds and transparent terminals, and
+Architecture service-title baselines/bounds. Class translucent HTML relationship backgrounds
+remain an explicit unsupported effect until inline box geometry can represent both source
+background layers; SVG text labels retain the exact `mainBkg` alpha. Protocol-limit failures now
+latch in the shared operation control before returning, so later cancellation cannot replace
+their resource terminal. Public quota errors keep the same stable limit ID and exact counts.
+
+Caller control over canonical SVG document limits remains an open repair unit. SVG construction,
+pre-serialization admission, and encoder validation still apply protocol defaults; fixing only
+one boundary does not remove the hidden limit. The intended integration separates shared
+correctness validation from target policy: SVG uses the existing operation/work/output budgets,
+while DrawingList output and external decoding retain exact protocol limits. Bounded SVG writing
+and cancellation during expensive validation must remain part of that integration, not be bypassed
+with maximal numeric limits. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain.
 None of these local corrections admits another SVG family or completes the all-family goal.
 
 ### Journey color correction

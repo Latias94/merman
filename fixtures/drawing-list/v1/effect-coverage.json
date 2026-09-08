@@ -46,7 +46,7 @@
     {
       "family": "class",
       "source": "classDiagram\n  class A\n  class B\n  A --> B : uses\n",
-      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
+      "expected_effects": ["expanded_marker", "host_text", "path"]
     },
     {
       "family": "c4",

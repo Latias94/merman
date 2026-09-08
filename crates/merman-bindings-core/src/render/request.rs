@@ -101,15 +101,13 @@ impl RenderRequestPlan {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "drawing-list")]
         {
-            let mut request = DrawingListRequest::default();
-            request.environment = self.svg.environment.clone();
-            request.layout = self.svg.layout.clone();
-            request.presentation = self.svg.presentation;
-            #[cfg(feature = "drawing-list")]
-            {
-                request.policy = self.drawing_list.policy;
-                request.limits = self.drawing_list.limits;
-            }
+            let request = DrawingListRequest {
+                environment: self.svg.environment.clone(),
+                layout: self.svg.layout.clone(),
+                presentation: self.svg.presentation,
+                policy: self.drawing_list.policy,
+                limits: self.drawing_list.limits,
+            };
             let output = self
                 .renderer
                 .render(self.request(source, merman::RenderTarget::DrawingList(request), control))

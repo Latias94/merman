@@ -573,20 +573,16 @@ impl<'a> TreemapBuilder<'a> {
                 })?;
             }
         }
-        let mut styles = Vec::with_capacity(2);
-        if let Some(fill) = fill {
-            styles.push(PathStyle {
+        // Mermaid paints each cell as one rect: object opacity/blend applies after its
+        // fill and stroke are composed, independently of either paint's own alpha.
+        self.document.draw_path(
+            resource_id,
+            segments,
+            PathStyle {
                 fill_rule: style.fill_rule,
-                fill: Some(Paint::solid(fill)),
-                stroke: None,
-            });
-        }
-        if let Some(stroke_color) = stroke_color {
-            styles.push(PathStyle {
-                fill_rule: style.fill_rule,
-                fill: None,
-                stroke: Some(StrokeStyle {
-                    paint: Paint::solid(stroke_color),
+                fill: fill.map(Paint::solid),
+                stroke: stroke_color.map(|color| StrokeStyle {
+                    paint: Paint::solid(color),
                     width: style.stroke_width,
                     dash_array: style.dash_array.clone(),
                     dash_offset: style.dash_offset,
@@ -594,10 +590,8 @@ impl<'a> TreemapBuilder<'a> {
                     line_join: style.line_join,
                     miter_limit: style.miter_limit,
                 }),
-            });
-        }
-        self.document
-            .draw_path_layers(resource_id, segments, styles)?;
+            },
+        )?;
         if has_state {
             self.document.push_control(DrawingCommand::Restore)?;
         }
@@ -1200,7 +1194,137 @@ fn unavailable(message: impl Into<String>) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::treemap_leaf_group_class;
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use crate::{LayoutOptions, family};
+    use merman_core::{Engine, ParseOptions};
+    use merman_display_list::DrawingListDocument;
+
+    fn styled_cells(declarations: &str) -> DrawingListDocument {
+        let source = format!(
+            "treemap\n\"Main\"\n    \"Group\":::cell\n        \"Item\":10:::cell\nclassDef cell {declarations};\n"
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect("Treemap source parses")
+            .expect("Treemap source is detected");
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("render session starts");
+        family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("Treemap layout succeeds")
+            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .expect("Treemap DrawingList succeeds")
+            .document()
+            .clone()
+    }
+
+    fn cell_path<'a>(document: &'a DrawingListDocument, title: &str) -> (usize, &'a PathStyle) {
+        let semantic = document
+            .semantics
+            .iter()
+            .find(|semantic| semantic.title.as_deref() == Some(title))
+            .expect("cell semantic exists");
+        let shape_id = format!("{}.shape", semantic.id);
+        let paths = document
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(index, command)| match command {
+                DrawingCommand::DrawPath { path, style } if path.as_str() == shape_id => {
+                    Some((index, style))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(paths.len(), 1, "each source rect is one compositing object");
+        paths[0]
+    }
+
+    #[test]
+    fn cell_fill_and_stroke_share_object_opacity_and_blend() {
+        let document = styled_cells(
+            "fill:#ff0000,stroke:#0000ff,fill-opacity:1,stroke-opacity:1,opacity:0.5,mix-blend-mode:multiply,stroke-width:4,stroke-dasharray:5 2,stroke-dashoffset:1,stroke-linecap:round,stroke-linejoin:bevel,stroke-miterlimit:6,fill-rule:evenodd",
+        );
+        for title in ["Group", "Item"] {
+            let (index, style) = cell_path(&document, title);
+            assert_eq!(style.fill, Some(Paint::solid(Color::rgba(255, 0, 0, 255))));
+            assert_eq!(style.fill_rule, FillRule::EvenOdd);
+            assert_eq!(
+                style.stroke,
+                Some(StrokeStyle {
+                    paint: Paint::solid(Color::rgba(0, 0, 255, 255)),
+                    width: 4.0,
+                    dash_array: vec![5.0, 2.0],
+                    dash_offset: 1.0,
+                    line_cap: LineCap::Round,
+                    line_join: LineJoin::Bevel,
+                    miter_limit: 6.0,
+                })
+            );
+            assert!(matches!(
+                &document.commands[index - 3..=index + 1],
+                [
+                    DrawingCommand::Save,
+                    DrawingCommand::SetOpacity { opacity: 0.5 },
+                    DrawingCommand::SetBlendMode {
+                        blend_mode: BlendMode::Multiply
+                    },
+                    DrawingCommand::DrawPath { .. },
+                    DrawingCommand::Restore
+                ]
+            ));
+        }
+    }
+
+    #[test]
+    fn cell_paint_alpha_is_independent_of_object_opacity() {
+        let document = styled_cells(
+            "fill:#ff000080,stroke:#0000ff80,fill-opacity:0.5,stroke-opacity:0.25,opacity:0.5",
+        );
+        for title in ["Group", "Item"] {
+            let (index, style) = cell_path(&document, title);
+            assert_eq!(style.fill, Some(Paint::solid(Color::rgba(255, 0, 0, 64))));
+            assert_eq!(
+                style.stroke.as_ref().expect("stroke exists").paint,
+                Paint::solid(Color::rgba(0, 0, 255, 32))
+            );
+            assert!(matches!(
+                &document.commands[index - 2..=index + 1],
+                [
+                    DrawingCommand::Save,
+                    DrawingCommand::SetOpacity { opacity: 0.5 },
+                    DrawingCommand::DrawPath { .. },
+                    DrawingCommand::Restore
+                ]
+            ));
+        }
+    }
+
+    #[test]
+    fn cells_keep_source_default_paint_opacities() {
+        let document = styled_cells("fill:#ff0000,stroke:#0000ff");
+        // Mermaid's renderer.ts gives sections fill/stroke opacity 0.6/0.4 and leaves 0.3/1.
+        for (title, fill_alpha, stroke_alpha, width) in
+            [("Group", 153, 102, 2.0), ("Item", 77, 255, 3.0)]
+        {
+            let (_, style) = cell_path(&document, title);
+            assert_eq!(
+                style.fill,
+                Some(Paint::solid(Color::rgba(255, 0, 0, fill_alpha)))
+            );
+            let stroke = style.stroke.as_ref().expect("stroke exists");
+            assert_eq!(
+                stroke.paint,
+                Paint::solid(Color::rgba(0, 0, 255, stroke_alpha))
+            );
+            assert_eq!(stroke.width, width);
+        }
+        assert!(!document.commands.iter().any(|command| matches!(
+            command,
+            DrawingCommand::SetOpacity { .. } | DrawingCommand::SetBlendMode { .. }
+        )));
+    }
 
     #[test]
     fn leaf_group_class_preserves_upstream_suffix_placement() {

@@ -435,7 +435,8 @@ impl<'a> ArchitectureBuilder<'a> {
                         MultilineTextSpec {
                             origin: Point::new(
                                 layout.x + self.icon_size / 2.0,
-                                layout.y + self.icon_size,
+                                // createText's first tspan uses y=-0.1em and dy=1.1em.
+                                layout.y + self.icon_size + self.font_size,
                             ),
                             fill: self.text_color,
                             anchor: TextAnchor::Middle,
@@ -817,7 +818,10 @@ impl<'a> ArchitectureBuilder<'a> {
             TextAnchor::End => origin.x - width,
         };
         let y = match baseline {
-            TextBaseline::Middle | TextBaseline::Central => origin.y - height / 2.0,
+            // The measured createText bbox already includes the first tspan's 1em offset.
+            // Middle-aligned service titles advance from that first line, not the block center.
+            TextBaseline::Middle => origin.y - self.font_size + bbox_y_min,
+            TextBaseline::Central => origin.y - height / 2.0,
             TextBaseline::Hanging => origin.y,
             _ => origin.y - height,
         };
@@ -2120,6 +2124,97 @@ fn unavailable(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::architecture_edge_label_rotation;
+
+    #[cfg(feature = "layout-cytoscape")]
+    fn public_architecture_document(
+        source: &str,
+        font_size: f64,
+        icon_size: f64,
+    ) -> (
+        crate::model::ArchitectureDiagramLayout,
+        crate::family::RenderedDrawingList,
+    ) {
+        let parsed = merman_core::Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": format!("{font_size}px") },
+                "architecture": { "fontSize": 37, "iconSize": icon_size }
+            })))
+            .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let artifact =
+            crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap();
+        let layout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["ArchitectureDiagram"].clone(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_drawing_list(
+                merman_display_list::DrawingListPolicy::VectorOnly,
+                merman_display_list::DrawingListLimits::default(),
+            )
+            .unwrap();
+        (layout, rendered)
+    }
+
+    #[test]
+    #[cfg(feature = "layout-cytoscape")]
+    fn architecture_public_service_title_preserves_first_tspan_baseline_and_bounds() {
+        use crate::text::TextMeasurer;
+        use merman_display_list::{DrawingCommand, Point, TextAnchor, TextBaseline};
+
+        for (title, font_size, icon_size) in [
+            ("API", 16.0, 80.0),
+            ("API", 24.0, 96.0),
+            ("API gateway backend service", 16.0, 80.0),
+            ("API gateway backend service", 24.0, 96.0),
+        ] {
+            let source = format!("architecture-beta\nservice api(server)[{title}]\n");
+            let (layout, rendered) = public_architecture_document(&source, font_size, icon_size);
+            let node = layout.nodes.iter().find(|node| node.id == "api").unwrap();
+            let run = rendered
+                .document()
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(run.style.font_size, font_size);
+            assert_eq!(run.anchor, TextAnchor::Middle);
+            assert_eq!(run.baseline, TextBaseline::Middle);
+            assert_eq!(
+                run.origin,
+                Point::new(node.x + icon_size / 2.0, node.y + icon_size + font_size)
+            );
+            assert_eq!(run.style.line_height, font_size * 1.1);
+            let lines = run.text.lines().collect::<Vec<_>>();
+            assert_eq!(lines.len() == 1, title == "API");
+            let style = crate::text::TextStyle {
+                font_family: Some(run.style.font.families.join(", ")),
+                font_size,
+                font_weight: None,
+                font_style: None,
+            };
+            let measurer = rendered
+                .session()
+                .text_measurer(crate::environment::TextMeasurementPhase::SvgBBox);
+            let expected_y = node.y
+                + icon_size
+                + measurer.measure_svg_create_text_middle_bbox_y_offset_px(lines[0], &style);
+            let expected_height = (measurer
+                .measure_svg_tspan_text_bbox_height_px(lines[0], &style)
+                + (lines.len() - 1) as f64 * run.style.line_height)
+                .max(font_size);
+            assert!((run.bounds.y - expected_y).abs() < 1e-9);
+            assert!((run.bounds.height - expected_height).abs() < 1e-9);
+            assert!((run.bounds.x + run.bounds.width / 2.0 - run.origin.x).abs() < 1e-9);
+        }
+    }
 
     #[test]
     fn edge_label_rotation_matches_mermaid_axis_and_diagonal_rules() {

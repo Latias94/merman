@@ -920,6 +920,31 @@ impl OperationWorkMeter {
         self.terminate_resource_error(error, operation_phase, 0, actual)
     }
 
+    pub(crate) fn terminate_document_limit(
+        &self,
+        id: &'static str,
+        actual: usize,
+        maximum: usize,
+    ) -> OperationWorkError {
+        let terminal = self
+            .control
+            .terminate_resource_limit(OperationResourceLimitExceeded {
+                id,
+                phase: OperationPhase::Emit,
+                resource_phase: "drawing-list-validation",
+                limit: saturating_u64(maximum),
+                consumed: 0,
+                requested: saturating_u64(actual),
+                // Protocol limits are supplied separately, not inherited from a render profile.
+                provenance: OperationResourceProvenance::new(
+                    OperationResourceDomain::Render,
+                    None,
+                    [],
+                ),
+            });
+        self.map_terminal_error(terminal)
+    }
+
     pub(crate) fn terminate_svg_byte_count_overflow(
         &self,
         resource_phase: ResourceLimitPhase,

@@ -422,7 +422,23 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn emit_tasks(&mut self) -> Result<()> {
-        for (index, task) in self.layout.tasks.iter().enumerate() {
+        // Mermaid paints every bar before any label, with vertical markers last in each pass.
+        // Compact rows can share a lane, so interleaving bars and labels hides earlier labels.
+        let tasks = self
+            .layout
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, task)| !task.vert)
+            .chain(
+                self.layout
+                    .tasks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, task)| task.vert),
+            );
+        let mut labels = Vec::new();
+        for (index, task) in tasks {
             let source = find_task(self.model, &task.id).ok_or_else(|| {
                 invalid(format!(
                     "Gantt layout task `{}` has no semantic source",
@@ -467,7 +483,34 @@ impl<'a> GanttBuilder<'a> {
                     stroke: Some(stroke(border, stroke_width)),
                 },
             )?;
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Node,
+                title: Some(source.task.clone()),
+                description: (!source.section.is_empty())
+                    .then(|| format!("{} section", source.section)),
+                link: portable_navigation_uri(
+                    self.model.links.get(&source.id).map(String::as_str),
+                    self.navigation_security,
+                ),
+            })?;
+            labels
+                .try_reserve(1)
+                .map_err(|_| Error::DrawingListAllocationFailed {
+                    collection: "Gantt task label references",
+                })?;
+            labels.push((index, task, source));
+        }
 
+        for (index, task, source) in labels {
+            // Separate scopes retain both link hit targets without reusing an SVG group id.
+            let semantic_id = format!("gantt.task.{index}.label");
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
             let label_color = self.task_text_style(source, &task.label.class);
             let label_size = if source.vert {
                 15.0
@@ -483,7 +526,7 @@ impl<'a> GanttBuilder<'a> {
             self.dom_ids
                 .insert(semantic_id.clone(), task.label.id.clone());
             self.emit_text(
-                &format!("{semantic_id}.label"),
+                &semantic_id,
                 &task.label.text,
                 TextEmitSpec {
                     origin: Point::new(task.label.x, task.label.y),
@@ -499,7 +542,7 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
-                role: SemanticRole::Node,
+                role: SemanticRole::Label,
                 title: Some(source.task.clone()),
                 description: (!source.section.is_empty())
                     .then(|| format!("{} section", source.section)),
@@ -1094,5 +1137,142 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: "gantt".to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::family::FamilyRenderArtifact;
+    use merman_core::{Engine, MermaidConfig, OperationControl, ParseOptions};
+
+    const COMPACT_TASKS: &str = "gantt\n\
+        dateFormat YYYY-MM-DD\n\
+        todayMarker off\n\
+        accTitle: Compact release\n\
+        accDescr: Linked compact tasks\n\
+        section Core\n\
+        Marker :vert, marker, 2026-01-01, 1d\n\
+        A long task label extending across the following task :a, 2026-01-02, 1d\n\
+        Next :b, 2026-01-03, 1d\n\
+        Horizon :c, 2026-01-20, 1d\n\
+        click a href \"https://example.com/task\"\n";
+
+    fn compact_artifact() -> FamilyRenderArtifact {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "securityLevel": "loose",
+                "gantt": { "displayMode": "compact", "useWidth": 800 }
+            })))
+            .parse_diagram_for_render_model_sync(COMPACT_TASKS, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(OperationControl::new())
+            .unwrap();
+        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap()
+    }
+
+    #[test]
+    fn compact_tasks_paint_all_bars_before_labels_and_vertical_markers_last() {
+        let artifact = compact_artifact();
+        let projection = artifact.layout_json().unwrap();
+        let layout: GanttDiagramLayout =
+            serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).unwrap();
+        let first = layout.tasks.iter().find(|task| task.id == "a").unwrap();
+        let next = layout.tasks.iter().find(|task| task.id == "b").unwrap();
+        assert_eq!(first.bar.y, next.bar.y, "tasks must share a compact lane");
+        assert_eq!(label_anchor(&first.label.class), TextAnchor::Start);
+        assert!(first.label.x < next.bar.x + next.bar.width);
+        assert!(first.label.x + first.label.width > next.bar.x);
+
+        let rendered = artifact
+            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .unwrap();
+        let document = rendered.document();
+        let mut scopes = Vec::new();
+        let mut task_paints = Vec::new();
+        for command in &document.commands {
+            match command {
+                DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                    scopes.push(semantic_id.as_str());
+                }
+                DrawingCommand::EndSemanticGroup => {
+                    scopes.pop().unwrap();
+                }
+                DrawingCommand::DrawPath { path, .. }
+                    if path.as_str().starts_with("gantt.task.") =>
+                {
+                    let scope = *scopes.last().unwrap();
+                    assert_eq!(path.as_str(), format!("{scope}.bar"));
+                    task_paints.push(("bar", scope.to_owned()));
+                }
+                DrawingCommand::DrawText { run }
+                    if scopes
+                        .last()
+                        .is_some_and(|id| id.starts_with("gantt.task.")) =>
+                {
+                    let scope = *scopes.last().unwrap();
+                    let semantic = document.semantics.iter().find(|s| s.id == scope).unwrap();
+                    assert_eq!(semantic.role, SemanticRole::Label);
+                    assert_eq!(semantic.title.as_deref(), Some(run.text.as_str()));
+                    task_paints.push(("label", scope.to_owned()));
+                }
+                _ => {}
+            }
+        }
+        assert!(scopes.is_empty());
+        let order = layout
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, task)| !task.vert)
+            .chain(
+                layout
+                    .tasks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, task)| task.vert),
+            )
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let expected = order
+            .iter()
+            .map(|index| ("bar", format!("gantt.task.{index}")))
+            .chain(
+                order
+                    .iter()
+                    .map(|index| ("label", format!("gantt.task.{index}.label"))),
+            )
+            .collect::<Vec<_>>();
+        assert_eq!(task_paints, expected);
+        for (index, task) in layout.tasks.iter().enumerate() {
+            let node = document
+                .semantics
+                .iter()
+                .find(|s| s.id == format!("gantt.task.{index}"))
+                .unwrap();
+            let label = document
+                .semantics
+                .iter()
+                .find(|s| s.id == format!("gantt.task.{index}.label"))
+                .unwrap();
+            assert_eq!(node.role, SemanticRole::Node);
+            assert_eq!(node.title.as_deref(), Some(task.task.as_str()));
+            assert_eq!(node.title, label.title);
+            assert_eq!(node.description, label.description);
+            assert_eq!(node.link, label.link);
+            if task.id == "a" {
+                assert_eq!(node.link.as_deref(), Some("https://example.com/task"));
+                assert_eq!(node.description.as_deref(), Some("Core section"));
+            }
+        }
+        let root = document
+            .semantics
+            .iter()
+            .find(|s| s.id == "gantt.document")
+            .unwrap();
+        assert_eq!(root.title.as_deref(), Some("Compact release"));
+        assert_eq!(root.description.as_deref(), Some("Linked compact tasks"));
     }
 }

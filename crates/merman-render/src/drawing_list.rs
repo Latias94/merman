@@ -137,9 +137,9 @@ impl RenderDocument {
             .footprint()
             .map_err(Error::DrawingListContract)?;
         // Reject cumulative protocol limits before charging an unreturnable candidate.
-        footprint
-            .check_limits(limits)
-            .map_err(Error::DrawingListContract)?;
+        footprint.check_limits(limits).map_err(|error| {
+            operation_document_error(Error::DrawingListContract(error), session)
+        })?;
         let units = footprint.work_units().map_err(Error::DrawingListContract)?;
         session
             .work_meter()
@@ -679,7 +679,7 @@ pub(crate) fn build_for_family(
         });
     }
 
-    match family {
+    let result = match family {
         BuiltinFamilyArtifact::Error(pair) => {
             build_error_document(pair.layout(), metadata, policy, limits, session)
         }
@@ -780,7 +780,29 @@ pub(crate) fn build_for_family(
         BuiltinFamilyArtifact::Zenuml(pair) => {
             zenuml::build_zenuml_document(pair, metadata, policy, limits, session)
         }
+    };
+    result.map_err(|error| operation_document_error(error, session))
+}
+
+pub(crate) fn operation_document_error(error: Error, session: &RenderSession) -> Error {
+    if let Error::DrawingListContract(
+        ref protocol_error @ merman_display_list::DrawingListError::ResourceLimit {
+            resource,
+            actual,
+            maximum,
+        },
+    ) = error
+    {
+        return session
+            .work_meter()
+            .terminate_document_limit(
+                protocol_error.limit_id().unwrap_or(resource),
+                actual,
+                maximum,
+            )
+            .into();
     }
+    error
 }
 
 fn build_error_document(

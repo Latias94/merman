@@ -9,6 +9,57 @@ use merman_display_list::{
 };
 
 #[test]
+fn drawing_list_limit_failure_is_the_sticky_operation_terminal() {
+    for (id, limits) in [
+        (
+            "max_commands",
+            DrawingListLimits {
+                max_commands: 0,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "max_serialized_bytes",
+            DrawingListLimits {
+                max_serialized_bytes: 0,
+                ..DrawingListLimits::default()
+            },
+        ),
+    ] {
+        let control = OperationControl::new();
+        let error = Renderer::new()
+            .render(RenderRequest::drawing_list(
+                "info",
+                control.clone(),
+                DrawingListRequest {
+                    limits,
+                    ..DrawingListRequest::default()
+                },
+            ))
+            .unwrap_err();
+        let RenderError::ResourceLimitExceeded(resource) = error else {
+            panic!("expected quota rejection");
+        };
+        assert_eq!(resource.id, id);
+        let terminal = control
+            .terminal_checkpoint_at(merman_core::OperationPhase::Emit)
+            .expect_err("a rejected document must terminate the shared operation");
+        let merman_core::OperationLedgerError::ResourceLimitExceeded(ref recorded) = terminal
+        else {
+            panic!("expected resource terminal");
+        };
+        assert_eq!(recorded.id, resource.id);
+        assert_eq!(recorded.requested, resource.actual);
+        assert_eq!(recorded.limit, resource.maximum);
+        control.cancel();
+        assert_eq!(
+            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
+}
+
+#[test]
 fn error_diagram_has_a_complete_renderer_neutral_output() {
     let request = DrawingListRequest {
         policy: DrawingListPolicy::VectorOnly,
@@ -2882,14 +2933,18 @@ classDef important fill:#e74c3c,color:#fff,stroke:#c0392b,stroke-width:3px,strok
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(leaf_paints.len(), 2);
+    assert_eq!(
+        leaf_paints.len(),
+        1,
+        "a source rect is one compositing object"
+    );
     assert_eq!(
         leaf_paints[0].fill,
         Some(merman_display_list::Paint::solid(
             merman_display_list::Color::rgba(0xe7, 0x4c, 0x3c, 77)
         ))
     );
-    let stroke = leaf_paints[1]
+    let stroke = leaf_paints[0]
         .stroke
         .as_ref()
         .expect("styled Treemap leaf should retain its stroke");

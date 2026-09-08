@@ -484,6 +484,7 @@ impl<'a> ClassBuilder<'a> {
                     &relation.title,
                     label,
                     format!("Label for {}", relation.id),
+                    Some(self.relation_label_background()?),
                 )?;
             }
             self.emit_terminal_label(
@@ -578,7 +579,26 @@ impl<'a> ClassBuilder<'a> {
             text,
             label,
             description,
+            None,
         )
+    }
+
+    fn relation_label_background(&self) -> Result<Color> {
+        // Class styles.js uses mainBkg for both the SVG rectangle and HTML label boxes.
+        // The pinned edges.js does not put data-look on edgeLabel, so its neo-only
+        // edgeLabelBackground/opacity rule does not match, even for look=neo.
+        let background = self.node_fill;
+        let html_labels =
+            crate::class::config::ClassConfigView::new(self.metadata.effective_config.as_value())
+                .render_edge_html_labels();
+        if html_labels && background.alpha != 0 && background.alpha != 255 {
+            // HTML paints both labelBkg and its inline span. Their distinct box geometry
+            // is not retained in LayoutLabel; one rectangle would lose alpha compositing.
+            return Err(unavailable(
+                "Class HTML relation labels with translucent mainBkg require layered HTML background boxes; DrawingList v1 has no inline box geometry",
+            ));
+        }
+        Ok(background)
     }
 
     fn emit_label(
@@ -587,6 +607,7 @@ impl<'a> ClassBuilder<'a> {
         raw_text: &str,
         label: &LayoutLabel,
         description: String,
+        background: Option<Color>,
     ) -> Result<()> {
         let text = plain_text(raw_text).map_err(unavailable)?;
         if text.trim().is_empty() {
@@ -597,22 +618,17 @@ impl<'a> ClassBuilder<'a> {
                 semantic_id: semantic_id.to_string(),
             })?;
         let bounds = label_rect(label);
-        self.add_path(
-            format!("{semantic_id}.background"),
-            rectangle_path(bounds),
-            PathStyle {
-                fill_rule: FillRule::NonZero,
-                fill: Some(Paint::solid(with_alpha(
-                    theme_color(
-                        self.metadata.effective_config.as_value(),
-                        "edgeLabelBackground",
-                        "#e8e8e8",
-                    )?,
-                    210,
-                ))),
-                stroke: None,
-            },
-        )?;
+        if let Some(background) = background {
+            self.add_path(
+                format!("{semantic_id}.background"),
+                rectangle_path(bounds),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(background)),
+                    stroke: None,
+                },
+            )?;
+        }
         self.draw_text(
             &text,
             TextEmitSpec {
@@ -1212,5 +1228,110 @@ fn unavailable(message: impl Into<String>) -> Error {
     Error::DrawingListUnavailable {
         family: RenderFamilyKind::Class.as_str().to_string(),
         reason: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use merman_core::{Engine, MermaidConfig, ParseOptions};
+
+    fn render_labels(
+        source: &str,
+        look: &str,
+        html_labels: bool,
+        main_background: &str,
+    ) -> Result<crate::family::RenderedDrawingList> {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "look": look,
+                "htmlLabels": html_labels,
+                "themeVariables": {
+                    "mainBkg": main_background,
+                    "edgeLabelBackground": "#abcdef",
+                    "dropShadow": "none"
+                }
+            })))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)?
+            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+    }
+
+    #[test]
+    fn class_relation_background_preserves_source_color_and_terminal_transparency() {
+        for look in ["classic", "neo"] {
+            for (html_labels, main_background, alpha) in [
+                (false, "#12345680", 128),
+                (true, "#123456", 255),
+                (true, "#12345600", 0),
+            ] {
+                let rendered = render_labels(
+                    "classDiagram\n A \"1\" --> \"many\" B : owns",
+                    look,
+                    html_labels,
+                    main_background,
+                )
+                .unwrap();
+                let document = rendered.document();
+                let backgrounds: Vec<_> = document
+                    .commands
+                    .iter()
+                    .filter_map(|command| match command {
+                        DrawingCommand::DrawPath { path, style }
+                            if path.as_str().starts_with("class.edge.")
+                                && path.as_str().ends_with(".background") =>
+                        {
+                            Some((path.as_str(), style.fill.as_ref()))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    backgrounds,
+                    vec![(
+                        "class.edge.0.label.background",
+                        Some(&Paint::solid(Color::rgba(0x12, 0x34, 0x56, alpha)))
+                    )],
+                    "{look}, htmlLabels={html_labels}"
+                );
+                let terminal_titles: Vec<_> = document
+                    .semantics
+                    .iter()
+                    .filter(|annotation| annotation.id.starts_with("class.edge.0.terminal."))
+                    .filter_map(|annotation| annotation.title.as_deref())
+                    .collect();
+                assert_eq!(terminal_titles, ["1", "many"]);
+            }
+        }
+    }
+
+    #[test]
+    fn class_translucent_html_background_requires_inline_boxes_only_for_relation_titles() {
+        for look in ["classic", "neo"] {
+            let result = render_labels("classDiagram\n A --> B : owns", look, true, "#12345680");
+            let Err(Error::DrawingListUnavailable { family, reason }) = result else {
+                panic!("translucent HTML relation backgrounds must not be flattened");
+            };
+            assert_eq!(family, RenderFamilyKind::Class.as_str());
+            assert!(reason.contains("translucent mainBkg"), "{reason}");
+            assert!(reason.contains("inline box geometry"), "{reason}");
+
+            let terminal_only = render_labels(
+                "classDiagram\n A \"1\" --> \"many\" B",
+                look,
+                true,
+                "#12345680",
+            )
+            .unwrap();
+            assert!(!terminal_only.document().commands.iter().any(|command| {
+                matches!(command, DrawingCommand::DrawPath { path, .. }
+                    if path.as_str().starts_with("class.edge.")
+                        && path.as_str().ends_with(".background"))
+            }));
+        }
     }
 }
