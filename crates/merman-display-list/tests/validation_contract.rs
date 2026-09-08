@@ -224,6 +224,30 @@ fn validator_rejects_non_lifo_group_endings() {
 }
 
 #[test]
+fn validator_rejects_replaced_group_at_the_same_depth() {
+    let mut document = sample_document();
+    document.commands = vec![
+        DrawingCommand::BeginLayer {
+            bounds: Rect::new(0.0, 0.0, 120.0, 80.0),
+            opacity: 1.0,
+            blend_mode: merman_display_list::BlendMode::Normal,
+        },
+        DrawingCommand::Save,
+        DrawingCommand::EndLayer,
+        DrawingCommand::BeginLayer {
+            bounds: Rect::new(0.0, 0.0, 120.0, 80.0),
+            opacity: 1.0,
+            blend_mode: merman_display_list::BlendMode::Normal,
+        },
+        DrawingCommand::Restore,
+        DrawingCommand::EndLayer,
+    ];
+
+    assert!(document.validate().is_err());
+    assert!(document.footprint().is_err());
+}
+
+#[test]
 fn validator_enforces_exact_command_and_numeric_boundaries() {
     let document = sample_document();
     let exact = DrawingListLimits {
@@ -883,6 +907,33 @@ fn decoder_stops_at_wire_collection_and_nested_sequence_limits() {
         (
             "text_bytes",
             br#"{"commands":[{"kind":"draw_text","run":{"text":"a"}},{"kind":"draw_text","run":{"text":"b"}},{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_text_bytes: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "stroke_dash_entries",
+            br#"{"commands":[["draw_text",{"text":"","style":{"stroke":{"dash_array":[1]}}}],["draw_text",{"text":"","style":{"stroke":{"dash_array":[2]}}}],{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_stroke_dash_entries: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "glyphs",
+            br#"{"commands":[["draw_text",{"text":"","obligation":{"kind":"glyph_run","glyphs":[{},{}]}}],{"broken":}]}"#
+                .as_slice(),
+            DrawingListLimits {
+                max_glyphs: 1,
+                ..DrawingListLimits::default()
+            },
+        ),
+        (
+            "text_bytes",
+            br#"{"commands":[["draw_text",{"text":"a"}],["draw_text",{"text":"b"}],{"broken":}]}"#
                 .as_slice(),
             DrawingListLimits {
                 max_text_bytes: 1,

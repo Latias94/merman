@@ -49,6 +49,18 @@ fn unknown_visual_commands_fail_closed_but_metadata_extensions_round_trip() {
     );
 }
 
+#[test]
+fn known_visual_commands_reject_unknown_fields() {
+    let command = json!({
+        "kind": "save",
+        "filter": { "kind": "blur", "radius": 5 }
+    });
+    let error = serde_json::from_value::<DrawingCommand>(command)
+        .expect_err("a known command must not silently discard visual fields");
+
+    assert!(error.to_string().contains("filter"), "{error}");
+}
+
 fn document_with_raster_fallback() -> DrawingListDocument {
     let mut document = sample_document();
     let image = ResourceId::new("image.foreign-object");

@@ -166,9 +166,17 @@ pub struct DrawingListFootprint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GroupScope {
-    Layer,
-    Semantic,
-    Clip,
+    Layer(usize),
+    Semantic(usize),
+    Clip(usize),
+}
+
+fn restore_group_scopes(group_scopes: &[GroupScope], saved_scopes: &[GroupScope]) -> bool {
+    group_scopes.len() >= saved_scopes.len()
+        && group_scopes[..saved_scopes.len()] == *saved_scopes
+        && group_scopes[saved_scopes.len()..]
+            .iter()
+            .all(|scope| matches!(scope, GroupScope::Clip(_)))
 }
 
 impl DrawingListFootprint {
@@ -363,6 +371,7 @@ impl DrawingListDocument {
         let mut clip_depth = 0usize;
         let mut state_scopes = Vec::new();
         let mut group_scopes = Vec::new();
+        let mut next_scope_id = 0usize;
         for command in &self.commands {
             match command {
                 DrawingCommand::Save => {
@@ -373,11 +382,11 @@ impl DrawingListDocument {
                         semantic_depth,
                         layer_depth,
                         clip_depth,
-                        group_scopes.len(),
+                        group_scopes.clone(),
                     ));
                 }
                 DrawingCommand::Restore => {
-                    let Some((saved_semantic, saved_layer, saved_clip, saved_group_len)) =
+                    let Some((saved_semantic, saved_layer, saved_clip, saved_scopes)) =
                         state_scopes.pop()
                     else {
                         return Err(DrawingListError::invalid(
@@ -394,17 +403,12 @@ impl DrawingListDocument {
                             "DrawingList footprint found an invalid clip scope",
                         ));
                     }
-                    while group_scopes.len() > saved_group_len {
-                        match group_scopes.pop() {
-                            Some(GroupScope::Clip) => {}
-                            Some(GroupScope::Layer | GroupScope::Semantic) => {
-                                return Err(DrawingListError::invalid(
-                                    "DrawingList footprint found restore across an open group",
-                                ));
-                            }
-                            None => break,
-                        }
+                    if !restore_group_scopes(&group_scopes, &saved_scopes) {
+                        return Err(DrawingListError::invalid(
+                            "DrawingList footprint found restore across an open group",
+                        ));
                     }
+                    group_scopes.truncate(saved_scopes.len());
                     clip_depth = saved_clip;
                     state_depth = state_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList state footprint underflows usize")
@@ -414,10 +418,13 @@ impl DrawingListDocument {
                     layer_depth = layer_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList layer footprint overflows usize")
                     })?;
-                    group_scopes.push(GroupScope::Layer);
+                    group_scopes.push(GroupScope::Layer(next_scope_id));
+                    next_scope_id = next_scope_id.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList scope id overflows usize")
+                    })?;
                 }
                 DrawingCommand::EndLayer => {
-                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer)) {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer(_))) {
                         return Err(DrawingListError::invalid(
                             "DrawingList footprint found layer end out of order",
                         ));
@@ -437,16 +444,22 @@ impl DrawingListDocument {
                     clip_depth = clip_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList clip footprint overflows usize")
                     })?;
-                    group_scopes.push(GroupScope::Clip);
+                    group_scopes.push(GroupScope::Clip(next_scope_id));
+                    next_scope_id = next_scope_id.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList scope id overflows usize")
+                    })?;
                 }
                 DrawingCommand::BeginSemanticGroup { .. } => {
                     semantic_depth = semantic_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("DrawingList semantic footprint overflows usize")
                     })?;
-                    group_scopes.push(GroupScope::Semantic);
+                    group_scopes.push(GroupScope::Semantic(next_scope_id));
+                    next_scope_id = next_scope_id.checked_add(1).ok_or_else(|| {
+                        DrawingListError::invalid("DrawingList scope id overflows usize")
+                    })?;
                 }
                 DrawingCommand::EndSemanticGroup => {
-                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic)) {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic(_))) {
                         return Err(DrawingListError::invalid(
                             "DrawingList footprint found semantic group end out of order",
                         ));
@@ -694,6 +707,7 @@ impl DrawingListDocument {
         let mut layer_depth = 0usize;
         let mut clip_depth = 0usize;
         let mut group_scopes = Vec::new();
+        let mut next_scope_id = 0usize;
         let mut text_bytes = 0usize;
         let mut glyph_count = 0usize;
         for command in &self.commands {
@@ -708,7 +722,7 @@ impl DrawingListDocument {
                         semantic_depth,
                         layer_depth,
                         clip_depth,
-                        group_scopes.len(),
+                        group_scopes.clone(),
                     ));
                 }
                 DrawingCommand::Restore => {
@@ -716,7 +730,7 @@ impl DrawingListDocument {
                         saved_semantic_depth,
                         saved_layer_depth,
                         saved_clip_depth,
-                        saved_group_len,
+                        saved_scopes,
                     )) = state_scopes.pop()
                     else {
                         return Err(DrawingListError::invalid("restore without matching save"));
@@ -736,17 +750,12 @@ impl DrawingListDocument {
                             "clip scope cannot end before its save scope",
                         ));
                     }
-                    while group_scopes.len() > saved_group_len {
-                        match group_scopes.pop() {
-                            Some(GroupScope::Clip) => {}
-                            Some(GroupScope::Layer | GroupScope::Semantic) => {
-                                return Err(DrawingListError::invalid(
-                                    "restore cannot cross an open semantic or layer group",
-                                ));
-                            }
-                            None => break,
-                        }
+                    if !restore_group_scopes(&group_scopes, &saved_scopes) {
+                        return Err(DrawingListError::invalid(
+                            "restore cannot cross an open semantic or layer group",
+                        ));
                     }
+                    group_scopes.truncate(saved_scopes.len());
                     clip_depth = saved_clip_depth;
                     state_depth = state_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("restore without matching save")
@@ -757,10 +766,13 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("layer depth overflows usize"))?;
                     validate_count("nesting_depth", layer_depth, limits.max_nesting_depth)?;
-                    group_scopes.push(GroupScope::Layer);
+                    group_scopes.push(GroupScope::Layer(next_scope_id));
+                    next_scope_id = next_scope_id
+                        .checked_add(1)
+                        .ok_or_else(|| DrawingListError::invalid("scope id overflows usize"))?;
                 }
                 DrawingCommand::EndLayer => {
-                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer)) {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Layer(_))) {
                         return Err(DrawingListError::invalid(
                             "layer end does not match the open group",
                         ));
@@ -803,7 +815,10 @@ impl DrawingListDocument {
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("clip depth overflows usize"))?;
                     validate_count("nesting_depth", clip_depth, limits.max_nesting_depth)?;
-                    group_scopes.push(GroupScope::Clip);
+                    group_scopes.push(GroupScope::Clip(next_scope_id));
+                    next_scope_id = next_scope_id
+                        .checked_add(1)
+                        .ok_or_else(|| DrawingListError::invalid("scope id overflows usize"))?;
                 }
                 DrawingCommand::DrawImage { image, .. } => {
                     if !image_ids.contains(image) {
@@ -823,10 +838,13 @@ impl DrawingListDocument {
                         DrawingListError::invalid("semantic depth overflows usize")
                     })?;
                     validate_count("nesting_depth", semantic_depth, limits.max_nesting_depth)?;
-                    group_scopes.push(GroupScope::Semantic);
+                    group_scopes.push(GroupScope::Semantic(next_scope_id));
+                    next_scope_id = next_scope_id
+                        .checked_add(1)
+                        .ok_or_else(|| DrawingListError::invalid("scope id overflows usize"))?;
                 }
                 DrawingCommand::EndSemanticGroup => {
-                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic)) {
+                    if !matches!(group_scopes.pop(), Some(GroupScope::Semantic(_))) {
                         return Err(DrawingListError::invalid(
                             "semantic group end does not match the open group",
                         ));
@@ -1112,13 +1130,21 @@ struct EncodedAssetBudget<'a> {
 }
 
 #[derive(Deserialize)]
-struct EncodedCommandBudget<'a> {
+struct EncodedObjectCommandBudget<'a> {
     #[serde(borrow)]
     kind: Cow<'a, str>,
     #[serde(default, borrow)]
     style: Option<&'a RawValue>,
     #[serde(default, borrow)]
     run: Option<&'a RawValue>,
+    #[serde(flatten)]
+    extra: BTreeMap<String, IgnoredAny>,
+}
+
+#[derive(Deserialize)]
+struct EncodedArrayDrawPathBudget<'a> {
+    #[serde(default, borrow)]
+    style: Option<&'a RawValue>,
 }
 
 #[derive(Deserialize)]
@@ -1463,37 +1489,95 @@ fn inspect_command_budget(
     raw: &RawValue,
     state: &mut WireBudgetState<'_>,
 ) -> Result<(), DrawingListError> {
-    let command = serde_json::from_str::<EncodedCommandBudget<'_>>(raw.get())
-        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    if raw.get().trim_start().starts_with('[') {
+        let (kind, payload): (Cow<'_, str>, &RawValue) = serde_json::from_str(raw.get())
+            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+        inspect_array_command_budget(kind.as_ref(), payload, state)?;
+    } else {
+        let command = serde_json::from_str::<EncodedObjectCommandBudget<'_>>(raw.get())
+            .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+        inspect_object_command_budget(command, state)?;
+    }
+    Ok(())
+}
+
+fn inspect_object_command_budget(
+    command: EncodedObjectCommandBudget<'_>,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    let allowed = match command.kind.as_ref() {
+        "save" | "restore" | "end_layer" | "end_semantic_group" => &["kind"][..],
+        "set_opacity" => &["kind", "opacity"],
+        "set_blend_mode" => &["kind", "blend_mode"],
+        "concat_transform" => &["kind", "transform"],
+        "begin_layer" => &["kind", "bounds", "opacity", "blend_mode"],
+        "draw_path" => &["kind", "path", "style"],
+        "clip_path" => &["kind", "path", "fill_rule"],
+        "draw_image" => &["kind", "image", "bounds", "opacity"],
+        "begin_semantic_group" => &["kind", "semantic_id"],
+        "draw_text" => &["kind", "run"],
+        "draw_raster_subtree" => &["kind", "fallback_id"],
+        _ => &[][..],
+    };
+    if let Some(field) = command
+        .extra
+        .keys()
+        .find(|field| !allowed.contains(&field.as_str()))
+    {
+        return Err(DrawingListError::invalid(format!(
+            "unknown field `{field}` on drawing command `{}`",
+            command.kind
+        )));
+    }
     match command.kind.as_ref() {
-        "draw_path" => inspect_stroke_owner_budget(command.style, state)?,
-        "draw_text" => {
-            let Some(run) = command.run else {
-                return Ok(());
-            };
-            let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
+        "draw_path" => inspect_stroke_owner_budget(command.style, state),
+        "draw_text" => inspect_text_run_budget(command.run, state),
+        _ => Ok(()),
+    }
+}
+
+fn inspect_array_command_budget(
+    kind: &str,
+    payload: &RawValue,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    match kind {
+        "draw_path" => {
+            let path = serde_json::from_str::<EncodedArrayDrawPathBudget<'_>>(payload.get())
                 .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-            let decoded_text_bytes = json_string_decoded_utf8_len(run.text.get())?;
-            checked_accumulate(
-                "text_bytes",
-                &mut state.text_bytes,
-                decoded_text_bytes,
-                state.limits.max_text_bytes,
-            )?;
-            inspect_stroke_owner_budget(run.style, state)?;
-            let Some(obligation) = run.obligation else {
-                return Ok(());
-            };
-            let obligation =
-                serde_json::from_str::<EncodedTextObligationBudget<'_>>(obligation.get())
-                    .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
-            if obligation.kind == "glyph_run"
-                && let Some(glyphs) = obligation.glyphs
-            {
-                inspect_nested_sequence(glyphs, state, WireSequenceKind::Glyphs)?;
-            }
+            inspect_stroke_owner_budget(path.style, state)
         }
-        _ => {}
+        "draw_text" => inspect_text_run_budget(Some(payload), state),
+        _ => Ok(()),
+    }
+}
+
+fn inspect_text_run_budget(
+    run: Option<&RawValue>,
+    state: &mut WireBudgetState<'_>,
+) -> Result<(), DrawingListError> {
+    let Some(run) = run else {
+        return Ok(());
+    };
+    let run = serde_json::from_str::<EncodedTextRunBudget<'_>>(run.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    let decoded_text_bytes = json_string_decoded_utf8_len(run.text.get())?;
+    checked_accumulate(
+        "text_bytes",
+        &mut state.text_bytes,
+        decoded_text_bytes,
+        state.limits.max_text_bytes,
+    )?;
+    inspect_stroke_owner_budget(run.style, state)?;
+    let Some(obligation) = run.obligation else {
+        return Ok(());
+    };
+    let obligation = serde_json::from_str::<EncodedTextObligationBudget<'_>>(obligation.get())
+        .map_err(|error| DrawingListError::JsonDecode(error.to_string()))?;
+    if obligation.kind == "glyph_run"
+        && let Some(glyphs) = obligation.glyphs
+    {
+        inspect_nested_sequence(glyphs, state, WireSequenceKind::Glyphs)?;
     }
     Ok(())
 }

@@ -1,5 +1,5 @@
 use crate::{DrawingListError, Point, Rect, ResourceId, Transform};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -99,7 +99,7 @@ impl PathStyle {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DrawingCommand {
     Save,
@@ -142,6 +142,98 @@ pub enum DrawingCommand {
     DrawRasterSubtree {
         fallback_id: String,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum DrawingCommandWire {
+    Save {},
+    Restore {},
+    SetOpacity {
+        opacity: f64,
+    },
+    SetBlendMode {
+        blend_mode: BlendMode,
+    },
+    ConcatTransform {
+        transform: Transform,
+    },
+    BeginLayer {
+        bounds: Rect,
+        opacity: f64,
+        blend_mode: BlendMode,
+    },
+    EndLayer {},
+    DrawPath {
+        path: ResourceId,
+        style: PathStyle,
+    },
+    ClipPath {
+        path: ResourceId,
+        fill_rule: FillRule,
+    },
+    DrawImage {
+        image: ResourceId,
+        bounds: Rect,
+        opacity: f64,
+    },
+    BeginSemanticGroup {
+        semantic_id: String,
+    },
+    EndSemanticGroup {},
+    DrawText {
+        run: Box<TextRun>,
+    },
+    DrawRasterSubtree {
+        fallback_id: String,
+    },
+}
+
+impl<'de> Deserialize<'de> for DrawingCommand {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let command = DrawingCommandWire::deserialize(deserializer)?;
+        Ok(match command {
+            DrawingCommandWire::Save {} => Self::Save,
+            DrawingCommandWire::Restore {} => Self::Restore,
+            DrawingCommandWire::SetOpacity { opacity } => Self::SetOpacity { opacity },
+            DrawingCommandWire::SetBlendMode { blend_mode } => Self::SetBlendMode { blend_mode },
+            DrawingCommandWire::ConcatTransform { transform } => {
+                Self::ConcatTransform { transform }
+            }
+            DrawingCommandWire::BeginLayer {
+                bounds,
+                opacity,
+                blend_mode,
+            } => Self::BeginLayer {
+                bounds,
+                opacity,
+                blend_mode,
+            },
+            DrawingCommandWire::EndLayer {} => Self::EndLayer,
+            DrawingCommandWire::DrawPath { path, style } => Self::DrawPath { path, style },
+            DrawingCommandWire::ClipPath { path, fill_rule } => Self::ClipPath { path, fill_rule },
+            DrawingCommandWire::DrawImage {
+                image,
+                bounds,
+                opacity,
+            } => Self::DrawImage {
+                image,
+                bounds,
+                opacity,
+            },
+            DrawingCommandWire::BeginSemanticGroup { semantic_id } => {
+                Self::BeginSemanticGroup { semantic_id }
+            }
+            DrawingCommandWire::EndSemanticGroup {} => Self::EndSemanticGroup,
+            DrawingCommandWire::DrawText { run } => Self::DrawText { run },
+            DrawingCommandWire::DrawRasterSubtree { fallback_id } => {
+                Self::DrawRasterSubtree { fallback_id }
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
