@@ -198,13 +198,13 @@ fn qualify_common_support(
     output: ThemeSupportOutputV1,
     target: Option<ThemeTarget>,
 ) -> Result<(), SupportRejection> {
-    if let Some(target) = target {
-        if !target.valid_for(family) {
-            return Err(SupportRejection {
-                state: ThemeSupportStateV1::NotApplicable,
-                reason_id: "theme-support.target-not-applicable-to-family",
-            });
-        }
+    if let Some(target) = target
+        && !target.valid_for(family)
+    {
+        return Err(SupportRejection {
+            state: ThemeSupportStateV1::NotApplicable,
+            reason_id: "theme-support.target-not-applicable-to-family",
+        });
     }
     match output {
         ThemeSupportOutputV1::Ascii => {

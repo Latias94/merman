@@ -14,17 +14,9 @@ use super::typography::Specified;
 use super::{ThemeCompileValidationError, ThemeRecipeFingerprint, ThemeRecipeReport};
 
 /// Resource-bounded compiler for one complete typed theme recipe.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagramThemeCompiler {
     resources: ThemeResourcePolicy,
-}
-
-impl Default for DiagramThemeCompiler {
-    fn default() -> Self {
-        Self {
-            resources: ThemeResourcePolicy::default(),
-        }
-    }
 }
 
 impl DiagramThemeCompiler {

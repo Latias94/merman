@@ -220,7 +220,7 @@ impl ThemeAssets {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiagramThemeSpec {
     mermaid: MermaidThemeCompatibility,
     typography: TypographySpec,
@@ -229,20 +229,6 @@ pub struct DiagramThemeSpec {
     effects: DiagramEffectSet,
     assets: ThemeAssets,
     requirements: ThemeRequirements,
-}
-
-impl Default for DiagramThemeSpec {
-    fn default() -> Self {
-        Self {
-            mermaid: MermaidThemeCompatibility::default(),
-            typography: TypographySpec::default(),
-            styles: ThemeRuleSet::default(),
-            canvas: CanvasSpec::default(),
-            effects: DiagramEffectSet::default(),
-            assets: ThemeAssets::default(),
-            requirements: ThemeRequirements::default(),
-        }
-    }
 }
 
 impl DiagramThemeSpec {

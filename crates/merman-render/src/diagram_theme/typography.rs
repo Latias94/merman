@@ -7,17 +7,12 @@ pub(crate) const MAX_FONT_STACK_ENTRIES: usize = 32;
 pub(crate) const MAX_FONT_FAMILY_BYTES: usize = 256;
 
 /// A property value which distinguishes omission from an explicit clear.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Specified<T> {
+    #[default]
     Unspecified,
     Clear,
     Value(T),
-}
-
-impl<T> Default for Specified<T> {
-    fn default() -> Self {
-        Self::Unspecified
-    }
 }
 
 impl<T> Specified<T> {
@@ -26,18 +21,13 @@ impl<T> Specified<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[non_exhaustive]
 pub enum LineHeight {
+    #[default]
     Normal,
     Multiplier(f32),
     Px(f32),
-}
-
-impl Default for LineHeight {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl LineHeight {
@@ -407,12 +397,12 @@ impl Default for TextStylePatch {
 
 impl TextStylePatch {
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        if let Specified::Value(value) = &self.font_stack {
-            if value.families.is_empty() {
-                return Err(ThemeCompileValidationError::InvalidCollection {
-                    field: "style.typography.font_stack",
-                });
-            }
+        if let Specified::Value(value) = &self.font_stack
+            && value.families.is_empty()
+        {
+            return Err(ThemeCompileValidationError::InvalidCollection {
+                field: "style.typography.font_stack",
+            });
         }
         if let Specified::Value(value) = self.font_size_px {
             validate_positive(value, "style.typography.font_size_px")?;
@@ -464,19 +454,10 @@ impl TextStylePatch {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TypographySpec {
     default: TextStyle,
     family_overrides: BTreeMap<String, TextStyle>,
-}
-
-impl Default for TypographySpec {
-    fn default() -> Self {
-        Self {
-            default: TextStyle::default(),
-            family_overrides: BTreeMap::new(),
-        }
-    }
 }
 
 impl TypographySpec {

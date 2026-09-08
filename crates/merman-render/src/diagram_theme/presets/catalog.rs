@@ -873,8 +873,10 @@ fn preset_ordinal_fill_rule(
     offset: u32,
     fill: &str,
 ) -> ThemeRuleSetWireV1 {
-    let mut style = ThemeStylePatchWireV1::default();
-    style.fill = SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned()));
+    let style = ThemeStylePatchWireV1 {
+        fill: SpecifiedWireV1::Value(ThemeCanvasPaintWireV1::Color(fill.to_owned())),
+        ..ThemeStylePatchWireV1::default()
+    };
     ThemeRuleSetWireV1::Rule {
         target: target.id().to_owned(),
         family: Some(family.as_str().to_owned()),

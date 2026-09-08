@@ -1529,10 +1529,8 @@ fn validate_transformed_glyf_table(
     let num_glyphs = usize::from(header.u16().ok_or_else(malformed)?);
     let _index_format = header.u16().ok_or_else(malformed)?;
     let mut stream_lengths = [0usize; GLYF_SUBSTREAM_COUNT];
-    for index in 0..GLYF_SUBSTREAM_COUNT {
-        let length =
-            usize::try_from(header.u32().ok_or_else(malformed)?).map_err(|_| malformed())?;
-        stream_lengths[index] = length;
+    for length in &mut stream_lengths {
+        *length = usize::try_from(header.u32().ok_or_else(malformed)?).map_err(|_| malformed())?;
     }
 
     let mut stream_data = ByteCursor::new(&bytes[header.position()..]);

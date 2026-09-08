@@ -679,7 +679,7 @@ fn decode_assets(
 }
 
 fn projected_canonical_base64_bytes(value: &str) -> Result<usize, ThemeCompileError> {
-    if value.len() % 4 != 0 {
+    if !value.len().is_multiple_of(4) {
         return Err(ThemeCompileValidationError::InvalidValue {
             field: "assets.fonts.data_base64",
         }
@@ -697,7 +697,7 @@ fn projected_canonical_base64_bytes(value: &str) -> Result<usize, ThemeCompileEr
         .checked_div(4)
         .and_then(|groups| groups.checked_mul(3))
         .and_then(|bytes| bytes.checked_sub(padding))
-        .ok_or_else(|| ThemeCompileValidationError::InvalidValue {
+        .ok_or(ThemeCompileValidationError::InvalidValue {
             field: "assets.fonts.data_base64",
         })
         .map_err(Into::into)
