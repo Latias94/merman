@@ -79,6 +79,7 @@ struct DocumentSvgEncoder<'a> {
     cynefin_marker_definitions: BTreeMap<String, String>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
+    sankey_label_style: Option<&'a merman_display_list::TextStyle>,
     state: GraphicsState,
     saves: Vec<SavePoint>,
     groups: Vec<GroupKind>,
@@ -246,6 +247,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             cynefin_marker_definitions: BTreeMap::new(),
             sankey_inline_gradients,
             emitted_sankey_gradients: BTreeSet::new(),
+            sankey_label_style: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
+                sankey::shared_label_style(&document.public, session)?
+            } else {
+                None
+            },
             saves: Vec::new(),
             groups: Vec::new(),
             semantic_text_counts: BTreeMap::new(),
@@ -787,9 +793,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 )?,
             )),
-            // Sankey paint, opacity, and fonts are resolved by the public commands. Retain
-            // Mermaid's style element as structure without importing a second visual source.
-            SvgStructureBody::Sankey(_) => Some((false, String::new())),
+            SvgStructureBody::Sankey(_) => Some((false, self.sankey_label_css()?)),
             SvgStructureBody::Requirement(_) => Some((
                 false,
                 super::requirement_css(self.diagram_id.as_str(), self.effective_config),
@@ -3102,6 +3106,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         let semantic_id = self.current_semantic_id().map(str::to_owned);
         let text_index = self.record_text_index();
+        if self.emit_compact_sankey_text(run, semantic_id.as_deref())? {
+            return Ok(());
+        }
         if self.emit_compact_pie_text(run, semantic_id.as_deref(), text_index)? {
             return Ok(());
         }

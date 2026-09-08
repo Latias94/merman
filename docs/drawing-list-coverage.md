@@ -91,8 +91,13 @@ The root background is an explicit public paint command. SVG projects the full-v
 paint into its root background style; changing or removing that command changes the output
 without retaining an implicit white background. The mutation regression covers both cases.
 
-Sankey remains bridged. Compact label DOM and complete family comparison are still required
-before admission. The focused tests are not full-family parity proof.
+Labels now use direct source-shaped text elements and a shared font-size group when their public
+styles agree. Inherited CSS is derived only from those commands; outlined strokes remain on each
+text. SVG y/dy decomposes the public baseline without adding an offset, including after public
+font-size or position edits. Heterogeneous styles retain explicit per-command text attributes.
+
+Sankey remains bridged pending complete family comparison. The focused tests are not full-family
+parity proof.
 
 ### Cynefin migration evidence
 

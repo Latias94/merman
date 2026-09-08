@@ -396,6 +396,8 @@ pub(crate) struct RequirementSvgBody {
 pub(crate) struct SankeySvgBody {
     pub(crate) diagram_type: String,
     pub(crate) use_max_width: bool,
+    /// DOM-only decomposition of the public baseline into SVG y + dy; never an extra offset.
+    pub(crate) label_dy_em: f64,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,
 }

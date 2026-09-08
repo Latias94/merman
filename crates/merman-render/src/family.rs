@@ -1978,6 +1978,108 @@ mod tests {
     }
 
     #[test]
+    fn sankey_label_svg_preserves_public_baselines_and_source_text_shells() {
+        use merman_display_list::DrawingCommand;
+        for (show_values, dy) in [(true, 0.0), (false, 0.35)] {
+            let source = format!(
+                "---\nconfig:\n  sankey:\n    showValues: {show_values}\n---\nsankey\nA,B,10\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            for edited in [false, true] {
+                if edited {
+                    for command in &mut document.public.commands {
+                        if let DrawingCommand::DrawText { run } = command {
+                            run.origin.y += 17.0;
+                            run.style.font_size = 20.0;
+                        }
+                    }
+                }
+                let svg = crate::svg::render_document_svg(
+                    &document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap();
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let texts = xml
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .collect::<Vec<_>>();
+                let runs = document
+                    .public
+                    .commands
+                    .iter()
+                    .filter_map(|command| match command {
+                        DrawingCommand::DrawText { run } => Some(run),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(texts.len(), runs.len());
+                for (text, run) in texts.iter().zip(runs) {
+                    assert!(text.attribute("data-merman-bounds").is_none());
+                    assert_eq!(
+                        text.attribute("dy"),
+                        Some(if show_values { "0em" } else { "0.35em" })
+                    );
+                    let y: f64 = text.attribute("y").unwrap().parse().unwrap();
+                    assert!((y + dy * run.style.font_size - run.origin.y).abs() < 0.001);
+                    assert_eq!(text.text(), Some(run.text.as_str()));
+                    let group = text.parent().unwrap();
+                    assert_eq!(group.attribute("class"), Some("node-labels"));
+                    assert_eq!(
+                        group
+                            .attribute("font-size")
+                            .unwrap()
+                            .parse::<f64>()
+                            .unwrap(),
+                        run.style.font_size
+                    );
+                }
+            }
+            // A single edited label must not inherit a shared font size from its peers.
+            let first = document
+                .public
+                .commands
+                .iter_mut()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            first.style.font_size = 23.0;
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let sizes = xml
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.attribute("font-size").unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(sizes, ["23", "20"]);
+        }
+    }
+
+    #[test]
     fn sankey_root_background_is_owned_by_the_public_paint_command() {
         use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint};
         let parsed = Engine::new()

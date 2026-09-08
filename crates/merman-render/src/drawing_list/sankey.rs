@@ -188,6 +188,7 @@ impl<'a> SankeyBuilder<'a> {
                 body: SvgStructureBody::Sankey(SankeySvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
                     use_max_width: self.plan.use_max_width,
+                    label_dy_em: self.plan.labels.first().map_or(0.0, |label| label.dy_em),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                 }),
