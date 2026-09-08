@@ -310,6 +310,10 @@ a portable font constant. Implementing this surface requires explicit normal-lin
 resolved line positions. Existing SVG wrappers that split long words or interpret `<br>` are
 not behavior-equivalent substitutes, so text-node output remains an explicit capability error.
 
+[ADR-0088](adr/0088-atomic-normal-line-metrics.md) defines the missing atomic line-metrics
+measurement and its append-only native callback evolution. Neither the new operation nor Venn
+text-node support is admitted by that design record.
+
 ## Exercised effect accounting
 
 `fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by

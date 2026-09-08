@@ -769,13 +769,9 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             descriptor.error_kinds.len()
         )));
     }
-    if descriptor.callbacks.len() != minimum_prefix.callback_count {
-        return Err(descriptor_error(format!(
-            "native ABI callback vocabulary is closed by the minimum prefix at {} entries, but the descriptor defines {}",
-            minimum_prefix.callback_count,
-            descriptor.callbacks.len()
-        )));
-    }
+    // The minimum prefix freezes existing callback signatures, not independent future callback
+    // types. New types and records may serve appended function slots without changing that prefix.
+    // Prefix completeness is checked above; callback identity and code ordering are checked below.
     validate_unique(
         descriptor.error_kinds.iter().map(|kind| kind.id.as_str()),
         "native ABI error kind ids",
@@ -2615,6 +2611,63 @@ mod tests {
         let mut descriptor = committed_descriptor();
         descriptor.operation_codes[1].executable = false;
         assert!(validate_descriptor(&descriptor).is_err());
+    }
+
+    #[test]
+    fn appended_callback_and_record_preserve_the_published_prefix() {
+        let descriptor = committed_descriptor();
+        let operations = resolve_operations(&crate::cmd::workspace_root(), &descriptor).unwrap();
+        let original_prefix = minimum_prefix_layout_digest(&descriptor).unwrap();
+        let original_full = full_descriptor_digest(&descriptor, &operations).unwrap();
+        let mut extended = descriptor.clone();
+        let mut record = descriptor
+            .records
+            .iter()
+            .find(|record| record.c_name == "MermanNativeTextMeasureResult")
+            .unwrap()
+            .clone();
+        record.id = "future_text_measure_result".to_string();
+        record.c_name = "MermanNativeFutureTextMeasureResult".to_string();
+        record.rust_name = record.c_name.clone();
+        let mut callback = descriptor.callbacks.last().unwrap().clone();
+        callback.code += 1;
+        callback.id = "future_text_measure".to_string();
+        callback.c_name = "MermanNativeFutureTextMeasureCallback".to_string();
+        callback.rust_name = callback.c_name.clone();
+        let result = callback
+            .parameters
+            .iter_mut()
+            .find(|parameter| parameter.name == "out_result")
+            .unwrap();
+        result.c_type = format!("{} *", record.c_name);
+        result.rust_type = format!("*mut {}", record.rust_name);
+        extended.records.push(record);
+        extended.callbacks.push(callback);
+
+        validate_descriptor(&extended).expect("independent callbacks and records may append");
+        assert_eq!(
+            minimum_prefix_layout_digest(&extended).unwrap(),
+            original_prefix
+        );
+        assert_ne!(
+            full_descriptor_digest(&extended, &operations).unwrap(),
+            original_full
+        );
+
+        extended.callbacks[0].parameters[0].rust_type =
+            "*mut MermanNativeTextMeasureRequest".into();
+        assert_ne!(
+            minimum_prefix_layout_digest(&extended).unwrap(),
+            original_prefix
+        );
+
+        let mut missing_callback = descriptor.clone();
+        missing_callback.callbacks.clear();
+        assert!(validate_descriptor(&missing_callback).is_err());
+        let mut reordered = descriptor.clone();
+        reordered.callbacks.push(extended.callbacks.pop().unwrap());
+        reordered.callbacks.swap(0, 1);
+        assert!(validate_descriptor(&reordered).is_err());
     }
 
     #[test]
