@@ -29,7 +29,7 @@
     { "id": "er", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "quadrantChart", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
     { "id": "xychart", "document_adapter": "direct", "svg_serializer": "canonical" },
-    { "id": "gitGraph", "document_adapter": "direct", "svg_serializer": "legacy-bridge" },
+    { "id": "gitGraph", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "treeView", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "ishikawa", "document_adapter": "direct", "svg_serializer": "canonical" },
     { "id": "eventmodeling", "document_adapter": "direct", "svg_serializer": "canonical" },

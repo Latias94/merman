@@ -1495,7 +1495,6 @@ kanban
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
     let svg = render_svg(
         r##"gitGraph
@@ -1564,7 +1563,6 @@ fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn gitgraph_canonical_svg_scopes_gradient_coordinates_to_each_branch_label() {
     let svg = render_svg(
         r##"%%{init: {"theme": "neo", "themeVariables": {"useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
