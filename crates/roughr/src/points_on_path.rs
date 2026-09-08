@@ -14,6 +14,126 @@ use crate::SvgPathSegment;
 mod bounded;
 pub use bounded::try_points_on_normalized_segments;
 
+/// Normalizes SVG segments with work admission before input processing and output growth.
+///
+/// Returns current-version M/L/C/Z segments without complete absolute/intermediate arrays.
+/// Each arc uses the existing constant-size cubic conversion batch. A rejection returns no
+/// partial path; invalid emitted coordinates return `InvalidGeometry`.
+pub fn try_normalized_segments<E>(
+    segments: &[impl SvgPathSegment],
+    mut work: impl FnMut(usize) -> Result<(), E>,
+) -> Result<Vec<PathSegment>, crate::generation::GenerationError<E>> {
+    use crate::generation::GenerationError;
+    use crate::svg_path::{normalize_into, NormalizationEvent};
+    let mut output = Vec::new();
+    let absolute = absolutize(segments.iter().copied().map(SvgPathSegment::into_current));
+    normalize_into(absolute, |event| {
+        work(1).map_err(GenerationError::Consumer)?;
+        if let NormalizationEvent::Segment(segment) = event {
+            let finite = match segment {
+                PathSegment::MoveTo { x, y, .. } | PathSegment::LineTo { x, y, .. } => {
+                    x.is_finite() && y.is_finite()
+                }
+                PathSegment::CurveTo {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                    ..
+                } => [x1, y1, x2, y2, x, y].iter().all(|value| value.is_finite()),
+                PathSegment::ClosePath { .. } => true,
+                _ => false,
+            };
+            if !finite {
+                return Err(GenerationError::InvalidGeometry);
+            }
+            output.try_reserve(1).map_err(GenerationError::Allocation)?;
+            output.push(segment);
+        }
+        Ok(())
+    })?;
+    Ok(output)
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+    use crate::generation::GenerationError;
+
+    #[test]
+    fn normalization_rejects_work_before_processing_the_whole_path() {
+        let input = [PathSegment::LineTo {
+            abs: false,
+            x: 1.0,
+            y: 2.0,
+        }; 100];
+        let mut used = 0;
+        let result = try_normalized_segments(&input, |amount| {
+            used += amount;
+            if used > 4 {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        });
+        assert!(matches!(
+            result,
+            Err(GenerationError::Consumer("cancelled"))
+        ));
+        assert_eq!(used, 5);
+    }
+
+    #[test]
+    fn normalization_keeps_relative_reflection_and_subpath_state() {
+        let input = PathParser::from("m1 2 l3 4 h5 v6 c1 2 3 4 5 6 s3 4 5 6 q3 6 6 0 t6 0 z l1 0")
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let expected = PathParser::from("M1 2 L4 6 L9 6 L9 12 C10 14 12 16 14 18 C16 20 17 22 19 24 C21 28 23 28 25 24 C27 20 29 20 31 24 Z L2 2")
+            .collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(
+            try_normalized_segments::<()>(&input, |_| Ok(())).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn normalization_admits_arc_expansion_and_rejects_nonfinite_output() {
+        let input = PathParser::from("M0 0 A10 10 0 0 1 20 0")
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let output = try_normalized_segments::<()>(&input, |_| Ok(())).unwrap();
+        assert_eq!(
+            output.len(),
+            3,
+            "one move and two source-compatible cubic segments"
+        );
+        let mut used = 0;
+        let result = try_normalized_segments(&input, |units| {
+            used += units;
+            if used > 4 {
+                Err("full")
+            } else {
+                Ok(())
+            }
+        });
+        assert!(matches!(result, Err(GenerationError::Consumer("full"))));
+        assert_eq!(used, 5, "reject the second cubic before retaining it");
+        assert!(matches!(
+            try_normalized_segments::<()>(
+                &[PathSegment::LineTo {
+                    abs: true,
+                    x: f64::INFINITY,
+                    y: 0.0
+                }],
+                |_| Ok(()),
+            ),
+            Err(GenerationError::InvalidGeometry)
+        ));
+    }
+}
+
 pub fn points_on_path<F>(
     path: String,
     tolerance: Option<F>,
@@ -182,6 +302,15 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         let normalized = normalized_segments(&segments);
+        let bounded = super::try_normalized_segments::<()>(&segments, |_| Ok(())).unwrap();
+        assert_eq!(
+            bounded,
+            normalized
+                .iter()
+                .copied()
+                .map(crate::SvgPathSegment::into_current)
+                .collect::<Vec<_>>()
+        );
         assert!(matches!(
             normalized.as_slice(),
             [

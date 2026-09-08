@@ -1,7 +1,7 @@
 //! Typed Venn Rough.js geometry, independent of SVG serialization.
 //!
 //! Ellipse, curve sampling, simplification, and scanline work are charged during production.
-//! Path normalization and direct DrawingList builder admission remain separate concerns.
+//! Normalized segments grow under the same meter; direct DrawingList admission is separate.
 
 use crate::model::VennCircleLayout;
 use crate::resources::OperationWorkMeter;
@@ -103,9 +103,13 @@ pub(crate) fn intersection_fill_geometry(
             })?;
         segments.push(segment);
     }
-    // The legacy normalizer still owns its intermediate arrays. Reuse this normalized
-    // sequence for sampling and outline RNG consumption instead of parsing the path twice.
-    let normalized = roughr::points_on_path::normalized_segments(&segments);
+    let normalized = roughr::points_on_path::try_normalized_segments(&segments, |units| {
+        work_meter
+            .charge_at(units, OperationPhase::Emit)
+            .map_err(Error::from)
+    })
+    .map_err(generation_error)?;
+    drop(segments);
     let mut polygons = roughr::points_on_path::try_points_on_normalized_segments::<f64, _>(
         &normalized,
         1.0,

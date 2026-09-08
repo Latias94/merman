@@ -314,12 +314,17 @@ generation. The outline is consumed one source segment at a time solely to prese
 draws; no complete discarded outline is retained. Tests compare exact sampled points, fill
 operations, and seeded outline RNG progression with the collecting implementation.
 
-Source segments are admitted and collected fallibly, but the legacy normalization step still
-owns eager intermediate arrays without internal checkpoints. The direct adapter must also send
-operations to its bounded path builder rather than collect complete operation sets first. These
-remaining boundaries keep the public hand-drawn DrawingList gate closed. Preserve
-outline-before-fill random consumption; do not substitute a guessed size cutoff or a final
-post-allocation footprint check.
+Source segments are admitted and collected fallibly. Absolute-coordinate conversion now advances
+lazily, and normalized output is admitted before each retained segment. Both compatibility and
+bounded entry points use the same normalization formulas; complete absolute/intermediate arrays
+are gone from the bounded path. The existing per-arc cubic conversion scratch has constant size
+and retains its allocator behavior. Venn uses this bounded entry and drops its source array before
+sampling.
+
+The direct adapter must still send operations to its bounded path builder rather than collect
+complete operation sets first. That missing integration keeps the public hand-drawn DrawingList
+gate closed. Preserve outline-before-fill random consumption; do not substitute a guessed size
+cutoff or a final post-allocation footprint check.
 The new roughr API also needs its independently versioned package release before a Merman
 release can resolve this implementation from the registry.
 
