@@ -1248,6 +1248,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::TreeView
             | RenderFamilyKind::Requirement
             | RenderFamilyKind::GitGraph
+            | RenderFamilyKind::Kanban
     )
 }
 

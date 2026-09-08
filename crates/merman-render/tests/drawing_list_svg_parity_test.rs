@@ -1425,7 +1425,6 @@ fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn kanban_canonical_svg_keeps_sections_cards_ticket_links_and_plain_text() {
     let svg = render_svg(
         r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
@@ -1479,7 +1478,6 @@ kanban
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn kanban_canonical_svg_escapes_logical_ticket_uris_at_the_attribute_boundary() {
     let svg = render_svg(
         r##"%%{init: {"kanban": {"ticketBaseUrl": "https://example.test/tickets/#TICKET#"}}}%%
