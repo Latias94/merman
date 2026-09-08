@@ -211,6 +211,11 @@ fn parse_member(raw: &str) -> Result<String, PortableFontFamilyError> {
         if inner.to_ascii_lowercase().contains("!important") {
             return Err(PortableFontFamilyError::new("uses !important"));
         }
+        if is_css_generic_family(inner) {
+            return Err(PortableFontFamilyError::new(
+                "quotes a CSS generic family, which cannot be preserved in DrawingList v1",
+            ));
+        }
         return Ok(inner.to_string());
     }
 
@@ -266,6 +271,26 @@ fn is_css_wide_keyword(value: &str) -> bool {
         .any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
+fn is_css_generic_family(value: &str) -> bool {
+    [
+        "serif",
+        "sans-serif",
+        "cursive",
+        "fantasy",
+        "monospace",
+        "system-ui",
+        "ui-serif",
+        "ui-sans-serif",
+        "ui-monospace",
+        "ui-rounded",
+        "math",
+        "emoji",
+        "fangsong",
+    ]
+    .into_iter()
+    .any(|family| value.eq_ignore_ascii_case(family))
+}
+
 fn is_markup_delimiter(character: char) -> bool {
     matches!(character, '<' | '>' | '&')
 }
@@ -312,5 +337,14 @@ mod tests {
         let families = PortableFontFamilies::parse("'inherit'").expect("quoted family");
         assert_eq!(families.families, ["inherit"]);
         assert_eq!(families.to_css(), r#""inherit""#);
+    }
+
+    #[test]
+    fn quoted_css_generic_family_fails_closed() {
+        assert!(PortableFontFamilies::parse("'serif'").is_err());
+        assert_eq!(
+            PortableFontFamilies::parse("serif").unwrap().to_css(),
+            "serif"
+        );
     }
 }
