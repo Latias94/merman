@@ -3,6 +3,92 @@
 use super::*;
 use merman_display_list::StrokeStyle;
 
+pub(super) fn shared_title_style<'a>(
+    document: &'a DrawingListDocument,
+    session: &RenderSession,
+) -> Result<Option<&'a merman_display_list::TextStyle>> {
+    let mut shared = None;
+    for commands in document.commands.windows(3) {
+        session.checkpoint(OperationPhase::Emit)?;
+        let [
+            DrawingCommand::BeginSemanticGroup { semantic_id },
+            DrawingCommand::DrawText { run },
+            DrawingCommand::EndSemanticGroup,
+        ] = commands
+        else {
+            continue;
+        };
+        if semantic_id != "venn.title" {
+            continue;
+        }
+        if run.style.font.resource.is_some()
+            || run.style.stroke.is_some()
+            || !matches!(run.style.fill, Paint::Solid { .. })
+            || shared.is_some_and(|style| style != &run.style)
+        {
+            return Ok(None);
+        }
+        shared = Some(&run.style);
+    }
+    Ok(shared)
+}
+
+/// Preserve the upstream M/m/a/a spelling only when relative coordinates round-trip exactly.
+struct AreaPathData<'a>(&'a [PathSegment]);
+
+impl std::fmt::Display for AreaPathData<'_> {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [
+            PathSegment::MoveTo { to: origin },
+            PathSegment::MoveTo { to: start },
+            first @ PathSegment::ArcTo { to: middle, .. },
+            second @ PathSegment::ArcTo { to: end, .. },
+        ] = self.0
+        else {
+            return write!(output, "{}", path_d(self.0));
+        };
+        let pairs = [(origin, start), (start, middle), (middle, end)];
+        let offsets = pairs.map(|(from, to)| Point::new(to.x - from.x, to.y - from.y));
+        if !pairs.iter().zip(offsets).all(|((from, to), delta)| {
+            delta.x.is_finite()
+                && delta.y.is_finite()
+                && from.x + delta.x == to.x
+                && from.y + delta.y == to.y
+        }) {
+            return write!(output, "{}", path_d(self.0));
+        }
+        write!(
+            output,
+            "M {} {} m {} {}",
+            origin.x, origin.y, offsets[0].x, offsets[0].y
+        )?;
+        for (segment, delta) in [first, second].into_iter().zip(&offsets[1..]) {
+            if let PathSegment::ArcTo {
+                radius_x,
+                radius_y,
+                x_axis_rotation_degrees,
+                large_arc,
+                sweep_clockwise,
+                ..
+            } = segment
+            {
+                write!(
+                    output,
+                    " a {} {} {} {} {} {} {}",
+                    radius_x,
+                    radius_y,
+                    x_axis_rotation_degrees,
+                    u8::from(*large_arc),
+                    u8::from(*sweep_clockwise),
+                    delta.x,
+                    delta.y
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Recognize one complete independent paint scope, without changing encoder state.
 fn paint_scope(
     commands: &[DrawingCommand],
@@ -61,6 +147,23 @@ fn rough_scope<'a>(
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_venn_style(&mut self) -> Result<()> {
+        self.output.push_str("<style>")?;
+        if let Some(style) = self.venn_title_style {
+            let font = self.font_families(&style.font)?;
+            write!(
+                self.output,
+                "#{} .venn-title{{font-size:{}px;font-family:{};font-weight:{};font-style:{};}}",
+                self.diagram_id,
+                fmt(style.font_size),
+                font,
+                style.font.weight,
+                font_style(style.font.style)
+            )?;
+        }
+        self.output.push_str("</style><g/>")
+    }
+
     /// Preserve Rough.js's structural wrapper, using only the public paint scopes.
     pub(super) fn emit_venn_rough_group(&mut self, index: usize) -> Result<Option<usize>> {
         let SvgStructureBody::Venn(body) = self.svg_body else {
@@ -441,7 +544,7 @@ impl DocumentSvgEncoder<'_> {
         write!(
             self.output,
             "<path d=\"{}\" style=\"",
-            path_d(&path.segments)
+            AreaPathData(&path.segments)
         )?;
         if let Some((color, opacity)) = fill {
             write!(
@@ -483,6 +586,7 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         };
         let title = class == "venn-title";
+        let shared_title = title && self.venn_title_style == Some(&run.style);
         if (!title && class != "label")
             || run.direction != TextDirection::Auto
             || run.language.is_some()
@@ -516,7 +620,14 @@ impl DocumentSvgEncoder<'_> {
         )?;
         if title {
             self.output.push_str(" dominant-baseline=\"middle\"")?;
-            write!(self.output, " font-size=\"{}px\"", fmt(run.style.font_size))?;
+            // The source scales this presentation attribute, but the author rule owns the
+            // visible size. Both values derive from public style/viewport, never theme config.
+            let size = if shared_title {
+                run.style.font_size * (self.document.viewport.bounds.width / 1600.0)
+            } else {
+                run.style.font_size
+            };
+            write!(self.output, " font-size=\"{}px\"", fmt(size))?;
         } else {
             self.output.push_str(" dy=\".35em\"")?;
         }
@@ -531,15 +642,22 @@ impl DocumentSvgEncoder<'_> {
         }
         write!(
             self.output,
-            " y=\"{}\" style=\"fill: {}; fill-opacity: {}; font-size: {}px; font-family: {}; font-weight: {}; font-style: {};\"",
+            " y=\"{}\" style=\"fill: {}; fill-opacity: {};",
             fmt(y),
             color_css(color),
-            fmt(f64::from(color.alpha) / 255.0),
-            fmt(run.style.font_size),
-            escaped_attr(&font),
-            run.style.font.weight,
-            font_style(run.style.font.style)
+            fmt(f64::from(color.alpha) / 255.0)
         )?;
+        if !shared_title {
+            write!(
+                self.output,
+                " font-size: {}px; font-family: {}; font-weight: {}; font-style: {};",
+                fmt(run.style.font_size),
+                escaped_attr(&font),
+                run.style.font.weight,
+                font_style(run.style.font.style)
+            )?;
+        }
+        self.output.push('"')?;
         self.write_state_attrs()?;
         self.output.push('>')?;
         if !title {

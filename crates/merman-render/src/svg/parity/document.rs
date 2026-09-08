@@ -89,6 +89,7 @@ struct DocumentSvgEncoder<'a> {
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
     info_text_style: Option<&'a merman_display_list::TextStyle>,
+    venn_title_style: Option<&'a merman_display_list::TextStyle>,
     sankey_links: Option<sankey::LinkProjection>,
     command_index: usize,
     state: GraphicsState,
@@ -273,6 +274,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             command_index: 0,
             info_text_style: if matches!(document.svg.body, SvgStructureBody::Info(_)) {
                 info::shared_text_style(&document.public, session)?
+            } else {
+                None
+            },
+            venn_title_style: if matches!(document.svg.body, SvgStructureBody::Venn(_)) {
+                venn::shared_title_style(&document.public, session)?
             } else {
                 None
             },
@@ -800,9 +806,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             return self.write_cynefin_styles();
         }
         if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
-            // Venn text and paints are already resolved in the public commands. Importing the
-            // original theme stylesheet would reinterpret and override their explicit values.
-            return self.output.push_str("<style></style><g/>");
+            return self.write_venn_style();
         }
         let css = match self.svg_body {
             SvgStructureBody::Error(_) => Some((

@@ -3870,6 +3870,23 @@ mod tests {
                 .attribute("x"),
             Some("50%")
         );
+        assert_eq!(
+            root.children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap()
+                .attribute("font-size"),
+            Some("16px"),
+            "retain the source's scaled presentation attribute"
+        );
+        assert!(
+            root.children()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap_or_default()
+                .contains("font-size:32px;"),
+            "the public 32px title size must win through the source-shaped author rule"
+        );
         let without_clusters = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
@@ -3893,9 +3910,39 @@ mod tests {
             .filter(|node| node.is_element())
             .collect::<Vec<_>>();
         assert_eq!(areas.len(), 3);
-        for area in areas {
+        for (index, area) in areas.into_iter().enumerate() {
             assert!(area.attribute("class").unwrap().starts_with("venn-area "));
             assert!(area.attribute("data-venn-sets").is_some());
+            let path = area
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            let data = path.attribute("d").unwrap();
+            if index < 2 {
+                assert!(
+                    data.contains(" m ") && data.matches(" a ").count() == 2,
+                    "classic circles must retain source relative command spelling"
+                );
+            }
+            let resource_id = format!("venn.area.{index}.shape");
+            let segments = document
+                .public
+                .resources
+                .iter()
+                .find_map(|resource| match resource {
+                    merman_display_list::DrawingResource::Path(path)
+                        if path.id.as_str() == resource_id =>
+                    {
+                        Some(&path.segments)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                &crate::drawing_list::parse_svg_path(data).unwrap(),
+                segments,
+                "SVG command spelling must preserve the public geometry exactly"
+            );
             assert_eq!(
                 area.children()
                     .filter(|node| node.is_element())
@@ -3950,16 +3997,19 @@ mod tests {
         for node in xml.descendants().filter(|node| node.has_tag_name("text")) {
             text_count += 1;
             let style = node.attribute("style").unwrap();
-            assert!(style.contains("font-size: 27px;") && style.contains("fill: #0b1621;"));
+            assert!(style.contains("fill: #0b1621;"));
             if node.attribute("class") == Some("venn-title") {
                 assert_eq!(node.attribute("x"), Some("413"));
+            } else {
+                assert!(style.contains("font-size: 27px;"));
             }
         }
         assert_eq!(text_count, 4);
         assert!(
             xml.descendants()
                 .filter(|node| node.has_tag_name("style"))
-                .all(|node| node.text().unwrap_or_default().is_empty())
+                .any(|node| node.text().unwrap_or_default().contains("font-size:27px;")),
+            "edited public title style must replace the CSS projection"
         );
         let background = xml
             .descendants()

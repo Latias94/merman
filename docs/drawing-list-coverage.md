@@ -284,12 +284,24 @@ is `target/compare/venn_migration_candidate_structure.md`; the companion stricte
 `target/compare/venn_migration_candidate_parity_root.md`. Temporary route/inventory admission used
 for this diagnostic was withdrawn; neither run is evidence of full-family readiness.
 
-This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
-candidate parity-root comparison still reports circle path command spelling and title
-presentation-attribute/style differences. These have not been accepted as residuals or hidden by
-normalization. Full text-node DOM comparison and hand-drawn SVG DOM projection also remain
-migration work. These features are not inherently outside the vector protocol; missing
-implementations must be resolved before full-family admission.
+The subsequent candidate run in `target/compare/venn_canonical_progress_structure.md` and
+`target/compare/venn_canonical_progress_parity_root.md` rendered all 12 fixtures through the
+canonical route without fallback. Seven classic fixtures pass both modes. The five failures are
+the three hand-drawn fixtures and two additional text-node fixtures: rough stroke color tokens
+use RGBA rather than the source's HSL/hex spelling, while text areas still differ in their
+`font-size` attributes and direct `foreignObject` child structure. Neither mode passes overall.
+Temporary route/inventory admission was withdrawn after the diagnostic.
+
+The earlier classic circle/title mismatches are resolved without comparator changes. Source-shaped
+`M/m/a/a` paths are emitted only when the relative offsets reconstruct the public coordinates
+exactly. Otherwise the serializer retains absolute commands. Title CSS comes from the public
+`TextStyle`; the scaled presentation attribute remains, while the author rule preserves the
+actual 32px default size. Public edits to font size, position, paint, and stroke caps still reach
+SVG. No external config or private geometry is reinterpreted to reconstruct those values.
+
+This is not full-family admission: Venn remains on the explicit legacy SVG route. Remaining
+text-node and hand-drawn DOM differences have not been accepted as residuals or hidden by
+normalization, and must be resolved before full-family admission.
 
 Venn's hand-drawn circle and intersection generators now stream typed Rough.js operations from
 `venn/rough.rs` directly into the DrawingList builder. Legacy SVG wrappers collect and format the
