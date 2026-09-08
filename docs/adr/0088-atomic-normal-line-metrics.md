@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted design; atomic metrics, transport projections, bounded Rust normal-text layout, and direct
-Venn text-node integration are implemented. The Venn SVG HTML shell projection remains in progress;
-no additional family is admitted by this ADR.
+Accepted design; atomic metrics, transport projections, bounded Rust normal-text layout, direct
+Venn text nodes, and their canonical SVG identity-shell projection are implemented. Full-family
+Venn parity and RoughJS migration remain in progress; no additional family is admitted by this ADR.
 
 ## Date
 

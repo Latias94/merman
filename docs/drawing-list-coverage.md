@@ -287,7 +287,7 @@ for this diagnostic was withdrawn; neither run is evidence of full-family readin
 This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
 candidate parity-root comparison still reports circle path command spelling and title
 presentation-attribute/style differences. These have not been accepted as residuals or hidden by
-normalization. Text-node SVG shell projection and typed RoughJS path projection also remain
+normalization. Full text-node DOM comparison and typed RoughJS path projection also remain
 migration work. These features are not inherently outside the vector protocol; missing
 implementations must be resolved before full-family admission.
 
@@ -324,8 +324,27 @@ grid, and retain interleaved debug circle/cell/text order. Discretionary hyphens
 line separators remain explicit unsupported effects pending break-glyph projection, rather than
 being silently treated as ordinary soft breaks. Focused public and builder tests exercise literal
 markup, NBSP, CJK, long-word overflow, content-specific baseline pairs, exact budgets, and mid-layout
-cancellation. This admits ordinary text-node DrawingList output only: Venn SVG still uses its
-recorded legacy route while the source-shaped HTML shell and remaining family parity are migrated.
+cancellation. Venn SVG still uses its recorded legacy route until full-family parity is verified.
+
+The candidate SVG now projects each text node's `foreignObject.venn-text-node-fo` and XHTML
+`span.venn-text-node` from a public, unpainted container rectangle. Inside that shell, positioned SVG
+text uses the same canonical origins, baselines, fonts, paint, and literal strings as DrawingList.
+The inner SVG has no viewBox or clipping; its translation cancels only the container origin.
+An adjacent native branch in a `switch` serializes the same runs for the existing resvg-safe
+pipeline. It does not reconstruct or measure an HTML label. Public title/description and debug
+visibility live once on the surrounding semantic group, outside both rendering branches.
+
+This is an explicit structural change from upstream span-owned direct text: the identity shell
+contains an inner SVG, and a semantic wrapper/switch retains metadata and headless output. It is
+not byte-identical upstream DOM and has not been hidden by comparator normalization. Candidate
+mutation tests cover changed baselines, text, paint, container coordinates, metadata, and a box
+that becomes painted (which correctly falls back to generic canonical commands, not legacy).
+Chromium characterization of browser and native branches found identical text dimensions, color,
+and alpha; foreignObject layout introduced approximately 0.012px screen-coordinate rounding in
+the measured case. This is recorded browser-coordinate evidence, not a production offset.
+
+Quoted whitespace labels also preserve Mermaid's truthiness-before-normalization order: `[" "]`
+normalizes to an empty label and an empty shell, whereas `[""]` is absent and uses the node ID.
 
 ## Exercised effect accounting
 

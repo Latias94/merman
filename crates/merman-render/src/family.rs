@@ -3363,6 +3363,293 @@ mod tests {
     }
 
     #[test]
+    fn venn_text_node_svg_projects_public_container_and_baselines_without_rewrapping() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "venn-beta\nset A[\"Alpha\"]:20\n  text A1[\"First <br> word with enough additional content to wrap naturally across several resolved lines\"]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                &json!({"themeCSS": "span {color:red}"}),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let initial = render(&document);
+        assert!(
+            initial.contains("<foreignObject"),
+            "canonical text must retain the source HTML identity shell"
+        );
+        let initial_xml = roxmltree::Document::parse(&initial).unwrap();
+        let initial_fo = initial_xml
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert!(
+            initial_fo
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count()
+                > 1,
+            "the HTML shell must exercise multiple finalized lines"
+        );
+        let container = document
+            .public
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "venn.text.0.container" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .expect("container geometry belongs to the public document");
+        let merman_display_list::PathSegment::MoveTo { to: corner } = container.segments[0] else {
+            panic!("rectangle origin");
+        };
+        let corner = corner;
+        let semantic = document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|semantic| semantic.id == "venn.text.0")
+            .unwrap();
+        semantic.description = Some("Public node description".to_owned());
+        semantic.role = merman_display_list::SemanticRole::Node;
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawText { run } = command
+                && run.text.contains("First")
+            {
+                run.origin.y += 17.0;
+                run.bounds.y -= 3.0;
+                run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+                run.text = "Edited <literal>".to_owned();
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let fo = xml
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(fo.attribute("class"), Some("venn-text-node-fo"));
+        assert_eq!(fo.attribute("x").unwrap().parse::<f64>().unwrap(), corner.x);
+        assert_eq!(fo.attribute("y").unwrap().parse::<f64>().unwrap(), corner.y);
+        let span = fo.children().find(|node| node.is_element()).unwrap();
+        assert_eq!(
+            span.tag_name().namespace(),
+            Some("http://www.w3.org/1999/xhtml")
+        );
+        assert_eq!(span.attribute("class"), Some("venn-text-node"));
+        let texts: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.text() == Some("Edited <literal>"))
+            .collect();
+        assert_eq!(
+            texts.len(),
+            2,
+            "HTML branch and native fallback share canonical text"
+        );
+        let run = document
+            .public
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text == "Edited <literal>" => Some(run),
+                _ => None,
+            })
+            .unwrap();
+        for text in texts {
+            assert_eq!(
+                text.attribute("y").unwrap().parse::<f64>().unwrap(),
+                run.origin.y
+            );
+            assert_eq!(text.attribute("fill"), Some("#123456"));
+            assert_eq!(text.attribute("dominant-baseline"), Some("alphabetic"));
+        }
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("desc")
+                    && node.text() == Some("Public node description"))
+                .count(),
+            1
+        );
+        assert!(!xml.descendants().any(|node| node.has_tag_name("text")
+            && node.text().is_some_and(|text| text.contains("First"))));
+        assert!(!svg.contains("<br>"));
+        assert!(!svg.contains("white-space: normal"));
+        let hidden = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions {
+                include_nodes: false,
+                ..SvgDebugOptions::default()
+            },
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let hidden_xml = roxmltree::Document::parse(&hidden).unwrap();
+        assert_eq!(
+            hidden_xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some("venn.text.0"))
+                .unwrap()
+                .attribute("display"),
+            Some("none")
+        );
+        let clusters_hidden = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions {
+                include_clusters: false,
+                ..SvgDebugOptions::default()
+            },
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let clusters_xml = roxmltree::Document::parse(&clusters_hidden).unwrap();
+        for class in ["venn-text-nodes", "venn-text-area"] {
+            assert_eq!(
+                clusters_xml
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .unwrap()
+                    .attribute("display"),
+                Some("none")
+            );
+        }
+
+        let native = crate::svg::SvgPipeline::resvg_safe()
+            .process_to_string(&svg, &artifact.session)
+            .unwrap();
+        let native_xml = roxmltree::Document::parse(&native).unwrap();
+        assert!(!native.contains("<foreignObject"));
+        let native_text: Vec<_> = native_xml
+            .descendants()
+            .filter(|node| node.has_tag_name("text") && node.text() == Some("Edited <literal>"))
+            .collect();
+        assert_eq!(
+            native_text.len(),
+            1,
+            "headless output keeps one exact native branch, not a remeasured HTML overlay"
+        );
+        assert_eq!(
+            native_text[0]
+                .attribute("y")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap(),
+            run.origin.y
+        );
+
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == "venn.text.0.container"
+            {
+                for segment in &mut path.segments {
+                    match segment {
+                        merman_display_list::PathSegment::MoveTo { to }
+                        | merman_display_list::PathSegment::LineTo { to } => {
+                            to.x += 13.0;
+                            to.y += 11.0;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let moved = render(&document);
+        let moved_xml = roxmltree::Document::parse(&moved).unwrap();
+        let moved_fo = moved_xml
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            moved_fo.attribute("x").unwrap().parse::<f64>().unwrap(),
+            corner.x + 13.0
+        );
+        assert_eq!(
+            moved_fo.attribute("y").unwrap().parse::<f64>().unwrap(),
+            corner.y + 11.0
+        );
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "venn.text.0.container"
+            {
+                style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 255)));
+            }
+        }
+        let painted = render(&document);
+        assert!(
+            !painted.contains("<foreignObject"),
+            "a painted box no longer qualifies for the inert HTML shell"
+        );
+        assert!(painted.contains("fill=\"#ff0000\""));
+        let painted_xml = roxmltree::Document::parse(&painted).unwrap();
+        assert!(
+            painted_xml
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("Edited <literal>"))
+        );
+    }
+
+    #[test]
+    fn venn_empty_text_node_keeps_its_public_container_and_html_identity() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "venn-beta\nset A[\"Alpha\"]:20\n  text A1[\" \"]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let fo = xml
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        let span = fo.children().find(|node| node.is_element()).unwrap();
+        assert_eq!(span.attribute("class"), Some("venn-text-node"));
+        assert_eq!(span.children().count(), 0);
+        assert!(!svg.contains("<switch>"));
+        assert!(!svg.contains(">A1<"));
+    }
+
+    #[test]
     fn venn_document_styles_do_not_reinterpret_external_config() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(

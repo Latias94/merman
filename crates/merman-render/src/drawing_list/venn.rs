@@ -284,6 +284,22 @@ impl<'a> VennBuilder<'a> {
                 }
                 let id = format!("venn.text.{node_index}");
                 self.begin_text_group(id.clone(), "venn-text-node-fo", Some(label.to_owned()))?;
+                // The unpainted box retains the source container independently of overflowing
+                // line bounds. SVG shell geometry must not be copied into the private sidecar.
+                self.output.draw_path(
+                    ResourceId::new(format!("{id}.container")),
+                    polygon_path(&[
+                        Point::new(node.x, node.y),
+                        Point::new(node.x + node.width, node.y),
+                        Point::new(node.x + node.width, node.y + node.height),
+                        Point::new(node.x, node.y + node.height),
+                    ]),
+                    PathStyle {
+                        fill_rule: FillRule::NonZero,
+                        fill: None,
+                        stroke: None,
+                    },
+                )?;
                 self.text_classes.insert(id, "venn-text-node".to_owned());
                 let color = style_by_key
                     .get(&node.id)

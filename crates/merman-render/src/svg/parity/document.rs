@@ -509,6 +509,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             if root_background && index == 2 {
                 continue;
             }
+            if let Some(count) = self.emit_venn_text_node(index)? {
+                consumed_until = index + count;
+                continue;
+            }
             if let Some(count) = self.emit_venn_fill_and_stroke(index)? {
                 consumed_until = index + count;
                 continue;

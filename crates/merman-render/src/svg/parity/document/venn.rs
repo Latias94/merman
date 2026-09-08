@@ -45,12 +45,27 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         };
         let area = body.semantic_data_sets.contains_key(id);
+        let text_group = body
+            .semantic_classes
+            .get(id)
+            .is_some_and(|class| matches!(class.as_str(), "venn-text-nodes" | "venn-text-area"));
+        if text_group
+            && (semantic.title.is_some()
+                || semantic.description.is_some()
+                || semantic.role != SemanticRole::Group)
+        {
+            // Edited public annotations need the generic canonical wrapper, rather than a
+            // source structural shell which has no annotation payload of its own.
+            return Ok(false);
+        }
         if semantic.link.is_some()
-            || !(area || matches!(id, "venn.document" | "venn.content" | "venn.title"))
+            || !(area
+                || text_group
+                || matches!(id, "venn.document" | "venn.content" | "venn.title"))
         {
             return Ok(false);
         }
-        let emitted = area || id == "venn.content";
+        let emitted = area || text_group || id == "venn.content";
         let projected_transform = if emitted {
             self.state.transform
         } else {
@@ -78,7 +93,7 @@ impl DocumentSvgEncoder<'_> {
                 }
                 self.state.transform = Transform::IDENTITY;
             }
-            if area && !self.debug_visibility(semantic.role) {
+            if (area || text_group) && !self.debug_visibility(semantic.role) {
                 self.output.push_str(" display=\"none\"")?;
             }
             self.output.push('>')?;
@@ -90,6 +105,142 @@ impl DocumentSvgEncoder<'_> {
             projected_transform,
         });
         Ok(true)
+    }
+
+    /// Retains the HTML identity shell without giving the browser a second wrapping job.
+    /// Both the browser branch and the native fallback serialize the same public text runs.
+    pub(super) fn emit_venn_text_node(&mut self, index: usize) -> Result<Option<usize>> {
+        let SvgStructureBody::Venn(body) = self.svg_body else {
+            return Ok(None);
+        };
+        if self.state.transform != Transform::IDENTITY
+            || self.state.opacity != 1.0
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(None);
+        }
+        let Some(DrawingCommand::BeginSemanticGroup { semantic_id }) =
+            self.document.commands.get(index)
+        else {
+            return Ok(None);
+        };
+        if body.semantic_classes.get(semantic_id).map(String::as_str) != Some("venn-text-node-fo")
+            || self
+                .semantics
+                .get(semantic_id)
+                .is_none_or(|semantic| semantic.link.is_some())
+        {
+            return Ok(None);
+        }
+        let Some(DrawingCommand::DrawPath { path, style }) = self.document.commands.get(index + 1)
+        else {
+            return Ok(None);
+        };
+        if path.as_str().strip_suffix(".container") != Some(semantic_id.as_str())
+            || style.fill.is_some()
+            || style.stroke.is_some()
+        {
+            return Ok(None);
+        }
+        let Some(bounds) = rectangle_from_path(self.path_resource(path)?) else {
+            return Ok(None);
+        };
+        let first = index + 2;
+        let mut end = first;
+        while let Some(DrawingCommand::DrawText { run }) = self.document.commands.get(end) {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            if !matches!(run.obligation, TextObligation::HostText { .. })
+                || run.text.contains(['\n', '\r'])
+            {
+                return Ok(None);
+            }
+            end += 1;
+        }
+        if !matches!(
+            self.document.commands.get(end),
+            Some(DrawingCommand::EndSemanticGroup)
+        ) {
+            return Ok(None);
+        }
+        let has_text = first < end;
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .copied()
+            .ok_or_else(|| invalid("Venn text node has no semantic annotation"))?;
+        let svg_id = self.semantic_svg_id(semantic_id)?;
+        write!(
+            self.output,
+            "<g id=\"{}\" class=\"merman-semantic {}\" role=\"group\" data-merman-semantic-id=\"{}\"",
+            escaped_attr(&svg_id),
+            semantic_role_class(semantic.role),
+            escaped_attr(semantic_id)
+        )?;
+        if !self.debug_visibility(semantic.role) {
+            self.output.push_str(" display=\"none\"")?;
+        }
+        self.output.push('>')?;
+        if let Some(title) = semantic.title.as_deref() {
+            self.output.push_str("<title>")?;
+            output::escape_xml(&mut self.output, title)?;
+            self.output.push_str("</title>")?;
+        }
+        if let Some(description) = semantic.description.as_deref() {
+            self.output.push_str("<desc>")?;
+            output::escape_xml(&mut self.output, description)?;
+            self.output.push_str("</desc>")?;
+        }
+        if has_text {
+            self.output.push_str("<switch>")?;
+        }
+        write!(
+            self.output,
+            "<foreignObject class=\"venn-text-node-fo\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" overflow=\"visible\"><span xmlns=\"http://www.w3.org/1999/xhtml\" class=\"venn-text-node\" style=\"display: block; position: relative; width: 100%; height: 100%;\">",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height)
+        )?;
+        self.groups.push(GroupKind::Semantic {
+            linked: false,
+            emitted: true,
+            semantic_id: semantic_id.clone(),
+            projected_transform: Transform::IDENTITY,
+        });
+        if has_text {
+            // Keep original coordinates and cancel only the foreignObject viewport translation.
+            // No viewBox, clipping, HTML line-height, or inferred baseline enters this projection.
+            write!(
+                self.output,
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" overflow=\"visible\" style=\"position: absolute; left: 0; top: 0; overflow: visible;\"><g transform=\"translate({}, {})\">",
+                fmt(bounds.width),
+                fmt(bounds.height),
+                fmt(-bounds.x),
+                fmt(-bounds.y)
+            )?;
+            for command in &self.document.commands[first..end] {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                if let DrawingCommand::DrawText { run } = command {
+                    self.emit_text(run)?;
+                }
+            }
+            self.output.push_str("</g></svg>")?;
+        }
+        self.output.push_str("</span></foreignObject>")?;
+        if has_text {
+            // Existing resvg-safe processing unwraps a switch's native fallback rather than
+            // remeasuring its foreignObject. One group keeps multiple lines a single branch.
+            self.output.push_str("<g>")?;
+            for command in &self.document.commands[first..end] {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                if let DrawingCommand::DrawText { run } = command {
+                    self.emit_text(run)?;
+                }
+            }
+            self.output.push_str("</g></switch>")?;
+        }
+        self.end_semantic_group()?;
+        Ok(Some(end - index + 1))
     }
 
     fn is_venn_area_path(&self, path: &ResourceId) -> bool {
