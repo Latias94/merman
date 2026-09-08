@@ -16,11 +16,14 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 46 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v52; 292 routes / 320 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v52; 292 routes / 322 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v2; 58 routes / 116 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Treemap Text.fill added four Classic witnesses, so v52 has 320 witnesses, not 324.
+output files. The v52 route authorization inventory is unchanged; its witness suite now isolates
+Gantt Warning today and vertical strokes into separate profiles (322 witnesses, previously 320).
+The today profile fixes the runtime clock to 2024-01-03 within the task interval; `todayMarker`
+is a style directive, not a clock override. Neither terminal can supply the other's pixel evidence.
 Neither KTD17 nor KTD23 is a percentage of all theme capabilities. Their selector/value domains
 differ from the live bridge inventory and must not be added together to calculate migration progress.
 

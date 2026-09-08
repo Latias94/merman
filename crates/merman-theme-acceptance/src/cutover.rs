@@ -278,12 +278,17 @@ todayMarker off
 section Delivery
 Task: task, 2024-01-01, 1d
 "#;
-const GANTT_WARNING_STROKE_SOURCE: &str = r#"gantt
+const GANTT_WARNING_TODAY_SOURCE: &str = r#"gantt
 dateFormat YYYY-MM-DD
-todayMarker 2024-01-03
+section Delivery
+Task: regular-task, 2024-01-01, 4d
+"#;
+const GANTT_WARNING_VERTICAL_SOURCE: &str = r#"gantt
+dateFormat YYYY-MM-DD
+todayMarker off
 section Delivery
 Vertical marker: vert, vertical-marker, 2024-01-02, 0d
-Task: task, regular-task, 2024-01-02, 1d
+Task: regular-task, 2024-01-01, 4d
 "#;
 const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
@@ -305,6 +310,8 @@ const KANBAN_TASK_STROKE_SOURCE: &str = r#"kanban
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum CutoverWitnessProfile {
     ClassicStatic,
+    ClassicToday,
+    ClassicVertical,
     HandDrawnStatic,
     NeoStatic,
     NeoAnimated,
@@ -312,6 +319,7 @@ enum CutoverWitnessProfile {
 
 impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
+    const GANTT_WARNING: [Self; 2] = [Self::ClassicToday, Self::ClassicVertical];
     const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
     const CLASS_EDGE: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
@@ -324,6 +332,8 @@ impl CutoverWitnessProfile {
     const fn id(self) -> &'static str {
         match self {
             Self::ClassicStatic => "classic-static",
+            Self::ClassicToday => "classic-today",
+            Self::ClassicVertical => "classic-vertical",
             Self::HandDrawnStatic => "hand-drawn-static",
             Self::NeoStatic => "neo-static",
             Self::NeoAnimated => "neo-animated",
@@ -332,14 +342,20 @@ impl CutoverWitnessProfile {
 
     const fn look(self) -> &'static str {
         match self {
-            Self::ClassicStatic => "classic",
+            Self::ClassicStatic | Self::ClassicToday | Self::ClassicVertical => "classic",
             Self::HandDrawnStatic => "handDrawn",
             Self::NeoStatic | Self::NeoAnimated => "neo",
         }
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
-        if matches!(
+        if route.family_id() == DiagramFamilyId::GANTT
+            && route.target() == ThemeTarget::Task
+            && route.facet() == ThemeRouteCutoverFacet::Stroke
+            && route.selector() == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning)
+        {
+            &Self::GANTT_WARNING
+        } else if matches!(
             route.family_id(),
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
         ) && route.target() == ThemeTarget::Edge
@@ -546,7 +562,7 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             if route.selector()
                 == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning) =>
         {
-            Ok(GANTT_WARNING_STROKE_SOURCE)
+            Ok(GANTT_WARNING_TODAY_SOURCE)
         }
         (
             DiagramFamilyId::GANTT,
@@ -578,6 +594,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
 }
 
 fn source_for_witness(witness: CutoverWitnessId) -> C6ProofResult<&'static str> {
+    if witness.profile() == CutoverWitnessProfile::ClassicVertical {
+        return Ok(GANTT_WARNING_VERTICAL_SOURCE);
+    }
     if witness.profile() != CutoverWitnessProfile::NeoAnimated {
         return source_for_route(witness.route());
     }
@@ -1164,8 +1183,20 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
     {
         site_config["theme"] = serde_json::Value::String("redux".to_string());
     }
-    Renderer::new()
-        .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(site_config)))
+    let renderer = Renderer::new()
+        .with_engine(Engine::new().with_site_config(MermaidConfig::from_value(site_config)));
+    if matches!(
+        profile,
+        CutoverWitnessProfile::ClassicToday | CutoverWitnessProfile::ClassicVertical
+    ) {
+        // todayMarker configures CSS, not time. Keep the actual clock inside the task interval.
+        renderer.with_runtime_policy(
+            merman::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_704_240_000_000),
+        )
+    } else {
+        renderer
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1411,8 +1442,11 @@ fn prove_route<T>(witness: &str, result: C6ProofResult<T>) -> Result<T, RouteCut
 mod tests {
     use std::collections::BTreeMap;
 
-    use merman::svg::ThemeTarget;
+    use merman::svg::{ThemeTarget, ThemeVariant};
     use merman::{DiagramFamilyId, TargetAdmissionReason, TargetAdmissionStatus, TargetFontSource};
+    use merman_render::__private::{
+        ThemeRouteCutoverFacet, ThemeRouteCutoverSelector, ThemeRouteCutoverValue,
+    };
 
     use super::{
         CutoverTargetAdmissionContract, CutoverWitnessId, CutoverWitnessProfile,
@@ -1421,6 +1455,62 @@ mod tests {
         run_route_cutover_witnesses,
     };
     use crate::cutover_manifest::EXPECTED_AUTHORIZED_MANIFEST_DIGEST;
+
+    #[test]
+    fn gantt_warning_today_and_vertical_have_independent_visible_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for profile in [
+            CutoverWitnessProfile::ClassicToday,
+            CutoverWitnessProfile::ClassicVertical,
+        ] {
+            let render = |value| {
+                let route = inventory
+                    .iter()
+                    .copied()
+                    .find(|route| {
+                        route.family_id() == DiagramFamilyId::GANTT
+                            && route.target() == ThemeTarget::Task
+                            && route.facet() == ThemeRouteCutoverFacet::Stroke
+                            && route.selector()
+                                == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning)
+                            && route.value() == value
+                    })
+                    .expect("Gantt Warning stroke route");
+                assert_eq!(
+                    CutoverWitnessProfile::for_route(route),
+                    &[
+                        CutoverWitnessProfile::ClassicToday,
+                        CutoverWitnessProfile::ClassicVertical
+                    ]
+                );
+                let id = CutoverWitnessId::new(route, profile);
+                let source = super::source_for_witness(id).expect("source");
+                match profile {
+                    CutoverWitnessProfile::ClassicToday => assert!(!source.contains("vert,")),
+                    CutoverWitnessProfile::ClassicVertical => {
+                        assert!(source.contains("todayMarker off"))
+                    }
+                    _ => unreachable!(),
+                }
+                let case = super::CutoverCase { id, source };
+                (
+                    route,
+                    super::render_cutover_case(case, vec![route]).expect("SVG witness"),
+                )
+            };
+            let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+            let (transparent_route, transparent) = render(ThemeRouteCutoverValue::Transparent);
+            merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                &solid.document,
+                &transparent.document,
+                solid_route,
+                transparent_route,
+                &merman_export::RasterOptions::default().with_scale(2.0),
+                merman::OperationControl::new(),
+            )
+            .expect("each Warning terminal must independently produce route-local pixels");
+        }
+    }
 
     #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
@@ -1443,11 +1533,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_292_routes_and_320_artifact_witnesses() {
+    fn route_inventory_retains_292_routes_and_322_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
         assert_eq!(inventory.len(), 292);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 320);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 322);
     }
 
     #[test]
