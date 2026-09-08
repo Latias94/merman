@@ -281,13 +281,12 @@
     },
     {
       "id": "hand-drawn",
-      "disposition": "error",
+      "disposition": "vector",
       "family": "venn",
       "source": "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
-      "assertion": "error_message",
-      "expected_effects": [],
-      "expected_error": "RoughJS paths",
-      "evidence": "structured DrawingListUnavailable instead of substituting classic geometry"
+      "assertion": "opacity",
+      "expected_effects": ["host_text", "opacity", "path"],
+      "evidence": "bounded hachure and outline paths with exact paint opacity; seeded path and painter-order parity are checked in venn_svg_test"
     },
     {
       "id": "external-icon",

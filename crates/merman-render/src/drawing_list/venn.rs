@@ -2,7 +2,7 @@
 //!
 //! Classic Venn output already owns deterministic area paths and label coordinates. This adapter
 //! projects those typed values directly. Plain text nodes resolve normal line boxes through the
-//! operation's text provider. RoughJS paths remain an explicit migration boundary.
+//! operation's text provider. Hand-drawn operations flow directly into the bounded path builder.
 
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, VennSvgBody, parse_font_families_for,
@@ -17,6 +17,7 @@ use crate::drawing_list::support::{
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::model::{Bounds, VennAreaLayout, VennDiagramLayout};
+use crate::rough_geometry::{display_color_to_srgba, op_to_path_segment, operation_randomness};
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
 use crate::theme::PresentationTheme;
 use crate::venn::{
@@ -39,6 +40,24 @@ type VennPair = FamilyPair<VennDiagramRenderModel, VennDiagramLayout>;
 
 const TITLE_FONT_SIZE_PX: f64 = 32.0;
 
+fn rough_path_paint(token: &str, width: f64, fade: f64) -> Result<(PathStyle, f64)> {
+    use merman_core::theme_color::{ColorChannel, ThemeColor, transparentize};
+    let token = transparentize(token, fade).map_err(|error| unavailable(error.to_string()))?;
+    let mut color = PortableStyleResolver::new("venn").color("rough paint", &token)?;
+    let opacity = ThemeColor::parse(&token)
+        .map_err(|error| unavailable(error.to_string()))?
+        .channel(ColorChannel::Alpha);
+    color.alpha = 255;
+    Ok((
+        PathStyle {
+            fill_rule: FillRule::NonZero,
+            fill: None,
+            stroke: Some(stroke(color, width)),
+        },
+        opacity,
+    ))
+}
+
 pub(crate) fn build_venn_document(
     pair: &VennPair,
     metadata: &ParseMetadata,
@@ -59,6 +78,7 @@ struct VennBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     theme: crate::theme::VennTheme,
+    rough_randomness: Option<roughr::core::RoughRandomness>,
     semantic_classes: BTreeMap<String, String>,
     semantic_data_sets: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
@@ -74,11 +94,16 @@ impl<'a> VennBuilder<'a> {
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
-        if config_diagram_look(config).as_str() == "handDrawn" {
-            return Err(unavailable(
-                "hand-drawn Venn output requires RoughJS paths that are not canonical DrawingList geometry",
-            ));
-        }
+        let rough_randomness = (config_diagram_look(config).as_str() == "handDrawn").then(|| {
+            operation_randomness(
+                session,
+                config
+                    .get("handDrawnSeed")
+                    .and_then(serde_json::Value::as_f64)
+                    .unwrap_or(session.render_seed().get() as f64),
+                "render.venn.roughjs",
+            )
+        });
 
         let model = pair.semantic();
         let layout = pair.layout();
@@ -110,6 +135,7 @@ impl<'a> VennBuilder<'a> {
             font,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             theme,
+            rough_randomness,
             semantic_classes: BTreeMap::new(),
             semantic_data_sets: BTreeMap::new(),
             text_classes: BTreeMap::new(),
@@ -420,17 +446,21 @@ impl<'a> VennBuilder<'a> {
             })?;
 
         let styles = PortableStyleResolver::new("venn");
-        let fill_opacity = styles.opacity("fill-opacity", &presentation.fill_opacity)?;
-        let fill = if fill_opacity == 0.0 {
-            None
+        if self.rough_randomness.is_some() {
+            self.emit_rough_area(&semantic_id, circle_index, area, presentation)?;
         } else {
-            styles
-                .optional_color("fill", &presentation.fill_color)?
-                .map(|color| (color, fill_opacity))
-        };
-        let area_stroke = self.resolve_stroke(presentation, &styles)?;
-        let segments = parse_svg_path(&area.path)?;
-        self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
+            let fill_opacity = styles.opacity("fill-opacity", &presentation.fill_opacity)?;
+            let fill = if fill_opacity == 0.0 {
+                None
+            } else {
+                styles
+                    .optional_color("fill", &presentation.fill_color)?
+                    .map(|color| (color, fill_opacity))
+            };
+            let area_stroke = self.resolve_stroke(presentation, &styles)?;
+            let segments = parse_svg_path(&area.path)?;
+            self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
+        }
 
         let label = venn_area_label(area);
         if let Some(fill) = styles.optional_color("label color", &presentation.text_color)? {
@@ -458,6 +488,98 @@ impl<'a> VennBuilder<'a> {
             )),
             link: None,
         })?;
+        Ok(())
+    }
+
+    fn emit_rough_area(
+        &mut self,
+        id: &str,
+        circle_index: usize,
+        area: &VennAreaLayout,
+        presentation: &VennAreaPresentation,
+    ) -> Result<()> {
+        use crate::venn::rough;
+        if area.sets.len() != 1 && !presentation.has_custom_fill {
+            let path = parse_svg_path(&area.path)?;
+            self.add_path(format!("{id}.shape"), path, None, None)?;
+            return Ok(());
+        }
+        let randomness = self
+            .rough_randomness
+            .as_ref()
+            .ok_or_else(|| invalid("Venn rough output has no randomness owner"))?;
+        let meter = self.session.work_meter();
+        let fill =
+            PortableStyleResolver::new("venn").color("rough fill", &presentation.fill_color)?;
+        let fill_id = ResourceId::new(format!("{id}.rough-fill"));
+        if area.sets.len() == 1 {
+            let circle = area
+                .circles
+                .first()
+                .ok_or_else(|| invalid("Venn set has no circle geometry"))?;
+            let stroke_token = presentation
+                .stroke_color
+                .as_deref()
+                .ok_or_else(|| invalid("Venn set has no stroke color"))?;
+            let outline_color =
+                PortableStyleResolver::new("venn").color("rough stroke", stroke_token)?;
+            let width = rough::stroke_width(
+                presentation
+                    .stroke_width
+                    .as_ref()
+                    .ok_or_else(|| invalid("Venn set has no stroke width"))?,
+            )?;
+            let mut options = rough::circle_options(
+                display_color_to_srgba(fill),
+                display_color_to_srgba(outline_color),
+                width,
+                -41.0 + circle_index as f32 * 60.0,
+                randomness,
+            )?;
+            let outline_id = ResourceId::new(format!("{id}.rough-outline"));
+            // Generate outline first for Rough.js RNG order, but defer painting until after fill.
+            let points = self.output.create_path_with(outline_id.clone(), |emit| {
+                rough::emit_circle_outline(circle, &mut options, meter, |op| {
+                    emit(op_to_path_segment(&op)?)
+                })
+            })?;
+            let (fill_style, fill_alpha) = rough_path_paint(&presentation.fill_color, 2.0, 0.7)?;
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output.push_control(DrawingCommand::SetOpacity {
+                opacity: fill_alpha,
+            })?;
+            self.output
+                .draw_optional_path_with(fill_id, fill_style, |emit| {
+                    rough::emit_hachure(&mut [points], &mut options, meter, |op| {
+                        emit(op_to_path_segment(&op)?)
+                    })
+                })?;
+            self.output.push_control(DrawingCommand::Restore)?;
+            let (outline_style, outline_alpha) =
+                rough_path_paint(stroke_token, f64::from(width), 0.0)?;
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output.push_control(DrawingCommand::SetOpacity {
+                opacity: outline_alpha,
+            })?;
+            self.output.draw_path_reference(outline_id, outline_style)?;
+            self.output.push_control(DrawingCommand::Restore)?;
+        } else {
+            let (style, opacity) = rough_path_paint(&presentation.fill_color, 2.0, 0.3)?;
+            self.output.push_control(DrawingCommand::Save)?;
+            self.output
+                .push_control(DrawingCommand::SetOpacity { opacity })?;
+            self.output
+                .draw_optional_path_with(fill_id, style, |emit| {
+                    rough::emit_intersection_fill(
+                        &area.path,
+                        display_color_to_srgba(fill),
+                        randomness,
+                        meter,
+                        |op| emit(op_to_path_segment(&op)?),
+                    )
+                })?;
+            self.output.push_control(DrawingCommand::Restore)?;
+        }
         Ok(())
     }
 

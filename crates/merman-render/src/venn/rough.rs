@@ -1,19 +1,33 @@
 //! Typed Venn Rough.js geometry, independent of SVG serialization.
 //!
 //! Ellipse, curve sampling, simplification, and scanline work are charged during production.
-//! Normalized segments grow under the same meter; direct DrawingList admission is separate.
+//! Normalized segments grow under the same meter; adapters admit emitted operations directly.
 
 use crate::model::VennCircleLayout;
 use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
 use merman_core::OperationPhase;
-use roughr::core::{FillStyle, OpSet, OpSetType, OptionsBuilder, RoughRandomness};
+use roughr::core::{FillStyle, Op, OpSet, OpSetType, Options, OptionsBuilder, RoughRandomness};
 use roughr::filler::hachure_stream::{HachurePolygon, try_hachure_fill};
 use roughr::generation::{GenerationError, GenerationEvent};
 
 pub(crate) struct RoughCircleGeometry {
     pub(crate) fill: OpSet<f64>,
     pub(crate) outline: OpSet<f64>,
+}
+
+pub(crate) fn stroke_width(source: &super::VennStrokeWidth) -> Result<f32> {
+    let width = match source {
+        super::VennStrokeWidth::LogicalPixels(value) => Some(*value as f32),
+        super::VennStrokeWidth::Css(value) => {
+            crate::config::parse_js_float_prefix(value).map(|value| value as f32)
+        }
+    };
+    width
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .ok_or_else(|| Error::InvalidModel {
+            message: "Venn hand-drawn stroke width is invalid".to_owned(),
+        })
 }
 
 pub(crate) fn circle_geometry(
@@ -25,7 +39,31 @@ pub(crate) fn circle_geometry(
     randomness: &RoughRandomness,
     work_meter: &OperationWorkMeter,
 ) -> Result<RoughCircleGeometry> {
-    let mut options = OptionsBuilder::default()
+    let mut options = circle_options(fill, stroke, stroke_width, hachure_angle, randomness)?;
+    let mut outline = Vec::new();
+    let estimated = emit_circle_outline(circle, &mut options, work_meter, |op| {
+        collect_op(op, &mut outline)
+    })?;
+    let fill = collect_hachure(&mut [estimated], &mut options, work_meter)?;
+    Ok(RoughCircleGeometry {
+        fill,
+        outline: OpSet {
+            op_set_type: OpSetType::Path,
+            ops: outline,
+            path: None,
+            size: None,
+        },
+    })
+}
+
+pub(crate) fn circle_options(
+    fill: roughr::Srgba,
+    stroke: roughr::Srgba,
+    stroke_width: f32,
+    hachure_angle: f32,
+    randomness: &RoughRandomness,
+) -> Result<Options> {
+    OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.7)
         .bowing(1.0)
@@ -39,33 +77,26 @@ pub(crate) fn circle_geometry(
         .disable_multi_stroke(false)
         .disable_multi_stroke_fill(false)
         .build()
-        .map_err(|error| invalid_options("circle", error))?;
+        .map_err(|error| invalid_options("circle", error))
+}
+
+pub(crate) fn emit_circle_outline(
+    circle: &VennCircleLayout,
+    options: &mut Options,
+    work_meter: &OperationWorkMeter,
+    mut emit: impl FnMut(Op<f64>) -> Result<()>,
+) -> Result<HachurePolygon<f64>> {
     let params = roughr::renderer::generate_ellipse_params(
         circle.radius * 2.0,
         circle.radius * 2.0,
-        &mut options,
+        options,
     );
     // Match Generator::ellipse's outline-before-fill order, without Drawable's complete
     // operation-set clone. Hachure fill owns the estimated points after outline generation.
-    let mut outline = Vec::new();
-    let estimated = roughr::renderer::try_ellipse_with_params(
-        circle.x,
-        circle.y,
-        &mut options,
-        &params,
-        |event| collect_operation(event, &mut outline, work_meter),
-    )
-    .map_err(generation_error)?;
-    let fill = collect_hachure(&mut [estimated], &mut options, work_meter)?;
-    Ok(RoughCircleGeometry {
-        fill,
-        outline: OpSet {
-            op_set_type: OpSetType::Path,
-            ops: outline,
-            path: None,
-            size: None,
-        },
+    roughr::renderer::try_ellipse_with_params(circle.x, circle.y, options, &params, |event| {
+        consume_operation(event, work_meter, &mut emit)
     })
+    .map_err(generation_error)
 }
 
 pub(crate) fn intersection_fill_geometry(
@@ -74,6 +105,25 @@ pub(crate) fn intersection_fill_geometry(
     randomness: &RoughRandomness,
     work_meter: &OperationWorkMeter,
 ) -> Result<OpSet<f64>> {
+    let mut ops = Vec::new();
+    emit_intersection_fill(path, fill, randomness, work_meter, |op| {
+        collect_op(op, &mut ops)
+    })?;
+    Ok(OpSet {
+        op_set_type: OpSetType::FillSketch,
+        ops,
+        size: None,
+        path: None,
+    })
+}
+
+pub(crate) fn emit_intersection_fill(
+    path: &str,
+    fill: roughr::Srgba,
+    randomness: &RoughRandomness,
+    work_meter: &OperationWorkMeter,
+    emit: impl FnMut(Op<f64>) -> Result<()>,
+) -> Result<()> {
     let mut options = OptionsBuilder::default()
         .randomness(randomness.clone())
         .roughness(0.7)
@@ -129,7 +179,7 @@ pub(crate) fn intersection_fill_geometry(
         Ok(())
     })
     .map_err(generation_error)?;
-    collect_hachure(&mut polygons, &mut options, work_meter)
+    emit_hachure(&mut polygons, &mut options, work_meter, emit)
 }
 
 fn collect_hachure(
@@ -138,10 +188,7 @@ fn collect_hachure(
     work_meter: &OperationWorkMeter,
 ) -> Result<OpSet<f64>> {
     let mut ops = Vec::new();
-    try_hachure_fill(polygons, options, |event| {
-        collect_operation(event, &mut ops, work_meter)
-    })
-    .map_err(generation_error)?;
+    emit_hachure(polygons, options, work_meter, |op| collect_op(op, &mut ops))?;
     Ok(OpSet {
         op_set_type: OpSetType::FillSketch,
         ops,
@@ -150,21 +197,36 @@ fn collect_hachure(
     })
 }
 
-fn collect_operation(
-    event: GenerationEvent<f64>,
-    ops: &mut Vec<roughr::core::Op<f64>>,
+pub(crate) fn emit_hachure(
+    polygons: &mut [HachurePolygon<f64>],
+    options: &mut Options,
     work_meter: &OperationWorkMeter,
+    mut emit: impl FnMut(Op<f64>) -> Result<()>,
+) -> Result<()> {
+    try_hachure_fill(polygons, options, |event| {
+        consume_operation(event, work_meter, &mut emit)
+    })
+    .map_err(generation_error)
+}
+
+fn consume_operation(
+    event: GenerationEvent<f64>,
+    work_meter: &OperationWorkMeter,
+    emit: &mut impl FnMut(Op<f64>) -> Result<()>,
 ) -> Result<()> {
     match event {
         GenerationEvent::Work(units) => work_meter.charge_at(units, OperationPhase::Emit)?,
-        GenerationEvent::Op(op) => {
-            ops.try_reserve(1)
-                .map_err(|_| Error::DrawingListAllocationFailed {
-                    collection: "Venn rough operations",
-                })?;
-            ops.push(op);
-        }
+        GenerationEvent::Op(op) => emit(op)?,
     }
+    Ok(())
+}
+
+fn collect_op(op: Op<f64>, ops: &mut Vec<Op<f64>>) -> Result<()> {
+    ops.try_reserve(1)
+        .map_err(|_| Error::DrawingListAllocationFailed {
+            collection: "Venn rough operations",
+        })?;
+    ops.push(op);
     Ok(())
 }
 
@@ -192,6 +254,24 @@ fn invalid_options(context: &str, error: impl std::fmt::Display) -> Error {
 mod tests {
     use super::*;
     use roughr::core::{RoughJsSeed, RoughMathRandom};
+
+    #[test]
+    fn venn_rough_stroke_width_uses_numeric_prefix_semantics() {
+        for (source, expected) in [
+            ("7pt", 7.0),
+            ("1em", 1.0),
+            ("+1.25e1px", 12.5),
+            ("\u{feff}2px", 2.0),
+        ] {
+            assert_eq!(
+                stroke_width(&super::super::VennStrokeWidth::Css(source.to_owned())).unwrap(),
+                expected
+            );
+        }
+        for source in ["-1px", "invalid", "\u{85}2px", "1e999px"] {
+            assert!(stroke_width(&super::super::VennStrokeWidth::Css(source.to_owned())).is_err());
+        }
+    }
 
     #[test]
     fn intersection_sampling_preserves_legacy_fill_and_stops_on_work_rejection() {

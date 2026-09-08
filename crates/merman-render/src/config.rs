@@ -4,6 +4,52 @@ pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
     r#""trebuchet ms",verdana,arial,sans-serif"#;
 pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
+pub(crate) fn parse_js_float_prefix(text: &str) -> Option<f64> {
+    let text = crate::text::trim_start_ecmascript_whitespace(text);
+    let bytes = text.as_bytes();
+    let mut index = 0;
+
+    if matches!(bytes.first(), Some(b'+' | b'-')) {
+        index += 1;
+    }
+
+    let integer_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let mut has_digits = index > integer_start;
+
+    if bytes.get(index) == Some(&b'.') {
+        index += 1;
+        let fraction_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        has_digits |= index > fraction_start;
+    }
+
+    if !has_digits {
+        return None;
+    }
+
+    let mut end = index;
+    if matches!(bytes.get(index), Some(b'e' | b'E')) {
+        let mut exponent_index = index + 1;
+        if matches!(bytes.get(exponent_index), Some(b'+' | b'-')) {
+            exponent_index += 1;
+        }
+        let exponent_start = exponent_index;
+        while bytes.get(exponent_index).is_some_and(u8::is_ascii_digit) {
+            exponent_index += 1;
+        }
+        if exponent_index > exponent_start {
+            end = exponent_index;
+        }
+    }
+
+    text[..end].parse::<f64>().ok()
+}
+
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut cur = cfg;
     for key in path {

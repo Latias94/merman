@@ -292,10 +292,52 @@ impl<'a> DrawingListBuilder<'a> {
         style: PathStyle,
         emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<()>,
     ) -> Result<()> {
+        let (_, stored) = self.store_path_with(id, Some(style), emit)?;
+        if stored {
+            Ok(())
+        } else {
+            Err(contract_error("DrawingList path has no geometry"))
+        }
+    }
+
+    /// Omits a legitimately empty generated path without leaving an orphan resource or command.
+    pub(crate) fn draw_optional_path_with(
+        &mut self,
+        id: ResourceId,
+        style: PathStyle,
+        emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<()>,
+    ) -> Result<bool> {
+        self.store_path_with(id, Some(style), emit)
+            .map(|(_, stored)| stored)
+    }
+
+    /// Creates bounded geometry without painting it yet. The producer's return value can
+    /// carry admitted auxiliary geometry needed by a subsequent pass (such as hachure fill).
+    pub(crate) fn create_path_with<T>(
+        &mut self,
+        id: ResourceId,
+        emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<T>,
+    ) -> Result<T> {
+        let (produced, stored) = self.store_path_with(id, None, emit)?;
+        if stored {
+            Ok(produced)
+        } else {
+            Err(contract_error("DrawingList path has no geometry"))
+        }
+    }
+
+    fn store_path_with<T>(
+        &mut self,
+        id: ResourceId,
+        style: Option<PathStyle>,
+        emit: impl FnOnce(&mut dyn FnMut(PathSegment) -> Result<()>) -> Result<T>,
+    ) -> Result<(T, bool)> {
         let mut next = self.usage;
         checked_increment(&mut next.resources, 1, "resource count")?;
-        checked_increment(&mut next.commands, 1, "command count")?;
-        if let Some(stroke) = &style.stroke {
+        if style.is_some() {
+            checked_increment(&mut next.commands, 1, "command count")?;
+        }
+        if let Some(stroke) = style.as_ref().and_then(|style| style.stroke.as_ref()) {
             checked_increment(
                 &mut next.stroke_dash_entries,
                 stroke.dash_array.len(),
@@ -306,13 +348,15 @@ impl<'a> DrawingListBuilder<'a> {
         self.resources
             .try_reserve(1)
             .map_err(|_| allocation_failed("resources"))?;
-        self.commands
-            .try_reserve(1)
-            .map_err(|_| allocation_failed("commands"))?;
+        if style.is_some() {
+            self.commands
+                .try_reserve(1)
+                .map_err(|_| allocation_failed("commands"))?;
+        }
 
         let mut segments = Vec::new();
         let mut rejected = false;
-        emit(&mut |segment| {
+        let produced = emit(&mut |segment| {
             if rejected {
                 return Err(contract_error(
                     "DrawingList path producer ignored a rejected segment",
@@ -335,18 +379,20 @@ impl<'a> DrawingListBuilder<'a> {
                 "DrawingList path producer ignored a rejected segment",
             ));
         }
-        if segments.is_empty() {
-            return Err(contract_error("DrawingList path has no geometry"));
-        }
         self.session.checkpoint(OperationPhase::Emit)?;
+        if segments.is_empty() {
+            return Ok((produced, false));
+        }
         self.resources.push(DrawingResource::Path(PathResource {
             id: id.clone(),
             segments,
         }));
-        self.commands
-            .push(DrawingCommand::DrawPath { path: id, style });
+        if let Some(style) = style {
+            self.commands
+                .push(DrawingCommand::DrawPath { path: id, style });
+        }
         self.usage = next;
-        Ok(())
+        Ok((produced, true))
     }
 
     /// Adds a linear gradient after charging its resource and stop footprint.
@@ -1051,6 +1097,77 @@ mod tests {
         assert!(builder.resources.is_empty());
         assert_eq!(builder.command_count(), 0);
         assert_eq!(builder.usage, DrawingListFootprint::default());
+    }
+
+    #[test]
+    fn deferred_path_resource_is_charged_once_and_painted_in_command_order() {
+        let environment = RenderEnvironment::deterministic();
+        let session = make_session(&environment, OperationControl::new());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &session,
+        );
+        let produced = builder
+            .create_path_with(ResourceId::new("outline"), |emit| {
+                emit(PathSegment::MoveTo {
+                    to: Point::new(1.0, 2.0),
+                })?;
+                Ok(17)
+            })
+            .unwrap();
+        assert_eq!(produced, 17);
+        assert_eq!(builder.usage.resources, 1);
+        assert_eq!(builder.usage.path_segments, 1);
+        assert_eq!(builder.command_count(), 0);
+        builder
+            .draw_path_with(ResourceId::new("fill"), path_style(), |emit| {
+                emit(PathSegment::MoveTo {
+                    to: Point::new(3.0, 4.0),
+                })
+            })
+            .unwrap();
+        builder
+            .draw_path_reference(ResourceId::new("outline"), path_style())
+            .unwrap();
+        let ids = builder
+            .commands
+            .iter()
+            .map(|command| match command {
+                DrawingCommand::DrawPath { path, .. } => path.as_str(),
+                _ => panic!("unexpected command"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["fill", "outline"]);
+        assert_eq!(builder.usage.resources, 2);
+        assert_eq!(builder.usage.path_segments, 2);
+    }
+
+    #[test]
+    fn optional_empty_path_has_no_resource_or_command_and_still_checks_cancellation() {
+        let environment = RenderEnvironment::deterministic();
+        let control = OperationControl::new();
+        let session = make_session(&environment, control.clone());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &session,
+        );
+        assert!(
+            !builder
+                .draw_optional_path_with(ResourceId::new("empty"), path_style(), |_| Ok(()))
+                .unwrap()
+        );
+        assert!(builder.resources.is_empty() && builder.commands.is_empty());
+        assert_eq!(builder.usage, DrawingListFootprint::default());
+        let error = builder
+            .draw_optional_path_with(ResourceId::new("cancelled"), path_style(), |_| {
+                control.cancel();
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(error, Error::Cancelled(_)));
+        assert!(builder.resources.is_empty() && builder.commands.is_empty());
     }
 
     #[test]

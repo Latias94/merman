@@ -31,18 +31,6 @@ fn rough_color(value: &str) -> Result<roughr::Srgba> {
     ))
 }
 
-fn parse_stroke_width(value: &str) -> Option<f32> {
-    let value = value.trim_start();
-    value
-        .char_indices()
-        .map(|(index, _)| index)
-        .chain(std::iter::once(value.len()))
-        .filter(|end| *end > 0)
-        .rev()
-        .find_map(|end| value[..end].parse::<f32>().ok())
-        .filter(|value| value.is_finite())
-}
-
 fn write_area_label(
     out: &mut String,
     area: &crate::model::VennAreaLayout,
@@ -228,12 +216,14 @@ pub(crate) fn render_venn_diagram_svg_model(
                         "Venn set `{sets_key}` has no circle geometry for hand-drawn rendering"
                     ),
                 })?;
-                let stroke_width_value =
-                    parse_stroke_width(&stroke_width).ok_or_else(|| Error::InvalidModel {
-                        message: format!(
-                            "Venn set `{sets_key}` has invalid stroke width `{stroke_width}`"
-                        ),
-                    })?;
+                let stroke_width_value = crate::venn::rough::stroke_width(
+                    presentation
+                        .stroke_width
+                        .as_ref()
+                        .ok_or_else(|| Error::InvalidModel {
+                            message: format!("Venn set `{sets_key}` has no stroke width"),
+                        })?,
+                )?;
                 let geometry = circle_geometry(
                     circle,
                     rough_color(&presentation.fill_color)?,

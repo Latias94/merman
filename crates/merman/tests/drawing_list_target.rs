@@ -2837,8 +2837,8 @@ style A1 color:red
 }
 
 #[test]
-fn venn_rejects_roughjs_output_instead_of_substituting_classic_geometry() {
-    let error = Renderer::new()
+fn venn_emits_bounded_rough_paths_instead_of_substituting_classic_geometry() {
+    let output = Renderer::new()
         .render(RenderRequest::drawing_list(
             r#"---
 config:
@@ -2852,8 +2852,83 @@ union A,B
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
-        .expect_err("hand-drawn Venn must not become classic geometry silently");
-    assert!(error.to_string().contains("RoughJS paths"));
+        .expect("hand-drawn Venn should emit bounded vector geometry");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList");
+    };
+    let document = output.document();
+    for suffix in ["rough-fill", "rough-outline"] {
+        let id = format!("venn.area.0.{suffix}");
+        let resource = document
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == id => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .expect("rough paths must be public resources");
+        assert!(
+            resource.segments.len() > 8,
+            "rough geometry must not be a classic ellipse"
+        );
+        assert!(document.commands.iter().any(|command| matches!(
+            command, DrawingCommand::DrawPath { path, style }
+                if path.as_str() == id && style.fill.is_none() && style.stroke.is_some()
+        )));
+    }
+}
+
+#[test]
+fn venn_rough_path_limit_rejects_the_first_unadmitted_segment() {
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                limits: DrawingListLimits {
+                    max_path_segments: 8,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .expect_err("rough production must stop before retaining a complete path");
+    let RenderError::ResourceLimitExceeded(limit) = error else {
+        panic!("expected a path resource limit, got {error}");
+    };
+    assert_eq!(limit.id, "max_path_segments");
+    assert_eq!(limit.actual, 9);
+    assert_eq!(limit.maximum, 8);
+}
+
+#[test]
+fn venn_hand_drawn_disjoint_custom_intersection_keeps_semantics_without_empty_paths() {
+    let output = Renderer::new().render(RenderRequest::drawing_list(
+        "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A:10\nset B:10\nunion A,B:0\nstyle A,B fill:#ff0000\n",
+        OperationControl::new(), DrawingListRequest::default(),
+    )).expect("a zero-area styled intersection is valid");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList");
+    };
+    assert!(
+        output
+            .document()
+            .semantics
+            .iter()
+            .any(|semantic| semantic.id == "venn.area.2")
+    );
+    assert!(
+        output
+            .document()
+            .resources
+            .iter()
+            .all(|resource| match resource {
+                merman_display_list::DrawingResource::Path(path) => !path.segments.is_empty(),
+                _ => true,
+            })
+    );
 }
 
 #[test]

@@ -287,12 +287,13 @@ for this diagnostic was withdrawn; neither run is evidence of full-family readin
 This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
 candidate parity-root comparison still reports circle path command spelling and title
 presentation-attribute/style differences. These have not been accepted as residuals or hidden by
-normalization. Full text-node DOM comparison and typed RoughJS path projection also remain
+normalization. Full text-node DOM comparison and hand-drawn SVG DOM projection also remain
 migration work. These features are not inherently outside the vector protocol; missing
 implementations must be resolved before full-family admission.
 
-Venn's hand-drawn circle and intersection generators now return typed Rough.js operation sets
-from `venn/rough.rs`; the legacy SVG renderer only formats those operations. Hachure/crosshatch
+Venn's hand-drawn circle and intersection generators now stream typed Rough.js operations from
+`venn/rough.rs` directly into the DrawingList builder. Legacy SVG wrappers collect and format the
+same operations. Hachure/crosshatch
 now use fallible operation production, with work admission for vertices, edge tables, and every
 scan row (including empty rows). Both crosshatch passes share the operation meter; an error drops
 the local output instead of returning a partial fill. Rotation occurs in place and lines are
@@ -321,10 +322,19 @@ are gone from the bounded path. The existing per-arc cubic conversion scratch ha
 and retains its allocator behavior. Venn uses this bounded entry and drops its source array before
 sampling.
 
-The direct adapter must still send operations to its bounded path builder rather than collect
-complete operation sets first. That missing integration keeps the public hand-drawn DrawingList
-gate closed. Preserve outline-before-fill random consumption; do not substitute a guessed size
-cutoff or a final post-allocation footprint check.
+The public hand-drawn DrawingList gate is now open for the source-backed vector implementation.
+The builder creates the outline resource under its path/resource budget before painting, then
+emits fill and outline references in source painter order. Both painted and deferred resources use
+one transactional segment collector. Empty hachure output leaves no path resource or paint command;
+unstyled intersections retain their unpainted source geometry and semantic group.
+
+Source hand-drawn paint differs from classic styles: circles use `transparentize(fill, 0.7)` and
+styled intersections use `transparentize(fill, 0.3)`, without applying classic `fill-opacity` or
+`stroke-opacity` a second time. Exact alpha lives in command state rather than quantized color
+alpha. Direct-vs-legacy SVG tests compare every rough path, color, width, opacity, and painter
+order for seeded and fallback-random cases. Public tests reject the first path segment over the
+caller limit, and cancellation is armed after layout to exercise document construction.
+This vector admission does not admit Venn's canonical SVG serializer.
 The new roughr API also needs its independently versioned package release before a Merman
 release can resolve this implementation from the registry.
 
@@ -388,8 +398,8 @@ normalizes to an empty label and an empty shell, whereas `[""]` is absent and us
 `fixtures/drawing-list/v1/effect-coverage.json` is the focused effect evidence used by
 `drawing_list_effect_accounting`.  It covers the visual constructs currently exercised by admitted
 fixtures: portable path paint, host text, gradients, clips, semantic links, opacity, blend modes,
-transforms, and expanded marker geometry, plus explicit fail-closed outcomes for browser-wrapped
-text, filters, hand-drawn RoughJS output, and external icon registry content.  Each row is executed
+transforms, expanded marker geometry, and Venn hand-drawn paths, plus explicit fail-closed outcomes
+for browser-wrapped text, filters, and external icon registry content. Each row is executed
 against the typed renderer and must produce its declared vector or structured-error disposition;
 no row may be an unclassified best effort.  The test also collects the effect kinds actually
 observed across successful fixtures and fails when one has no corresponding assertion, so an

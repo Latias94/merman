@@ -95,30 +95,30 @@ pub(crate) fn rough_line_opset(
 }
 
 pub(crate) fn opset_to_path_segments(opset: &OpSet<f64>) -> Result<Vec<PathSegment>> {
-    opset
-        .ops
-        .iter()
-        .map(|op| match (&op.op, op.data.as_slice()) {
-            (OpType::Move, [x, y]) => Ok(PathSegment::MoveTo {
-                to: Point::new(*x, *y),
-            }),
-            (OpType::LineTo, [x, y]) => Ok(PathSegment::LineTo {
-                to: Point::new(*x, *y),
-            }),
-            (OpType::BCurveTo, [x1, y1, x2, y2, x, y]) => Ok(PathSegment::CubicTo {
-                control1: Point::new(*x1, *y1),
-                control2: Point::new(*x2, *y2),
-                to: Point::new(*x, *y),
-            }),
-            _ => Err(Error::InvalidModel {
-                message: format!(
-                    "Rough.js operation {:?} has an invalid coordinate arity {}",
-                    op.op,
-                    op.data.len()
-                ),
-            }),
-        })
-        .collect()
+    opset.ops.iter().map(op_to_path_segment).collect()
+}
+
+pub(crate) fn op_to_path_segment(op: &roughr::core::Op<f64>) -> Result<PathSegment> {
+    match (&op.op, op.data.as_slice()) {
+        (OpType::Move, [x, y]) => Ok(PathSegment::MoveTo {
+            to: Point::new(*x, *y),
+        }),
+        (OpType::LineTo, [x, y]) => Ok(PathSegment::LineTo {
+            to: Point::new(*x, *y),
+        }),
+        (OpType::BCurveTo, [x1, y1, x2, y2, x, y]) => Ok(PathSegment::CubicTo {
+            control1: Point::new(*x1, *y1),
+            control2: Point::new(*x2, *y2),
+            to: Point::new(*x, *y),
+        }),
+        _ => Err(Error::InvalidModel {
+            message: format!(
+                "Rough.js operation {:?} has an invalid coordinate arity {}",
+                op.op,
+                op.data.len()
+            ),
+        }),
+    }
 }
 
 fn rough_options(randomness: &RoughRandomness, stroke_width: f32) -> Result<Options> {
