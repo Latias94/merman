@@ -295,30 +295,33 @@ impl GanttTaskTheme {
             resolve_gantt_warning_stroke(theme, effective_config, work_meter)?;
         let warning_stroke = warning_stroke_resolution.expectation;
         let warning_stroke_source_owned = warning_stroke_resolution.source_owned;
-        let mut ordinary_stroke_rules_replaced_by_warning = BTreeSet::new();
-        if let Some(warning) = warning_stroke.as_ref() {
-            for expectation in &mut task_expectations {
-                if expectation.vert {
-                    if let Some(stroke) = expectation.stroke.take() {
-                        if let Some(rule_index) = stroke.typed_rule_index() {
-                            ordinary_stroke_rules_replaced_by_warning.insert(rule_index);
-                        }
+        let vertical_source_owned = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.vertLineColor",
+        );
+        let mut ordinary_stroke_rules_replaced_on_vertical_tasks = BTreeSet::new();
+        for expectation in &mut task_expectations {
+            if expectation.vert && (warning_stroke.is_some() || vertical_source_owned) {
+                if let Some(stroke) = expectation.stroke.take() {
+                    if let Some(rule_index) = stroke.typed_rule_index() {
+                        ordinary_stroke_rules_replaced_on_vertical_tasks.insert(rule_index);
                     }
-                    if warning.vert_typed {
-                        expectation.stroke = Some(GanttTaskStrokeExpectation {
-                            css: warning.vert_css.clone(),
-                            owner: GanttTaskStrokeOwner::Typed {
-                                rule_index: warning.rule_index,
-                                capability: warning.capability,
-                            },
-                        });
-                    }
+                }
+                if let Some(warning) = warning_stroke.as_ref().filter(|warning| warning.vert_typed)
+                {
+                    expectation.stroke = Some(GanttTaskStrokeExpectation {
+                        css: warning.vert_css.clone(),
+                        owner: GanttTaskStrokeOwner::Typed {
+                            rule_index: warning.rule_index,
+                            capability: warning.capability,
+                        },
+                    });
                 }
             }
         }
         // Reconcile ordinary stroke ownership against the *final* terminal plan.  A vertical
-        // marker is a warning surface, not an ordinary task-bar stroke; if warning owns every
-        // occurrence of a rule, the ordinary route is NotApplicable rather than incomplete.
+        // marker can be owned by warning or explicit vertical-line configuration. If these
+        // owners replace every occurrence, the ordinary route is NotApplicable, not incomplete.
         for expectation in &task_expectations {
             if let Some(stroke) = &expectation.stroke {
                 if let (Some(rule_index), Some(capability)) =
@@ -426,7 +429,8 @@ impl GanttTaskTheme {
                                 observation.pending.stroke = true;
                                 observation.pending.capabilities.insert(*capability);
                             } else if source_owned_stroke_rules.contains(&rule_index)
-                                || ordinary_stroke_rules_replaced_by_warning.contains(&rule_index)
+                                || ordinary_stroke_rules_replaced_on_vertical_tasks
+                                    .contains(&rule_index)
                             {
                                 observation.suppressed = true;
                             } else {
@@ -714,19 +718,6 @@ impl GanttTaskTheme {
         self.layout_task(layout_index)
             .and_then(|task| task.stroke.as_ref())
             .map(|stroke| stroke.css.as_ref())
-    }
-
-    /// Returns the typed warning stroke for a vertical task, when that route
-    /// owns the final vertical bar terminal. The renderer should use this
-    /// value as the emitted terminal stroke so inline task styles cannot hide
-    /// the `.vert` warning surface.
-    pub(crate) fn warning_stroke_for_layout_task(&self, layout_index: usize) -> Option<&str> {
-        let task = self.layout_task(layout_index)?;
-        task.vert
-            .then_some(())
-            .and_then(|_| self.warning_stroke.as_ref())
-            .filter(|warning| warning.vert_typed)
-            .map(|warning| warning.vert_css.as_ref())
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskThemeReceipt> {

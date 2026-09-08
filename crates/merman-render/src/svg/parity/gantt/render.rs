@@ -362,12 +362,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let ry = fmt(t.bar.ry);
             let terminal_id = gantt_dom_id(diagram_id, &t.bar.id);
             let terminal_fill = task_theme.terminal_fill_for_layout_task(*task_index);
-            // A typed warning stroke is the final owner for vertical task bars. Keep it as an
-            // inline terminal value so the ordinary task-state inline stroke cannot override the
-            // `.vert` semantic route in the browser cascade.
-            let terminal_stroke = task_theme
-                .warning_stroke_for_layout_task(*task_index)
-                .or_else(|| task_theme.terminal_stroke_for_layout_task(*task_index));
+            let terminal_stroke = task_theme.terminal_stroke_for_layout_task(*task_index);
             let section_suffix = crate::gantt::gantt_section_class_suffix(
                 &t.task_type,
                 &layout.categories,
@@ -558,7 +553,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             y2 = fmt(y2),
         );
         let style_raw = model.today_marker.trim();
-        if !style_raw.is_empty() && style_raw != "off" {
+        let emitted_style = if !style_raw.is_empty() && style_raw != "off" {
             let mut style = style_raw.to_string();
             // Mermaid upstream mmdc output for `todayMarker stroke:#00f;opacity:0.5` ends up as
             // `style="stroke:&00f;opacity:0.5"` (note the `#` → `&`), while comma-separated style
@@ -567,11 +562,19 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 style = style.replace('#', "&");
             }
             style = style.replace(',', ";");
-            let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
+            Some(style)
+        } else {
+            None
+        };
+        if let Some(style) = &emitted_style {
+            let _ = write!(&mut out, r#" style="{}""#, escape_attr(style));
         }
         out.push_str("/></g>");
         if let Some(receipt) = task_theme_receipt.as_mut() {
-            receipt.record_today_terminal(!layout.tasks.is_empty(), style_raw);
+            receipt.record_today_terminal(
+                !layout.tasks.is_empty(),
+                emitted_style.as_deref().unwrap_or_default(),
+            );
         }
         out.checkpoint()?;
     } else if let Some(receipt) = task_theme_receipt.as_mut() {

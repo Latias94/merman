@@ -747,35 +747,98 @@ fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
 
 #[test]
 fn gantt_warning_stroke_detects_source_owned_comma_delimited_today_marker() {
-    let source = "gantt\ndateFormat YYYY-MM-DD\ntodayMarker STROKE : #15803d,opacity:0.5\nsection Delivery\nTask: regular-task, 2024-01-02, 1d\n";
-    let theme =
-        gantt_warning_stroke_theme(CanvasPaint::solid("#d97706").expect("valid warning stroke"));
-    let rendered = prepare_gantt_family_with_theme(source, &theme)
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("gantt-warning-comma-marker".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render comma-delimited source-owned today marker");
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid comma-marker SVG");
-    let today = document
-        .descendants()
-        .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
-        .expect("today marker terminal");
-    assert_eq!(
-        style_property(today.attribute("style").unwrap_or_default(), "stroke"),
-        Some("#15803d")
-    );
+    for marker in [
+        "STROKE : #15803d,opacity:0.5",
+        "opacity:0.5,STROKE : #15803d",
+    ] {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker {marker}\nsection Delivery\nTask: regular-task, 2024-01-02, 1d\n"
+        );
+        let theme = gantt_warning_stroke_theme(
+            CanvasPaint::solid("#d97706").expect("valid warning stroke"),
+        );
+        let rendered = prepare_gantt_family_with_theme(&source, &theme)
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-warning-comma-marker".to_string()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("render comma-delimited source-owned today marker");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid comma-marker SVG");
+        let today = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .expect("today marker terminal");
+        assert_eq!(
+            style_property(today.attribute("style").unwrap_or_default(), "stroke"),
+            Some("#15803d")
+        );
 
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_ordinary_stroke_respects_config_owned_vertical_color() {
+    let theme = gantt_task_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+    for has_regular in [false, true] {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nVertical: vert, vertical, 2024-01-02, 0d\n{}",
+            if has_regular {
+                "Regular: regular, 2024-01-02, 1d\n"
+            } else {
+                ""
+            }
+        );
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"vertLineColor": "#15803d"}
+        })));
+        let rendered = prepare_gantt_family_with_theme_and_engine(&source, &theme, engine)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let vertical = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_ascii_whitespace().any(|part| part == "vert")
+                    })
+            })
+            .unwrap();
+        assert_eq!(
+            style_property(vertical.attribute("style").unwrap_or_default(), "stroke"),
+            None
+        );
+        if has_regular {
+            let regular = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.ends_with("-regular"))
+                })
+                .unwrap();
+            assert_eq!(
+                style_property(regular.attribute("style").unwrap_or_default(), "stroke"),
+                Some("#654321")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(has_regular));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!has_regular));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]
