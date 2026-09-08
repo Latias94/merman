@@ -8,7 +8,7 @@
           "x": 38.24,
           "y": 0.0,
           "width": 76.48,
-          "height": 32.0,
+          "height": 40.0,
           "is_cluster": false
         },
         {
@@ -16,7 +16,7 @@
           "x": 122.72,
           "y": 0.0,
           "width": 76.48,
-          "height": 32.0,
+          "height": 40.0,
           "is_cluster": false
         }
       ],
@@ -28,12 +28,12 @@
             "x": 38.24,
             "y": 0.0,
             "width": 76.48,
-            "height": 32.0
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
             "width": 76.48,
-            "height": 32.0,
+            "height": 40.0,
             "radius": 0.0,
             "kind": "basic"
           }
@@ -44,12 +44,12 @@
             "x": 122.72,
             "y": 0.0,
             "width": 76.48,
-            "height": 32.0
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
             "width": 76.48,
-            "height": 32.0,
+            "height": 40.0,
             "radius": 0.0,
             "kind": "basic"
           }
@@ -57,9 +57,9 @@
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -16.0,
+        "min_y": -20.0,
         "max_x": 160.96,
-        "max_y": 16.0
+        "max_y": 20.0
       }
     }
   }
