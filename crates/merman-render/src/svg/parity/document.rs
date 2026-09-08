@@ -456,7 +456,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         if matches!(
             self.svg_body,
-            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -478,7 +478,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_defs()?;
         if !matches!(
             self.svg_body,
-            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+            SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -486,6 +486,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 title_id.as_deref(),
                 description_id.as_deref(),
             )?;
+        }
+        if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            self.write_cynefin_accessibility_copies(title.as_deref(), description.as_deref())?;
         }
         let root_background = self.document_background_is_root_paint();
         let mut consumed_until = 0;

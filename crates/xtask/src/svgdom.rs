@@ -920,6 +920,30 @@ fn build_node(
             let key = a.name().to_string();
             let mut val = a.value().to_string();
 
+            // Cynefin's typed colors do not retain authored hex letter case. Normalize only
+            // valid hex fills on source paint elements, preserving every channel and alpha.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "fill"
+                && ((n.has_tag_name("rect")
+                    && ["cynefinDomain", "cynefinItem", "cynefinItemOverflow"]
+                        .iter()
+                        .any(|class| has_class_token(n, class)))
+                    || (n.has_tag_name("path") && has_class_token(n, "cynefinConfusion")))
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("cynefin")
+                })
+                && let Some(hex) = val.strip_prefix('#')
+                && matches!(hex.len(), 3 | 4 | 6 | 8)
+                && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                val.make_ascii_lowercase();
+                attrs.insert(key, val);
+                continue;
+            }
+
             // Pie's canonical document stores static colors as RGBA rather than preserving
             // their HSL/hex spelling. Compare only successfully parsed static fills here;
             // dynamic/invalid paints remain byte-sensitive, and Strict mode is unchanged.
@@ -2625,6 +2649,39 @@ mod tests {
             assert_ne!(signature("currentColor"), signature("#000"));
             assert_ne!(signature("var(--fill)"), signature("#000"));
         }
+    }
+
+    #[test]
+    fn cynefin_hex_fill_case_is_nonsemantic_but_color_and_alpha_are_not() {
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            for (element, class) in [
+                ("rect", "cynefinDomain"),
+                ("rect", "cynefinItem"),
+                ("rect", "cynefinItemOverflow"),
+                ("path", "cynefinConfusion"),
+            ] {
+                let signature = |fill: &str| {
+                    dom_signature(&format!(r#"<svg aria-roledescription="cynefin"><{element} class="{class}" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+                };
+                assert_eq!(signature("#ECECFF"), signature("#ececff"));
+                assert_eq!(signature("#ABCd"), signature("#abcd"));
+                assert_ne!(signature("#abc"), signature("#abd"));
+                assert_ne!(signature("#aabbccdd"), signature("#aabbccee"));
+                assert_ne!(signature("var(--FILL)"), signature("var(--fill)"));
+                assert_ne!(signature("#GGGGGG"), signature("#gggggg"));
+            }
+        }
+        let signature = |role: &str, fill: &str, mode| {
+            dom_signature(&format!(r#"<svg aria-roledescription="{role}"><rect class="cynefinDomain" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+        };
+        assert_ne!(
+            signature("cynefin", "#ABCDEF", DomMode::Strict),
+            signature("cynefin", "#abcdef", DomMode::Strict)
+        );
+        assert_ne!(
+            signature("other", "#ABCDEF", DomMode::ParityRoot),
+            signature("other", "#abcdef", DomMode::ParityRoot)
+        );
     }
 
     #[test]

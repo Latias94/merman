@@ -2991,11 +2991,22 @@ mod tests {
 
     #[test]
     fn cynefin_document_projects_source_groups_and_distinct_text_baselines() {
-        for (accessibility, title_id) in [
-            ("", None),
+        for (accessibility, title_id, description_id) in [
+            ("", None, None),
             (
                 "  accTitle: Accessible practices\n",
                 Some("chart-title-cynefin"),
+                None,
+            ),
+            (
+                "  accDescr: Practice description\n",
+                None,
+                Some("chart-desc-cynefin"),
+            ),
+            (
+                "  accTitle: Accessible practices\n  accDescr: Practice description\n",
+                Some("chart-title-cynefin"),
+                Some("chart-desc-cynefin"),
             ),
         ] {
             let source = format!(
@@ -3067,15 +3078,41 @@ mod tests {
                 Some("url(#cynefin-arrow-cynefin)")
             );
             assert_eq!(arrow_line.attribute("stroke"), None);
-            assert_eq!(xml.root_element().attribute("aria-labelledby"), title_id);
-            if let Some(id) = title_id {
-                let title = xml
-                    .descendants()
-                    .find(|node| node.attribute("id") == Some(id))
-                    .unwrap();
-                assert!(title.has_tag_name("title"));
-                assert_eq!(title.text(), Some("Accessible practices"));
+            let domains: Vec<_> = xml
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("cynefinDomain"))
+                .collect();
+            assert_eq!(domains.len(), 4);
+            for domain in domains {
+                assert_eq!(domain.attribute("fill-opacity"), Some("0.4"));
+                assert_eq!(domain.attribute("opacity"), None);
             }
+            assert_eq!(
+                xml.root_element().attribute("aria-describedby"),
+                description_id
+            );
+            for (tag, id, text) in [
+                ("title", title_id, "Accessible practices"),
+                ("desc", description_id, "Practice description"),
+            ] {
+                let nodes: Vec<_> = xml
+                    .root_element()
+                    .children()
+                    .filter(|node| node.has_tag_name(tag))
+                    .collect();
+                if let Some(id) = id {
+                    assert_eq!(nodes.len(), 2);
+                    assert_eq!(nodes[0].attribute("id"), Some(id));
+                    assert_eq!(nodes[1].attribute("id"), None);
+                    assert_eq!(nodes[0].text(), Some(text));
+                    assert_eq!(nodes[1].text(), Some(text));
+                    assert!(nodes[0].range().start < style.range().start);
+                    assert!(nodes[1].range().start > empty_group.range().start);
+                } else {
+                    assert!(nodes.is_empty());
+                }
+            }
+            assert_eq!(xml.root_element().attribute("aria-labelledby"), title_id);
             for class in [
                 "cynefin-backgrounds",
                 "cynefin-boundaries",
@@ -3283,6 +3320,41 @@ mod tests {
                 .map(|node| node.attribute("stroke-width").unwrap())
                 .collect::<Vec<_>>();
             assert_eq!(widths, ["9", "2"]);
+
+            let stroke = document.public.commands.iter().find_map(|command| {
+                if let merman_display_list::DrawingCommand::DrawPath { path, style } = command
+                    && path.as_str() == "cynefin.boundary.fold"
+                {
+                    style.stroke.clone()
+                } else {
+                    None
+                }
+            });
+            for with_stroke in [false, true] {
+                for command in &mut document.public.commands {
+                    if let merman_display_list::DrawingCommand::DrawPath { path, style } = command
+                        && path.as_str() == "cynefin.domain.complex.background"
+                    {
+                        style.fill = Some(merman_display_list::Paint::solid(
+                            merman_display_list::Color::rgba(11, 22, 33, 128),
+                        ));
+                        style.stroke = with_stroke.then(|| stroke.clone().unwrap());
+                    }
+                }
+                let svg = render(&document, &conflicting_config);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let domain = xml
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("class") == Some("cynefinDomain")
+                            && node.attribute("fill") == Some("#0b1621")
+                    })
+                    .unwrap();
+                let alpha: f64 = domain.attribute("fill-opacity").unwrap().parse().unwrap();
+                let expected = 128.0 / 255.0 * if with_stroke { 1.0 } else { 0.4 };
+                assert!((alpha - expected).abs() < 0.001);
+                assert_eq!(domain.attribute("opacity"), with_stroke.then_some("0.4"));
+            }
         }
     }
 

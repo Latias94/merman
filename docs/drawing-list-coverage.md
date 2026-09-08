@@ -267,6 +267,23 @@ structure run selected/rendered 13 fixtures without skips but still failed; see
 hex color spelling and `fill-opacity` versus `opacity` projection. Temporary canonical admission
 was removed again; no comparator normalization or residual exception was added.
 
+The next candidate run passed all 13 structure fixtures after projecting solid, stroke-free
+domain opacity into `fill-opacity` and restoring the source's two accessibility DOM copies.
+Both metadata copies read the public document semantics, not sidecar text. Domain projection
+preserves color alpha; adding a stroke retains element opacity instead of changing compositing.
+The comparator normalizes only valid hex-fill letter case on four Cynefin source element classes;
+different channels, alpha, dynamic/invalid paints, other families, and Strict mode remain distinct.
+Reports: `target/compare/cynefin_fill_projection_structure.md` and
+`target/compare/cynefin_fill_projection_parity_root.md`. Both selected/rendered all 13 fixtures,
+without skips. The parity-root run still failed: item/confusion fill opacity was quantized into
+8-bit color alpha (`0.95` to `0.949`, `0.5` to `0.502`), and marker close-command spelling differed.
+These are not accepted browser residuals. Cynefin remains bridged pending an exact public-command
+representation of independent fill opacity and a source-shaped marker path projection.
+The existing protocol can express this without a new paint variant: save state, set exact fill
+opacity, paint a fill-only path, restore state, then stroke the same resource. Source-shaped SVG
+coalescing must recognize the complete public command window; shared class CSS must use that same
+eligibility decision so edited or uncoalesced paths cannot regain disabled fills or strokes.
+
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the
 renderer-neutral document, while `legacy-bridge` records an explicit compatibility path selected

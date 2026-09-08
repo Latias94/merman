@@ -113,6 +113,23 @@ pub(super) fn shared_text_styles<'a>(
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_cynefin_accessibility_copies(
+        &mut self,
+        title: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<()> {
+        // The family renderer appends these after Mermaid's identified root metadata.
+        // Both DOM copies consume the same public document semantics.
+        for (tag, text) in [("title", title), ("desc", description)] {
+            if let Some(text) = text {
+                write!(self.output, "<{tag}>")?;
+                output::escape_xml(&mut self.output, text)?;
+                write!(self.output, "</{tag}>")?;
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn write_cynefin_styles(&mut self) -> Result<()> {
         self.output.push_str("<style>")?;
         for (class, style) in &self.cynefin_text_styles {
@@ -247,6 +264,23 @@ impl DocumentSvgEncoder<'_> {
                 class,
                 path_d(&path.segments)
             )?;
+        }
+        // With one solid fill and no stroke, element opacity and fill opacity have the same
+        // composition. Keep the source attribute without rounding alpha back to a CSS default.
+        if class == "cynefinDomain"
+            && style.stroke.is_none()
+            && self.state.blend_mode == BlendMode::Normal
+            && let Some(Paint::Solid { color }) = style.fill
+        {
+            write!(
+                self.output,
+                " fill=\"{}\" fill-opacity=\"{}\" stroke=\"none\"",
+                color_css(color),
+                fmt(f64::from(color.alpha) / 255.0 * self.state.opacity)
+            )?;
+            self.write_transform_and_blend()?;
+            self.output.push_str("/>")?;
+            return Ok(true);
         }
         if class != "cynefinArrowHead" {
             if let Some(paint) = &style.fill {
