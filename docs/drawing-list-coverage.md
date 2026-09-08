@@ -99,6 +99,14 @@ font-size or position edits. Heterogeneous styles retain explicit per-command te
 Sankey remains bridged pending complete family comparison. The focused tests are not full-family
 parity proof.
 
+The 2026-09-08 candidate check at `47831d275` temporarily enabled the canonical route and ran
+`compare-sankey-svgs --check-dom --dom-mode structure --dom-decimals 3`. All 33 fixtures rendered
+with route evidence; all 33 still failed structural comparison. The temporary admission change
+was removed. Remaining differences include link-layer fill/stroke-opacity attributes, per-path
+generic attributes, gradient default attributes and percentage stop spelling, and rectangle
+stroke/rasterization-hint attributes. The local diagnostic report is
+`target/compare/sankey_label_candidate_structure.md`; no comparator normalization was changed.
+
 ### Cynefin migration evidence
 
 The candidate serializer is exercised directly by
