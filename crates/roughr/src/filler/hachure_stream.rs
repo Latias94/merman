@@ -176,7 +176,7 @@ where
         active.sort_unstable_by(|lhs, rhs| {
             compare(lhs.x, rhs.x).then_with(|| lhs.order.cmp(&rhs.order))
         });
-        if active.len() % 2 != 0 {
+        if !active.len().is_multiple_of(2) {
             return Err(HachureError::InvalidGeometry);
         }
         for pair in active.chunks_exact(2) {
