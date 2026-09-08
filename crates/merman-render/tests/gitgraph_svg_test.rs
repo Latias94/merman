@@ -547,6 +547,52 @@ fn gitgraph_unmeasurable_role_size_fails_closed() {
 }
 
 #[test]
+fn gitgraph_config_owned_size_does_not_inherit_unmeasurable_role_residuals() {
+    let theme = gitgraph_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("GitGraphTypedOwner").unwrap())
+            .with_font_size_px(29.0)
+            .unwrap(),
+    );
+    for (property, class) in [
+        ("commitLabelFontSize", "commit-label"),
+        ("tagLabelFontSize", "tag-label"),
+    ] {
+        let mut config = json!({"themeVariables": {"fontSize": "31px"}});
+        config["themeVariables"][property] = json!("calc(1em)");
+        render_source_and_site_config_cases(
+            "gitGraph\n  commit id: \"1\" tag: \"v1\"\n",
+            config,
+            &theme,
+            "git-config-owned-role-size",
+            |owner, rendered| {
+                let stylesheet = gitgraph_stylesheet(rendered.svg());
+                let selector = format!("#git-config-owned-role-size-{owner}");
+                let root = gitgraph_css_rule(&stylesheet, &selector);
+                assert_eq!(css_property(&root, "font-size"), Some("31px"));
+                assert_eq!(
+                    css_property(&root, "font-family"),
+                    Some("GitGraphTypedOwner")
+                );
+                let role = gitgraph_css_rule(&stylesheet, &format!("{selector} .{class}"));
+                assert_eq!(
+                    css_property(&role, "font-size"),
+                    Some("calc(1em)"),
+                    "{owner}/{property}: {role}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(document.descendants().any(|node| has_class(&node, class)));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1, "{owner}/{property}");
+                assert_eq!(evidence.not_applicable_count(), 1, "{owner}/{property}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{owner}/{property}");
+            },
+        );
+    }
+}
+
+#[test]
 fn gitgraph_accessibility_metadata_does_not_prove_visual_typography() {
     let theme = gitgraph_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("GitGraphAccessibleOnly").expect("valid GitGraph font stack"),

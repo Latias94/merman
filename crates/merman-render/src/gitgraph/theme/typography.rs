@@ -247,7 +247,8 @@ impl GitGraphTypographyThemePlan {
                 self.typed_font_size_active
                     && (receipt.has_visible_branch_label
                         || receipt.has_visible_base_dependent_role_font_size_terminal),
-                receipt.has_visible_unmeasurable_role_font_size_terminal,
+                self.typed_font_size_active
+                    && receipt.has_visible_unmeasurable_role_font_size_terminal,
             ),
         ];
         for (property, requested, applied, unmeasurable) in statuses {
