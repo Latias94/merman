@@ -490,7 +490,6 @@ fn packet_canonical_svg_preserves_empty_labels_words_and_authored_accessibility(
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
     let svg = render_svg(
         r#"requirementDiagram

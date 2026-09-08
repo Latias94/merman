@@ -1246,6 +1246,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::XyChart
             | RenderFamilyKind::Journey
             | RenderFamilyKind::TreeView
+            | RenderFamilyKind::Requirement
     )
 }
 
