@@ -79,8 +79,12 @@ external theme CSS: changing a public link opacity or text paint changes that ou
 Outlined labels use public text strokes and two ordered text layers, including the resolved
 background alpha, rather than being rejected for a protocol feature that now exists.
 
-Sankey remains bridged. Node-local transforms and generated IDs, in-link gradient placement,
-compact label DOM, and canonical root background still require source-backed projection and
+Node geometry now uses public local rectangles and transforms; the SVG node group projects those
+transforms into source-shaped translation/x/y attributes and source-numbered, diagram-scoped IDs.
+The node mutation regression checks that moving a public transform moves the serialized node.
+
+Sankey remains bridged. In-link gradient placement, compact label DOM, and canonical root
+background still require source-backed projection and
 complete family comparison before admission. The focused tests are not full-family parity proof.
 
 ### Cynefin migration evidence

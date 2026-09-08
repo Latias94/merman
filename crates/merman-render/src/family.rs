@@ -1978,6 +1978,98 @@ mod tests {
     }
 
     #[test]
+    fn sankey_node_svg_projects_public_local_geometry_and_transform() {
+        use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Point};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sankey-beta\nA,B,10\nB,C,5\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let node_id = "sankey.node.1.shape";
+        let path = document
+            .public
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == node_id => Some(path),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            path.segments.first(),
+            Some(&PathSegment::MoveTo {
+                to: Point::new(0.0, 0.0)
+            })
+        );
+        let render = |doc: &crate::drawing_list::RenderDocument, diagram_id: Option<&str>| {
+            crate::svg::render_document_svg(
+                doc,
+                &SvgRenderOptions {
+                    diagram_id: diagram_id.map(str::to_owned),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        for prefix in [None, Some("sankey-node-test")] {
+            let svg = render(&document, prefix);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let id =
+                prefix.map_or_else(|| "node-2".to_string(), |prefix| format!("{prefix}-node-2"));
+            let node = xml
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id.as_str()))
+                .unwrap();
+            assert_eq!(node.attribute("class"), Some("node"));
+            assert!(
+                node.attribute("transform")
+                    .unwrap()
+                    .starts_with("translate(")
+            );
+            let rect = node
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert!(rect.attribute("x").is_none() && rect.attribute("y").is_none());
+            assert!(rect.attribute("class").is_none());
+            assert_eq!(rect.attribute("shape-rendering"), Some("crispEdges"));
+        }
+        let index = document.public.commands.iter().position(|command| matches!(command,
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "sankey.node.1"
+        )).unwrap();
+        let DrawingCommand::ConcatTransform { transform } =
+            &mut document.public.commands[index - 1]
+        else {
+            panic!("node position belongs to the public transform");
+        };
+        transform.e = 42.0;
+        transform.f = 19.0;
+        let svg = render(&document, None);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let node = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some("node-2"))
+            .unwrap();
+        assert_eq!(node.attribute("transform"), Some("translate(42,19)"));
+        assert_eq!(node.attribute("x"), Some("42"));
+        assert_eq!(node.attribute("y"), Some("19"));
+    }
+
+    #[test]
     fn sankey_document_owns_paint_order_and_svg_styles() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 

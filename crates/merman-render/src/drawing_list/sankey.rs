@@ -235,6 +235,14 @@ impl<'a> SankeyBuilder<'a> {
         let semantic_id = format!("sankey.node.{node_index}");
         self.semantic_classes
             .insert(semantic_id.clone(), "node".to_string());
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
+            transform: Transform {
+                e: node.x,
+                f: node.y,
+                ..Transform::IDENTITY
+            },
+        })?;
         self.output
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: semantic_id.clone(),
@@ -249,10 +257,10 @@ impl<'a> SankeyBuilder<'a> {
                 fill: Some(Paint::solid(fill)),
                 stroke: None,
             };
-            let top = node.y;
-            let bottom = node.y + node.height;
-            let left = node.x;
-            let right = node.x + node.width;
+            let top = 0.0;
+            let bottom = node.height;
+            let left = 0.0;
+            let right = node.width;
             self.output.draw_path_with(path_id, style, |emit| {
                 emit(PathSegment::MoveTo {
                     to: Point::new(left, top),
@@ -270,6 +278,7 @@ impl<'a> SankeyBuilder<'a> {
             })?;
         }
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.output.push_control(DrawingCommand::Restore)?;
         self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,

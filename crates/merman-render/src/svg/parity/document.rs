@@ -2111,7 +2111,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             let path = self.path_resource(path_id)?;
             if let Some(bounds) = rectangle_from_path(path) {
-                return self.emit_rect(path_id, bounds, style);
+                return self.emit_sankey_node_rect(bounds, style);
             }
         }
         if matches!(self.svg_body, SvgStructureBody::XyChart(_))
