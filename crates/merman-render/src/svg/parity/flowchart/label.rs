@@ -93,15 +93,6 @@ fn is_single_img_label(label: &str) -> bool {
     crate::flowchart::flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
 }
 
-pub(in crate::svg::parity) fn flowchart_label_html(
-    label: &str,
-    label_type: &str,
-    config: &merman_core::MermaidConfig,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-) -> String {
-    flowchart_label_html_impl(label, label_type, config, math_renderer)
-}
-
 pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_math<'a>(
     label: &'a str,
     label_type: &str,

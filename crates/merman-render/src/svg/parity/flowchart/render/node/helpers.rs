@@ -367,7 +367,6 @@ pub(super) fn timed_node_label_html<T>(
 }
 
 pub(super) struct ResolvedNodeRenderInfo<'a> {
-    pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'static str,
     pub(super) wrapped_in_a: bool,
     pub(super) href: Option<SerializedMermaidNavigationHref>,
@@ -396,9 +395,6 @@ pub(super) fn resolve_node_render_info<'a>(
         let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
         let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
-            // Mermaid's collapsed subgraph is emitted as a synthetic leaf node and therefore has
-            // the plain diagram-id suffix rather than a FlowDB vertex-counter suffix.
-            dom_idx: None,
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
@@ -424,7 +420,6 @@ pub(super) fn resolve_node_render_info<'a>(
         let subgraph_index = ctx.subgraph_indices_by_id.get(node_id).copied()?;
         let (node_classes, node_styles) = ctx.model.effective_subgraph_css(subgraph_index, sg);
         return Some(ResolvedNodeRenderInfo {
-            dom_idx: None,
             class_attr_base: "node",
             wrapped_in_a: false,
             href: None,
@@ -445,7 +440,6 @@ pub(super) fn resolve_node_render_info<'a>(
     }
 
     if let Some(node) = ctx.nodes_by_id.get(node_id) {
-        let dom_idx = Some(ctx.node_dom_index.get(node_id).copied().unwrap_or(0));
         let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
 
         // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
@@ -486,7 +480,6 @@ pub(super) fn resolve_node_render_info<'a>(
             };
 
         Some(ResolvedNodeRenderInfo {
-            dom_idx,
             class_attr_base,
             wrapped_in_a,
             href,
