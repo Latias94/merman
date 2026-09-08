@@ -460,7 +460,8 @@ pub(crate) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id_or("treemap");
 
     let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
-    let typed_text_fill = typography_theme.text_fill_css();
+    let typed_label_text_fill = typography_theme.label_text_fill_css();
+    let typed_value_text_fill = typography_theme.value_text_fill_css();
 
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());
@@ -672,7 +673,8 @@ pub(crate) fn render_treemap_diagram_svg(
             effective_config,
             Some(typography_theme.font_family_css()),
             title_theme.fill_css(),
-            typography_theme.text_fill_css(),
+            typography_theme.label_text_fill_css(),
+            typography_theme.value_text_fill_css(),
         )?;
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(title_css_emission.class(), title_css_emission.fill());
@@ -802,10 +804,17 @@ pub(crate) fn render_treemap_diagram_svg(
 
         let label_fill = if section.depth == 0 {
             String::new()
-        } else if let Some(fill) = typed_text_fill {
+        } else if let Some(fill) = typed_label_text_fill {
             fill.to_owned()
         } else {
             color_scale_label.get(&section.name)
+        };
+        let value_fill = if section.depth == 0 {
+            String::new()
+        } else if let Some(fill) = typed_value_text_fill {
+            fill.to_owned()
+        } else {
+            label_fill.clone()
         };
         let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
 
@@ -937,7 +946,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 format!(
                     "text-anchor: end; dominant-baseline: middle; font-size: {}px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
                     fmt(section_value_font_size),
-                    fill = escape_attr(&label_fill),
+                    fill = escape_attr(&value_fill),
                     suffix = label_styles_suffix
                 )
             };
@@ -1013,7 +1022,7 @@ pub(crate) fn render_treemap_diagram_svg(
         let label_styles_suffix = replace_first(&label_styles, "color:", "fill:");
         let label_styles_without_font_size_suffix =
             replace_first(&label_styles_without_font_size, "color:", "fill:");
-        let leaf_label_fill = typed_text_fill.map_or_else(
+        let leaf_label_fill = typed_label_text_fill.map_or_else(
             || {
                 theme.readable_leaf_label_fill(
                     &fill,
@@ -1216,8 +1225,10 @@ pub(crate) fn render_treemap_diagram_svg(
                 }
             }
 
+            let value_fill =
+                typed_value_text_fill.map_or_else(|| leaf_label_fill.clone(), str::to_owned);
             let mut value_style = if !label_hidden {
-                let fill = normalize_dom_style_color(&leaf_label_fill);
+                let fill = normalize_dom_style_color(&value_fill);
                 format!(
                     "text-anchor: middle; dominant-baseline: hanging; font-size: {fs}px; fill: {fill};",
                     fs = fmt(value_font_size),
@@ -1227,7 +1238,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 format!(
                     "text-anchor: middle; dominant-baseline: hanging; font-size: {fs}px;fill:{fill};{suffix}",
                     fs = fmt(base_value_font_size),
-                    fill = escape_attr(&leaf_label_fill),
+                    fill = escape_attr(&value_fill),
                     suffix = label_styles_suffix,
                 )
             };

@@ -1544,7 +1544,7 @@ pub(super) fn treemap_css<I>(diagram_id: I, effective_config: &serde_json::Value
 where
     I: SvgDiagramIdValue,
 {
-    treemap_css_inner(diagram_id, effective_config, None, None, None).map(|(css, _, _)| css)
+    treemap_css_inner(diagram_id, effective_config, None, None, None, None).map(|(css, _, _)| css)
 }
 
 pub(super) struct TreemapTitleCssEmission {
@@ -1567,7 +1567,8 @@ pub(super) fn treemap_css_with_title_fill_and_font_family<I>(
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
     title_fill: Option<&str>,
-    text_fill: Option<&str>,
+    label_text_fill: Option<&str>,
+    value_text_fill: Option<&str>,
 ) -> Result<(
     String,
     TreemapTitleCssEmission,
@@ -1581,7 +1582,8 @@ where
         effective_config,
         resolved_font_family,
         title_fill,
-        text_fill,
+        label_text_fill,
+        value_text_fill,
     )
 }
 
@@ -1590,7 +1592,8 @@ fn treemap_css_inner<I>(
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
     title_fill: Option<&str>,
-    text_fill: Option<&str>,
+    label_text_fill: Option<&str>,
+    value_text_fill: Option<&str>,
 ) -> Result<(
     String,
     TreemapTitleCssEmission,
@@ -1609,8 +1612,8 @@ where
         None => info_css_parts_with_config(diagram_id, effective_config),
     };
     let theme = MermaidThemeAdapter::new(effective_config).treemap()?;
-    let label_color = text_fill.unwrap_or(&theme.label_color);
-    let value_color = text_fill.unwrap_or(&theme.value_color);
+    let label_color = label_text_fill.unwrap_or(&theme.label_color);
+    let value_color = value_text_fill.unwrap_or(&theme.value_color);
     let mut out = parts.css_prefix;
 
     let _ = write!(
@@ -1647,6 +1650,7 @@ where
         parts.base_typography_emitted,
         !parts.root_rule.is_empty(),
         label_color,
+        value_color,
     );
     out.push_str(&parts.root_rule);
     Ok((out, title_emission, typography_emission))
