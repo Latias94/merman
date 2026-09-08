@@ -29,6 +29,31 @@ fn canonical_json_round_trips_and_uses_a_stable_resource_order() {
 }
 
 #[test]
+fn canonical_json_preserves_exact_f64_coordinates() {
+    for coordinate in [51.248178375505404, -51.248178375505404] {
+        let mut document = sample_document();
+        document.viewport.bounds.x = coordinate;
+
+        let canonical = document
+            .canonical_json_bytes()
+            .expect("finite viewport coordinate serializes canonically");
+        let decoded = DrawingListDocument::from_json_bytes(&canonical)
+            .expect("canonical DrawingList JSON decodes");
+
+        assert_eq!(
+            decoded.viewport.bounds.x.to_bits(),
+            coordinate.to_bits(),
+            "decoding must preserve the exact f64 coordinate {coordinate}"
+        );
+        assert_eq!(
+            decoded.canonical_json_bytes().unwrap(),
+            canonical,
+            "canonical bytes must remain identical after decoding coordinate {coordinate}"
+        );
+    }
+}
+
+#[test]
 fn canonical_json_sorts_nested_extension_objects() {
     let mut document = sample_document();
     let mut nested = Map::new();
