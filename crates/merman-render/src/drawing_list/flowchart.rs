@@ -1133,6 +1133,11 @@ impl<'a> FlowchartBuilder<'a> {
                 )?;
             }
         }
+        // Mermaid's styles2String keeps opacity and blending on the shape, not on its
+        // sibling HTML/SVG label. Keep both inside the same link/accessibility group.
+        if style.opacity != 1.0 || style.blend_mode != BlendMode::Normal {
+            self.output.push_control(DrawingCommand::Restore)?;
+        }
         let raw_label = self
             .model
             .node_label_for_render(node)
@@ -1176,7 +1181,7 @@ impl<'a> FlowchartBuilder<'a> {
                 "target": target,
             }));
         }
-        self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal)?;
+        self.end_group(false)?;
         self.output
             .push_semantic(self.node_semantic(node, semantic_id))?;
         Ok(())
@@ -2860,6 +2865,126 @@ mod tests {
                 (route_count, marker_count, background_count, label_count),
                 (1, 1, 1, 1)
             );
+        }
+    }
+
+    #[test]
+    fn node_opacity_and_blending_do_not_leak_into_labels_or_split_semantics() {
+        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+        for (html_labels, opacity, blend_mode) in [false, true].into_iter().flat_map(|html| {
+            [
+                (0.0, BlendMode::Normal),
+                (0.4, BlendMode::Multiply),
+                (1.0, BlendMode::Multiply),
+                (1.0, BlendMode::Normal),
+            ]
+            .map(|(opacity, blend_mode)| (html, opacity, blend_mode))
+        }) {
+            let blend = if blend_mode == BlendMode::Normal {
+                "normal"
+            } else {
+                "multiply"
+            };
+            let source = format!(
+                "%%{{init: {{\"htmlLabels\": {html_labels}, \"flowchart\": {{\"htmlLabels\": {html_labels}}}}}}}%%\n\
+                 flowchart TD\nA[Visible]\n\
+                 style A opacity:{opacity},mix-blend-mode:{blend}\n\
+                 click A href \"https://example.com/\" \"Node tooltip\"\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let (metadata, model, context) = parsed.into_render_parts();
+            let RenderSemanticModel::Flowchart(semantic) = model else {
+                panic!("expected Flowchart");
+            };
+            let context = context.into_flowchart_render_context();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let options = crate::LayoutOptions::default();
+            let execution = crate::LayoutExecution::new(&options, &session);
+            let layout = crate::layout_flowchart_typed_with_render_labels_by_engine(
+                &metadata.diagram_type,
+                &semantic,
+                &context,
+                &metadata.effective_config,
+                &execution,
+                None,
+            )
+            .unwrap();
+            let document = FlowchartBuilder::new(
+                FlowchartBuilderInputs {
+                    semantic: &semantic,
+                    layout: FlowchartLayoutSource::Flowchart(&layout),
+                    render_context: &context,
+                    presentation: None,
+                    family_kind: RenderFamilyKind::Flowchart,
+                    swimlane_layout: None,
+                },
+                &metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &session,
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+            .into_public();
+
+            let mut state = (1.0, BlendMode::Normal);
+            let mut saved_states = Vec::new();
+            let mut groups = Vec::new();
+            let mut node_groups = 0;
+            let mut shape_count = 0;
+            let mut label_count = 0;
+            for command in &document.commands {
+                match command {
+                    DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                        if semantic_id.starts_with("flowchart.node.") {
+                            node_groups += 1;
+                        }
+                        groups.push(semantic_id.as_str());
+                    }
+                    DrawingCommand::EndSemanticGroup => {
+                        groups.pop().expect("balanced semantic group");
+                    }
+                    DrawingCommand::Save => saved_states.push(state),
+                    DrawingCommand::Restore => {
+                        state = saved_states.pop().expect("balanced save");
+                    }
+                    DrawingCommand::SetOpacity { opacity } => state.0 = *opacity,
+                    DrawingCommand::SetBlendMode { blend_mode } => state.1 = *blend_mode,
+                    DrawingCommand::DrawPath { path, .. }
+                        if path.as_str().starts_with("flowchart.node.A.shape.") =>
+                    {
+                        assert_eq!(state, (opacity, blend_mode));
+                        assert_eq!(groups.last().copied(), Some("flowchart.node.A"));
+                        shape_count += 1;
+                    }
+                    DrawingCommand::DrawText { run } => {
+                        assert_eq!(state, (1.0, BlendMode::Normal));
+                        assert_eq!(run.text, "Visible");
+                        assert_eq!(groups.last().copied(), Some("flowchart.node.A"));
+                        label_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+            assert!(saved_states.is_empty());
+            assert!(groups.is_empty());
+            assert_eq!((node_groups, shape_count, label_count), (1, 1, 1));
+            let node = document
+                .semantics
+                .iter()
+                .find(|annotation| annotation.id == "flowchart.node.A")
+                .expect("node semantics");
+            assert_eq!(node.role, SemanticRole::Node);
+            assert_eq!(node.title.as_deref(), Some("Visible"));
+            assert_eq!(node.description.as_deref(), Some("Node tooltip"));
+            assert_eq!(node.link.as_deref(), Some("https://example.com/"));
         }
     }
 
