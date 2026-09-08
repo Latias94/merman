@@ -488,6 +488,7 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
     ];
 
     for (name, site_config, expected_label, expected_value, applied_count) in cases {
+        let typed_cssom = "rgb(18, 52, 86)";
         let rendered = render_treemap_with_theme(
             "treemap\n\"Section\"\n  \"Leaf\": 12\n",
             &theme,
@@ -508,6 +509,34 @@ fn treemap_text_fill_respects_independent_label_and_value_owners() {
             stylesheet.contains(&format!(".treemapValue{{fill:{expected_value};")),
             "{name}: {stylesheet}"
         );
+        let leaf_label = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class") == Some("treemapLabel")
+                    && node.text() == Some("Leaf")
+            })
+            .and_then(|node| node.attribute("style"))
+            .expect("Treemap leaf label terminal");
+        let leaf_value = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class") == Some("treemapValue")
+                    && node.text() == Some("12")
+            })
+            .and_then(|node| node.attribute("style"))
+            .expect("Treemap leaf value terminal");
+        if name == "label owner" {
+            assert!(leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
+            assert!(!leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
+        } else if name == "value owner" {
+            assert!(leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
+            assert!(!leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
+        } else {
+            assert!(!leaf_label.contains(typed_cssom), "{name}: {leaf_label}");
+            assert!(!leaf_value.contains(typed_cssom), "{name}: {leaf_value}");
+        }
 
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());

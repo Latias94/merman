@@ -802,19 +802,19 @@ pub(crate) fn render_treemap_diagram_svg(
             section.name.clone()
         };
 
-        let label_fill = if section.depth == 0 {
+        let default_label_fill = if section.depth == 0 {
             String::new()
-        } else if let Some(fill) = typed_label_text_fill {
-            fill.to_owned()
         } else {
             color_scale_label.get(&section.name)
         };
+        let label_fill =
+            typed_label_text_fill.map_or_else(|| default_label_fill.clone(), str::to_owned);
         let value_fill = if section.depth == 0 {
             String::new()
         } else if let Some(fill) = typed_value_text_fill {
             fill.to_owned()
         } else {
-            label_fill.clone()
+            default_label_fill
         };
         let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
 
@@ -1022,16 +1022,13 @@ pub(crate) fn render_treemap_diagram_svg(
         let label_styles_suffix = replace_first(&label_styles, "color:", "fill:");
         let label_styles_without_font_size_suffix =
             replace_first(&label_styles_without_font_size, "color:", "fill:");
-        let leaf_label_fill = typed_label_text_fill.map_or_else(
-            || {
-                theme.readable_leaf_label_fill(
-                    &fill,
-                    &leaf_rect_style,
-                    color_scale_label.get(&leaf.name),
-                )
-            },
-            str::to_owned,
+        let default_leaf_label_fill = theme.readable_leaf_label_fill(
+            &fill,
+            &leaf_rect_style,
+            color_scale_label.get(&leaf.name),
         );
+        let leaf_label_fill =
+            typed_label_text_fill.map_or_else(|| default_leaf_label_fill.clone(), str::to_owned);
 
         write_treemap_leaf_group_open(&mut out, &group_class, leaf.x0, leaf.y0)?;
 
@@ -1225,8 +1222,8 @@ pub(crate) fn render_treemap_diagram_svg(
                 }
             }
 
-            let value_fill =
-                typed_value_text_fill.map_or_else(|| leaf_label_fill.clone(), str::to_owned);
+            let value_fill = typed_value_text_fill
+                .map_or_else(|| default_leaf_label_fill.clone(), str::to_owned);
             let mut value_style = if !label_hidden {
                 let fill = normalize_dom_style_color(&value_fill);
                 format!(
