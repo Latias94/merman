@@ -579,6 +579,42 @@ fn class_emits_typed_compartments_relations_namespaces_and_notes() {
 }
 
 #[test]
+fn class_relation_markers_preserve_aggregation_and_composition_diamonds() {
+    let source = r#"classDiagram
+        class A
+        class B
+        class C
+        A o-- B
+        A *-- C
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("class relation markers should render");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let markers = output
+        .document()
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DrawingCommand::DrawPath { path, style } if path.as_str().contains(".marker.") => {
+                Some(style)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(markers.len() >= 2, "expected both UML relation markers");
+    assert!(markers.iter().any(|style| style.fill.is_some()));
+    assert!(markers.iter().any(|style| style.fill.is_none()));
+}
+
+#[test]
 fn class_limits_reject_the_first_over_budget_builder_item() {
     let source = r#"classDiagram
         class A {

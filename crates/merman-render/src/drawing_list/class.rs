@@ -313,6 +313,19 @@ impl<'a> ClassBuilder<'a> {
                 plain_text(text)
                     .map_err(|error| unavailable(format!("Class node `{}`: {error}", node.id)))?;
             }
+            for member in node.members.iter().chain(&node.methods) {
+                if member
+                    .css_style
+                    .split(';')
+                    .filter_map(crate::mermaid_style::parse_safe_style_decl)
+                    .any(|(key, _)| key == "text-decoration")
+                {
+                    return Err(unavailable(format!(
+                        "Class member `{}` uses text decoration, which DrawingList v1 cannot represent",
+                        member.display_text
+                    )));
+                }
+            }
         }
         for note in &self.model.notes {
             self.session.checkpoint(OperationPhase::Emit)?;
@@ -521,9 +534,8 @@ impl<'a> ClassBuilder<'a> {
             start,
         )?;
         if marker.is_empty() {
-            // Marker type zero is Mermaid's explicit "no marker" representation.  Do not add an
-            // empty path resource: the DrawingList contract requires every path to carry real
-            // geometry, and an empty marker must not make an otherwise valid class diagram fail.
+            // Unknown marker types are rejected during preflight. Keep this guard so a malformed
+            // model cannot create an empty path resource.
             return Ok(());
         }
         let fill = if marker_type == 2 {
@@ -751,24 +763,26 @@ impl<'a> ClassBuilder<'a> {
         let line_count = body_lines.max(1);
         // Normalize and admit one line at a time rather than retaining a second copy of every
         // member and method before the caller's text budget can stop the build.
-        let lines =
-            has_title
-                .then_some(title.as_str())
-                .into_iter()
-                .map(|text| {
-                    plain_text(text)
-                        .map(|text| (text, FontStyle::Normal, 700_u16))
-                        .map_err(unavailable)
+        let lines = has_title
+            .then_some(title.as_str())
+            .into_iter()
+            .map(|text| {
+                plain_text(text)
+                    .map(|text| (text, FontStyle::Normal, 700_u16))
+                    .map_err(unavailable)
+            })
+            .chain(node.annotations.iter().map(|annotation| {
+                plain_text(annotation)
+                    .map(|text| (format!("«{text}»"), FontStyle::Italic, 400))
+                    .map_err(unavailable)
+            }))
+            .chain(node.members.iter().chain(&node.methods).map(|member| {
+                plain_member_text(member).map(|text| {
+                    let (style, weight) = class_member_font_style(member);
+                    (text, style, weight)
                 })
-                .chain(node.annotations.iter().map(|annotation| {
-                    plain_text(annotation)
-                        .map(|text| (format!("«{text}»"), FontStyle::Italic, 400))
-                        .map_err(unavailable)
-                }))
-                .chain(node.members.iter().chain(&node.methods).map(|member| {
-                    plain_member_text(member).map(|text| (text, FontStyle::Normal, 400))
-                }))
-                .chain((body_lines == 0).then(|| Ok((node.id.clone(), FontStyle::Normal, 400))));
+            }))
+            .chain((body_lines == 0).then(|| Ok((node.id.clone(), FontStyle::Normal, 400))));
 
         let line_height = self.line_height.max(1.0);
         let total_height = line_height * line_count as f64;
@@ -883,6 +897,34 @@ fn class_node_texts(node: &ClassNode) -> impl Iterator<Item = &str> {
 
 fn plain_member_text(member: &ClassMember) -> Result<String> {
     plain_text(&class_member_create_text_input(member)).map_err(unavailable)
+}
+
+fn class_member_font_style(member: &ClassMember) -> (FontStyle, u16) {
+    let mut style = FontStyle::Normal;
+    let mut weight = 400;
+    for declaration in member.css_style.split(';') {
+        let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration) else {
+            continue;
+        };
+        match key {
+            "font-style" => {
+                style = match value.trim().to_ascii_lowercase().as_str() {
+                    "italic" => FontStyle::Italic,
+                    "oblique" => FontStyle::Oblique,
+                    _ => FontStyle::Normal,
+                };
+            }
+            "font-weight" => {
+                weight = match value.trim().to_ascii_lowercase().as_str() {
+                    "bold" | "bolder" => 700,
+                    "lighter" => 300,
+                    value => value.parse::<u16>().unwrap_or(400).clamp(1, 1000),
+                };
+            }
+            _ => {}
+        }
+    }
+    (style, weight)
 }
 
 fn plain_text(raw: &str) -> std::result::Result<String, String> {
@@ -1028,7 +1070,17 @@ fn marker_path(
     let left = Point::new(base.x + nx * 8.0, base.y + ny * 8.0);
     let right = Point::new(base.x - nx * 8.0, base.y - ny * 8.0);
     match marker_type {
-        1 | 2 => Ok(vec![
+        // 0 = aggregation (hollow diamond), 2 = composition (filled diamond).
+        0 | 2 => Ok(vec![
+            PathSegment::MoveTo { to: tip },
+            PathSegment::LineTo { to: left },
+            PathSegment::LineTo {
+                to: Point::new(tip.x - ux * 36.0 * direction, tip.y - uy * 36.0 * direction),
+            },
+            PathSegment::LineTo { to: right },
+            PathSegment::Close,
+        ]),
+        1 => Ok(vec![
             PathSegment::MoveTo { to: tip },
             PathSegment::LineTo { to: left },
             PathSegment::LineTo { to: right },

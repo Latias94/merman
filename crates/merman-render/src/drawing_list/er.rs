@@ -1490,7 +1490,8 @@ fn validate_bounds(bounds: &Bounds) -> Result<()> {
 }
 
 fn with_alpha(color: Color, alpha: u8) -> Color {
-    Color::rgba(color.red, color.green, color.blue, alpha)
+    let combined = (u16::from(color.alpha) * u16::from(alpha) / 255) as u8;
+    Color::rgba(color.red, color.green, color.blue, combined)
 }
 
 fn invalid(message: impl Into<String>) -> Error {
