@@ -629,23 +629,36 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
+            let last_text = section
+                .lines
+                .iter()
+                .rposition(|line| crate::gantt::section_line_has_text(line));
+            let mut cursor = crate::gantt::GanttSectionLineCursor::new(
+                section.y,
+                self.layout.section_font_size,
+                section.lines.len(),
+            );
             for (line_index, line) in section.lines.iter().enumerate() {
-                let y = section.y
-                    + section.dy_em * self.layout.section_font_size
-                    + line_index as f64 * self.layout.section_font_size;
-                self.emit_text(
-                    &format!("{semantic_id}.line.{line_index}"),
-                    line,
-                    TextEmitSpec {
-                        origin: Point::new(section.x, y),
-                        font_size: self.layout.section_font_size,
-                        weight: 400,
-                        color: self.title_fill,
-                        anchor: TextAnchor::Start,
-                        baseline: TextBaseline::Middle,
-                        italic: false,
-                    },
-                )?;
+                let has_later_text = last_text.is_some_and(|last| line_index < last);
+                let parts = cursor.normalized_parts(line, has_later_text);
+                let y = cursor.next_line(line, has_later_text);
+                let spec = TextEmitSpec {
+                    origin: Point::new(section.x, y),
+                    font_size: self.layout.section_font_size,
+                    weight: 400,
+                    color: self.title_fill,
+                    anchor: TextAnchor::Start,
+                    baseline: TextBaseline::Central,
+                    italic: false,
+                };
+                let session = self.session;
+                let family = &self.theme.font_family;
+                let font = self.font.clone();
+                let obligation = self.text_obligation.clone();
+                self.document.draw_host_text_iter(parts, move |text| {
+                    let bounds = measure_text_bounds(session, family, &text, &spec)?;
+                    Ok(spec.into_run(text, bounds, font, obligation))
+                })?;
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
@@ -765,47 +778,68 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn measure_text_bounds(&self, text: &str, spec: &TextEmitSpec) -> Result<Rect> {
-        if text.is_empty() {
-            return Ok(Rect::new(spec.origin.x, spec.origin.y, 0.0, 0.0));
-        }
-        let measurement_style = MeasurementTextStyle {
-            font_family: Some(self.theme.font_family.clone()),
-            font_size: spec.font_size,
-            font_weight: Some(spec.weight.to_string()),
-            font_style: spec.italic.then(|| "italic".to_string()),
-        };
-        let measurer = self
-            .session
-            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
-        let width = measurer
-            .measure_svg_raw_text_bbox_width_px(text, &measurement_style)
-            .max(1.0);
-        let height = measurer
-            .measure_svg_simple_text_bbox_height_px(text, &measurement_style)
-            .max(1.0);
-        self.session.checkpoint(OperationPhase::Emit)?;
-        Ok(Rect::new(
-            match spec.anchor {
-                TextAnchor::Start => spec.origin.x,
-                TextAnchor::Middle => spec.origin.x - width / 2.0,
-                TextAnchor::End => spec.origin.x - width,
-            },
-            spec.origin.y - height / 2.0,
-            width,
-            height,
-        ))
+        measure_text_bounds(self.session, &self.theme.font_family, text, spec)
     }
 
     fn emit_text_in_bounds(
         &mut self,
-        semantic_id: &str,
+        _semantic_id: &str,
         text: &str,
         spec: TextEmitSpec,
         bounds: Rect,
     ) -> Result<()> {
-        if text.is_empty() {
-            return Ok(());
-        }
+        let font = self.font.clone();
+        let obligation = self.text_obligation.clone();
+        self.document.draw_host_text(text, move |owned| {
+            spec.into_run(owned, bounds, font, obligation)
+        })
+    }
+}
+
+fn measure_text_bounds(
+    session: &RenderSession,
+    family: &str,
+    text: &str,
+    spec: &TextEmitSpec,
+) -> Result<Rect> {
+    if text.is_empty() {
+        return Ok(Rect::new(spec.origin.x, spec.origin.y, 0.0, 0.0));
+    }
+    let measurement_style = MeasurementTextStyle {
+        font_family: Some(family.to_string()),
+        font_size: spec.font_size,
+        font_weight: Some(spec.weight.to_string()),
+        font_style: spec.italic.then(|| "italic".to_string()),
+    };
+    let measurer =
+        session.controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+    let width = measurer
+        .measure_svg_raw_text_bbox_width_px(text, &measurement_style)
+        .max(1.0);
+    let height = measurer
+        .measure_svg_simple_text_bbox_height_px(text, &measurement_style)
+        .max(1.0);
+    session.checkpoint(OperationPhase::Emit)?;
+    Ok(Rect::new(
+        match spec.anchor {
+            TextAnchor::Start => spec.origin.x,
+            TextAnchor::Middle => spec.origin.x - width / 2.0,
+            TextAnchor::End => spec.origin.x - width,
+        },
+        spec.origin.y - height / 2.0,
+        width,
+        height,
+    ))
+}
+
+impl TextEmitSpec {
+    fn into_run(
+        self,
+        text: String,
+        bounds: Rect,
+        font: FontDescriptor,
+        obligation: TextObligation,
+    ) -> TextRun {
         let TextEmitSpec {
             origin,
             font_size,
@@ -814,11 +848,9 @@ impl<'a> GanttBuilder<'a> {
             anchor,
             baseline,
             italic,
-        } = spec;
-        let font = self.font.clone();
-        let obligation = self.text_obligation.clone();
-        self.document.draw_host_text(text, move |owned| TextRun {
-            text: owned,
+        } = self;
+        TextRun {
+            text,
             origin,
             bounds,
             style: TextStyle {
@@ -843,11 +875,11 @@ impl<'a> GanttBuilder<'a> {
             direction: TextDirection::Auto,
             language: None,
             obligation,
-        })?;
-        let _ = semantic_id;
-        Ok(())
+        }
     }
+}
 
+impl GanttBuilder<'_> {
     fn row_fill(&self, row: &GanttRowLayout) -> Color {
         match class_suffix(&row.class) {
             Some(0) => self.section_fill,

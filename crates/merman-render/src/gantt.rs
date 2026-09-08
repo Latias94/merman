@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
-use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::time::{CivilDate, CivilDateTime, LocalTimeZone, OffsetDateTime, Weekday};
 use std::collections::{HashMap, hash_map::Entry};
 use std::fmt::Write as _;
@@ -14,6 +14,100 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
+
+pub(crate) fn section_line_has_text(text: &str) -> bool {
+    text.chars().any(|ch| !section_xml_whitespace(ch))
+}
+
+fn section_xml_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\t' | '\r' | '\n')
+}
+
+fn section_addressable(
+    ch: char,
+    has_characters: &mut bool,
+    previous_whitespace: &mut bool,
+) -> bool {
+    if section_xml_whitespace(ch) {
+        let visible = *has_characters && !*previous_whitespace;
+        *previous_whitespace = true;
+        visible
+    } else {
+        *has_characters = true;
+        *previous_whitespace = false;
+        true
+    }
+}
+
+/// The source's tspan dy applies only to addressable characters. Empty spans do not advance it.
+pub(crate) struct GanttSectionLineCursor {
+    center_y: f64,
+    font_size: f64,
+    y: f64,
+    index: usize,
+    has_characters: bool,
+    previous_whitespace: bool,
+}
+
+impl GanttSectionLineCursor {
+    pub(crate) fn new(center_y: f64, font_size: f64, lines: usize) -> Self {
+        Self {
+            center_y,
+            font_size,
+            y: center_y - lines.saturating_sub(1) as f64 / 2.0 * font_size,
+            index: 0,
+            has_characters: false,
+            previous_whitespace: false,
+        }
+    }
+
+    /// Resolve cross-span XML whitespace without allocating before the text budget check.
+    pub(crate) fn normalized_parts<'a>(
+        &self,
+        text: &'a str,
+        has_later_text: bool,
+    ) -> impl Iterator<Item = &'a str> + Clone + use<'a> {
+        let text = if has_later_text {
+            text
+        } else {
+            text.trim_end_matches(section_xml_whitespace)
+        };
+        let mut has_characters = self.has_characters;
+        let mut previous_whitespace = self.previous_whitespace;
+        text.char_indices().filter_map(move |(index, ch)| {
+            if !section_addressable(ch, &mut has_characters, &mut previous_whitespace) {
+                None
+            } else if section_xml_whitespace(ch) {
+                Some(" ")
+            } else {
+                Some(&text[index..index + ch.len_utf8()])
+            }
+        })
+    }
+
+    pub(crate) fn next_line(&mut self, text: &str, has_later_text: bool) -> f64 {
+        let text = if has_later_text {
+            text
+        } else {
+            text.trim_end_matches(section_xml_whitespace)
+        };
+        let mut addressable = false;
+        let had_characters = self.has_characters;
+        for ch in text.chars() {
+            addressable |=
+                section_addressable(ch, &mut self.has_characters, &mut self.previous_whitespace);
+        }
+        if self.index != 0 && addressable {
+            self.y = if had_characters {
+                self.y + self.font_size
+            } else {
+                self.center_y + self.font_size
+            };
+        }
+        self.index += 1;
+        self.y
+    }
+}
 
 fn instant_to_local(ms: i64, local_time_zone: &LocalTimeZone) -> Option<OffsetDateTime> {
     local_time_zone.at_instant(ms)
@@ -1341,7 +1435,10 @@ pub(crate) fn layout_gantt_diagram_typed(
     let mut section_titles: Vec<GanttSectionTitleLayout> = Vec::new();
     let mut prev_gap: i64 = 0;
     for (idx, (sec, h)) in category_heights.iter().enumerate() {
-        let lines = DeterministicTextMeasurer::normalized_text_lines(sec);
+        let lines: Vec<String> = crate::text::split_html_br_lines(sec)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         let dy_em = -((lines.len().saturating_sub(1)) as f64) / 2.0;
 
         let sec_num = gantt_section_class_suffix(sec, &categories, number_section_styles);

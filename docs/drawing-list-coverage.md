@@ -213,6 +213,25 @@ axis while retaining the top axis at 70. Both tests failed before the correction
 axis displacement); default-padding fixture geometry is unchanged. This is a source-backed
 geometry correction, not a comparator normalization or browser measurement residual.
 
+Gantt section labels now retain every explicit `<br>` line, including empty trailing lines,
+instead of using the FlowDB-oriented text normalizer that trims them. The public command stream
+records each line's central baseline and resolves the source's cross-tspan XML whitespace before
+the bounded text builder allocates it. Empty spans do not advance the source's text cursor;
+leading empty spans also affect which `dy` reaches the first addressable character. Lines with
+no addressable text have empty payloads and zero bounds, while semantic titles retain the source.
+The candidate serializer combines only compatible, opaque, host-shaped lines whose public
+positions and normalized text reproduce that cursor. It uses public runs rather than layout
+coordinates or source labels; edited sequences retain the generic canonical serializer.
+Both projections preserve already-resolved spaces, including spaces owned by an adjacent line.
+
+The section regression covers leading/intermediate/trailing empty lines, cross-line spaces and
+tabs, and a public line-position edit that prevents compaction. All 31 focused renderer/Gantt SVG/
+effect tests and two facade Gantt tests pass. A local Chromium probe compared per-character visible
+extents for the four source-shaped cases against both grouped and independent text projections; all matched. This
+does not establish a full Mermaid browser comparison or native font parity. No family admission,
+fixture comparator or accepted residual changed, and the earlier full-family report still records
+its original snapshot rather than a current pass count.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

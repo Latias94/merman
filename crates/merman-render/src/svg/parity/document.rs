@@ -527,6 +527,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             if root_background && index == 2 {
                 continue;
             }
+            if let Some(count) = self.emit_gantt_section_text(index)? {
+                consumed_until = index + count;
+                continue;
+            }
             if let Some(count) = self.emit_venn_text_node(index)? {
                 consumed_until = index + count;
                 continue;
@@ -3269,6 +3273,14 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         self.output.push_str("<text")?;
+        if matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            && semantic_id
+                .as_deref()
+                .is_some_and(|id| id.starts_with("gantt.section."))
+        {
+            // Section commands already contain the source's cross-tspan whitespace result.
+            self.output.push_str(" xml:space=\"preserve\"")?;
+        }
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id)?;
             #[cfg(feature = "layout-cytoscape")]

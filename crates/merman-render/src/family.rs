@@ -2007,6 +2007,153 @@ mod tests {
     }
 
     #[test]
+    fn gantt_section_text_projects_public_lines_including_empty_lines() {
+        use merman_display_list::{DrawingCommand, TextBaseline};
+        for (section, expected, offsets) in [
+            (
+                "<br/>Alpha<br/><br/>Beta<br/>",
+                vec!["", "Alpha", "", "Beta", ""],
+                vec![-2.0, 1.0, 1.0, 2.0, 2.0],
+            ),
+            ("A<br/> B", vec!["A", " B"], vec![-0.5, 0.5]),
+            ("A <br/> B", vec!["A ", "B"], vec![-0.5, 0.5]),
+            (
+                "A<br/> B<br/> \t<br/> C<br/> \t<br/>",
+                vec!["A", " B", " ", "C", "", ""],
+                vec![-2.5, -1.5, -0.5, 0.5, 0.5, 0.5],
+            ),
+        ] {
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection {section}\nTask :a, 2026-01-01, 1d\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let start = document
+                .public
+                .commands
+                .iter()
+                .position(|command| {
+                    matches!(command,
+                        DrawingCommand::BeginSemanticGroup { semantic_id }
+                        if semantic_id == "gantt.section.0"
+                    )
+                })
+                .unwrap();
+            let lines = document.public.commands[start + 1..]
+                .iter()
+                .take_while(|command| !matches!(command, DrawingCommand::EndSemanticGroup))
+                .map(|command| match command {
+                    DrawingCommand::DrawText { run } => run.as_ref(),
+                    _ => panic!("section text"),
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|run| run.text.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            assert!(
+                lines
+                    .iter()
+                    .all(|run| run.baseline == TextBaseline::Central)
+            );
+            let render = |document: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let rendered = render(&document);
+            let xml = roxmltree::Document::parse(&rendered).unwrap();
+            let text = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("sectionTitle sectionTitle0")
+                })
+                .unwrap();
+            assert!(
+                text.parent()
+                    .unwrap()
+                    .attribute("data-merman-semantic-id")
+                    .is_none()
+            );
+            assert_eq!(
+                text.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+                Some("preserve")
+            );
+            assert_eq!(
+                text.attribute("dy").unwrap(),
+                format!("{}em", -(expected.len() as f64 - 1.0) / 2.0)
+            );
+            let center: f64 = text.attribute("y").unwrap().parse().unwrap();
+            let spans = text
+                .children()
+                .filter(|node| node.has_tag_name("tspan"))
+                .collect::<Vec<_>>();
+            assert_eq!(spans.len(), lines.len());
+            for (index, (span, run)) in spans.iter().zip(&lines).enumerate() {
+                assert_eq!(span.text().unwrap_or_default(), run.text);
+                assert_eq!(span.attribute("alignment-baseline"), Some("central"));
+                assert_eq!(span.attribute("dy"), (index != 0).then_some("1em"));
+                assert_eq!(
+                    span.attribute("x").unwrap().parse::<f64>().unwrap(),
+                    run.origin.x
+                );
+                let offset = offsets[index];
+                assert_eq!(center + offset * run.style.font_size, run.origin.y);
+                if run.text.is_empty() {
+                    assert_eq!(run.bounds.width, 0.0);
+                    assert_eq!(run.bounds.height, 0.0);
+                }
+            }
+            // A moved line no longer has source line spacing. Keep its explicit public position.
+            let DrawingCommand::DrawText { run } = &mut document.public.commands[start + 2] else {
+                panic!("second line")
+            };
+            run.origin.y += 5.0;
+            let moved_y = run.origin.y;
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let group = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some("gantt.section.0"))
+                .unwrap();
+            let lines = group
+                .children()
+                .filter(|node| node.has_tag_name("text"))
+                .collect::<Vec<_>>();
+            assert_eq!(lines.len(), expected.len());
+            assert_eq!(lines[1].text(), Some(expected[1]));
+            assert_eq!(
+                lines[1].attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+                Some("preserve")
+            );
+            assert_eq!(
+                lines[1].attribute("y").unwrap().parse::<f64>().unwrap(),
+                moved_y
+            );
+        }
+    }
+
+    #[test]
     fn gantt_candidate_root_projects_public_collections_and_authored_accessibility() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 

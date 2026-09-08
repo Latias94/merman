@@ -3,6 +3,142 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_gantt_section_text(&mut self, index: usize) -> Result<Option<usize>> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return Ok(None);
+        };
+        if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
+            return Ok(None);
+        }
+        let document = self.document;
+        let Some(
+            [
+                DrawingCommand::BeginSemanticGroup { semantic_id },
+                DrawingCommand::DrawText { run: first },
+                ..,
+            ],
+        ) = document.commands.get(index..)
+        else {
+            return Ok(None);
+        };
+        if !semantic_id.starts_with("gantt.section.")
+            || !self.semantics.get(semantic_id).is_some_and(|semantic| {
+                semantic.link.is_none()
+                    && semantic.description.is_none()
+                    && self.debug_visibility(semantic.role)
+            })
+        {
+            return Ok(None);
+        }
+        let Some(class) = body.text_classes.get(semantic_id) else {
+            return Ok(None);
+        };
+        let Paint::Solid { color } = first.style.fill else {
+            return Ok(None);
+        };
+        // Combining translucent or differently styled text could change overlap compositing.
+        if color.alpha != 255 || first.style.stroke.is_some() || first.style.font.resource.is_some()
+        {
+            return Ok(None);
+        }
+        let mut count = 0;
+        loop {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            match document.commands.get(index + 1 + count) {
+                Some(DrawingCommand::DrawText { run })
+                    if run.style == first.style
+                        && run.baseline == TextBaseline::Central
+                        && run.anchor == TextAnchor::Start
+                        && run.direction == TextDirection::Auto
+                        && run.language.is_none()
+                        && matches!(&run.obligation, TextObligation::HostText { .. })
+                        && !run.text.contains(['\n', '\r'])
+                        && run.origin.x == first.origin.x =>
+                {
+                    count += 1
+                }
+                Some(DrawingCommand::EndSemanticGroup) => break,
+                _ => return Ok(None),
+            }
+        }
+        if count == 0 {
+            return Ok(None);
+        }
+        let dy = -(count as f64 - 1.0) / 2.0;
+        let center_y = first.origin.y - dy * first.style.font_size;
+        if !center_y.is_finite() || center_y + dy * first.style.font_size != first.origin.y {
+            return Ok(None);
+        }
+        let commands = &document.commands[index + 1..index + 1 + count];
+        let last_text = commands.iter().rposition(|command| {
+            matches!(command,
+                DrawingCommand::DrawText { run } if crate::gantt::section_line_has_text(&run.text)
+            )
+        });
+        let mut cursor =
+            crate::gantt::GanttSectionLineCursor::new(center_y, first.style.font_size, count);
+        for (line_index, command) in commands.iter().enumerate() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let DrawingCommand::DrawText { run } = command else {
+                return Ok(None);
+            };
+            let has_later_text = last_text.is_some_and(|last| line_index < last);
+            if !cursor
+                .normalized_parts(&run.text, has_later_text)
+                .flat_map(str::bytes)
+                .eq(run.text.bytes())
+            {
+                return Ok(None);
+            }
+            if cursor.next_line(&run.text, has_later_text) != run.origin.y {
+                return Ok(None);
+            }
+        }
+        let font = self.font_families(&first.style.font)?;
+        write!(
+            self.output,
+            "<text xml:space=\"preserve\" dy=\"{}em\" x=\"{}\" y=\"{}\" font-size=\"{}\" class=\"{}\" style=\"font-family:",
+            fmt(dy),
+            fmt(first.origin.x),
+            fmt(center_y),
+            fmt(first.style.font_size),
+            escaped_attr(class)
+        )?;
+        output::escape_attr(&mut self.output, &font)?;
+        write!(
+            self.output,
+            ";font-weight:{};font-style:{};letter-spacing:{}px;text-anchor:start;fill:{};stroke:none;\"",
+            first.style.font.weight,
+            font_style(first.style.font.style),
+            fmt(first.style.letter_spacing),
+            color_css(color)
+        )?;
+        self.write_state_attrs()?;
+        self.output.push('>')?;
+        for (line_index, command) in document.commands[index + 1..index + 1 + count]
+            .iter()
+            .enumerate()
+        {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let DrawingCommand::DrawText { run } = command else {
+                return Err(invalid("Gantt section projection requires text commands"));
+            };
+            write!(
+                self.output,
+                "<tspan alignment-baseline=\"central\" x=\"{}\"",
+                fmt(run.origin.x)
+            )?;
+            if line_index != 0 {
+                self.output.push_str(" dy=\"1em\"")?;
+            }
+            self.output.push('>')?;
+            output::escape_xml(&mut self.output, &run.text)?;
+            self.output.push_str("</tspan>")?;
+        }
+        self.output.push_str("</text>")?;
+        Ok(Some(count + 2))
+    }
+
     // Fuse only an exact semantic-owned layer. An edited sequence with more commands or scopes
     // retains the ordinary serializer rather than losing those commands during DOM projection.
     fn gantt_tick_layer_at(&self, index: usize) -> bool {
