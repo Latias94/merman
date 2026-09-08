@@ -260,8 +260,12 @@ impl ThemeMaterializer {
             }),
             ..DiagramThemeSpecWireV1::default()
         };
-        MaterializedThemeWireV1::try_new(spec)
-            .map_err(|_| ThemeMaterializationError::InvalidTokenValue { path: "/styles" })
+        MaterializedThemeWireV1::try_new(spec).map_err(|_| {
+            ThemeMaterializationError::InvalidTokenValue {
+                path: "/styles".to_owned(),
+                expected_domain_id: "finite-theme-style-values",
+            }
+        })
     }
 }
 
@@ -273,7 +277,9 @@ pub(crate) enum ThemeMaterializationError {
     #[error("theme authoring value at `{path}` is invalid")]
     InvalidTokenValue {
         /// RFC 6901 path to the rejected token.
-        path: &'static str,
+        path: String,
+        /// Expected domain, independent of the location's array indices.
+        expected_domain_id: &'static str,
     },
     /// The explicitly authored ordinal series was empty.
     #[error("theme authoring series must not be empty")]
@@ -317,13 +323,14 @@ pub(crate) enum ThemeMaterializationError {
 impl ThemeMaterializationError {
     pub(crate) fn into_contract_error(self) -> ThemeMaterializationErrorV1 {
         let diagnostic = match self {
-            Self::InvalidTokenValue { path } => {
-                ThemeMaterializationDiagnosticV1::invalid_token_value(
-                    path,
-                    expected_domain_id(path),
-                    "theme authoring value is outside its expected domain",
-                )
-            }
+            Self::InvalidTokenValue {
+                path,
+                expected_domain_id,
+            } => ThemeMaterializationDiagnosticV1::invalid_token_value(
+                path,
+                expected_domain_id,
+                "theme authoring value is outside its expected domain",
+            ),
             Self::EmptySeries => ThemeMaterializationDiagnosticV1::empty_series(
                 "theme authoring series must not be empty",
             ),
@@ -364,27 +371,6 @@ impl ThemeMaterializationError {
             }
         };
         ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
-    }
-}
-
-fn expected_domain_id(path: &str) -> &'static str {
-    match path {
-        "/tokens/canvas"
-        | "/tokens/surface"
-        | "/tokens/surface_alt"
-        | "/tokens/surface_muted"
-        | "/tokens/text"
-        | "/tokens/border"
-        | "/tokens/line"
-        | "/tokens/accent" => "css-color",
-        "/tokens/series" | "/styles/ordinal-palette/colors" => "theme-color-series",
-        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack" => {
-            "font-stack"
-        }
-        "/tokens/typography/font_size_px" => "positive-finite-pixels",
-        "/tokens/typography/font_weight" => "font-weight-1-1000",
-        "/styles" => "finite-theme-style-values",
-        _ => "theme-authoring-value",
     }
 }
 
@@ -451,7 +437,8 @@ pub(crate) fn validate_definition_shape(
         }
         if series.len() > super::semantic::MAX_THEME_PALETTE_COLORS {
             return Err(ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/series",
+                path: "/tokens/series".to_owned(),
+                expected_domain_id: "theme-color-series",
             });
         }
     }
@@ -463,11 +450,12 @@ pub(crate) fn validate_definition_shape(
         && !font_stack_shape_is_valid(font_stack)
     {
         return Err(ThemeMaterializationError::InvalidTokenValue {
-            path: "/tokens/typography/font_stack",
+            path: "/tokens/typography/font_stack".to_owned(),
+            expected_domain_id: "font-stack",
         });
     }
 
-    for entry in definition.styles() {
+    for (authored_index, entry) in definition.styles().iter().enumerate() {
         match entry {
             ThemeRuleSetWireV1::Rule { style, .. } => {
                 let Some(typography) = style.typography.as_ref() else {
@@ -478,7 +466,8 @@ pub(crate) fn validate_definition_shape(
                 };
                 if !font_stack_shape_is_valid(font_stack) {
                     return Err(ThemeMaterializationError::InvalidTokenValue {
-                        path: "/styles/rule/style/typography/font_stack",
+                        path: format!("/styles/{authored_index}/style/typography/font_stack"),
+                        expected_domain_id: "font-stack",
                     });
                 }
             }
@@ -487,7 +476,8 @@ pub(crate) fn validate_definition_shape(
                     || colors.len() > super::semantic::MAX_THEME_PALETTE_COLORS =>
             {
                 return Err(ThemeMaterializationError::InvalidTokenValue {
-                    path: "/styles/ordinal-palette/colors",
+                    path: format!("/styles/{authored_index}/colors"),
+                    expected_domain_id: "theme-color-series",
                 });
             }
             ThemeRuleSetWireV1::OrdinalPalette { .. } => {}
@@ -519,6 +509,7 @@ impl ResolvedTokensV1 {
             colors.push(resolve_color(
                 authored.color(token).unwrap_or(default),
                 path,
+                "css-color",
             )?);
         }
         let colors: [String; ThemeColorTokenV1::ALL.len()] = colors
@@ -533,17 +524,18 @@ impl ResolvedTokensV1 {
         }
         if series_len > super::semantic::MAX_THEME_PALETTE_COLORS {
             return Err(ThemeMaterializationError::InvalidTokenValue {
-                path: "/tokens/series",
+                path: "/tokens/series".to_owned(),
+                expected_domain_id: "theme-color-series",
             });
         }
         let series = match authored.series() {
             Some(series) => series
                 .iter()
-                .map(|color| resolve_color(color, "/tokens/series"))
+                .map(|color| resolve_color(color, "/tokens/series", "theme-color-series"))
                 .collect::<Result<Vec<_>, _>>()?,
             None => DEFAULT_SERIES
                 .iter()
-                .map(|color| resolve_color(color, "/tokens/series"))
+                .map(|color| resolve_color(color, "/tokens/series", "theme-color-series"))
                 .collect::<Result<Vec<_>, _>>()?,
         };
 
@@ -564,10 +556,17 @@ impl ResolvedTokensV1 {
     }
 }
 
-fn resolve_color(value: &str, path: &'static str) -> Result<String, ThemeMaterializationError> {
+fn resolve_color(
+    value: &str,
+    path: &'static str,
+    expected_domain_id: &'static str,
+) -> Result<String, ThemeMaterializationError> {
     ThemeColorValue::parse(value)
         .map(|color| color.as_css())
-        .map_err(|_| ThemeMaterializationError::InvalidTokenValue { path })
+        .map_err(|_| ThemeMaterializationError::InvalidTokenValue {
+            path: path.to_owned(),
+            expected_domain_id,
+        })
 }
 
 fn resolve_typography(
@@ -586,17 +585,20 @@ fn resolve_typography(
         .unwrap_or(DEFAULT_FONT_WEIGHT);
     let stack =
         FontStack::new(font_stack).map_err(|_| ThemeMaterializationError::InvalidTokenValue {
-            path: "/tokens/typography/font_stack",
+            path: "/tokens/typography/font_stack".to_owned(),
+            expected_domain_id: "font-stack",
         })?;
     let validated_style = ThemeTextStyle::default()
         .with_font_stack(stack)
         .with_font_size_px(font_size_px)
         .map_err(|_| ThemeMaterializationError::InvalidTokenValue {
-            path: "/tokens/typography/font_size_px",
+            path: "/tokens/typography/font_size_px".to_owned(),
+            expected_domain_id: "positive-finite-pixels",
         })?
         .with_font_weight(font_weight)
         .map_err(|_| ThemeMaterializationError::InvalidTokenValue {
-            path: "/tokens/typography/font_weight",
+            path: "/tokens/typography/font_weight".to_owned(),
+            expected_domain_id: "font-weight-1-1000",
         })?;
     Ok(ThemeTextStyleWireV1 {
         font_stack: Some(validated_style.font_stack().families().to_vec()),

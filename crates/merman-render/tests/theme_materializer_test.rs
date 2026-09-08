@@ -6,6 +6,59 @@ use merman_theme_contract::{
 };
 
 #[test]
+fn authored_style_shape_errors_point_into_the_original_styles_array() {
+    let valid_rule = ThemeRuleSetWireV1::Rule {
+        target: "node".to_owned(),
+        family: None,
+        variant: None,
+        ordinal: None,
+        style: ThemeStylePatchWireV1::default(),
+    };
+    for (invalid, suffix, domain) in [
+        (
+            ThemeRuleSetWireV1::OrdinalPalette {
+                target: "node".to_owned(),
+                colors: Vec::new(),
+            },
+            "colors",
+            "theme-color-series",
+        ),
+        (
+            ThemeRuleSetWireV1::Rule {
+                target: "node".to_owned(),
+                family: None,
+                variant: None,
+                ordinal: None,
+                style: ThemeStylePatchWireV1 {
+                    typography: Some(merman_theme_contract::ThemeTextStylePatchWireV1 {
+                        font_stack: SpecifiedWireV1::Value(Vec::new()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            },
+            "style/typography/font_stack",
+            "font-stack",
+        ),
+    ] {
+        for index in [0, 2] {
+            let mut styles = vec![valid_rule.clone(); index];
+            styles.push(invalid.clone());
+            let definition = ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(styles);
+            let source = serde_json::to_value(&definition).expect("serialize input");
+            let error = materialize_theme(&definition).expect_err("reject invalid style shape");
+            let diagnostic = error.diagnostic();
+            assert_eq!(diagnostic.path(), format!("/styles/{index}/{suffix}"));
+            assert_eq!(diagnostic.expected_domain_id(), Some(domain));
+            assert_eq!(
+                source.pointer(diagnostic.path()),
+                Some(&serde_json::json!([]))
+            );
+        }
+    }
+}
+
+#[test]
 fn tokens_only_definition_materializes_the_complete_version_one_spec() {
     let definition = ThemeDefinitionV1::new(ThemeTokensV1::default());
 

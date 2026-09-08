@@ -360,6 +360,35 @@ mod tests {
             json!({}),
         );
 
+        for (entry, path, domain) in [
+            (
+                json!({"kind":"ordinal-palette","target":"node","colors":[]}),
+                "/styles/1/colors",
+                "theme-color-series",
+            ),
+            (
+                json!({"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}),
+                "/styles/1/style/typography/font_stack",
+                "font-stack",
+            ),
+        ] {
+            let input = json!({
+                "authoring_schema_version": 1,
+                "expansion_version": 1,
+                "tokens": {},
+                "styles": [{"kind":"rule","target":"text","style":{}}, entry]
+            });
+            assert_eq!(input.pointer(path), Some(&json!([])));
+            assert_theme_authoring_error(
+                &serde_json::to_vec(&input).expect("serialize definition"),
+                &policy,
+                crate::BindingStatus::InvalidArgument,
+                "theme-authoring.invalid-token-value",
+                path,
+                json!({"expected_domain_id": domain}),
+            );
+        }
+
         assert_theme_authoring_error(
             br##"{
                 "authoring_schema_version": 1,
