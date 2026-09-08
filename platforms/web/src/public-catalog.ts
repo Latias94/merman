@@ -155,6 +155,12 @@ export interface BindingCancellationErrorDetails {
   phase: string;
 }
 
+export interface BindingDrawingListErrorDetails {
+  category: string;
+  family: string | null;
+  reason: string | null;
+}
+
 export interface BindingErrorPayload {
   version: number;
   ok: false;
@@ -167,6 +173,7 @@ export interface BindingErrorPayload {
     diagnostic?: BindingDiagnosticErrorDetails;
     icon_registry?: Record<string, unknown>;
     cancellation?: BindingCancellationErrorDetails;
+    drawing_list?: BindingDrawingListErrorDetails;
   };
   message: string;
 }

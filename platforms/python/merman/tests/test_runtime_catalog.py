@@ -660,6 +660,21 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertIs(exported["MermanAsciiOutputPlan"], GeneratedAsciiOutputPlan)
         self.assertIn("MermanAsciiOutputPlan", merman.__all__)
 
+    def test_public_drawing_list_error_details_is_a_generated_top_level_export(self):
+        from merman import MermanDrawingListErrorDetails
+        from merman.merman_uniffi import (
+            MermanDrawingListErrorDetails as GeneratedDrawingListErrorDetails,
+        )
+
+        exported = {}
+        exec("from merman import *", exported)
+
+        self.assertIs(MermanDrawingListErrorDetails, GeneratedDrawingListErrorDetails)
+        self.assertIs(
+            exported["MermanDrawingListErrorDetails"], GeneratedDrawingListErrorDetails
+        )
+        self.assertIn("MermanDrawingListErrorDetails", merman.__all__)
+
     def test_public_star_export_includes_resource_options_api(self):
         exported = {}
         exec("from merman import *", exported)
