@@ -223,6 +223,22 @@ fn treemap_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
         .expect("compile Treemap title fill theme")
 }
 
+fn treemap_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(fill),
+                    )
+                    .for_family(DiagramFamilyId::TREEMAP),
+                ),
+            ),
+        )
+        .expect("compile Treemap text fill theme")
+}
+
 fn treemap_typography_theme(font_stack: FontStack) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_typography(
@@ -409,6 +425,32 @@ fn treemap_title_fill_reaches_terminal_css_and_title_text() {
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
+}
+
+#[test]
+fn treemap_text_fill_reaches_label_and_value_terminals() {
+    let theme =
+        treemap_text_fill_theme(CanvasPaint::solid("#123456").expect("valid Treemap text color"));
+    let rendered = render_treemap_with_theme(
+        "treemap\n\"Section\"\n  \"Leaf\": 12\n",
+        &theme,
+        Engine::new(),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Treemap SVG");
+    let stylesheet = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Treemap stylesheet");
+    assert!(stylesheet.contains(".treemapLabel{fill:#123456;"));
+    assert!(stylesheet.contains(".treemapValue{fill:#123456;"));
+
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

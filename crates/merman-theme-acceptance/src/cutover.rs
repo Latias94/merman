@@ -177,6 +177,10 @@ title Cutover treemap title
 "Section"
   "Leaf": 1
 "#;
+const TREEMAP_TEXT_SOURCE: &str = r#"treemap
+"Section"
+  "Leaf": 1
+"#;
 const RAILROAD_TITLE_SOURCE: &str = r#"railroad-beta
 expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
@@ -444,6 +448,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::TREEMAP, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(TREEMAP_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::TREEMAP, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(TREEMAP_TEXT_SOURCE)
         }
         (DiagramFamilyId::RAILROAD, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(RAILROAD_TITLE_SOURCE)
@@ -1436,11 +1443,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_288_routes_and_316_artifact_witnesses() {
+    fn route_inventory_retains_292_routes_and_324_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 288);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 316);
+        assert_eq!(inventory.len(), 292);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 324);
     }
 
     #[test]

@@ -446,6 +446,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::TREEMAP, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (DiagramFamilyId::INFO, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
@@ -1965,6 +1968,23 @@ pub(super) fn classify_rule_facet(
         } else {
             FamilyThemeDisposition::Unsupported
         };
+    }
+    if family == DiagramFamilyId::TREEMAP
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::VENN && target == ThemeTarget::Title {
         return if matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
@@ -6021,6 +6041,20 @@ mod tests {
                 vec!["title.fill"],
             ),
             (
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::TREEMAP,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
                 DiagramFamilyId::VENN,
                 ThemeTarget::Title,
                 Fill,
@@ -6087,7 +6121,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 142);
+        assert_eq!(qualified.len(), 144);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified

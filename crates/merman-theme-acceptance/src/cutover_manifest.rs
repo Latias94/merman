@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 51;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 52;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xaa, 0xf0, 0x85, 0xbd, 0x55, 0xa2, 0x6e, 0x34, 0x4e, 0xae, 0x16, 0x92, 0x98, 0x9a, 0x6e, 0xd3,
-    0x82, 0xe7, 0xe0, 0x64, 0x00, 0x21, 0xa8, 0x9a, 0x5c, 0x98, 0x67, 0x90, 0x69, 0xeb, 0x05, 0xa8,
+    0x48, 0x63, 0x8d, 0xc0, 0x34, 0xbb, 0x85, 0x0c, 0xf5, 0x9e, 0x47, 0x7a, 0x01, 0x18, 0x36, 0x8d,
+    0x2c, 0xb0, 0xb8, 0x3c, 0x39, 0xff, 0x83, 0x68, 0xb5, 0xd5, 0x18, 0x0d, 0x1e, 0x98, 0x62, 0xfe,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -355,7 +355,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 288] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 292] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Node,
@@ -1202,6 +1202,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 288] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TREEMAP,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::TREEMAP,

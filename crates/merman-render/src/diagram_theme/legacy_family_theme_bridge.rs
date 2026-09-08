@@ -16,11 +16,12 @@ use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
 use super::family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
+    FamilyThemeDisposition, FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
+    MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
 };
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::family_mechanism_matrix::{
-    LegacyCompatibilityRouteKey, legacy_compatibility_route_inventory,
+    LegacyCompatibilityRouteKey, classify_rule_facet, legacy_compatibility_route_inventory,
 };
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
 use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
@@ -35,10 +36,6 @@ use sha2::{Digest as _, Sha256};
 
 #[cfg(test)]
 use super::family_mechanism_matrix::FamilyThemeMechanism;
-#[cfg(any(test, feature = "internal-theme-acceptance"))]
-use super::family_mechanism_matrix::{
-    FamilyThemePaintKind, FamilyThemeSelectorShape, classify_rule_facet,
-};
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::legacy_projection_retirement::{
     ThemeLegacyProjectionDisposition, ThemeLegacyProjectionObservation,
@@ -544,7 +541,32 @@ fn legacy_family_dispatch(
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
-        DiagramFamilyId::C4 | DiagramFamilyId::TREEMAP => LegacyFamilyDispatch::Text,
+        DiagramFamilyId::C4 => {
+            if super::family_mechanism_matrix::classify_rule_facet(
+                family,
+                ThemeTarget::Text,
+                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ) == FamilyThemeDisposition::LegacyCompatibility
+            {
+                LegacyFamilyDispatch::Text
+            } else {
+                LegacyFamilyDispatch::NoLegacy
+            }
+        }
+        DiagramFamilyId::TREEMAP => {
+            if super::family_mechanism_matrix::classify_rule_facet(
+                family,
+                ThemeTarget::Text,
+                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ) == FamilyThemeDisposition::LegacyCompatibility
+            {
+                LegacyFamilyDispatch::Text
+            } else {
+                LegacyFamilyDispatch::NoLegacy
+            }
+        }
         DiagramFamilyId::STATE
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
@@ -1528,14 +1550,14 @@ mod tests {
 
         let partial = legacy_projection_probe(
             super::super::legacy_tombstones::ThemeLegacyRouteId::new(
-                DiagramFamilyId::TREEMAP,
+                DiagramFamilyId::C4,
                 ThemeTarget::Text,
                 ThemeLegacyRouteSelector::StaticUnqualified,
                 ThemeLegacyRouteFacet::Fill,
             ),
             ThemeLegacyRouteValue::Solid,
         )
-        .expect("observe current Treemap text facts");
+        .expect("observe current C4 text facts");
         assert_eq!(
             partial.disposition(),
             ThemeLegacyProjectionDisposition::LegacyCompatibility
@@ -1621,7 +1643,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_treemap_title_fill_suppresses_only_the_title_projection() {
+    fn typed_treemap_text_and_title_fill_suppress_their_projections() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
@@ -1643,7 +1665,7 @@ mod tests {
         let artifact = bridge.compile_for_family(DiagramFamilyId::TREEMAP);
 
         assert!(
-            artifact
+            !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.treemap.text.fill")
         );
@@ -2430,6 +2452,7 @@ mod tests {
                 DiagramFamilyId::PIE,
                 DiagramFamilyId::RAILROAD,
                 DiagramFamilyId::SANKEY,
+                DiagramFamilyId::TREEMAP,
                 DiagramFamilyId::ZENUML,
                 DiagramFamilyId::VENN,
             ])
@@ -2439,30 +2462,30 @@ mod tests {
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0xcc, 0x78, 0xeb, 0xdd, 0x8d, 0x32, 0xee, 0xb6, 0x96, 0x5b, 0x1d, 0x94, 0x59, 0xb0,
-            0xa2, 0xa1, 0xec, 0x28, 0x43, 0x86, 0x24, 0x88, 0x7d, 0x9c, 0x8f, 0x03, 0x3c, 0xdd,
-            0xb9, 0x67, 0x5a, 0x61,
+            0x80, 0xaf, 0x43, 0xcf, 0x1c, 0xc5, 0x17, 0x00, 0x98, 0x8a, 0xdf, 0x8f, 0x58, 0x3d,
+            0x04, 0xef, 0xb2, 0x9e, 0x9b, 0xbd, 0x26, 0x62, 0xa3, 0x31, 0xd9, 0xc4, 0xa7, 0x64,
+            0xe3, 0x42, 0x75, 0x8e,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 266);
-        assert_eq!(status.matrix_family_count(), 16);
-        assert_eq!(status.dispatched_family_count(), 16);
+        assert_eq!(status.matrix_route_count(), 262);
+        assert_eq!(status.matrix_family_count(), 15);
+        assert_eq!(status.dispatched_family_count(), 15);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                0x8f, 0xd4, 0xcd, 0x68, 0x8d, 0x87, 0xc3, 0xeb, 0xa8, 0x6a, 0xc2, 0x91, 0xa8, 0x9e,
-                0x35, 0xd5, 0x21, 0xea, 0x3e, 0x93, 0xee, 0xa3, 0xa9, 0x97, 0xf5, 0xc0, 0x08, 0xfc,
-                0x0b, 0x6c, 0x0c, 0x67,
+                0x7d, 0x65, 0x68, 0xb9, 0x03, 0xde, 0x92, 0xe0, 0xa2, 0x31, 0xf9, 0x42, 0x64, 0xdc,
+                0x05, 0x1e, 0x8d, 0x5a, 0xe9, 0x1e, 0x81, 0xc9, 0xa5, 0x39, 0x1b, 0xc3, 0x3d, 0x64,
+                0x87, 0x3f, 0x9e, 0xca,
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                0x4a, 0xc2, 0x67, 0x2f, 0x90, 0x43, 0xa3, 0xe4, 0xad, 0x5a, 0x39, 0x9e, 0x53, 0x01,
-                0xa4, 0xd7, 0x09, 0x2c, 0x30, 0xec, 0x8a, 0xe8, 0xe5, 0x60, 0x7e, 0x7b, 0xb7, 0x16,
-                0xf3, 0xaf, 0xf8, 0x22,
+                0xe3, 0x09, 0xb6, 0xbf, 0x7f, 0xd4, 0xce, 0x65, 0x99, 0x40, 0x80, 0x13, 0x2a, 0xea,
+                0xe9, 0x72, 0xb8, 0x8f, 0x63, 0x58, 0x70, 0x90, 0x40, 0x6d, 0xb6, 0xee, 0x40, 0xcb,
+                0xaf, 0x43, 0x7f, 0x63,
             ]
         );
         assert_eq!(
