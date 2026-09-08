@@ -576,97 +576,102 @@ impl ClassTypographyTerminalFacts {
         writer_inherited_runs: usize,
         unverified_runs: usize,
     ) -> Self {
-        Self::new_with_font_size(
-            visible_runs,
-            layout_inherited_runs,
-            writer_inherited_runs,
-            unverified_runs,
-            layout_inherited_runs,
-            writer_inherited_runs,
-            if layout_inherited_runs < writer_inherited_runs {
-                layout_inherited_runs
-            } else {
-                writer_inherited_runs
-            },
-            unverified_runs,
-        )
-    }
-
-    pub(crate) const fn new_with_font_size(
-        visible_runs: usize,
-        layout_inherited_runs: usize,
-        writer_inherited_runs: usize,
-        unverified_runs: usize,
-        layout_inherited_size_runs: usize,
-        writer_inherited_size_runs: usize,
-        fully_inherited_size_runs: usize,
-        unverified_size_runs: usize,
-    ) -> Self {
         Self {
             visible_runs,
             layout_inherited_runs,
             writer_inherited_runs,
             unverified_runs,
-            layout_inherited_size_runs,
-            writer_inherited_size_runs,
-            fully_inherited_size_runs,
-            unverified_size_runs,
+            layout_inherited_size_runs: layout_inherited_runs,
+            writer_inherited_size_runs: writer_inherited_runs,
+            fully_inherited_size_runs: if layout_inherited_runs < writer_inherited_runs {
+                layout_inherited_runs
+            } else {
+                writer_inherited_runs
+            },
+            unverified_size_runs: unverified_runs,
         }
     }
 
     pub(crate) fn from_node_style_facts(facts: ClassNodeLabelStyleFacts) -> Self {
-        Self::new_with_font_size(
-            facts.visible_run_count(),
-            facts.layout_inherited_font_run_count(),
-            facts.writer_inherited_font_run_count(),
-            facts.unverified_font_run_count(),
-            facts.layout_inherited_font_size_run_count(),
-            facts.writer_inherited_font_size_run_count(),
-            facts.fully_inherited_font_size_run_count(),
-            facts.unverified_font_size_run_count(),
-        )
+        Self {
+            visible_runs: facts.visible_run_count(),
+            layout_inherited_runs: facts.layout_inherited_font_run_count(),
+            writer_inherited_runs: facts.writer_inherited_font_run_count(),
+            unverified_runs: facts.unverified_font_run_count(),
+            layout_inherited_size_runs: facts.layout_inherited_font_size_run_count(),
+            writer_inherited_size_runs: facts.writer_inherited_font_size_run_count(),
+            fully_inherited_size_runs: facts.fully_inherited_font_size_run_count(),
+            unverified_size_runs: facts.unverified_font_size_run_count(),
+        }
     }
 
     pub(crate) fn inherited_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
-        Self::new_with_font_size(
+        Self {
             visible_runs,
-            visible_runs,
-            visible_runs,
-            0,
-            visible_runs,
-            visible_runs,
-            visible_runs,
-            0,
-        )
+            layout_inherited_runs: visible_runs,
+            writer_inherited_runs: visible_runs,
+            unverified_runs: 0,
+            layout_inherited_size_runs: visible_runs,
+            writer_inherited_size_runs: visible_runs,
+            fully_inherited_size_runs: visible_runs,
+            unverified_size_runs: 0,
+        }
     }
 
     pub(crate) fn unverified_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
-        Self::new_with_font_size(visible_runs, 0, 0, visible_runs, 0, 0, 0, visible_runs)
+        Self {
+            visible_runs,
+            layout_inherited_runs: 0,
+            writer_inherited_runs: 0,
+            unverified_runs: visible_runs,
+            layout_inherited_size_runs: 0,
+            writer_inherited_size_runs: 0,
+            fully_inherited_size_runs: 0,
+            unverified_size_runs: visible_runs,
+        }
     }
 
     pub(crate) fn fixed_font_size_text(text: &str) -> Self {
         let visible_runs = crate::text::VisibleTextStyleFacts::plain_text(text).visible_run_count();
-        Self::new_with_font_size(visible_runs, visible_runs, visible_runs, 0, 0, 0, 0, 0)
+        Self {
+            visible_runs,
+            layout_inherited_runs: visible_runs,
+            writer_inherited_runs: visible_runs,
+            unverified_runs: 0,
+            layout_inherited_size_runs: 0,
+            writer_inherited_size_runs: 0,
+            fully_inherited_size_runs: 0,
+            unverified_size_runs: 0,
+        }
     }
 
     pub(crate) fn from_visible_style_facts(facts: &crate::text::VisibleTextStyleFacts) -> Self {
         if !facts.parse_valid() {
-            return Self::new_with_font_size(1, 0, 0, 1, 0, 0, 0, 1);
+            return Self {
+                visible_runs: 1,
+                layout_inherited_runs: 0,
+                writer_inherited_runs: 0,
+                unverified_runs: 1,
+                layout_inherited_size_runs: 0,
+                writer_inherited_size_runs: 0,
+                fully_inherited_size_runs: 0,
+                unverified_size_runs: 1,
+            };
         }
         let visible_runs = facts.visible_run_count();
         let inherited_runs = facts.inherited_font_family_run_count();
-        Self::new_with_font_size(
+        Self {
             visible_runs,
-            inherited_runs,
-            inherited_runs,
-            facts.unverified_font_family_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.inherited_font_size_run_count(),
-            facts.unverified_font_size_run_count(),
-        )
+            layout_inherited_runs: inherited_runs,
+            writer_inherited_runs: inherited_runs,
+            unverified_runs: facts.unverified_font_family_run_count(),
+            layout_inherited_size_runs: facts.inherited_font_size_run_count(),
+            writer_inherited_size_runs: facts.inherited_font_size_run_count(),
+            fully_inherited_size_runs: facts.inherited_font_size_run_count(),
+            unverified_size_runs: facts.unverified_font_size_run_count(),
+        }
     }
 
     fn merge(&mut self, other: Self) {
@@ -962,6 +967,48 @@ fn class_terminal_expected_visibility(text: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn node_style_fact_projection_preserves_independent_typography_counts() {
+        let source = ClassNodeLabelStyleFacts {
+            visible_runs: 11,
+            inherited_color_runs: 9,
+            color_ownership_unverified: true,
+            layout_inherited_font_runs: 8,
+            writer_inherited_font_runs: 7,
+            unverified_font_runs: 2,
+            layout_inherited_font_size_runs: 6,
+            writer_inherited_font_size_runs: 5,
+            fully_inherited_font_size_runs: 4,
+            unverified_font_size_runs: 3,
+        };
+        assert_eq!(
+            ClassTypographyTerminalFacts::from_node_style_facts(source),
+            ClassTypographyTerminalFacts {
+                visible_runs: 11,
+                layout_inherited_runs: 8,
+                writer_inherited_runs: 7,
+                unverified_runs: 2,
+                layout_inherited_size_runs: 6,
+                writer_inherited_size_runs: 5,
+                fully_inherited_size_runs: 4,
+                unverified_size_runs: 3,
+            }
+        );
+        assert_eq!(
+            ClassTypographyTerminalFacts::fixed_font_size_text("cardinality"),
+            ClassTypographyTerminalFacts {
+                visible_runs: 1,
+                layout_inherited_runs: 1,
+                writer_inherited_runs: 1,
+                unverified_runs: 0,
+                layout_inherited_size_runs: 0,
+                writer_inherited_size_runs: 0,
+                fully_inherited_size_runs: 0,
+                unverified_size_runs: 0,
+            }
+        );
+    }
 
     fn empty_receipt() -> ClassTypographyThemeReceipt {
         ClassTypographyThemeReceipt {

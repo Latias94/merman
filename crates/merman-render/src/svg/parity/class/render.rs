@@ -22,32 +22,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_class_diagram_svg_model_inner(
-        layout,
-        model,
-        relation_theme,
-        typography_theme,
-        theme_evidence,
-        effective_config.as_value(),
-        Some(effective_config),
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-fn render_class_diagram_svg_model_inner(
-    layout: &ClassDiagramLayout,
-    model: &ClassSvgModel,
-    relation_theme: &crate::class::ClassRelationThemePlan,
-    typography_theme: &crate::class::ClassTypographyThemePlan,
-    theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
-    effective_config: &serde_json::Value,
-    borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
+    let mermaid_config = effective_config;
+    let effective_config = effective_config.as_value();
     let timing = options.timing();
     let total_timer = timing.start();
     let mut timings = RenderTimings::default();
@@ -57,7 +33,6 @@ fn render_class_diagram_svg_model_inner(
     let checkpoint_emit = || options.checkpoint_emit();
     let emit = ClassEmitCheckpoint::new(&checkpoint_emit);
     let aria_roledescription = model.diagram_type.as_str();
-    let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
     let build_ctx_guard = timing.section(&mut timings.build_ctx);
     let hand_drawn_seed = options.rough_randomness(
@@ -74,7 +49,7 @@ fn render_class_diagram_svg_model_inner(
         diagram_title,
         settings.diagram_use_html_labels,
         settings.edge_use_html_labels,
-        borrowed_sanitize_config,
+        Some(mermaid_config),
     );
     let node_expectations = relation_theme.resolve_node_expectations(
         model.classes.keys().cloned().chain(
@@ -197,7 +172,7 @@ fn render_class_diagram_svg_model_inner(
         edge_use_html_labels: settings.edge_use_html_labels,
         text_measurer: measurer,
         terminal_text_style: &terminal_text_style,
-        mermaid_config: borrowed_sanitize_config,
+        mermaid_config: Some(mermaid_config),
         math_renderer: options.math_renderer(),
         look: settings.look.as_str(),
         hand_drawn_seed: settings.hand_drawn_seed.clone(),
@@ -222,10 +197,9 @@ fn render_class_diagram_svg_model_inner(
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,
         settings: &settings,
-        effective_config,
         diagram_id,
         measurer,
-        mermaid_config: borrowed_sanitize_config,
+        mermaid_config,
         math_renderer: options.math_renderer(),
         node_theme_expectations: &node_expectations_by_id,
         typography_theme,
@@ -241,8 +215,6 @@ fn render_class_diagram_svg_model_inner(
                 out: &mut out,
                 content_bounds: &mut content_bounds,
                 detail: &mut detail,
-                sanitize_config: &mut sanitize_config,
-                borrowed_sanitize_config,
             },
             &nodes_ctx,
             &group_ctx,
@@ -259,8 +231,6 @@ fn render_class_diagram_svg_model_inner(
                 out: &mut out,
                 content_bounds: &mut content_bounds,
                 detail: &mut detail,
-                sanitize_config: &mut sanitize_config,
-                borrowed_sanitize_config,
             },
             &nodes_ctx,
             &group_ctx,

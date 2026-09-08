@@ -95,13 +95,11 @@ impl ClassNodeThemePlan {
         )?;
         let mut static_winner_rules = node_style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| ((ThemeTarget::Node, property), origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
         static_winner_rules.extend(
             node_label_style
                 .winner_rule_properties()
-                .into_iter()
                 .map(|(property, origin)| {
                     ((ThemeTarget::NodeLabel, property), origin.rule_index())
                 }),
@@ -143,7 +141,6 @@ impl ClassNodeThemePlan {
                 self.ordinal_winner_rules.extend(
                     ordinal_style
                         .winner_rule_properties()
-                        .into_iter()
                         .map(|(property, origin)| (target, origin.rule_index(), property)),
                 );
             }

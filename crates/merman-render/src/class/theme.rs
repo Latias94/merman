@@ -25,20 +25,22 @@ pub(crate) use typography::{
     ClassTypographyThemePlan, ClassTypographyThemeReceipt,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 enum ClassRelationStrokeWidth {
+    #[default]
     Unspecified,
-    Clear { rule_index: usize },
+    Clear {
+        rule_index: usize,
+    },
     // Keep Mermaid ownership even when its CSS value cannot be reduced to a finite paint width;
     // an unmeasurable source value must not accidentally fall back to the typed default.
-    MermaidOwned { paint_width: Option<f32> },
-    Typed { rule_index: usize, value: f32 },
-}
-
-impl Default for ClassRelationStrokeWidth {
-    fn default() -> Self {
-        Self::Unspecified
-    }
+    MermaidOwned {
+        paint_width: Option<f32>,
+    },
+    Typed {
+        rule_index: usize,
+        value: f32,
+    },
 }
 
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
@@ -98,7 +100,6 @@ impl ClassRelationThemePlan {
         )?;
         let static_winner_rules = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
         node_plan.resolve_static(theme, work_meter)?;

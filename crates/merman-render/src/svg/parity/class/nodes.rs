@@ -46,8 +46,6 @@ pub(super) struct ClassNodesRenderState<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
-    pub(super) sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    pub(super) borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 pub(super) struct ClassNodesRenderContext<'a> {
@@ -56,10 +54,9 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
     pub(super) settings: &'a ClassRenderSettings,
-    pub(super) effective_config: &'a serde_json::Value,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub(super) mermaid_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_theme_expectations:
         &'a FxHashMap<&'a str, &'a crate::class::ClassNodeTerminalExpectation>,
@@ -81,8 +78,6 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let layout_nodes_by_id = ctx
         .layout
@@ -171,7 +166,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
-                            mermaid_config: ctx.mermaid_config,
+                            mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                             emit: ctx.emit,
@@ -204,7 +199,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
                             look: ctx.settings.look.as_str(),
-                            mermaid_config: ctx.mermaid_config,
+                            mermaid_config: Some(ctx.mermaid_config),
                             math_renderer: ctx.math_renderer,
                             timing: ctx.timing,
                             emit: ctx.emit,
@@ -264,8 +259,6 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                         out,
                         content_bounds,
                         detail,
-                        sanitize_config,
-                        borrowed_sanitize_config,
                     },
                     ctx,
                     &layout_nodes_by_id,
@@ -308,8 +301,6 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let layout_nodes_by_id = ctx
         .layout
@@ -371,7 +362,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             bounds_dx: 0.0,
             bounds_dy: 0.0,
             look: ctx.settings.look.as_str(),
-            mermaid_config: ctx.mermaid_config,
+            mermaid_config: Some(ctx.mermaid_config),
             math_renderer: ctx.math_renderer,
             timing: ctx.timing,
             emit: ctx.emit,
@@ -401,8 +392,6 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
                 out,
                 content_bounds,
                 detail,
-                sanitize_config,
-                borrowed_sanitize_config,
             },
             ctx,
             &layout_nodes_by_id,
@@ -679,8 +668,6 @@ fn render_class_node_id<O: SvgOutput>(
         out,
         content_bounds,
         detail,
-        sanitize_config,
-        borrowed_sanitize_config,
     } = state;
     let settings = ctx.settings;
 
@@ -715,15 +702,12 @@ fn render_class_node_id<O: SvgOutput>(
             ClassNoteRenderState {
                 out,
                 content_bounds,
-                sanitize_config,
-                borrowed_sanitize_config,
             },
             note,
             n,
             position,
             &ClassNoteRenderContext {
                 diagram_id: ctx.diagram_id,
-                effective_config: ctx.effective_config,
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
@@ -762,7 +746,7 @@ fn render_class_node_id<O: SvgOutput>(
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
                 look: settings.look.as_str(),
-                mermaid_config: ctx.mermaid_config,
+                mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
                 theme_expectation: expectation,
                 emit: ctx.emit,
@@ -893,7 +877,7 @@ fn render_class_node_id<O: SvgOutput>(
                 node_stroke_width,
                 node_stroke_dasharray,
                 look: settings.look.as_str(),
-                mermaid_config: ctx.mermaid_config,
+                mermaid_config: Some(ctx.mermaid_config),
                 math_renderer: ctx.math_renderer,
                 timing: ctx.timing,
             },

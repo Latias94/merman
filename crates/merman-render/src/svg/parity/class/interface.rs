@@ -63,9 +63,11 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     let emitted_label_fill = ctx.theme_expectation.typed_label_fill(label_source_owned);
     let container_style = "opacity:0 !important";
     let label_style = class_node_label_style("", emitted_label_fill.as_ref().map(|(_, css)| *css));
-    let label_style_attr = (!label_style.is_empty())
-        .then(|| format!(r#" style="{}""#, escape_attr_display(&label_style)))
-        .unwrap_or_default();
+    let label_style_attr = if !label_style.is_empty() {
+        format!(r#" style="{}""#, escape_attr_display(&label_style))
+    } else {
+        String::new()
+    };
 
     include_xywh(
         content_bounds,

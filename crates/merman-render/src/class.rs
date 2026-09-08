@@ -2255,7 +2255,6 @@ pub(crate) fn layout_class_diagram_typed_with_config(
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
         model,
-        effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
@@ -2284,7 +2283,6 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 ) -> Result<ClassDiagramLayout> {
     match layout_class_diagram_typed_inner(
         model,
-        effective_config.as_value(),
         effective_config,
         measurer,
         math_renderer,
@@ -2299,7 +2297,6 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
 
 fn layout_class_diagram_typed_inner(
     model: &ClassDiagramModel,
-    effective_config: &Value,
     mermaid_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -2323,7 +2320,7 @@ fn layout_class_diagram_typed_inner(
         wrap_probe_font_size,
         title_margin_top,
         title_margin_bottom,
-    } = ClassConfigView::new(effective_config).layout_settings();
+    } = ClassConfigView::new(mermaid_config.as_value()).layout_settings();
     typography_theme.apply_layout_text_styles(&mut text_style, &mut html_calc_text_style);
     if !typography_theme.seal_layout_font_size(text_style.font_size) {
         return Err(crate::Error::InvalidModel {
@@ -2626,7 +2623,6 @@ fn layout_class_diagram_typed_inner(
                 namespace_padding,
                 title_margin_top,
                 title_margin_bottom,
-                effective_config,
                 text_style: &text_style,
                 wrap_mode_label,
                 mermaid_config,
@@ -2832,7 +2828,6 @@ pub fn debug_build_class_diagram_dagre_graph(
     let typography_theme = ClassTypographyThemePlan::resolve(None, effective_config);
     match layout_class_diagram_typed_inner(
         model,
-        effective_config.as_value(),
         effective_config,
         measurer,
         None,
@@ -2925,7 +2920,6 @@ struct ClassElkLayoutSettings<'a> {
     namespace_padding: f64,
     title_margin_top: f64,
     title_margin_bottom: f64,
-    effective_config: &'a Value,
     text_style: &'a TextStyle,
     wrap_mode_label: WrapMode,
     mermaid_config: &'a merman_core::MermaidConfig,
@@ -3047,7 +3041,7 @@ fn class_graph_to_elk_graph(
             group_padding_y: settings.namespace_padding,
             ..Default::default()
         },
-        options: class_elk_layout_options(settings.effective_config),
+        options: class_elk_layout_options(settings.mermaid_config.as_value()),
     }
 }
 
@@ -3642,7 +3636,6 @@ mod tests {
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,
-            effective_config: &serde_json::Value::Null,
             text_style: &text_style,
             wrap_mode_label: WrapMode::default(),
             mermaid_config: &mermaid_config,

@@ -20,12 +20,11 @@ use super::rough::{
 
 pub(super) struct ClassNoteRenderContext<'a> {
     pub diagram_id: SvgDiagramId<'a>,
-    pub effective_config: &'a serde_json::Value,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
-    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub mermaid_config: &'a merman_core::MermaidConfig,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
     pub hand_drawn_seed: roughr::core::RoughRandomness,
@@ -36,8 +35,6 @@ pub(super) struct ClassNoteRenderContext<'a> {
 pub(super) struct ClassNoteRenderState<'a, O: SvgOutput> {
     pub out: &'a mut O,
     pub content_bounds: &'a mut Option<Bounds>,
-    pub sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    pub borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -57,8 +54,6 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
 ) -> crate::Result<ClassNoteRenderStats> {
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
-    let sanitize_config = &mut *state.sanitize_config;
-    let borrowed_sanitize_config = state.borrowed_sanitize_config;
     let mut stats = ClassNoteRenderStats::default();
 
     let note_src = note.text.trim();
@@ -67,16 +62,11 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         match (layout_node.label_width, layout_node.label_height) {
             (Some(w), Some(h)) => (w, h),
             _ => {
-                let note_html_config = class_note_sanitize_config(
-                    borrowed_sanitize_config,
-                    sanitize_config,
-                    ctx.effective_config,
-                );
                 let metrics = crate::class::class_html_measure_note_metrics(
                     ctx.measurer,
                     ctx.text_style,
                     note_src,
-                    note_html_config,
+                    ctx.mermaid_config,
                 );
                 (metrics.width, metrics.height)
             }
@@ -134,8 +124,8 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         label_h,
     );
     let path_bounds_start = ctx.timing.start();
-    let note_fill = theme_token(ctx.effective_config, "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_token(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let note_fill = theme_token(ctx.mermaid_config.as_value(), "noteBkgColor", "#fff5ad");
+    let note_stroke = theme_token(ctx.mermaid_config.as_value(), "noteBorderColor", "#aaaa33");
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -230,19 +220,14 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
             note_span_class,
         );
         let sanitize_start = ctx.timing.start();
-        let note_html_config = class_note_sanitize_config(
-            borrowed_sanitize_config,
-            sanitize_config,
-            ctx.effective_config,
-        );
         let note_html = if let Some(math_html) =
-            class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
+            class_math_html_label(note_src, Some(ctx.mermaid_config), ctx.math_renderer)
         {
             stats.typography =
                 crate::class::ClassTypographyTerminalFacts::unverified_text(note_src);
             math_html
         } else {
-            let html = crate::class::class_note_html_fragment(note_src, note_html_config);
+            let html = crate::class::class_note_html_fragment(note_src, ctx.mermaid_config);
             let note_html = format!("<p>{html}</p>");
             let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
             stats.typography =
@@ -280,16 +265,4 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     }
 
     Ok(stats)
-}
-
-fn class_note_sanitize_config<'a>(
-    borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
-    owned_sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
-    effective_config: &serde_json::Value,
-) -> &'a merman_core::MermaidConfig {
-    if let Some(config) = borrowed_sanitize_config {
-        return config;
-    }
-    owned_sanitize_config
-        .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
 }
