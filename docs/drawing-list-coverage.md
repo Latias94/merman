@@ -87,6 +87,10 @@ Referenced linear gradients are now placed with their link paint, retain source 
 project edited public colors/transforms without copying them into the sidecar. Unreferenced
 resources cannot create painted links.
 
+Linear gradient projection now omits only SVG-equivalent default ordinates, identity transforms,
+and pad spread, and spells Sankey stop offsets as percentages. Mutation coverage preserves
+nondefault ordinates, transforms, reflect spread, fractional offsets, and stop alpha.
+
 The root background is an explicit public paint command. SVG projects the full-viewport white
 paint into its root background style; changing or removing that command changes the output
 without retaining an implicit white background. The mutation regression covers both cases.

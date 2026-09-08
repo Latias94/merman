@@ -1191,19 +1191,39 @@ impl<'a> DocumentSvgEncoder<'a> {
         id: &str,
         gradient: &merman_display_list::LinearGradientResource,
     ) -> Result<()> {
+        let compact = matches!(self.svg_body, SvgStructureBody::Sankey(_));
         write!(
             self.output,
-            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientTransform=\"matrix({})\" spreadMethod=\"{}\">",
+            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" x2=\"{}\"",
             escaped_attr(id),
             fmt(gradient.start.x),
-            fmt(gradient.start.y),
             fmt(gradient.end.x),
-            fmt(gradient.end.y),
-            matrix_attr(gradient.transform),
-            spread_method(gradient.spread),
         )
         .map_err(|_| invalid("failed to write linear gradient"))?;
-        self.write_stops(&gradient.stops);
+        for (name, value) in [("y1", gradient.start.y), ("y2", gradient.end.y)] {
+            if !compact || value != 0.0 {
+                write!(self.output, " {name}=\"{}\"", fmt(value))
+                    .map_err(|_| invalid("linear gradient ordinate"))?;
+            }
+        }
+        if !compact || gradient.transform != Transform::IDENTITY {
+            write!(
+                self.output,
+                " gradientTransform=\"matrix({})\"",
+                matrix_attr(gradient.transform)
+            )
+            .map_err(|_| invalid("linear gradient transform"))?;
+        }
+        if !compact || gradient.spread != GradientSpread::Pad {
+            write!(
+                self.output,
+                " spreadMethod=\"{}\"",
+                spread_method(gradient.spread)
+            )
+            .map_err(|_| invalid("linear gradient spread"))?;
+        }
+        self.output.push('>');
+        self.write_stops(&gradient.stops, compact);
         self.output.push_str("</linearGradient>");
         Ok(())
     }
@@ -1226,18 +1246,27 @@ impl<'a> DocumentSvgEncoder<'a> {
             spread_method(gradient.spread),
         )
         .map_err(|_| invalid("failed to write radial gradient"))?;
-        self.write_stops(&gradient.stops);
+        self.write_stops(&gradient.stops, false);
         self.output.push_str("</radialGradient>");
         Ok(())
     }
 
-    fn write_stops(&mut self, stops: &[merman_display_list::GradientStop]) {
+    fn write_stops(
+        &mut self,
+        stops: &[merman_display_list::GradientStop],
+        percentage_offsets: bool,
+    ) {
         for stop in stops {
             let color = color_css(stop.color);
             write!(
                 self.output,
-                "<stop offset=\"{}\" stop-color=\"{}\"{} />",
-                fmt(stop.offset),
+                "<stop offset=\"{}{}\" stop-color=\"{}\"{} />",
+                fmt(if percentage_offsets {
+                    stop.offset * 100.0
+                } else {
+                    stop.offset
+                }),
+                if percentage_offsets { "%" } else { "" },
                 color,
                 opacity_attr(stop.color.alpha),
             )

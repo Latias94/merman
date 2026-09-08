@@ -2183,6 +2183,18 @@ mod tests {
             let id = format!("sankey-gradients-linearGradient-{}", index + 4);
             assert_eq!(gradient.attribute("id"), Some(id.as_str()));
             assert_eq!(gradient.attribute("gradientUnits"), Some("userSpaceOnUse"));
+            for attribute in ["y1", "y2", "gradientTransform", "spreadMethod"] {
+                assert!(
+                    gradient.attribute(attribute).is_none(),
+                    "default {attribute} must be omitted"
+                );
+            }
+            let offsets = gradient
+                .children()
+                .filter(|node| node.has_tag_name("stop"))
+                .map(|node| node.attribute("offset").unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(offsets, ["0%", "100%"]);
             let path = gradient.next_sibling_element().unwrap();
             assert!(path.has_tag_name("path"));
             assert_eq!(
@@ -2198,12 +2210,29 @@ mod tests {
         for resource in &mut document.public.resources {
             if let DrawingResource::LinearGradient(gradient) = resource {
                 gradient.stops[0].color = Color::rgba(12, 34, 56, 128);
+                gradient.stops[0].offset = 0.25;
                 gradient.transform.e = 7.0;
+                gradient.start.y = 12.0;
+                gradient.end.y = 34.0;
+                gradient.spread = merman_display_list::GradientSpread::Reflect;
             }
         }
         let svg = render(&document);
         assert!(svg.contains("#0c2238"));
         assert!(svg.contains("gradientTransform=\"matrix(1 0 0 1 7 0)\""));
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        for gradient in xml
+            .descendants()
+            .filter(|node| node.has_tag_name("linearGradient"))
+        {
+            assert_eq!(gradient.attribute("y1"), Some("12"));
+            assert_eq!(gradient.attribute("y2"), Some("34"));
+            assert_eq!(gradient.attribute("spreadMethod"), Some("reflect"));
+            let stop = gradient.first_element_child().unwrap();
+            assert_eq!(stop.attribute("offset"), Some("25%"));
+            let alpha: f64 = stop.attribute("stop-opacity").unwrap().parse().unwrap();
+            assert!((alpha - 128.0 / 255.0).abs() < 0.001);
+        }
         // A retained resource is not proof of a paint operation. Removing the command must
         // remove its inline definition; it may remain an inert general resource definition.
         document.public.commands.retain(|command| {
