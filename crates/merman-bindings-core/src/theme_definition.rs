@@ -421,6 +421,30 @@ mod tests {
     }
 
     #[test]
+    fn binding_materialization_collection_error_preserves_indexed_location() {
+        let input = json!({
+            "authoring_schema_version": 1,
+            "expansion_version": 1,
+            "tokens": {},
+            "styles": [
+                {"kind":"rule","target":"text","style":{}},
+                {"kind":"ordinal-palette","target":"node","colors":vec!["#123456";257]}
+            ]
+        });
+        let error = assert_theme_authoring_error(
+            &serde_json::to_vec(&input).unwrap(),
+            &ThemeResourcePolicy::default(),
+            crate::BindingStatus::InvalidArgument,
+            "theme-authoring.resource-limit-exceeded",
+            "/styles/1/colors",
+            json!({"limit_id":"max_theme_palette_colors", "actual":257, "max":256}),
+        );
+        // Fixed structural ceilings are not entries in the adjustable resource catalog.
+        assert!(error.resource_details().is_none());
+        assert!(input.pointer("/styles/1/colors").is_some());
+    }
+
+    #[test]
     fn binding_materialization_resource_error_keeps_both_detail_envelopes() {
         let policy = ThemeResourcePolicy::default()
             .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, 1)

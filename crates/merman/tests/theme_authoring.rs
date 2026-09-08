@@ -1841,7 +1841,7 @@ fn json_authoring_collection_limits_accept_the_exact_boundary_and_reject_the_nex
             .expect_err("the first ordinal color beyond the bound must fail during admission");
     assert_materialization_resource_limit(
         error,
-        "/styles/ordinal-palette/colors",
+        "/styles/0/colors",
         "max_theme_palette_colors",
         257,
         256,
@@ -1860,7 +1860,7 @@ fn typed_compact_paint_obeys_the_decoded_string_ceiling() {
 
     assert_materialization_resource_limit(
         error,
-        "/styles/rule/style/paint/color",
+        "/styles/0/style/fill",
         "max_theme_definition_string_bytes",
         65_537,
         65_536,

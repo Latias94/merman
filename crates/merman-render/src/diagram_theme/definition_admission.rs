@@ -5,15 +5,15 @@ use std::io;
 
 use merman_theme_contract::{
     MaterializedThemeWireV1, SpecifiedWireV1, ThemeCanvasPaintObjectWireV1, ThemeCanvasPaintWireV1,
-    ThemeColorTokenV1, ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeMaterializationDiagnosticV1,
+    ThemeDefinitionV1, ThemeLineHeightWireV1, ThemeMaterializationDiagnosticV1,
     ThemeMaterializationErrorV1, ThemeRuleSetWireV1, ThemeStylePatchWireV1,
     ThemeTextStylePatchWireV1, resolve_authoring_version,
 };
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use super::materializer::{
-    GENERATED_PALETTE_TARGETS, MAX_AUTHORED_RULES, ThemeMaterializationError, ThemeMaterializer,
-    first_rejected_actual,
+    COLOR_DEFAULTS, GENERATED_PALETTE_TARGETS, MAX_AUTHORED_RULES, ThemeMaterializationError,
+    ThemeMaterializer, first_rejected_actual,
 };
 use super::{
     DiagramTheme, DiagramThemeCompiler, ThemeCompileError, ThemeResourceLimitExceeded,
@@ -141,8 +141,10 @@ pub(super) enum ThemeDefinitionAdmissionError {
     /// One typed collection exceeded its versioned implementation ceiling.
     #[error("theme definition collection `{path}` has {actual} items; maximum is {max}")]
     CollectionLimit {
-        /// Stable authoring path for the rejected collection class.
-        path: &'static str,
+        /// JSON Pointer into the original authored input.
+        path: String,
+        /// The resource domain is independent of the input location.
+        limit_id: &'static str,
         /// Observed item count.
         actual: usize,
         /// Maximum admitted item count.
@@ -162,15 +164,18 @@ fn admission_contract_error(error: ThemeDefinitionAdmissionError) -> ThemeMateri
                 "typed theme definition cannot be encoded for bounded admission",
             ))
         }
-        ThemeDefinitionAdmissionError::CollectionLimit { path, actual, max } => {
-            contract_error(ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
-                path,
-                admission_limit_id(path, max),
-                actual,
-                max,
-                "theme definition exceeds a bounded collection or string limit",
-            ))
-        }
+        ThemeDefinitionAdmissionError::CollectionLimit {
+            path,
+            limit_id,
+            actual,
+            max,
+        } => contract_error(ThemeMaterializationDiagnosticV1::resource_limit_exceeded(
+            path,
+            limit_id,
+            actual,
+            max,
+            "theme definition exceeds a bounded collection or string limit",
+        )),
         ThemeDefinitionAdmissionError::ResourceLimit(error) => encoded_bytes_contract_error(error),
     }
 }
@@ -206,25 +211,6 @@ fn contract_error(diagnostic: ThemeMaterializationDiagnosticV1) -> ThemeMaterial
     ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
 }
 
-fn admission_limit_id(path: &str, max: usize) -> &'static str {
-    match path {
-        "" => "max_theme_definition_collection_items",
-        "/tokens/series" | "/styles/ordinal-palette/colors" => "max_theme_palette_colors",
-        "/styles/rule/style/paint/stops" => "max_theme_gradient_stops",
-        "/styles/rule/style/stroke/dasharray" => "max_theme_definition_array_items",
-        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack"
-            if max == super::typography::MAX_FONT_FAMILY_BYTES =>
-        {
-            "max_theme_font_family_bytes"
-        }
-        "/tokens/typography/font_stack" | "/styles/rule/style/typography/font_stack" => {
-            "max_theme_font_stack_entries"
-        }
-        _ if max == MAX_JSON_STRING_BYTES => "max_theme_definition_string_bytes",
-        _ => "max_theme_definition_collection_items",
-    }
-}
-
 fn admit_typed_definition<'a>(
     resources: &ThemeResourcePolicy,
     definition: &'a ThemeDefinitionV1,
@@ -232,7 +218,7 @@ fn admit_typed_definition<'a>(
     let mut usage = TypedUsage::default();
 
     usage.charge_collection_items(definition.styles().len())?;
-    for entry in definition.styles() {
+    for (index, entry) in definition.styles().iter().enumerate() {
         match entry {
             ThemeRuleSetWireV1::Rule {
                 target,
@@ -241,32 +227,33 @@ fn admit_typed_definition<'a>(
                 style,
                 ..
             } => {
-                usage.string("/styles/rule/target", target)?;
+                usage.string(format_args!("/styles/{index}/target"), target)?;
                 if let Some(family) = family {
-                    usage.string("/styles/rule/family", family)?;
+                    usage.string(format_args!("/styles/{index}/family"), family)?;
                 }
                 if let Some(variant) = variant {
-                    usage.string("/styles/rule/variant", variant)?;
+                    usage.string(format_args!("/styles/{index}/variant"), variant)?;
                 }
-                usage.style(style)?;
+                usage.style(format_args!("/styles/{index}/style"), style)?;
             }
             ThemeRuleSetWireV1::OrdinalPalette { target, colors } => {
-                usage.string("/styles/ordinal-palette/target", target)?;
+                usage.string(format_args!("/styles/{index}/target"), target)?;
                 usage.collection(
-                    "/styles/ordinal-palette/colors",
+                    format_args!("/styles/{index}/colors"),
                     colors.len(),
                     super::semantic::MAX_THEME_PALETTE_COLORS,
+                    "max_theme_palette_colors",
                 )?;
-                for color in colors {
-                    usage.string("/styles/ordinal-palette/colors", color)?;
+                for (color_index, color) in colors.iter().enumerate() {
+                    usage.string(format_args!("/styles/{index}/colors/{color_index}"), color)?;
                 }
             }
         }
     }
 
-    for token in ThemeColorTokenV1::ALL {
+    for (token, _, path) in COLOR_DEFAULTS {
         if let Some(color) = definition.tokens().color(token) {
-            usage.string("/tokens", color)?;
+            usage.string(path, color)?;
         }
     }
     if let Some(series) = definition.tokens().series() {
@@ -274,21 +261,26 @@ fn admit_typed_definition<'a>(
             "/tokens/series",
             series.len(),
             super::semantic::MAX_THEME_PALETTE_COLORS,
+            "max_theme_palette_colors",
         )?;
-        for color in series {
-            usage.string("/tokens/series", color)?;
+        for (index, color) in series.iter().enumerate() {
+            usage.string(format_args!("/tokens/series/{index}"), color)?;
         }
     }
-    if let Some(typography) = definition.tokens().typography() {
-        if let Some(font_stack) = typography.font_stack() {
-            usage.collection(
-                "/tokens/typography/font_stack",
-                font_stack.len(),
-                super::typography::MAX_FONT_STACK_ENTRIES,
+    if let Some(typography) = definition.tokens().typography()
+        && let Some(font_stack) = typography.font_stack()
+    {
+        usage.collection(
+            "/tokens/typography/font_stack",
+            font_stack.len(),
+            super::typography::MAX_FONT_STACK_ENTRIES,
+            "max_theme_font_stack_entries",
+        )?;
+        for (index, family) in font_stack.iter().enumerate() {
+            usage.font_family(
+                format_args!("/tokens/typography/font_stack/{index}"),
+                family,
             )?;
-            for family in font_stack {
-                usage.font_family("/tokens/typography/font_stack", family)?;
-            }
         }
     }
 
@@ -319,7 +311,8 @@ impl TypedUsage {
         self.total_collection_items = self.total_collection_items.saturating_add(actual);
         if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
-                path: "",
+                path: String::new(),
+                limit_id: "max_theme_definition_collection_items",
                 actual: first_rejected_actual(MAX_TOTAL_COLLECTION_ITEMS),
                 max: MAX_TOTAL_COLLECTION_ITEMS,
             });
@@ -327,10 +320,15 @@ impl TypedUsage {
         Ok(())
     }
 
-    fn string(&self, path: &'static str, value: &str) -> Result<(), ThemeDefinitionAdmissionError> {
+    fn string(
+        &self,
+        path: impl fmt::Display,
+        value: &str,
+    ) -> Result<(), ThemeDefinitionAdmissionError> {
         if value.len() > MAX_JSON_STRING_BYTES {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
-                path,
+                path: path.to_string(),
+                limit_id: "max_theme_definition_string_bytes",
                 actual: value.len(),
                 max: MAX_JSON_STRING_BYTES,
             });
@@ -340,29 +338,33 @@ impl TypedUsage {
 
     fn font_family(
         &self,
-        path: &'static str,
+        path: impl fmt::Display,
         value: &str,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
+        self.string(&path, value)?;
         if value.len() > super::typography::MAX_FONT_FAMILY_BYTES {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
-                path,
+                path: path.to_string(),
+                limit_id: "max_theme_font_family_bytes",
                 actual: value.len(),
                 max: super::typography::MAX_FONT_FAMILY_BYTES,
             });
         }
-        self.string(path, value)
+        Ok(())
     }
 
     fn collection(
         &mut self,
-        path: &'static str,
+        path: impl fmt::Display,
         actual: usize,
         field_max: usize,
+        limit_id: &'static str,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
         let max = field_max.min(MAX_JSON_ARRAY_ITEMS);
         if actual > max {
             return Err(ThemeDefinitionAdmissionError::CollectionLimit {
-                path,
+                path: path.to_string(),
+                limit_id,
                 actual: first_rejected_actual(max),
                 max,
             });
@@ -372,101 +374,91 @@ impl TypedUsage {
 
     fn style(
         &mut self,
+        path: impl fmt::Display,
         style: &ThemeStylePatchWireV1,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
         if let Some(stroke) = &style.stroke {
             if let SpecifiedWireV1::Value(dasharray) = &stroke.dasharray {
                 self.collection(
-                    "/styles/rule/style/stroke/dasharray",
+                    format_args!("{path}/stroke/dasharray"),
                     dasharray.len(),
                     MAX_JSON_ARRAY_ITEMS,
+                    "max_theme_definition_array_items",
                 )?;
             }
             if let SpecifiedWireV1::Value(paint) = &stroke.paint {
-                self.paint(paint)?;
+                self.paint(format_args!("{path}/stroke/paint"), paint)?;
             }
             if let SpecifiedWireV1::Value(value) = &stroke.linecap {
-                self.string("/styles/rule/style/stroke/linecap", value)?;
+                self.string(format_args!("{path}/stroke/linecap"), value)?;
             }
             if let SpecifiedWireV1::Value(value) = &stroke.linejoin {
-                self.string("/styles/rule/style/stroke/linejoin", value)?;
+                self.string(format_args!("{path}/stroke/linejoin"), value)?;
             }
         }
         if let SpecifiedWireV1::Value(paint) = &style.fill {
-            self.paint(paint)?;
+            self.paint(format_args!("{path}/fill"), paint)?;
         }
         if let Some(typography) = &style.typography {
-            self.typography(typography)?;
+            self.typography(format_args!("{path}/typography"), typography)?;
         }
         if let SpecifiedWireV1::Value(value) = &style.effect {
-            self.string("/styles/rule/style/effect", value)?;
+            self.string(format_args!("{path}/effect"), value)?;
         }
         Ok(())
     }
 
     fn typography(
         &mut self,
+        path: impl fmt::Display,
         typography: &ThemeTextStylePatchWireV1,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
         if let SpecifiedWireV1::Value(font_stack) = &typography.font_stack {
             self.collection(
-                "/styles/rule/style/typography/font_stack",
+                format_args!("{path}/font_stack"),
                 font_stack.len(),
                 super::typography::MAX_FONT_STACK_ENTRIES,
+                "max_theme_font_stack_entries",
             )?;
-            for family in font_stack {
-                self.font_family("/styles/rule/style/typography/font_stack", family)?;
+            for (index, family) in font_stack.iter().enumerate() {
+                self.font_family(format_args!("{path}/font_stack/{index}"), family)?;
             }
         }
-        for (path, value) in [
-            (
-                "/styles/rule/style/typography/font_style",
-                &typography.font_style,
-            ),
-            (
-                "/styles/rule/style/typography/transform",
-                &typography.transform,
-            ),
-            (
-                "/styles/rule/style/typography/decoration",
-                &typography.decoration,
-            ),
-            (
-                "/styles/rule/style/typography/text_align",
-                &typography.text_align,
-            ),
-            (
-                "/styles/rule/style/typography/white_space",
-                &typography.white_space,
-            ),
-            ("/styles/rule/style/typography/wrap", &typography.wrap),
+        for (field, value) in [
+            ("font_style", &typography.font_style),
+            ("transform", &typography.transform),
+            ("decoration", &typography.decoration),
+            ("text_align", &typography.text_align),
+            ("white_space", &typography.white_space),
+            ("wrap", &typography.wrap),
         ] {
             if let SpecifiedWireV1::Value(value) = value {
-                self.string(path, value)?;
+                self.string(format_args!("{path}/{field}"), value)?;
             }
         }
         if let SpecifiedWireV1::Value(ThemeLineHeightWireV1::Keyword(value)) =
             &typography.line_height
         {
-            self.string("/styles/rule/style/typography/line_height", value)?;
+            self.string(format_args!("{path}/line_height"), value)?;
         }
         Ok(())
     }
 
     fn paint(
         &mut self,
+        path: impl fmt::Display,
         paint: &ThemeCanvasPaintWireV1,
     ) -> Result<(), ThemeDefinitionAdmissionError> {
         let paint = match paint {
             ThemeCanvasPaintWireV1::Color(color) => {
-                return self.string("/styles/rule/style/paint/color", color);
+                return self.string(path, color);
             }
             ThemeCanvasPaintWireV1::Structured(paint) => paint,
         };
         let stops = match paint {
             ThemeCanvasPaintObjectWireV1::Transparent => None,
             ThemeCanvasPaintObjectWireV1::Solid { color } => {
-                self.string("/styles/rule/style/paint/color", color)?;
+                self.string(format_args!("{path}/color"), color)?;
                 None
             }
             ThemeCanvasPaintObjectWireV1::LinearGradient { stops, .. }
@@ -477,22 +469,23 @@ impl TypedUsage {
                 background,
                 ..
             } => {
-                self.string("/styles/rule/style/paint/pattern", pattern)?;
-                self.string("/styles/rule/style/paint/foreground", foreground)?;
+                self.string(format_args!("{path}/pattern"), pattern)?;
+                self.string(format_args!("{path}/foreground"), foreground)?;
                 if let Some(background) = background {
-                    self.string("/styles/rule/style/paint/background", background)?;
+                    self.string(format_args!("{path}/background"), background)?;
                 }
                 None
             }
         };
         if let Some(stops) = stops {
             self.collection(
-                "/styles/rule/style/paint/stops",
+                format_args!("{path}/stops"),
                 stops.len(),
                 super::canvas::MAX_GRADIENT_STOPS,
+                "max_theme_gradient_stops",
             )?;
-            for stop in stops {
-                self.string("/styles/rule/style/paint/stops/color", &stop.color)?;
+            for (index, stop) in stops.iter().enumerate() {
+                self.string(format_args!("{path}/stops/{index}/color"), &stop.color)?;
             }
         }
         Ok(())
@@ -595,7 +588,7 @@ enum PreflightFailure {
         message: &'static str,
     },
     ResourceLimit {
-        path: &'static str,
+        path: String,
         limit_id: &'static str,
         actual: usize,
         max: usize,
@@ -604,6 +597,8 @@ enum PreflightFailure {
 }
 
 struct PreflightState {
+    path: String,
+    path_frozen: bool,
     total_collection_items: usize,
     authored_rules: usize,
     materialized_palettes: usize,
@@ -615,6 +610,8 @@ struct PreflightState {
 impl PreflightState {
     const fn new() -> Self {
         Self {
+            path: String::new(),
+            path_frozen: false,
             total_collection_items: 0,
             authored_rules: 0,
             materialized_palettes: GENERATED_PALETTE_TARGETS.len(),
@@ -642,7 +639,6 @@ impl PreflightState {
 
     fn fail_resource<E: de::Error>(
         &mut self,
-        path: &'static str,
         limit_id: &'static str,
         actual: usize,
         max: usize,
@@ -654,13 +650,68 @@ impl PreflightState {
             )
         {
             self.failure = Some(PreflightFailure::ResourceLimit {
-                path,
+                path: if limit_id == "max_theme_definition_collection_items" {
+                    String::new()
+                } else {
+                    self.path.clone()
+                },
                 limit_id,
                 actual,
                 max,
             });
         }
         E::custom(PREFLIGHT_SENTINEL)
+    }
+
+    fn push_key(&mut self, key: &str) -> (usize, bool) {
+        let previous = (self.path.len(), self.path_frozen);
+        if self.path_frozen {
+            return previous;
+        }
+        let escaped_len = key.len().saturating_add(
+            key.bytes()
+                .filter(|byte| matches!(*byte, b'~' | b'/'))
+                .count(),
+        );
+        if self
+            .path
+            .len()
+            .saturating_add(1)
+            .saturating_add(escaped_len)
+            > ThemeMaterializationDiagnosticV1::MAX_PATH_BYTES
+        {
+            // Preserve a complete JSON Pointer ancestor, never a partial UTF-8 segment or escape.
+            self.path_frozen = true;
+            return previous;
+        }
+        self.path.push('/');
+        for character in key.chars() {
+            match character {
+                '~' => self.path.push_str("~0"),
+                '/' => self.path.push_str("~1"),
+                _ => self.path.push(character),
+            }
+        }
+        previous
+    }
+
+    fn push_index(&mut self, index: usize) -> (usize, bool) {
+        use std::fmt::Write;
+
+        let previous = (self.path.len(), self.path_frozen);
+        if !self.path_frozen {
+            write!(&mut self.path, "/{index}").expect("writing to a String cannot fail");
+            if self.path.len() > ThemeMaterializationDiagnosticV1::MAX_PATH_BYTES {
+                self.path.truncate(previous.0);
+                self.path_frozen = true;
+            }
+        }
+        previous
+    }
+
+    fn restore_path(&mut self, previous: (usize, bool)) {
+        self.path.truncate(previous.0);
+        self.path_frozen = previous.1;
     }
 
     fn record_materialization(&mut self, error: ThemeMaterializationError) {
@@ -676,10 +727,9 @@ impl PreflightState {
         }
     }
 
-    fn check_depth<E: de::Error>(&mut self, context: JsonContext, depth: usize) -> Result<(), E> {
+    fn check_depth<E: de::Error>(&mut self, depth: usize) -> Result<(), E> {
         if depth > MAX_JSON_DEPTH {
             return Err(self.fail_resource(
-                context_path(context),
                 "max_theme_definition_json_depth",
                 depth,
                 MAX_JSON_DEPTH,
@@ -688,14 +738,9 @@ impl PreflightState {
         Ok(())
     }
 
-    fn check_object_members<E: de::Error>(
-        &mut self,
-        context: JsonContext,
-        members: usize,
-    ) -> Result<(), E> {
+    fn check_object_members<E: de::Error>(&mut self, members: usize) -> Result<(), E> {
         if members > MAX_JSON_OBJECT_MEMBERS {
             return Err(self.fail_resource(
-                context_path(context),
                 "max_theme_definition_object_members",
                 members,
                 MAX_JSON_OBJECT_MEMBERS,
@@ -708,7 +753,6 @@ impl PreflightState {
         self.total_collection_items = self.total_collection_items.saturating_add(1);
         if self.total_collection_items > MAX_TOTAL_COLLECTION_ITEMS {
             return Err(self.fail_resource(
-                "",
                 "max_theme_definition_collection_items",
                 self.total_collection_items,
                 MAX_TOTAL_COLLECTION_ITEMS,
@@ -717,10 +761,9 @@ impl PreflightState {
         Ok(())
     }
 
-    fn check_string<E: de::Error>(&mut self, context: JsonContext, value: &str) -> Result<(), E> {
+    fn check_string<E: de::Error>(&mut self, value: &str) -> Result<(), E> {
         if value.len() > MAX_JSON_STRING_BYTES {
             return Err(self.fail_resource(
-                context_path(context),
                 "max_theme_definition_string_bytes",
                 value.len(),
                 MAX_JSON_STRING_BYTES,
@@ -734,11 +777,11 @@ impl PreflightState {
         context: JsonContext,
         items: usize,
     ) -> Result<(), E> {
-        let (path, limit_id, max) = sequence_limit(context);
+        let (limit_id, max) = sequence_limit(context);
         if items <= max {
             return Ok(());
         }
-        Err(self.fail_resource(path, limit_id, first_rejected_actual(max), max))
+        Err(self.fail_resource(limit_id, first_rejected_actual(max), max))
     }
 
     fn charge_style_entry(&mut self, marker: &JsonMarker) {
@@ -845,66 +888,21 @@ fn preflight_json(bytes: &[u8]) -> Result<(), ThemeMaterializationErrorV1> {
     Ok(())
 }
 
-const fn sequence_limit(context: JsonContext) -> (&'static str, &'static str, usize) {
+const fn sequence_limit(context: JsonContext) -> (&'static str, usize) {
     match context {
-        JsonContext::Series => (
-            "/tokens/series",
+        JsonContext::Series | JsonContext::PaletteColors => (
             "max_theme_palette_colors",
             super::semantic::MAX_THEME_PALETTE_COLORS,
         ),
-        JsonContext::PaletteColors => (
-            "/styles/ordinal-palette/colors",
-            "max_theme_palette_colors",
-            super::semantic::MAX_THEME_PALETTE_COLORS,
-        ),
-        JsonContext::TokenFontStack => (
-            "/tokens/typography/font_stack",
-            "max_theme_font_stack_entries",
-            super::typography::MAX_FONT_STACK_ENTRIES,
-        ),
-        JsonContext::StyleFontStack => (
-            "/styles/rule/style/typography/font_stack",
+        JsonContext::TokenFontStack | JsonContext::StyleFontStack => (
             "max_theme_font_stack_entries",
             super::typography::MAX_FONT_STACK_ENTRIES,
         ),
         JsonContext::GradientStops => (
-            "/styles/rule/style/paint/stops",
             "max_theme_gradient_stops",
             super::canvas::MAX_GRADIENT_STOPS,
         ),
-        JsonContext::Dasharray => (
-            "/styles/rule/style/stroke/dasharray",
-            "max_theme_definition_array_items",
-            MAX_JSON_ARRAY_ITEMS,
-        ),
-        _ => (
-            context_path(context),
-            "max_theme_definition_array_items",
-            MAX_JSON_ARRAY_ITEMS,
-        ),
-    }
-}
-
-const fn context_path(context: JsonContext) -> &'static str {
-    match context {
-        JsonContext::Root | JsonContext::Other => "",
-        JsonContext::Tokens => "/tokens",
-        JsonContext::TokenTypography => "/tokens/typography",
-        JsonContext::StyleTypography => "/styles/rule/style/typography",
-        JsonContext::Styles | JsonContext::StyleEntry => "/styles",
-        JsonContext::StylePatch => "/styles/rule/style",
-        JsonContext::Stroke => "/styles/rule/style/stroke",
-        JsonContext::Paint => "/styles/rule/style/paint",
-        JsonContext::Series => "/tokens/series",
-        JsonContext::PaletteColors => "/styles/ordinal-palette/colors",
-        JsonContext::TokenFontStack | JsonContext::TokenFontFamily => {
-            "/tokens/typography/font_stack"
-        }
-        JsonContext::StyleFontStack | JsonContext::StyleFontFamily => {
-            "/styles/rule/style/typography/font_stack"
-        }
-        JsonContext::GradientStops => "/styles/rule/style/paint/stops",
-        JsonContext::Dasharray => "/styles/rule/style/stroke/dasharray",
+        _ => ("max_theme_definition_array_items", MAX_JSON_ARRAY_ITEMS),
     }
 }
 
@@ -940,17 +938,14 @@ struct JsonValueVisitor<'a> {
 
 impl JsonValueVisitor<'_> {
     fn visit_string_value<E: de::Error>(self, value: &str) -> Result<JsonMarker, E> {
-        self.state.check_string(self.context, value)?;
-        let font_family_path = match self.context {
-            JsonContext::TokenFontFamily => Some("/tokens/typography/font_stack"),
-            JsonContext::StyleFontFamily => Some("/styles/rule/style/typography/font_stack"),
-            _ => None,
-        };
+        self.state.check_string(value)?;
         if value.len() > super::typography::MAX_FONT_FAMILY_BYTES
-            && let Some(path) = font_family_path
+            && matches!(
+                self.context,
+                JsonContext::TokenFontFamily | JsonContext::StyleFontFamily
+            )
         {
             return Err(self.state.fail_resource(
-                path,
                 "max_theme_font_family_bytes",
                 value.len(),
                 super::typography::MAX_FONT_FAMILY_BYTES,
@@ -1053,7 +1048,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         A: SeqAccess<'de>,
     {
         let depth = self.parent_depth.saturating_add(1);
-        self.state.check_depth(self.context, depth)?;
+        self.state.check_depth(depth)?;
         let mut item_count = 0usize;
         loop {
             let next_count = item_count.saturating_add(1);
@@ -1084,7 +1079,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
         A: MapAccess<'de>,
     {
         let depth = self.parent_depth.saturating_add(1);
-        self.state.check_depth(self.context, depth)?;
+        self.state.check_depth(depth)?;
         let mut member_count = 0usize;
         let mut seen = HashSet::<Cow<'de, str>>::new();
         let mut marker = JsonMarker::default();
@@ -1092,8 +1087,7 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
             state: &mut *self.state,
         })? {
             member_count = member_count.saturating_add(1);
-            self.state
-                .check_object_members(self.context, member_count)?;
+            self.state.check_object_members(member_count)?;
             if !seen.insert(key.clone()) {
                 return Err(self.state.fail_invalid_json(
                     "duplicate-object-key",
@@ -1110,12 +1104,15 @@ impl<'de> Visitor<'de> for JsonValueVisitor<'_> {
                 (JsonContext::Root, "expansion_version") => JsonCapture::ExpansionVersion,
                 _ => JsonCapture::None,
             };
+            let previous_path = self.state.push_key(&key);
             let captured = map.next_value_seed(JsonValueSeed {
                 state: &mut *self.state,
                 parent_depth: depth,
                 context: child_context,
                 capture,
-            })?;
+            });
+            self.state.restore_path(previous_path);
+            let captured = captured?;
             marker.style_kind = marker.style_kind.or(captured.style_kind);
             marker.replaces_generated_palette = marker
                 .replaces_generated_palette
@@ -1169,13 +1166,16 @@ impl<'de> DeserializeSeed<'de> for JsonSequenceElementSeed<'_> {
     {
         self.state
             .check_sequence_items(self.sequence_context, self.item_count)?;
-        JsonValueSeed {
-            state: self.state,
+        let previous_path = self.state.push_index(self.item_count - 1);
+        let result = JsonValueSeed {
+            state: &mut *self.state,
             parent_depth: self.parent_depth,
             context: self.context,
             capture: JsonCapture::None,
         }
-        .deserialize(deserializer)
+        .deserialize(deserializer);
+        self.state.restore_path(previous_path);
+        result
     }
 }
 
@@ -1209,7 +1209,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(JsonContext::Other, value)?;
+        self.state.check_string(value)?;
         Ok(Cow::Borrowed(value))
     }
 
@@ -1217,7 +1217,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(JsonContext::Other, value)?;
+        self.state.check_string(value)?;
         Ok(Cow::Owned(value.to_owned()))
     }
 
@@ -1225,7 +1225,7 @@ impl<'de> Visitor<'de> for JsonKeyVisitor<'_> {
     where
         E: de::Error,
     {
-        self.state.check_string(JsonContext::Other, &value)?;
+        self.state.check_string(&value)?;
         Ok(Cow::Owned(value))
     }
 }

@@ -6,7 +6,7 @@ use merman_render::diagram_theme::{
 };
 use merman_theme_contract::{
     SpecifiedWireV1, ThemeCanvasPaintWireV1, ThemeColorTokenV1, ThemeMaterializationErrorV1,
-    ThemeRuleSetWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
+    ThemeRuleSetWireV1, ThemeStrokePatchWireV1, ThemeStylePatchWireV1, ThemeTokensV1,
 };
 
 fn assert_same_budget_diagnostic(
@@ -18,6 +18,108 @@ fn assert_same_budget_diagnostic(
     assert_eq!(json.diagnostic().limit_id(), typed.diagnostic().limit_id());
     assert_eq!(json.diagnostic().actual(), typed.diagnostic().actual());
     assert_eq!(json.diagnostic().max(), typed.diagnostic().max());
+}
+
+#[test]
+fn typed_and_json_resource_errors_resolve_original_style_locations() {
+    use serde_json::json;
+    let long_string = "x".repeat(65_537);
+    for (entry, path, limit) in [
+        (
+            json!({"kind":"ordinal-palette","target":"node","colors":vec!["#123456";257]}),
+            "/styles/1/colors",
+            "max_theme_palette_colors",
+        ),
+        (
+            json!({"kind":"ordinal-palette","target":"node","colors":["#123456",long_string]}),
+            "/styles/1/colors/1",
+            "max_theme_definition_string_bytes",
+        ),
+        (
+            json!({"kind":"rule","target":"node","style":{"typography":{"font_stack":vec!["serif";33]}}}),
+            "/styles/1/style/typography/font_stack",
+            "max_theme_font_stack_entries",
+        ),
+        (
+            json!({"kind":"rule","target":"node","style":{"typography":{"font_stack":["serif","x".repeat(257)]}}}),
+            "/styles/1/style/typography/font_stack/1",
+            "max_theme_font_family_bytes",
+        ),
+        (
+            json!({"kind":"rule","target":"node","style":{"typography":{"font_stack":["serif",long_string]}}}),
+            "/styles/1/style/typography/font_stack/1",
+            "max_theme_definition_string_bytes",
+        ),
+        (
+            json!({"kind":"rule","target":"node","style":{"fill":long_string}}),
+            "/styles/1/style/fill",
+            "max_theme_definition_string_bytes",
+        ),
+        (
+            json!({"kind":"rule","target":"node","style":{"stroke":{"paint":{"kind":"linear-gradient","angle_degrees":0,"stops":[{"offset":0,"color":"#123456"},{"offset":1,"color":long_string}]}}}}),
+            "/styles/1/style/stroke/paint/stops/1/color",
+            "max_theme_definition_string_bytes",
+        ),
+    ] {
+        let input = json!({"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"text","style":{}},entry]});
+        let definition = serde_json::from_value(input.clone()).expect("typed definition");
+        let typed = materialize_theme(&definition).expect_err("typed resource refusal");
+        let json = materialize_theme_json(&serde_json::to_vec(&input).unwrap())
+            .expect_err("JSON resource refusal");
+        assert_same_budget_diagnostic(&typed, &json);
+        assert_eq!(typed.diagnostic().path(), path);
+        assert_eq!(typed.diagnostic().limit_id(), Some(limit));
+        assert!(input.pointer(path).is_some());
+    }
+}
+
+#[test]
+fn typed_and_json_token_limits_point_to_serialized_fields() {
+    for token in ThemeColorTokenV1::ALL {
+        let definition =
+            ThemeDefinitionV1::new(ThemeTokensV1::default().with_color(token, "x".repeat(65_537)));
+        let input = serde_json::to_value(&definition).expect("serialized tokens");
+        let typed = materialize_theme(&definition).expect_err("typed resource refusal");
+        let json = materialize_theme_json(&serde_json::to_vec(&input).unwrap())
+            .expect_err("JSON resource refusal");
+        assert_same_budget_diagnostic(&typed, &json);
+        assert_eq!(
+            input
+                .pointer(typed.diagnostic().path())
+                .and_then(|v| v.as_str())
+                .map(str::len),
+            Some(65_537),
+        );
+    }
+}
+
+#[test]
+fn json_resource_paths_escape_keys_and_preserve_bounded_ancestors() {
+    use serde_json::json;
+
+    for (key, expected_path) in [
+        ("a/b~c".to_owned(), "/future/a~1b~0c/0".to_owned()),
+        ("界".repeat(160), format!("/future/{}/0", "界".repeat(160))),
+        ("x".repeat(502), format!("/future/{}/0", "x".repeat(502))),
+        ("x".repeat(503), format!("/future/{}", "x".repeat(503))),
+        ("x".repeat(505), "/future".to_owned()),
+    ] {
+        let input = json!({"future": {key: ["x".repeat(65_537)]}});
+        let error = materialize_theme_json(&serde_json::to_vec(&input).unwrap())
+            .expect_err("resource scanning precedes shape decoding");
+        assert_eq!(error.diagnostic().path(), expected_path);
+        assert!(input.pointer(error.diagnostic().path()).is_some());
+        assert_eq!(
+            error.diagnostic().limit_id(),
+            Some("max_theme_definition_string_bytes")
+        );
+    }
+
+    // Leaving a bounded-out subtree must restore the next sibling's exact location.
+    let input = json!({"future": {"x".repeat(505): ["short"]}, "z": ["x".repeat(65_537)]});
+    let error = materialize_theme_json(&serde_json::to_vec(&input).unwrap()).unwrap_err();
+    assert_eq!(error.diagnostic().path(), "/z/0");
+    assert!(input.pointer(error.diagnostic().path()).is_some());
 }
 
 #[test]
@@ -293,6 +395,37 @@ fn typed_and_canonical_json_failures_share_diagnostic_identity() {
     );
     assert_eq!(typed_error.diagnostic().actual(), Some(257));
     assert_eq!(typed_error.diagnostic().max(), Some(256));
+
+    let dasharray_rule = ThemeRuleSetWireV1::Rule {
+        target: "node".to_owned(),
+        family: None,
+        variant: None,
+        ordinal: None,
+        style: ThemeStylePatchWireV1 {
+            stroke: Some(ThemeStrokePatchWireV1 {
+                dasharray: SpecifiedWireV1::Value(vec![1.0; 1024]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    };
+    let oversized_collections =
+        ThemeDefinitionV1::new(ThemeTokensV1::default()).with_styles(vec![dasharray_rule; 64]);
+    let collections_json = oversized_collections
+        .canonical_json_bytes()
+        .expect("over-budget aggregate collections still have canonical JSON");
+    let typed_error = materialize_theme(&oversized_collections)
+        .expect_err("typed collections must fail the aggregate budget");
+    let json_error = materialize_theme_json(&collections_json)
+        .expect_err("canonical JSON collections must fail the same aggregate budget");
+    assert_same_budget_diagnostic(&typed_error, &json_error);
+    assert_eq!(typed_error.diagnostic().path(), "");
+    assert_eq!(
+        typed_error.diagnostic().limit_id(),
+        Some("max_theme_definition_collection_items")
+    );
+    assert_eq!(typed_error.diagnostic().actual(), Some(65_537));
+    assert_eq!(typed_error.diagnostic().max(), Some(65_536));
 
     let definition = ThemeDefinitionV1::new(ThemeTokensV1::default());
     let json = definition

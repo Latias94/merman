@@ -17,7 +17,7 @@ const DEFAULT_FONT_WEIGHT: u16 = 400;
 pub(crate) const GENERATED_PALETTE_TARGETS: [ThemeTarget; 2] =
     [ThemeTarget::Node, ThemeTarget::PieSlice];
 
-const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 8] = [
+pub(super) const COLOR_DEFAULTS: [(ThemeColorTokenV1, &str, &str); 8] = [
     (ThemeColorTokenV1::Canvas, "#ffffff", "/tokens/canvas"),
     (ThemeColorTokenV1::Surface, "#f8fafc", "/tokens/surface"),
     (

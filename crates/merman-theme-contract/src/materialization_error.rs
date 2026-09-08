@@ -30,6 +30,10 @@ pub struct ThemeMaterializationDiagnosticV1 {
 }
 
 impl ThemeMaterializationDiagnosticV1 {
+    /// Maximum encoded JSON Pointer length accepted by this diagnostic contract.
+    #[doc(hidden)]
+    pub const MAX_PATH_BYTES: usize = MAX_DIAGNOSTIC_PATH_BYTES_V1;
+
     /// Creates an unsupported authoring-version tuple diagnostic for renderer adapters.
     #[doc(hidden)]
     pub fn unsupported_version_tuple(
@@ -220,6 +224,7 @@ impl ThemeMaterializationDiagnosticV1 {
     }
 
     /// Returns the bounded RFC 6901 JSON Pointer to the failed authoring value.
+    /// Resource errors in oversized unknown paths identify the nearest bounded ancestor.
     pub fn path(&self) -> &str {
         self.wire.path()
     }
