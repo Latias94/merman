@@ -5,7 +5,7 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `6`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
 This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` Python and Apple
@@ -16,6 +16,10 @@ API 6 expands `MermanAsciiCapability` with `layout_profiles`, `width_profiles`, 
 `fallback_encodings`. It also adds `encoding` to `MermanAsciiOutputPlan`, whose ASCII result schema is
 now `2`. Regenerate Swift and Python projections with the matching native library; do not decode
 either changed record with API 5 generated source.
+
+API 7 adds optional `MermanDrawingListErrorDetails` to `MermanError::Binding`. This changes every
+structured error's wire layout, even when `drawing_list` is absent. API 6 consumers must be
+regenerated and deployed with the matching native library.
 
 ## Public Model
 
@@ -29,9 +33,9 @@ The generated API exposes:
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, drawing_list, message }` failures, where resource, diagnostic, icon-registry, cancellation, and DrawingList evidence remain separate optional records.
 
-`Merman::binding_api_version_v6()` reports `6`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v7()` reports `7`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -52,6 +56,13 @@ API `6` replaces `binding_api_version_v5()` with `binding_api_version_v6()`. The
 limitation applies to the newly expanded `MermanAsciiCapability` and `MermanAsciiOutputPlan` records,
 so API `5` generated source fails before decoding an API `6` value. The version probe, generated
 projection, and native library are one deployment unit.
+
+API `7` replaces `binding_api_version_v6()` with `binding_api_version_v7()` because adding
+`MermanError::Binding.drawing_list` does not change the existing method checksums. The immutable
+`0.8.0-alpha.6` API 6 Swift projection otherwise passes all 64 signature checks and then fails to
+decode even an ordinary structured error. Removing both API 6 probe symbols makes that projection
+fail at symbol resolution, before the changed error layout is read. Changing only the version
+returned by the old probe would not protect generated consumers.
 
 In current unreleased source, every operation is available through `execute(request)`, and
 `MermanOperationRequestV4.options_json` owns the generic operation's options. Named methods such as
@@ -198,6 +209,8 @@ contract.
   admission arrays or schema-2 output-plan encoding. Older prerelease wrappers must also be fully
   regenerated; do not pair source generated for one API version with a library whose runtime catalog
   reports another.
+- Move API 6 projections and native libraries together to API 7 before consuming DrawingList error
+  details. Replace `binding_api_version_v6()` with `binding_api_version_v7()` in host code.
 
 ## Verification
 
@@ -208,3 +221,15 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The binding smoke builds a library, generates foreign-language source from its embedded UniFFI
 metadata, and exercises the public API. Apple CI additionally rebuilds its XCFramework, compiles
 the Swift package and smoke, and rejects a changed checked-in Swift projection.
+
+After building a source library, verify the immutable API 6 consumer is rejected before error
+decoding (the fixed release commit must be available in the local Git history):
+
+```bash
+python3 crates/merman-uniffi/tests/verify_api6_consumer.py --library target/debug/libmerman_uniffi.dylib
+```
+
+Use the platform's cdylib filename. The regression checks all published API 6 checksums against the
+library. On macOS it also compiles the original released Swift projection and requires a link
+failure at the removed API 6 probe; a still-compatible library instead demonstrates the old
+consumer's initialization and error decoding before failing the regression.

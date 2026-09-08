@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+### Breaking changes
+
+- Advanced the direct UniFFI binding API to `7` for optional `drawing_list` details on `MermanError.Binding`. Replace `binding_api_version_v6()` with `binding_api_version_v7()` and regenerate the complete Python package with its matching native library. The removed API 6 probe rejects stale consumers before they decode the changed error layout, including errors without DrawingList details.
+
 ### Added
 
 - Added `render_drawing_list(source, options_json)` to both `Merman` and `MermanEngine`. Generated Python bindings and the default wheel profile now discover and execute validated DrawingList v1 JSON with caller-selected policy and limits.

@@ -219,18 +219,20 @@ after"#;
     }
 
     #[test]
-    fn checked_in_api5_swift_rejects_the_api4_version_probe() {
+    fn checked_in_api7_swift_rejects_previous_version_probes() {
         let generated = std::fs::read_to_string(
             workspace_root().join("platforms/apple/Sources/Merman/Generated/Merman.swift"),
         )
         .expect("read checked-in Swift binding");
 
         assert!(generated.contains("MermanOperationRequestV4"));
-        assert!(generated.contains("bindingApiVersionV6"));
+        assert!(generated.contains("bindingApiVersionV7"));
         assert!(
             generated
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6()")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7()")
         );
+        assert!(!generated.contains("bindingApiVersionV6"));
+        assert!(!generated.contains("bindingApiVersionV5"));
         assert!(
             !generated
                 .contains("uniffi_merman_uniffi_checksum_method_merman_transport_api_version()")

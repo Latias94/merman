@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-> **Alpha:** the source tree uses direct UniFFI binding API `6`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Alpha:** the source tree uses direct UniFFI binding API `7`; the immutable alpha.6 release uses API `6`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -50,11 +50,16 @@ let drawingListJson = try client.renderDrawingList(source: source, optionsJson: 
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
-The generated binding API is 6. `MermanOperationRequestV4` remains the current request record name;
+The generated binding API is 7. `MermanOperationRequestV4` remains the current request record name;
 it does not identify the binding API version. API 6 adds ASCII layout/width/encoding/fallback
 admission arrays and schema-2 output-plan encoding. `MermanError.Binding` includes an optional
 `MermanDiagnosticErrorDetails` payload with a stable code, optional source span, field, and diagram
 type. Use those structured details for parser and ASCII failures rather than matching display text.
+
+API 7 adds optional `MermanDrawingListErrorDetails` to `MermanError.Binding`. Replace
+`bindingApiVersionV6()` with `bindingApiVersionV7()` and regenerate the Swift projection with its
+matching native library. Removing the API 6 probe ensures old consumers fail before decoding the
+changed error layout, even when the new payload is absent.
 
 Create `MermanOperationControl(timeoutMs:)` and attach it to a generic request when an editor or
 preview host must stop stale work. The host may retain the same object and call `cancel()` from
@@ -66,12 +71,14 @@ Empty or omitted options select deterministic runtime state. The default XCFrame
 
 Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional typed
 `MermanResourceErrorDetails`, `MermanDiagnosticErrorDetails`,
-`MermanIconRegistryErrorDetails`, and `MermanCancelledDetails`. `.unknownOperation` has no
+`MermanIconRegistryErrorDetails`, `MermanCancelledDetails`, and `MermanDrawingListErrorDetails`.
+`.unknownOperation` has no
 capability ID, `.missingCapability` preserves the stable descriptor ID required by the request,
 resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`) plus typed limit
 evidence, diagnostic failures preserve their stable code and optional source provenance, icon
 registry failures preserve their structured registration evidence, and cancellation preserves its
-reason and checkpoint phase without message parsing.
+reason and checkpoint phase without message parsing. DrawingList failures carry their category
+and optional family/reason independently from resource or cancellation details.
 
 An XCFramework built from current unreleased source with the default profile includes semantic and layout JSON, analysis, validation, document analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts. The published alpha.6 XCFramework retains the earlier profile without DrawingList. The current default profile omits math, PNG, JPEG, and PDF. Generated helpers remain available for custom current-contract libraries; a default-profile artifact returns `.missingCapability` with the absent capability ID as appropriate. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags, and decode `presentationCatalogJson()` when presenting theme or presentation-profile choices. Catalog IDs are open strings so a compatible native producer can add values without requiring a closed Swift enum update.
 

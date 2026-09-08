@@ -28,13 +28,15 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 6;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 6 therefore
-// replaces the API 5 version-probe symbol before adding ASCII capability axes and output encoding
-// fields, so stale generated bindings fail before decoding either changed record layout.
+// UniFFI 0.32 method checksums include a record's type name but not its fields. API 7 therefore
+// replaces the API 6 version-probe symbol before adding DrawingList error details, so stale
+// generated bindings fail before decoding the changed MermanError::Binding record layout.
 #[cfg(test)]
 const UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM: u16 = 32_101;
+#[cfg(test)]
+const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -729,7 +731,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v6(&self) -> u32 {
+    pub fn binding_api_version_v7(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -2659,16 +2661,20 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 6);
-        assert_eq!(engine.binding_api_version_v6(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
+        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v5_generated_bindings_are_rejected_before_record_decoding() {
+    fn previous_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6(),
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
             UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM
+        );
+        assert_ne!(
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+            UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2676,11 +2682,11 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
         );
         assert!(
             !generated_header
@@ -2691,6 +2697,16 @@ mod tests {
             !generated_header
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5"),
             "API 5 checksum symbol must stay absent from generated bindings"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
+            "API 6 probe symbol must stay absent so stale bindings fail before error decoding"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
+            "API 6 checksum symbol must stay absent from generated bindings"
         );
     }
 

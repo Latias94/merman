@@ -5,8 +5,8 @@ Merman ships its Apple package as a direct UniFFI binding. Swift calls the
 second Swift implementation of engine ownership, callbacks, or result buffers.
 
 This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` XCFramework predates
-DrawingList; examples using `renderDrawingList(...)` require generated Swift source and native
-libraries built from current source or a later matching release.
+DrawingList and uses binding API 6. Current examples require API 7 generated Swift source and
+native libraries built from current source or a later matching release.
 
 The local SwiftPM package contains:
 
@@ -40,8 +40,8 @@ git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
 The generated binding validates its UniFFI contract version and API checksums before the
 first call. A mixed Swift source and native library fails with the generated binding's
-explicit contract/checksum mismatch message; prerelease artifacts must always be upgraded
-together.
+explicit contract/checksum mismatch message or fails to resolve a removed version-probe symbol;
+prerelease artifacts must always be upgraded together.
 
 ## Swift API
 
@@ -53,7 +53,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV6() == 6 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -173,6 +173,10 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
+- Move API 6 generated source and native libraries together to API 7. Replace
+  `bindingApiVersionV6()` with `bindingApiVersionV7()`. `MermanError.Binding` now carries optional
+  `MermanDrawingListErrorDetails`; even an absent payload changes the error's wire layout. The
+  removed API 6 probe rejects old generated consumers before they can decode an error.
 - Move API 5 generated source and native libraries together to API 6. API 6 adds ASCII
   layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding; the generated
   source and native library must move atomically. `MermanOperationRequestV4` remains the current

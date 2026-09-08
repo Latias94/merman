@@ -651,7 +651,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersionV6()  -> UInt32
+    func bindingApiVersionV7()  -> UInt32
 
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
@@ -834,10 +834,10 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersionV6() -> UInt32  {
+open func bindingApiVersionV7() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6(
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -5585,7 +5585,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6() != 60120) {
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7() != 21723) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {
