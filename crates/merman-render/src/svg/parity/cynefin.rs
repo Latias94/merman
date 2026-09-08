@@ -1,15 +1,6 @@
 use super::*;
 use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
 
-pub(super) fn canonical_cynefin_css(
-    diagram_id: impl Copy + std::fmt::Display,
-    effective_config: &serde_json::Value,
-) -> String {
-    let sanitized_id = super::sanitize_svg_id(&diagram_id.to_string());
-    let theme = crate::cynefin::cynefin_theme(effective_config);
-    cynefin_css(sanitized_id.as_str(), effective_config, &theme)
-}
-
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,
     model: &CynefinDiagramRenderModel,

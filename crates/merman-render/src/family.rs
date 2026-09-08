@@ -2024,7 +2024,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
             let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
-            let document = crate::drawing_list::build_for_family(
+            let mut document = crate::drawing_list::build_for_family(
                 &artifact.family,
                 &artifact.metadata,
                 DrawingListPolicy::VectorOnly,
@@ -2118,6 +2118,71 @@ mod tests {
                 text.attribute("y").unwrap().parse::<f64>().unwrap(),
                 expected_item.text_y
             );
+            let conflicting_config = json!({
+                "themeCSS": ".cynefinItem { opacity: 0; }",
+                "themeVariables": {"fontFamily": "monospace", "textColor": "red"},
+                "cynefin": {"itemFontSize": 99, "boundaryWidth": 12}
+            });
+            let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    config,
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            assert_eq!(
+                svg,
+                render(&document, &conflicting_config),
+                "Cynefin SVG must not reinterpret visual config after document construction"
+            );
+            let mut changed = 0;
+            for command in &mut document.public.commands {
+                use merman_display_list::{Color, DrawingCommand, Paint};
+                match command {
+                    DrawingCommand::DrawText { run } if run.text == "Observe" => {
+                        run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+                        run.style.font_size = 27.0;
+                        changed += 1;
+                    }
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str() == "cynefin.item.0.shape"
+                            || path.as_str() == "cynefin.background" =>
+                    {
+                        style.fill = Some(Paint::solid(Color::rgba(18, 52, 86, 128)));
+                        changed += 1;
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(changed, 3);
+            let modified = render(&document, &conflicting_config);
+            let modified_xml = roxmltree::Document::parse(&modified).unwrap();
+            assert!(
+                !modified_xml
+                    .root_element()
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("background-color")
+            );
+            for class in ["cynefinItem", "cynefinItemText", "cynefinBackground"] {
+                let node = modified_xml
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .unwrap();
+                assert_eq!(node.attribute("fill"), Some("#123456"));
+                let alpha = node
+                    .attribute("fill-opacity")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!((alpha - 128.0 / 255.0).abs() < 0.001);
+                if class == "cynefinItemText" {
+                    assert_eq!(node.attribute("font-size"), Some("27"));
+                }
+            }
         }
     }
 

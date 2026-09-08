@@ -61,13 +61,17 @@ The candidate serializer is exercised directly by
 `cynefin_document_projects_source_groups_and_distinct_text_baselines`, without allowing the public
 SVG bridge to satisfy its assertions. Canonical commands now own content scopes and item-local
 translations; the SVG projection retains the source group classes, rounded badge rectangles,
-distinct `middle`/`central` text baselines, and explicit accessibility-title exposure. The public
-DrawingList regression also checks normal and overflow badge centers against their text.
+distinct `middle`/`central` text baselines, and explicit accessibility-title exposure. The same
+test verifies that changing external configuration after construction cannot change the SVG,
+while edits to public text, paint, and background commands do change the serialized result.
+Resolved presentation attributes replace the legacy theme stylesheet in the candidate serializer;
+the empty style element remains structural only. The public DrawingList regression also checks
+normal and overflow badge centers against their text.
 
-Cynefin remains bridged. Marker definitions, diagram-ID-dependent default boundary seeding, and
-removal of external configuration as a CSS visual source still need migration before complete
-family comparison can admit its canonical SVG route. The legacy dispatch test retains the pinned
-marker and accessibility ordering contracts; it is not evidence for the candidate serializer.
+Cynefin remains bridged. Marker definitions and diagram-ID-dependent default boundary seeding
+still need migration before complete family comparison can admit its canonical SVG route.
+The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
+it is not evidence for the candidate serializer.
 
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the

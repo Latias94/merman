@@ -42,9 +42,9 @@ pub(crate) fn render_document_svg(
         DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
     if matches!(
         document.svg.body,
-        SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_)
+        SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
     ) {
-        // Packet and Pie styles are fully resolved in the command stream. Theme CSS is rejected by the
+        // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
         Ok(svg)
     } else {
@@ -558,10 +558,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
-            SvgStructureBody::Cynefin(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )),
+            SvgStructureBody::Cynefin(body) => {
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width);
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::TreeView(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -628,6 +632,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let (document_id, background_id) = match self.svg_body {
             SvgStructureBody::Packet(_) => ("packet.document", "packet.background"),
             SvgStructureBody::Pie(_) => ("pie.document", "pie.background"),
+            SvgStructureBody::Cynefin(_) => ("cynefin.document", "cynefin.background"),
             _ => return false,
         };
         let [
@@ -763,13 +768,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
-            SvgStructureBody::Cynefin(_) => Some((
-                false,
-                super::cynefin::canonical_cynefin_css(
-                    self.diagram_id.as_str(),
-                    self.effective_config,
-                ),
-            )),
+            // Every Cynefin element has resolved paint/font attributes. Retain the source style
+            // element as DOM structure, without a second cascade that overrides those attributes.
+            SvgStructureBody::Cynefin(_) => Some((false, String::new())),
             SvgStructureBody::TreeView(_) => Some((
                 false,
                 super::tree_view::canonical_tree_view_css(
