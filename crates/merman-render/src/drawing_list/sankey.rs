@@ -50,6 +50,7 @@ struct SankeyBuilder<'a> {
     plan: SankeyVisualPlan,
     font: FontDescriptor,
     text_color: Color,
+    label_outline: Option<StrokeStyle>,
     text_obligation: TextObligation,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
@@ -67,13 +68,16 @@ impl<'a> SankeyBuilder<'a> {
         session.checkpoint(OperationPhase::Emit)?;
         let config = metadata.effective_config.as_value();
         let plan = build_sankey_visual_plan(pair.layout(), config)?;
-        if plan.outlined_labels {
-            return Err(unavailable(
-                "outlined Sankey labels require text stroke and paint-order semantics that DrawingList v1 does not yet expose",
-            ));
-        }
         let styles = PortableStyleResolver::new("sankey");
         let text_color = styles.color("themeVariables.textColor", &plan.theme.text_color)?;
+        let label_outline = if plan.outlined_labels {
+            let color = styles.color("label background", &plan.theme.label_background)?;
+            let mut stroke = stroke_with_paint(Paint::solid(color), 4.0);
+            stroke.line_join = LineJoin::Round;
+            Some(stroke)
+        } else {
+            None
+        };
         let font_family_css = crate::config::config_font_family_css_raw(config);
         let font = FontDescriptor {
             families: parse_font_families_for(&font_family_css, RenderFamilyKind::Sankey)?,
@@ -95,6 +99,7 @@ impl<'a> SankeyBuilder<'a> {
             plan,
             font,
             text_color,
+            label_outline,
             text_obligation: text_obligation(session, TextMeasurementPhase::Layout),
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
@@ -111,14 +116,24 @@ impl<'a> SankeyBuilder<'a> {
             link: None,
         })?;
 
+        self.begin_collection("sankey.nodes", "nodes")?;
         for node_index in 0..self.plan.nodes.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_node(node_index)?;
         }
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.begin_collection("sankey.labels", "node-labels")?;
+        if self.label_outline.is_some() {
+            self.emit_label_layer(true)?;
+        }
+        self.emit_label_layer(false)?;
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+        self.begin_collection("sankey.links", "links")?;
         for link_index in 0..self.plan.links.len() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.emit_link(link_index)?;
         }
+        self.output.push_control(DrawingCommand::EndSemanticGroup)?;
 
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
@@ -133,7 +148,7 @@ impl<'a> SankeyBuilder<'a> {
             "x-merman-sankey".to_string(),
             json!({
                 "diagram_type": self.metadata.diagram_type,
-                "label_style": "legacy",
+                "label_style": if self.plan.outlined_labels { "outlined" } else { "legacy" },
                 "link_color": self.plan.link_color,
                 "show_values": self.plan.show_values,
                 "text_mode": "plain_host_text",
@@ -153,6 +168,61 @@ impl<'a> SankeyBuilder<'a> {
                 }),
             },
         })
+    }
+
+    fn emit_label_layer(&mut self, background: bool) -> Result<()> {
+        for label_index in 0..self.plan.labels.len() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let label = self.plan.labels[label_index].clone();
+            let text = svg_plain_text(&label.text);
+            let suffix = if background {
+                "background"
+            } else {
+                "foreground"
+            };
+            let semantic_id = format!("sankey.label.{}.{suffix}", label.node_index);
+            if self.plan.outlined_labels {
+                self.semantic_classes.insert(
+                    semantic_id.clone(),
+                    if background {
+                        "sankey-label-bg"
+                    } else {
+                        "sankey-label-fg"
+                    }
+                    .to_owned(),
+                );
+            }
+            self.output
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: semantic_id.clone(),
+                })?;
+            self.emit_label_text(&label, &text, background)?;
+            self.output.push_control(DrawingCommand::EndSemanticGroup)?;
+            self.output.push_semantic(SemanticAnnotation {
+                id: semantic_id,
+                role: SemanticRole::Label,
+                title: Some(text),
+                description: None,
+                link: None,
+            })?;
+        }
+        Ok(())
+    }
+
+    fn begin_collection(&mut self, id: &str, class: &str) -> Result<()> {
+        self.semantic_classes
+            .insert(id.to_owned(), class.to_owned());
+        self.output.push_semantic(SemanticAnnotation {
+            id: id.to_owned(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        })?;
+        self.output
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: id.to_owned(),
+            })
     }
 
     fn emit_node(&mut self, node_index: usize) -> Result<()> {
@@ -199,13 +269,6 @@ impl<'a> SankeyBuilder<'a> {
                 emit(PathSegment::Close)
             })?;
         }
-        for label_index in 0..self.plan.labels.len() {
-            if self.plan.labels[label_index].node_index != node_index {
-                continue;
-            }
-            let label = self.plan.labels[label_index].clone();
-            self.emit_label_text(&label)?;
-        }
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
@@ -220,8 +283,12 @@ impl<'a> SankeyBuilder<'a> {
         Ok(())
     }
 
-    fn emit_label_text(&mut self, label: &crate::sankey::SankeyVisualLabel) -> Result<()> {
-        let text = svg_plain_text(&label.text);
+    fn emit_label_text(
+        &mut self,
+        label: &crate::sankey::SankeyVisualLabel,
+        text: &str,
+        background: bool,
+    ) -> Result<()> {
         if text.is_empty() {
             return Ok(());
         }
@@ -239,11 +306,16 @@ impl<'a> SankeyBuilder<'a> {
         let font = self.font.clone();
         let text_color = self.text_color;
         let text_obligation = self.text_obligation.clone();
+        let outline = if background {
+            self.label_outline.clone()
+        } else {
+            None
+        };
         let anchor = match label.anchor {
             SankeyLabelAnchor::Start => TextAnchor::Start,
             SankeyLabelAnchor::End => TextAnchor::End,
         };
-        self.output.draw_host_text(&text, |text| TextRun {
+        self.output.draw_host_text(text, |text| TextRun {
             text,
             origin,
             bounds: text_bounds,
@@ -253,8 +325,12 @@ impl<'a> SankeyBuilder<'a> {
                 letter_spacing: 0.0,
                 line_height: SANKEY_LABEL_FONT_SIZE_PX,
                 fill: Paint::solid(text_color),
-                stroke: None,
-                paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                stroke: outline,
+                paint_order: if background {
+                    merman_display_list::TextPaintOrder::StrokeThenFill
+                } else {
+                    merman_display_list::TextPaintOrder::FillThenStroke
+                },
             },
             anchor,
             baseline: TextBaseline::Alphabetic,
@@ -359,12 +435,5 @@ fn stroke_with_paint(paint: Paint, width: f64) -> StrokeStyle {
 fn invalid(message: impl Into<String>) -> Error {
     Error::InvalidModel {
         message: message.into(),
-    }
-}
-
-fn unavailable(message: impl Into<String>) -> Error {
-    Error::DrawingListUnavailable {
-        family: "sankey".to_string(),
-        reason: message.into(),
     }
 }

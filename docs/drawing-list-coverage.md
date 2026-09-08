@@ -70,6 +70,19 @@ were not bound to a commit, and earlier root reports predate later migration cha
 tests that require withdrawn public routes are explicitly ignored pending migration; ignored tests
 are not admission evidence. Live route tests check the explicit compatibility result separately.
 
+### Sankey migration evidence
+
+`sankey_document_owns_paint_order_and_svg_styles` exercises the candidate serializer directly,
+without the public legacy route. The document now paints all nodes, then all labels, then all
+links in pinned source order. Candidate SVG does not inject the legacy stylesheet or reapply
+external theme CSS: changing a public link opacity or text paint changes that output exactly once.
+Outlined labels use public text strokes and two ordered text layers, including the resolved
+background alpha, rather than being rejected for a protocol feature that now exists.
+
+Sankey remains bridged. Node-local transforms and generated IDs, in-link gradient placement,
+compact label DOM, and canonical root background still require source-backed projection and
+complete family comparison before admission. The focused tests are not full-family parity proof.
+
 ### Cynefin migration evidence
 
 The candidate serializer is exercised directly by

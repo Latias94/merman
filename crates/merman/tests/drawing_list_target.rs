@@ -1945,22 +1945,54 @@ fn sankey_emits_typed_nodes_gradient_links_blending_and_semantics() {
 }
 
 #[test]
-fn sankey_rejects_outlined_labels_without_text_stroke_semantics() {
-    let error = Renderer::new()
+fn sankey_outlined_labels_preserve_two_source_ordered_text_layers() {
+    let config = MermaidConfig::from_value(serde_json::json!({
+        "theme": "base",
+        "themeVariables": {"mainBkg": "#12345680", "textColor": "#abcdef"},
+        "sankey": {"labelStyle": "outlined"}
+    }));
+    let output = Renderer::new()
+        .with_engine(Engine::new().with_site_config(config))
         .render(RenderRequest::drawing_list(
-            r#"---
-config:
-  sankey:
-    labelStyle: outlined
----
-sankey
-A,B,10
-"#,
+            "sankey\nA,B,10\n",
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
-        .expect_err("outlined Sankey labels must not become plain text silently");
-    assert!(error.to_string().contains("text stroke and paint-order"));
+        .expect("outlined Sankey labels have portable text stroke semantics");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList");
+    };
+    let runs = output
+        .document()
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DrawingCommand::DrawText { run } => Some(run),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(runs.len(), 4);
+    for (background, foreground) in runs[..2].iter().zip(&runs[2..]) {
+        assert_eq!(background.text, foreground.text);
+        assert_eq!(background.origin, foreground.origin);
+        let stroke = background
+            .style
+            .stroke
+            .as_ref()
+            .expect("background outline");
+        assert_eq!(stroke.width, 4.0);
+        assert_eq!(stroke.line_join, LineJoin::Round);
+        assert_eq!(
+            stroke.paint,
+            Paint::solid(merman_display_list::Color::rgba(18, 52, 86, 128))
+        );
+        assert_eq!(background.style.paint_order, TextPaintOrder::StrokeThenFill);
+        assert!(foreground.style.stroke.is_none());
+        assert_eq!(
+            foreground.style.fill,
+            Paint::solid(merman_display_list::Color::rgba(171, 205, 239, 255))
+        );
+    }
 }
 
 #[test]

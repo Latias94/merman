@@ -29,6 +29,7 @@ use std::fmt::Write as _;
 
 mod cynefin;
 mod pie;
+mod sankey;
 
 /// Serializes one validated canonical document to SVG.
 pub(crate) fn render_document_svg(
@@ -43,7 +44,10 @@ pub(crate) fn render_document_svg(
         DocumentSvgEncoder::new(document, options, debug, effective_config, session)?.render()?;
     if matches!(
         document.svg.body,
-        SvgStructureBody::Packet(_) | SvgStructureBody::Pie(_) | SvgStructureBody::Cynefin(_)
+        SvgStructureBody::Packet(_)
+            | SvgStructureBody::Pie(_)
+            | SvgStructureBody::Cynefin(_)
+            | SvgStructureBody::Sankey(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
@@ -741,10 +745,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 )?,
             )),
-            SvgStructureBody::Sankey(_) => Some((
-                false,
-                super::sankey_css(self.diagram_id.as_str(), self.effective_config),
-            )),
+            // Sankey paint, opacity, and fonts are resolved by the public commands. Retain
+            // Mermaid's style element as structure without importing a second visual source.
+            SvgStructureBody::Sankey(_) => Some((false, String::new())),
             SvgStructureBody::Requirement(_) => Some((
                 false,
                 super::requirement_css(self.diagram_id.as_str(), self.effective_config),
@@ -1399,6 +1402,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
             return self.begin_cynefin_semantic_group(semantic_id, semantic.role);
+        }
+        if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
+            return self.begin_sankey_semantic_group(semantic_id);
         }
         if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
             let emitted = semantic_id == "pie.content"
@@ -3993,6 +3999,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         match self.svg_body {
             SvgStructureBody::Error(_) => Some(Cow::Borrowed("error-text")),
             SvgStructureBody::Info(_) => Some(Cow::Borrowed("version")),
+            SvgStructureBody::Sankey(_) => self
+                .current_semantic_id()
+                .filter(|id| id.starts_with("sankey.label."))
+                .and_then(|id| self.semantic_extra_class(id))
+                .map(Cow::Borrowed),
             SvgStructureBody::Packet(_) => {
                 super::packet::packet_text_class(self.current_semantic_id(), text_index)
                     .map(Cow::Borrowed)

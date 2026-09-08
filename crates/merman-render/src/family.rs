@@ -1978,6 +1978,137 @@ mod tests {
     }
 
     #[test]
+    fn sankey_document_owns_paint_order_and_svg_styles() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sankey-beta\nA,B,10\nB,C,5\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let mut sequence = Vec::new();
+        for command in &document.public.commands {
+            let kind = match command {
+                DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".shape") => 0,
+                DrawingCommand::DrawText { .. } => 1,
+                DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".path") => 2,
+                _ => continue,
+            };
+            sequence.push(kind);
+        }
+        assert_eq!(
+            sequence
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [0, 1, 2].into()
+        );
+        assert!(
+            sequence.windows(2).all(|pair| pair[0] <= pair[1]),
+            "Sankey must paint all nodes, then all labels, then all links: {sequence:?}"
+        );
+        let render = |document: &crate::drawing_list::RenderDocument,
+                      config: &serde_json::Value| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                config,
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document, artifact.metadata.effective_config.as_value());
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let layers = xml
+            .root_element()
+            .children()
+            .filter_map(|node| node.attribute("class"))
+            .collect::<Vec<_>>();
+        assert_eq!(layers, ["nodes", "node-labels", "links"]);
+        assert!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .all(|node| node.parent().unwrap().attribute("class") == Some("node-labels"))
+        );
+        assert_eq!(
+            svg,
+            render(
+                &document,
+                &serde_json::json!({
+                    "themeVariables": {"textColor":"#ff0000"},
+                    "themeCSS": ".link { opacity:0; }"
+                })
+            ),
+            "external config must not reinterpret an already resolved Sankey document"
+        );
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::SetOpacity { opacity } => *opacity = 0.25,
+                DrawingCommand::DrawText { run } => {
+                    run.style.fill = Paint::solid(Color::rgba(1, 2, 3, 255))
+                }
+                _ => {}
+            }
+        }
+        let edited = render(&document, artifact.metadata.effective_config.as_value());
+        assert!(edited.contains("#010203"));
+        assert!(edited.contains("opacity=\"0.25\""));
+        assert!(
+            !edited.contains("stroke-opacity:0.5") && !edited.contains("stroke-opacity=\"0.5\""),
+            "Sankey must not multiply resolved command opacity by legacy styles"
+        );
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\nA,B,10\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let outlined = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &outlined.family,
+            &outlined.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &outlined.session,
+        )
+        .unwrap();
+        let svg = render(&document, outlined.metadata.effective_config.as_value());
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let labels = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert_eq!(labels.len(), 4);
+        for node in &labels[..2] {
+            assert_eq!(node.attribute("class"), Some("sankey-label-bg"));
+            assert_eq!(node.attribute("stroke-width"), Some("4"));
+            assert_eq!(node.attribute("paint-order"), Some("stroke fill"));
+            assert_eq!(
+                node.parent().unwrap().attribute("class"),
+                Some("node-labels")
+            );
+        }
+        for node in &labels[2..] {
+            assert_eq!(node.attribute("class"), Some("sankey-label-fg"));
+            assert!(node.attribute("stroke-width").is_none());
+        }
+    }
+
+    #[test]
     fn canonical_svg_and_drawing_list_charge_the_same_document_work() {
         let prepare_packet = || {
             let parsed = Engine::new()
