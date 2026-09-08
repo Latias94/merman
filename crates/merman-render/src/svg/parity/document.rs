@@ -367,6 +367,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.document_semantic()
                     .and_then(|semantic| semantic.description.clone()),
             ),
+            SvgStructureBody::Gantt(body) => (
+                self.document_semantic().and_then(|semantic| {
+                    body.expose_accessibility_title
+                        .then(|| semantic.title.clone())
+                        .flatten()
+                }),
+                self.document_semantic()
+                    .and_then(|semantic| semantic.description.clone()),
+            ),
             #[cfg(feature = "layout-cytoscape")]
             SvgStructureBody::Architecture(body) => {
                 (body.acc_title.clone(), body.acc_description.clone())
@@ -711,9 +720,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                 viewport_bounds,
                 body.use_max_width,
             )),
-            SvgStructureBody::Gantt(_body) => {
-                Ok(root_svg::RootViewportSpec::responsive(viewport_bounds)
-                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width)))
+            SvgStructureBody::Gantt(_) => {
+                let spec = root_svg::RootViewportSpec::responsive(viewport_bounds)
+                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width));
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
             }
             SvgStructureBody::Radar(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
@@ -777,6 +791,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Cynefin(_) => ("cynefin.document", "cynefin.background"),
             SvgStructureBody::Venn(_) => ("venn.document", "venn.background"),
             SvgStructureBody::Sankey(_) => ("sankey.document", "sankey.background"),
+            SvgStructureBody::Gantt(_) => ("gantt.document", "gantt.background"),
             _ => return false,
         };
         let [
@@ -1542,6 +1557,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             return self.begin_sankey_semantic_group(semantic_id);
         }
         if self.begin_venn_semantic_group(semantic_id, semantic)? {
+            return Ok(());
+        }
+        if self.begin_gantt_collection(semantic_id)? {
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Pie(_)) {

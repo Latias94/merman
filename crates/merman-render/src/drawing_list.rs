@@ -558,6 +558,7 @@ pub(crate) struct CynefinSvgBody {
 #[derive(Debug, Clone)]
 pub(crate) struct GanttSvgBody {
     pub(crate) diagram_type: String,
+    pub(crate) expose_accessibility_title: bool,
     pub(crate) bar_height: f64,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,

@@ -171,6 +171,12 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
+        let acc_title = self
+            .model
+            .acc_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|title| !title.is_empty());
         let title = self
             .model
             .title
@@ -179,18 +185,27 @@ impl<'a> GanttBuilder<'a> {
         self.document.push_semantic(SemanticAnnotation {
             id: "gantt.document".to_string(),
             role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
+            title: acc_title
+                .map(str::to_owned)
                 .or_else(|| title.clone())
                 .or_else(|| Some(self.metadata.diagram_type.clone())),
-            description: self.model.acc_descr.clone(),
+            description: self
+                .model
+                .acc_descr
+                .as_deref()
+                .map(|description| description.trim_end_matches('\n'))
+                .filter(|description| !description.trim().is_empty())
+                .map(str::to_owned),
             link: None,
         })?;
 
         self.emit_background()?;
-        self.emit_excludes()?;
+        if self.layout.has_excludes_layer {
+            self.begin_collection("gantt.excludes")?;
+            self.emit_excludes()?;
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+        }
         self.emit_axis(
             &self.layout.bottom_ticks,
             self.layout.height - self.layout.top_padding,
@@ -199,9 +214,18 @@ impl<'a> GanttBuilder<'a> {
         if self.layout.top_axis {
             self.emit_axis(&self.layout.top_ticks, self.layout.top_padding, false)?;
         }
+        self.begin_collection("gantt.rows")?;
         self.emit_rows()?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.begin_collection("gantt.tasks")?;
         self.emit_tasks()?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.begin_collection("gantt.sections")?;
         self.emit_section_titles()?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
         self.emit_today_marker()?;
         if let Some(title) = title.as_deref().filter(|title| !title.is_empty()) {
             self.emit_title(title)?;
@@ -247,6 +271,7 @@ impl<'a> GanttBuilder<'a> {
                 family: RenderFamilyKind::Gantt,
                 body: SvgStructureBody::Gantt(GanttSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
+                    expose_accessibility_title: acc_title.is_some(),
                     bar_height: self.layout.bar_height,
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
@@ -255,6 +280,20 @@ impl<'a> GanttBuilder<'a> {
                 }),
             },
         })
+    }
+
+    fn begin_collection(&mut self, id: &str) -> Result<()> {
+        self.document.push_semantic(SemanticAnnotation {
+            id: id.to_owned(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        })?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: id.to_owned(),
+            })
     }
 
     fn emit_background(&mut self) -> Result<()> {

@@ -166,6 +166,21 @@ incorrect inherited paint.
 This fixes direct DrawingList behavior and the candidate's paint ownership. Gantt remains a
 legacy-bridge SVG family until its source DOM projection and full-family gates are complete.
 
+The next projection step adds public collection scopes for excluded intervals, row backgrounds,
+tasks and section labels, matching the ordered root groups created by the pinned Gantt renderer.
+An enabled but empty exclude layer retains its group. The SVG document/title semantic scopes
+do not add a second outer wrapper; task scopes and navigation targets remain intact. These new
+collections pass through the existing bounded builder, including semantic and nesting limits.
+
+Root accessibility references now distinguish an authored `accTitle` from the public document's
+fallback title. The sidecar records only whether that title belongs in SVG accessibility chrome;
+the title/description text still comes from public semantics. The first full-viewport white paint
+uses the existing exact root-background projection. An edited translucent background instead
+remains an explicit draw command with no implicit white root fill. Direct candidate tests cover
+both accessibility cases, empty excludes, collection order and background mutation without using
+the legacy route. Axis transforms, tick wrappers and section-text shells still require convergence;
+this step does not admit Gantt as canonical.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

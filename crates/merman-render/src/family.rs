@@ -2007,6 +2007,127 @@ mod tests {
     }
 
     #[test]
+    fn gantt_candidate_root_projects_public_collections_and_authored_accessibility() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+
+        for (accessibility, excludes, collection_offset) in [
+            ("", "", 0),
+            (
+                "accTitle: Schedule\naccDescr: Delivery plan\n",
+                "excludes weekends\n",
+                1,
+            ),
+        ] {
+            let source = format!(
+                "gantt\ntitle Example\n{accessibility}dateFormat YYYY-MM-DD\n{excludes}todayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let render = |document: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions {
+                        diagram_id: Some("schedule".to_owned()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let rendered = render(&document);
+            let svg = roxmltree::Document::parse(&rendered).unwrap();
+            let root = svg.root_element();
+            assert_eq!(
+                root.attribute("aria-labelledby"),
+                (!accessibility.is_empty()).then_some("chart-title-schedule"),
+                "only authored accTitle creates a root title reference"
+            );
+            assert_eq!(
+                root.attribute("aria-describedby"),
+                (!accessibility.is_empty()).then_some("chart-desc-schedule")
+            );
+            let groups = root
+                .children()
+                .filter(|node| node.has_tag_name("g"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                groups.len(),
+                5 + collection_offset,
+                "source root owns empty, grid, rows, tasks and section groups"
+            );
+            if collection_offset != 0 {
+                assert!(
+                    !groups[1].children().any(|node| node.is_element()),
+                    "empty exclude collection must retain its source wrapper"
+                );
+            }
+            assert!(groups[2 + collection_offset].children().any(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.contains("section"))
+            }));
+            assert!(
+                groups[3 + collection_offset]
+                    .descendants()
+                    .any(|node| node.attribute("id") == Some("schedule-a"))
+            );
+            assert!(
+                root.children().any(|node| node.has_tag_name("text")
+                    && node.attribute("class") == Some("titleText"))
+            );
+            assert!(!svg.descendants().any(|node| {
+                node.has_tag_name("rect")
+                    && node
+                        .attribute("width")
+                        .and_then(|width| width.parse::<f64>().ok())
+                        == Some(document.public.viewport.bounds.width)
+                    && node.attribute("fill") == Some("#ffffff")
+            }));
+
+            // Changing the public background must disable root CSS projection, not double-paint it.
+            let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[2] else {
+                panic!("background command")
+            };
+            style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 128)));
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            assert!(
+                !xml.root_element()
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("background")
+            );
+            let red_backgrounds = xml
+                .descendants()
+                .filter(|node| node.attribute("fill") == Some("#ff0000"))
+                .collect::<Vec<_>>();
+            assert_eq!(red_backgrounds.len(), 1);
+            assert_eq!(
+                red_backgrounds[0]
+                    .attribute("fill-opacity")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap(),
+                128.0 / 255.0
+            );
+        }
+    }
+
+    #[test]
     fn gantt_candidate_split_task_scopes_keep_links_and_unique_ids() {
         let parsed = Engine::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
