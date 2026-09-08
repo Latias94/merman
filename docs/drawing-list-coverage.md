@@ -70,6 +70,19 @@ were not bound to a commit, and earlier root reports predate later migration cha
 tests that require withdrawn public routes are explicitly ignored pending migration; ignored tests
 are not admission evidence. Live route tests check the explicit compatibility result separately.
 
+### Direct-output audit follow-up
+
+SVG admission and DrawingList correctness are separate gates. The September 8 follow-up addresses
+Mindmap depth-based edge widths, Flowchart node-label opacity isolation, Sequence Point marker
+geometry, Journey background paints, Radar text fill inheritance, exact JSON float round trips,
+and Web/Python error-detail exports through direct-output or public binding tests.
+
+The remaining reported repair units are Gantt task/label ordering, Treemap fill/stroke compositing,
+Class relationship-label background selection, Architecture title baselines and bounds, caller
+control over canonical SVG document limits, and latching protocol-limit failures in operation
+control. Earlier Gantt/Radar candidate SVG opacity/CSS issues also remain part of their migration.
+None of these local corrections admits another SVG family or completes the all-family goal.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
