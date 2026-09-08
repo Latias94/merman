@@ -181,6 +181,18 @@ both accessibility cases, empty excludes, collection order and background mutati
 the legacy route. Axis transforms, tick wrappers and section-text shells still require convergence;
 this step does not admit Gantt as canonical.
 
+The full candidate structure run at `83b688bbc` used temporary Gantt route/coverage admission:
+`compare-gantt-svgs --check-dom --dom-mode structure --dom-decimals 3`. Of 157 selected fixtures,
+five retained their existing baseline skips, 150 produced canonical SVG and all 150 had structural
+mismatches. The remaining two were rejected by route evidence: `today_marker_custom_style` uses
+the unsupported `stoke` property, and
+`upstream_docs_gantt_timeline_with_comments_css_config_in_frontmatter_031` uses unresolved
+`themeCSS`. Neither legacy fallback counted as canonical success. The report is
+`target/compare/gantt_root_collections_candidate_structure.md`; it exposes axis/tick wrappers,
+task/section text shells and explicit paint attributes as remaining work. This structure-only run
+does not establish root geometry, browser-visible parity or native raster parity. Temporary
+admission was removed after the probe; no comparator or residual policy was relaxed.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
