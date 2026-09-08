@@ -8,6 +8,10 @@ use crate::{DiagramThemeSpecWireV1, ThemeDefinitionV1};
 /// variant carries exactly one self-contained editable recipe.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "A preset export is a single result, not a dense collection; retain its by-value recipe payload"
+)]
 pub enum PresetExportV1 {
     /// A lossless compact authoring definition.
     Definition {

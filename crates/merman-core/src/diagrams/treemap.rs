@@ -192,7 +192,7 @@ impl TreemapParseOutcome {
             family::CombinedSemanticFailure::into_parts,
         );
         control.checkpoint()?;
-        Ok(combined?)
+        combined
     }
 }
 
@@ -1075,10 +1075,10 @@ fn render_nodes_from_arena(
 ) -> crate::OperationControlResult<Vec<TreemapNodeRenderModel>> {
     let mut rendered_roots = Vec::with_capacity(roots.len());
     for (root_index, &root) in roots.iter().enumerate() {
-        if root_index % 128 == 0 {
-            if let Some(control) = control {
-                control.checkpoint()?;
-            }
+        if root_index.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
         }
         rendered_roots.push(node_to_render_model(arena, root, workspace, control)?);
     }
@@ -1479,10 +1479,10 @@ fn node_to_render_model(
     let mut steps = 0usize;
 
     while let Some((node_idx, visited)) = stack.pop() {
-        if steps % 128 == 0 {
-            if let Some(control) = control {
-                control.checkpoint()?;
-            }
+        if steps.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
         }
         steps = steps.saturating_add(1);
         let Some(node) = arena.nodes.get(node_idx) else {
@@ -1525,10 +1525,10 @@ fn clone_class_defs(
 ) -> crate::OperationControlResult<std::collections::BTreeMap<String, StyleClassDef>> {
     let mut classes = std::collections::BTreeMap::new();
     for (index, (id, class_def)) in class_defs.iter().enumerate() {
-        if index % 128 == 0 {
-            if let Some(control) = control {
-                control.checkpoint()?;
-            }
+        if index.is_multiple_of(128)
+            && let Some(control) = control
+        {
+            control.checkpoint()?;
         }
         classes.insert(id.clone(), class_def.clone());
     }

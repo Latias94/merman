@@ -241,7 +241,7 @@ impl Resolution {
         #[cfg(test)]
         let constructor_prepared = state.clone();
 
-        state.overlay_explicit(&explicit);
+        state.overlay_explicit(explicit);
         #[cfg(test)]
         let overrides_applied = state.clone();
         state.theme_color_iterations = theme_color_iteration_count(&state)?;
@@ -254,7 +254,7 @@ impl Resolution {
         #[cfg(test)]
         let after_update = state.clone();
 
-        state.overlay_explicit(&explicit);
+        state.overlay_explicit(explicit);
         #[cfg(test)]
         let explicit_replay = state.clone();
 
@@ -397,7 +397,7 @@ fn parse_theme_color_limit_string(value: &str) -> f64 {
             .iter()
             .find_map(|prefix| value.strip_prefix(prefix))
         {
-            if digits.is_empty() || !digits.chars().all(|digit| digit.to_digit(radix).is_some()) {
+            if digits.is_empty() || !digits.chars().all(|digit| digit.is_digit(radix)) {
                 return f64::NAN;
             }
             return match usize::from_str_radix(digits, radix) {

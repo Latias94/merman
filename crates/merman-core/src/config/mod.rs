@@ -404,10 +404,7 @@ impl ThemeCompatibilityFieldOwnership {
             kind,
             paths: paths
                 .into_iter()
-                .map(|path| ThemeCompatibilityPathOwnership {
-                    path: path.into(),
-                    owned: true,
-                })
+                .map(|path| ThemeCompatibilityPathOwnership { path, owned: true })
                 .collect(),
         }
     }

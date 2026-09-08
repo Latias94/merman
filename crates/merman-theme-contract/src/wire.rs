@@ -6,6 +6,10 @@ use crate::finite::ContainsNonFiniteNumber;
 /// A style entry in the flat version 1 rule-set wire.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Rules dominate the bounded style list; keep their patches inline without an allocation per rule"
+)]
 pub enum ThemeRuleSetWireV1 {
     /// A selector and style patch.
     Rule {
