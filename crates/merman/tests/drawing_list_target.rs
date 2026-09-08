@@ -556,6 +556,47 @@ fn zenuml_emits_typed_participants_lifelines_messages_and_semantics() {
 }
 
 #[test]
+fn class_namespace_preserves_theme_background_alpha() {
+    use merman_display_list::Color;
+
+    // Mermaid's .cluster rect uses clusterBkg directly, without a separate opacity.
+    for (background, expected) in [
+        ("transparent", Color::rgba(0, 0, 0, 0)),
+        ("#123456", Color::rgba(18, 52, 86, 255)),
+        ("#12345680", Color::rgba(18, 52, 86, 128)),
+    ] {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "theme": "base", "themeVariables": { "clusterBkg": background }
+        }));
+        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config));
+        let RenderOutput::DrawingList(Some(output)) = renderer
+            .render(RenderRequest::drawing_list(
+                "classDiagram\nnamespace Core {\nclass Animal\n}\n",
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .unwrap()
+        else {
+            panic!("expected DrawingList");
+        };
+        let style = output
+            .document()
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "class.namespace.0.box" =>
+                {
+                    Some(style)
+                }
+                _ => None,
+            })
+            .expect("namespace background is drawn");
+        assert_eq!(style.fill, Some(Paint::solid(expected)), "{background}");
+    }
+}
+
+#[test]
 fn class_emits_typed_compartments_relations_namespaces_and_notes() {
     let source = r#"classDiagram
         namespace Core {

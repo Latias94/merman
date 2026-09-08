@@ -407,7 +407,7 @@ impl<'a> ClassBuilder<'a> {
             rectangle_path(bounds),
             PathStyle {
                 fill_rule: FillRule::NonZero,
-                fill: Some(Paint::solid(with_alpha(self.namespace_fill, 40))),
+                fill: Some(Paint::solid(self.namespace_fill)),
                 stroke: Some(stroke(self.namespace_stroke, 1.0)),
             },
         )?;
