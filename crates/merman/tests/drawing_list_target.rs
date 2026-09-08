@@ -112,6 +112,59 @@ fn flowchart_emits_typed_routes_shapes_and_semantics() {
 }
 
 #[test]
+fn flowchart_frontmatter_title_is_visible_and_inside_the_viewport() {
+    let source = r##"---
+title: Example
+config:
+  flowchart:
+    titleTopMargin: 12
+---
+flowchart TD
+  accTitle: Accessible chart
+  A --> B
+"##;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Flowchart frontmatter titles should render as visible text");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+    let document = output.document();
+    let title = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            DrawingCommand::DrawText { run } if run.text == "Example" => Some(run),
+            _ => None,
+        })
+        .expect("frontmatter title must be a DrawText command, not only semantic metadata");
+    assert_eq!(title.origin.y, -12.0);
+    assert_eq!(title.anchor, merman_display_list::TextAnchor::Middle);
+    assert_eq!(
+        title.baseline,
+        merman_display_list::TextBaseline::Alphabetic
+    );
+    assert_eq!(title.style.font_size, 18.0);
+    let viewport = document.viewport.bounds;
+    assert!(viewport.x <= title.bounds.x);
+    assert!(viewport.y <= title.bounds.y);
+    assert!(viewport.x + viewport.width >= title.bounds.x + title.bounds.width);
+    assert!(viewport.y + viewport.height >= title.bounds.y + title.bounds.height);
+    assert!(document.semantics.iter().any(|semantic| {
+        semantic.role == merman_display_list::SemanticRole::Document
+            && semantic.title.as_deref() == Some("Accessible chart")
+    }));
+    assert!(!document.commands.iter().any(|command| matches!(
+        command,
+        DrawingCommand::DrawText { run } if run.text == "Accessible chart"
+    )));
+}
+
+#[test]
 fn flowchart_neo_effects_fail_closed_in_the_public_target() {
     for (source, effect) in [
         (
@@ -598,20 +651,99 @@ fn class_relation_markers_preserve_aggregation_and_composition_diamonds() {
         panic!("expected a DrawingList output");
     };
 
-    let markers = output
+    let marker = |id: &str| {
+        output
+            .document()
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                merman_display_list::DrawingResource::Path(path) if path.id.as_str() == id => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing Class marker resource {id}"))
+    };
+    let marker_style = |id: &str| {
+        output
+            .document()
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style } if path.as_str() == id => Some(style),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing Class marker command {id}"))
+    };
+
+    for (id, filled) in [
+        ("class.edge.0.marker.start", false),
+        ("class.edge.1.marker.start", true),
+    ] {
+        let path = marker(id);
+        assert_eq!(
+            path.segments.len(),
+            5,
+            "Class aggregation/composition markers must use closed diamond geometry: {id}"
+        );
+        assert_eq!(
+            marker_style(id).fill.is_some(),
+            filled,
+            "Class relation marker fill must preserve hollow aggregation vs filled composition: {id}"
+        );
+    }
+}
+
+#[test]
+fn class_member_classifiers_preserve_abstract_italic_and_reject_static_decoration() {
+    let abstract_source = r#"classDiagram
+        class Parser {
+            +internalHook() bool*
+        }
+    "#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            abstract_source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Class abstract member styles should be representable");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let abstract_run = output
         .document()
         .commands
         .iter()
-        .filter_map(|command| match command {
-            DrawingCommand::DrawPath { path, style } if path.as_str().contains(".marker.") => {
-                Some(style)
-            }
+        .find_map(|command| match command {
+            DrawingCommand::DrawText { run } if run.text.contains("internalHook()") => Some(run),
             _ => None,
         })
-        .collect::<Vec<_>>();
-    assert!(markers.len() >= 2, "expected both UML relation markers");
-    assert!(markers.iter().any(|style| style.fill.is_some()));
-    assert!(markers.iter().any(|style| style.fill.is_none()));
+        .expect("abstract member text should be emitted");
+    assert_eq!(
+        abstract_run.style.font.style,
+        merman_display_list::FontStyle::Italic
+    );
+
+    let static_error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            r#"classDiagram
+                class Parser {
+                    +from(v: T) Result~T~$
+                }
+            "#,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect_err("DrawingList must not silently drop static-member underlines");
+    assert!(matches!(
+        static_error,
+        RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+            family,
+            reason,
+        }) if family == "class" && reason.contains("text decoration")
+    ));
 }
 
 #[test]
@@ -737,6 +869,44 @@ fn er_emits_typed_entities_attribute_rows_relationships_and_cardinality() {
         semantic.role == merman_display_list::SemanticRole::Edge
             && semantic.title.as_deref() == Some("places")
     }));
+}
+
+#[test]
+fn er_transparent_edge_label_background_keeps_zero_alpha() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "edgeLabelBackground": "transparent"
+        }
+    })));
+    let output = Renderer::new()
+        .with_engine(engine)
+        .render(RenderRequest::drawing_list(
+            "erDiagram\n  CUSTOMER ||--|| ORDER : places\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("transparent ER relationship labels should render");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected a DrawingList output");
+    };
+
+    let alpha = output.document().commands.iter().find_map(|command| {
+        let DrawingCommand::DrawPath { path, style } = command else {
+            return None;
+        };
+        if path.as_str() != "er.edge.0.label.background" {
+            return None;
+        }
+        match style.fill.as_ref() {
+            Some(Paint::Solid { color }) => Some(color.alpha),
+            _ => None,
+        }
+    });
+    assert_eq!(
+        alpha,
+        Some(0),
+        "transparent edgeLabelBackground must not be replaced by label-box opacity"
+    );
 }
 
 #[test]
@@ -989,7 +1159,7 @@ fn architecture_limits_reject_before_first_emitted_command() {
         .expect_err("Architecture must reject its first builder command");
     assert!(
         matches!(
-            error,
+            &error,
             RenderError::ResourceLimitExceeded(limit)
                 if limit.id == "max_commands"
                     && limit.phase == "drawing-list-validation"

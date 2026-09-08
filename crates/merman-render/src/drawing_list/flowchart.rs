@@ -26,7 +26,7 @@ use crate::model::{
 };
 use crate::presentation::FlowchartPresentationPolicy;
 use crate::render_geometry::{FlowchartCurveKind, emit_flowchart_curve_segments};
-use crate::text::{TextStyle as RenderTextStyle, WrapMode};
+use crate::text::{TextMeasurer as _, TextStyle as RenderTextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_core::diagrams::flowchart::{
     FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNodeProvenance,
@@ -398,6 +398,18 @@ impl<'a> FlowchartBuilder<'a> {
             self.emit_node(&node_layout)?;
         }
 
+        let mut bounds = self
+            .layout
+            .bounds()
+            .expect("validated in constructor")
+            .clone();
+        if let Some(title_bounds) = self.emit_document_title(&bounds)? {
+            bounds.min_x = bounds.min_x.min(title_bounds.min_x);
+            bounds.min_y = bounds.min_y.min(title_bounds.min_y);
+            bounds.max_x = bounds.max_x.max(title_bounds.max_x);
+            bounds.max_y = bounds.max_y.max(title_bounds.max_y);
+        }
+
         if !self.interaction_nodes.is_empty() {
             self.extensions.insert(
                 format!("x-merman-{}-interactions", self.family_prefix()),
@@ -419,7 +431,6 @@ impl<'a> FlowchartBuilder<'a> {
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
 
-        let bounds = self.layout.bounds().expect("validated in constructor");
         let document = self.output.finish(
             Viewport::new(Rect::new(
                 bounds.min_x,
@@ -444,6 +455,91 @@ impl<'a> FlowchartBuilder<'a> {
                 },
             },
         })
+    }
+
+    /// Emits Mermaid's visible frontmatter title.
+    ///
+    /// Flowchart accessibility metadata (`accTitle`) is intentionally kept separate from the
+    /// visible title. Mermaid's flowchart-v2 renderer paints only the YAML `title` at the root,
+    /// centered over the pre-title graph bounds, with an 18px font and the configured
+    /// `titleTopMargin` as its baseline offset.
+    fn emit_document_title(&mut self, graph_bounds: &Bounds) -> Result<Option<Bounds>> {
+        let Some(title) = self
+            .metadata
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+        else {
+            return Ok(None);
+        };
+
+        const TITLE_FONT_SIZE: f64 = 18.0;
+        let title_x = (graph_bounds.min_x + graph_bounds.max_x) / 2.0;
+        let title_y = -self.config.render_title_top_margin();
+        let measurement_style = RenderTextStyle {
+            font_family: self.node_style.font_family.clone(),
+            font_size: TITLE_FONT_SIZE,
+            font_weight: None,
+            font_style: None,
+        };
+        let font = self.font.clone();
+        let obligation =
+            super::support::text_obligation(self.session, TextMeasurementPhase::SvgBBox);
+        let text_color = self.cluster_text;
+        let session = self.session;
+        let mut title_bounds = None;
+        self.output.draw_host_text_parts(&[title], |text| {
+            let measurer = session
+                .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit);
+            let (left, right) = measurer.measure_svg_title_bbox_x(&text, &measurement_style);
+            let (ascent, descent) =
+                crate::text::svg_title_bbox_vertical_extents_px(&measurement_style);
+            session.checkpoint(OperationPhase::Emit)?;
+            if ![left, right, ascent, descent]
+                .into_iter()
+                .all(f64::is_finite)
+                || left < 0.0
+                || right < 0.0
+                || ascent < 0.0
+                || descent < 0.0
+            {
+                return Err(invalid(
+                    "Flowchart title measurement returned invalid bounds",
+                ));
+            }
+            title_bounds = Some(Bounds {
+                min_x: title_x - left,
+                min_y: title_y - ascent,
+                max_x: title_x + right,
+                max_y: title_y + descent,
+            });
+            Ok(TextRun {
+                text,
+                origin: Point::new(title_x, title_y),
+                bounds: Rect::new(
+                    title_x - left,
+                    title_y - ascent,
+                    left + right,
+                    ascent + descent,
+                ),
+                style: TextStyle {
+                    font,
+                    font_size: TITLE_FONT_SIZE,
+                    letter_spacing: 0.0,
+                    line_height: TITLE_FONT_SIZE,
+                    fill: Paint::solid(text_color),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor: TextAnchor::Middle,
+                baseline: TextBaseline::Alphabetic,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation,
+            })
+        })?;
+        Ok(title_bounds)
     }
 
     fn family_prefix(&self) -> &'static str {
@@ -2000,19 +2096,20 @@ pub(crate) fn ellipse_path(x: f64, y: f64, radius_x: f64, radius_y: f64) -> Vec<
 fn lean_path(x: f64, y: f64, total_width: f64, height: f64, left: bool) -> Vec<PathSegment> {
     let w = (total_width - height).max(1.0);
     let dx = 3.0 * height / 6.0;
+    let half_w = w / 2.0;
     let points = if left {
         [
-            Point::new(x - w / 2.0, y + height / 2.0),
-            Point::new(x + (w + dx) / 2.0, y + height / 2.0),
-            Point::new(x + w / 2.0, y - height / 2.0),
-            Point::new(x - (w + dx) / 2.0, y - height / 2.0),
+            Point::new(x - half_w, y + height / 2.0),
+            Point::new(x + half_w + dx, y + height / 2.0),
+            Point::new(x + half_w, y - height / 2.0),
+            Point::new(x - half_w - dx, y - height / 2.0),
         ]
     } else {
         [
-            Point::new(x - (w + dx) / 2.0, y + height / 2.0),
-            Point::new(x + w / 2.0, y + height / 2.0),
-            Point::new(x + (w + dx) / 2.0, y - height / 2.0),
-            Point::new(x - w / 2.0, y - height / 2.0),
+            Point::new(x - half_w - dx, y + height / 2.0),
+            Point::new(x + half_w, y + height / 2.0),
+            Point::new(x + half_w + dx, y - height / 2.0),
+            Point::new(x - half_w, y - height / 2.0),
         ]
     };
     polygon_path(&points)
@@ -2579,6 +2676,30 @@ fn unavailable(message: impl Display) -> Error {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn lean_paths_keep_the_full_mermaid_skew_width() {
+        // Mermaid defines the polygon in label coordinates, then translates it by (-w/2, h/2).
+        // For total width 120 and height 40, w=80 and dx=20; the outer side reaches +/-60.
+        assert_eq!(
+            lean_path(10.0, 20.0, 120.0, 40.0, true),
+            polygon_path(&[
+                Point::new(-30.0, 40.0),
+                Point::new(70.0, 40.0),
+                Point::new(50.0, 0.0),
+                Point::new(-50.0, 0.0),
+            ])
+        );
+        assert_eq!(
+            lean_path(10.0, 20.0, 120.0, 40.0, false),
+            polygon_path(&[
+                Point::new(-50.0, 40.0),
+                Point::new(50.0, 40.0),
+                Point::new(70.0, 0.0),
+                Point::new(-30.0, 0.0),
+            ])
+        );
+    }
 
     #[test]
     fn cancellation_during_a_flowchart_route_does_not_commit_the_path() {
