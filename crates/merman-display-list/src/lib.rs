@@ -10,6 +10,7 @@ mod document;
 mod error;
 mod geometry;
 mod resources;
+mod validation;
 mod wire;
 
 pub use commands::{
@@ -29,6 +30,7 @@ pub use resources::{
     ImagePatternResource, ImageResource, LinearGradientResource, Paint, PathResource, PathSegment,
     PatternRepeat, PatternResource, RadialGradientResource, ResourceId,
 };
+pub use validation::ValidationEvent;
 
 /// The current public DrawingList wire schema version.
 pub const DRAWING_LIST_VERSION: u32 = 1;

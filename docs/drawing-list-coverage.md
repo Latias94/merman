@@ -85,6 +85,15 @@ background layers; SVG text labels retain the exact `mainBkg` alpha. Protocol-li
 latch in the shared operation control before returning, so later cancellation cannot replace
 their resource terminal. Public quota errors keep the same stable limit ID and exact counts.
 
+The shared validator now accepts a caller-owned admission/cancellation callback independently of
+document correctness. The existing `validate`, bounded decoder, and JSON encoder still use the
+same protocol defaults or explicit limits. Resource counts are admitted before expensive payload
+walks; path segments, glyphs, dash entries, extension values, and PNG rows have cancellation
+checkpoints. The bounded builder uses this path during final validation and returns no document
+on cancellation. Focused tests retain the default decoder's nesting rejection, exercise a different
+in-memory admission policy without accepting invalid scopes, and reject/cancel PNG validation
+before or during pixel decoding. This is a validation foundation, not yet an SVG policy change.
+
 Caller control over canonical SVG document limits remains an open repair unit. SVG construction,
 pre-serialization admission, and encoder validation still apply protocol defaults; fixing only
 one boundary does not remove the hidden limit. The intended integration separates shared

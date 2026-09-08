@@ -438,9 +438,12 @@ impl<'a> DrawingListBuilder<'a> {
             fallbacks: Vec::new(),
             extensions,
         };
-        document
-            .validate_with_limits(&self.limits)
-            .map_err(Error::DrawingListContract)?;
+        document.validate_with_control(|event| {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            self.limits.admit_validation_event(event).map_err(|error| {
+                super::operation_document_error(Error::DrawingListContract(error), self.session)
+            })
+        })?;
         let actual = document.footprint().map_err(Error::DrawingListContract)?;
         if actual != self.usage {
             return Err(contract_error(format!(
@@ -821,6 +824,35 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, Error::Cancelled(_)));
         assert_eq!(builder.commands.len(), 1);
+    }
+
+    #[test]
+    fn cancellation_during_finish_validation_returns_no_document() {
+        let environment = RenderEnvironment::deterministic();
+        let control = OperationControl::new();
+        let session = make_session(&environment, control.clone());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::AllowRasterSubtree,
+            DrawingListLimits::default(),
+            &session,
+        );
+        builder
+            .draw_path_with(ResourceId::new("path"), path_style(), |emit| {
+                for index in 0..128 {
+                    emit(PathSegment::MoveTo {
+                        to: Point::new(index as f64, 0.0),
+                    })?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        // Start cancellation after construction, while the validator is traversing this path.
+        control.cancel_after_checkpoints(16);
+        let result = builder.finish(
+            Viewport::new(Rect::new(0.0, 0.0, 128.0, 1.0)),
+            BTreeMap::new(),
+        );
+        assert!(matches!(result, Err(Error::Cancelled(_))));
     }
 
     #[test]

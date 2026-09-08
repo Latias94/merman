@@ -1,3 +1,4 @@
+use crate::validation::{ValidationControl, ValidationEvent};
 use crate::{DrawingListError, Point, Rect, ResourceId, Transform};
 use serde::{Deserialize, Serialize, de, de::MapAccess, de::Visitor};
 use std::fmt;
@@ -62,20 +63,29 @@ pub struct StrokeStyle {
 }
 
 impl StrokeStyle {
-    pub(crate) fn validate(&self) -> Result<(), DrawingListError> {
+    pub(crate) fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if !self.width.is_finite()
             || self.width < 0.0
             || !self.miter_limit.is_finite()
             || self.miter_limit <= 0.0
             || !self.dash_offset.is_finite()
-            || self
-                .dash_array
-                .iter()
-                .any(|value| !value.is_finite() || *value < 0.0)
         {
-            return Err(DrawingListError::invalid(
-                "stroke style contains invalid numeric values",
-            ));
+            return Err(
+                DrawingListError::invalid("stroke style contains invalid numeric values").into(),
+            );
+        }
+        for value in &self.dash_array {
+            control.checkpoint()?;
+            if !value.is_finite() || *value < 0.0 {
+                return Err(DrawingListError::invalid(
+                    "stroke style contains invalid numeric values",
+                )
+                .into());
+            }
         }
         Ok(())
     }
@@ -95,9 +105,13 @@ pub struct PathStyle {
 }
 
 impl PathStyle {
-    pub(crate) fn validate(&self) -> Result<(), DrawingListError> {
+    pub(crate) fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if let Some(stroke) = &self.stroke {
-            stroke.validate()?;
+            stroke.validate(control)?;
         }
         Ok(())
     }
@@ -441,37 +455,43 @@ impl DrawingCommand {
         Self::DrawText { run: Box::new(run) }
     }
 
-    pub(crate) fn validate_numbers(&self) -> Result<(), DrawingListError> {
+    pub(crate) fn validate_numbers<E, F>(
+        &self,
+        control: &mut ValidationControl<E, F>,
+    ) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
+        control.checkpoint()?;
         match self {
-            Self::SetOpacity { opacity } => validate_unit(*opacity, "opacity"),
+            Self::SetOpacity { opacity } => validate_unit(*opacity, "opacity").map_err(E::from),
             Self::ConcatTransform { transform } => {
                 if transform.is_finite() {
                     Ok(())
                 } else {
-                    Err(DrawingListError::invalid(
-                        "transform contains non-finite values",
-                    ))
+                    Err(DrawingListError::invalid("transform contains non-finite values").into())
                 }
             }
             Self::BeginLayer {
                 bounds, opacity, ..
             } => {
                 if !bounds.is_valid() {
-                    return Err(DrawingListError::invalid("layer bounds are invalid"));
+                    return Err(DrawingListError::invalid("layer bounds are invalid").into());
                 }
-                validate_unit(*opacity, "layer opacity")
+                validate_unit(*opacity, "layer opacity").map_err(E::from)
             }
-            Self::DrawPath { style, .. } => style.validate(),
+            Self::DrawPath { style, .. } => style.validate(control),
             Self::ClipPath { .. } => Ok(()),
             Self::DrawImage {
                 bounds, opacity, ..
             } => {
                 if !bounds.is_valid() {
-                    return Err(DrawingListError::invalid("image bounds are invalid"));
+                    return Err(DrawingListError::invalid("image bounds are invalid").into());
                 }
-                validate_unit(*opacity, "image opacity")
+                validate_unit(*opacity, "image opacity").map_err(E::from)
             }
-            Self::DrawText { run } => run.validate(),
+            Self::DrawText { run } => run.validate(control),
             Self::Save
             | Self::Restore
             | Self::SetBlendMode { .. }
@@ -484,18 +504,21 @@ impl DrawingCommand {
 }
 
 impl TextRun {
-    fn validate(&self) -> Result<(), DrawingListError> {
+    fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if !self.origin.is_finite() || !self.bounds.is_valid() {
-            return Err(DrawingListError::invalid("text run geometry is invalid"));
+            return Err(DrawingListError::invalid("text run geometry is invalid").into());
         }
         if self.language.as_deref().is_some_and(str::is_empty) {
-            return Err(DrawingListError::invalid(
-                "text language must not be empty when present",
-            ));
+            return Err(
+                DrawingListError::invalid("text language must not be empty when present").into(),
+            );
         }
-        self.style.validate()?;
+        self.style.validate(control)?;
         if self.style.font.families.is_empty()
-            || self.style.font.families.iter().any(String::is_empty)
             || self.style.font.weight == 0
             || self
                 .style
@@ -510,9 +533,13 @@ impl TextRun {
                 .as_ref()
                 .is_some_and(|resource| resource.as_str().is_empty())
         {
-            return Err(DrawingListError::invalid(
-                "text font descriptor is incomplete",
-            ));
+            return Err(DrawingListError::invalid("text font descriptor is incomplete").into());
+        }
+        for family in &self.style.font.families {
+            control.checkpoint()?;
+            if family.is_empty() {
+                return Err(DrawingListError::invalid("text font descriptor is incomplete").into());
+            }
         }
         match &self.obligation {
             TextObligation::HostText { measurement } => {
@@ -521,17 +548,19 @@ impl TextRun {
                 {
                     return Err(DrawingListError::invalid(
                         "text measurement profile must not be empty",
-                    ));
+                    )
+                    .into());
                 }
             }
             TextObligation::GlyphRun { glyphs } => {
-                if glyphs
-                    .iter()
-                    .any(|glyph| !glyph.origin.is_finite() || !glyph.advance.is_finite())
-                {
-                    return Err(DrawingListError::invalid(
-                        "glyph run contains non-finite positioning",
-                    ));
+                for glyph in glyphs {
+                    control.checkpoint()?;
+                    if !glyph.origin.is_finite() || !glyph.advance.is_finite() {
+                        return Err(DrawingListError::invalid(
+                            "glyph run contains non-finite positioning",
+                        )
+                        .into());
+                    }
                 }
             }
             TextObligation::Outline { .. } | TextObligation::RasterFallback { .. } => {}
@@ -541,19 +570,23 @@ impl TextRun {
 }
 
 impl TextStyle {
-    fn validate(&self) -> Result<(), DrawingListError> {
+    fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if !self.font_size.is_finite()
             || self.font_size <= 0.0
             || !self.letter_spacing.is_finite()
             || !self.line_height.is_finite()
             || self.line_height <= 0.0
         {
-            return Err(DrawingListError::invalid(
-                "text style contains invalid numeric values",
-            ));
+            return Err(
+                DrawingListError::invalid("text style contains invalid numeric values").into(),
+            );
         }
         if let Some(stroke) = &self.stroke {
-            stroke.validate()?;
+            stroke.validate(control)?;
         }
         Ok(())
     }

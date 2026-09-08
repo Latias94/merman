@@ -2,6 +2,7 @@ use crate::{
     DRAWING_LIST_MAX_EXTENSION_DEPTH, DRAWING_LIST_VERSION, DrawingCommand, DrawingListError,
     DrawingListPolicy, DrawingResource, PathSegment, Point, Rect, ResourceId, TextObligation,
     resources::canonical_base64_decoded_len,
+    validation::{ValidationControl, ValidationEvent},
 };
 use serde::{
     Deserialize, Serialize,
@@ -546,22 +547,42 @@ impl DrawingListDocument {
     }
 
     pub fn validate_with_limits(&self, limits: &DrawingListLimits) -> Result<(), DrawingListError> {
+        self.validate_with_control(|event| limits.admit_validation_event(event))
+    }
+
+    /// Validates document correctness using the caller's admission and cancellation policy.
+    ///
+    /// Unlike [`Self::validate_with_limits`], this applies no implicit protocol quantity limits.
+    /// The caller must admit count observations before their associated validation work proceeds.
+    /// All structural, reference, numeric and encoded-image checks still run. This entry point
+    /// validates an already constructed document; it does not bound its prior construction or
+    /// replace the limits on untrusted JSON decoding.
+    pub fn validate_with_control<E>(
+        &self,
+        callback: impl FnMut(ValidationEvent) -> Result<(), E>,
+    ) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+    {
+        let mut control = ValidationControl::new(callback);
+        control.checkpoint()?;
         if self.version != DRAWING_LIST_VERSION {
             return Err(DrawingListError::UnsupportedVersion {
                 actual: self.version,
                 expected: DRAWING_LIST_VERSION,
-            });
+            }
+            .into());
         }
         if !matches!(self.coordinate_system, CoordinateSystem::LogicalPixelsYDown) {
-            return Err(DrawingListError::invalid("unsupported coordinate system"));
+            return Err(DrawingListError::invalid("unsupported coordinate system").into());
         }
         if !self.viewport.bounds.is_valid() {
-            return Err(DrawingListError::invalid("viewport bounds are invalid"));
+            return Err(DrawingListError::invalid("viewport bounds are invalid").into());
         }
-        validate_count("commands", self.commands.len(), limits.max_commands)?;
-        validate_count("resources", self.resources.len(), limits.max_resources)?;
-        validate_count("fallbacks", self.fallbacks.len(), limits.max_fallbacks)?;
-        validate_extensions(&self.extensions)?;
+        control.count("commands", self.commands.len() as u64)?;
+        control.count("resources", self.resources.len() as u64)?;
+        control.count("fallbacks", self.fallbacks.len() as u64)?;
+        validate_extensions_with_control(&self.extensions, &mut control)?;
 
         let mut resource_ids = BTreeSet::new();
         let mut image_resources = BTreeMap::new();
@@ -573,26 +594,14 @@ impl DrawingListDocument {
         let mut path_segments = 0usize;
         let mut stroke_dash_entries = 0usize;
         for resource in &self.resources {
+            control.checkpoint()?;
             if !resource_ids.insert(resource.id().clone()) {
                 return Err(DrawingListError::invalid(format!(
                     "duplicate resource id {}",
                     resource.id().as_str()
-                )));
+                ))
+                .into());
             }
-            let usage = resource.validate(
-                limits.max_path_segments,
-                image_bytes,
-                limits.max_image_bytes,
-                image_pixels,
-                limits.max_image_pixels,
-                limits.max_font_bytes,
-            )?;
-            image_bytes = image_bytes
-                .checked_add(usage.image_bytes)
-                .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
-            image_pixels = image_pixels
-                .checked_add(usage.image_pixels)
-                .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
             if let DrawingResource::Path(path) = resource {
                 path_segments =
                     path_segments
@@ -600,8 +609,21 @@ impl DrawingListDocument {
                         .ok_or_else(|| {
                             DrawingListError::invalid("path segment count overflows usize")
                         })?;
-                validate_count("path_segments", path_segments, limits.max_path_segments)?;
+                control.count("path_segments", path_segments as u64)?;
             }
+            if let DrawingResource::Font(font) = resource {
+                font_bytes = font_bytes
+                    .checked_add(font.font.data.len())
+                    .ok_or_else(|| DrawingListError::invalid("font byte count overflows usize"))?;
+                control.count("font_bytes", font_bytes as u64)?;
+            }
+            let usage = resource.validate(image_bytes, image_pixels, &mut control)?;
+            image_bytes = image_bytes
+                .checked_add(usage.image_bytes)
+                .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
+            image_pixels = image_pixels
+                .checked_add(usage.image_pixels)
+                .ok_or_else(|| DrawingListError::invalid("image pixel count overflows usize"))?;
             match resource {
                 DrawingResource::LinearGradient(gradient) => {
                     paint_ids.insert(gradient.id.clone());
@@ -614,12 +636,6 @@ impl DrawingListDocument {
                 }
                 DrawingResource::Font(font) => {
                     font_ids.insert(font.id.clone());
-                    font_bytes = font_bytes
-                        .checked_add(font.font.data.len())
-                        .ok_or_else(|| {
-                            DrawingListError::invalid("font byte count overflows usize")
-                        })?;
-                    validate_count("font_bytes", font_bytes, limits.max_font_bytes)?;
                 }
                 DrawingResource::Path(_) | DrawingResource::Image(_) => {}
             }
@@ -630,6 +646,7 @@ impl DrawingListDocument {
         let image_ids = image_resources.keys().cloned().collect::<BTreeSet<_>>();
 
         for resource in &self.resources {
+            control.checkpoint()?;
             if let DrawingResource::Pattern(pattern) = resource
                 && !image_resources.contains_key(&pattern.image)
             {
@@ -637,7 +654,8 @@ impl DrawingListDocument {
                     "pattern {} references unknown image {}",
                     pattern.id.as_str(),
                     pattern.image.as_str()
-                )));
+                ))
+                .into());
             }
         }
         let path_ids = self
@@ -651,26 +669,29 @@ impl DrawingListDocument {
 
         let mut semantic_ids = BTreeSet::new();
         for semantic in &self.semantics {
+            control.checkpoint()?;
             if semantic.id.is_empty() || !semantic_ids.insert(semantic.id.as_str()) {
-                return Err(DrawingListError::invalid(
-                    "semantic ids must be non-empty and unique",
-                ));
+                return Err(
+                    DrawingListError::invalid("semantic ids must be non-empty and unique").into(),
+                );
             }
         }
 
         let mut fallback_ids = BTreeSet::new();
         let mut fallback_pixels = 0usize;
         for fallback in &self.fallbacks {
+            control.checkpoint()?;
             if fallback.id.is_empty() || !fallback_ids.insert(fallback.id.as_str()) {
-                return Err(DrawingListError::invalid(
-                    "fallback ids must be non-empty and unique",
-                ));
+                return Err(
+                    DrawingListError::invalid("fallback ids must be non-empty and unique").into(),
+                );
             }
             let Some(image) = image_resources.get(&fallback.image).copied() else {
                 return Err(DrawingListError::invalid(format!(
                     "fallback {} references a non-image resource",
                     fallback.id
-                )));
+                ))
+                .into());
             };
             if !fallback.bounds.is_valid()
                 || fallback.pixel_width == 0
@@ -690,16 +711,12 @@ impl DrawingListDocument {
                 return Err(DrawingListError::invalid(format!(
                     "fallback {} is missing valid bounds, pixels, scale, format, alpha mode, reason provenance, or source identity",
                     fallback.id
-                )));
+                )).into());
             }
             fallback_pixels = fallback_pixels
                 .checked_add(pixel_count(fallback.pixel_width, fallback.pixel_height)?)
                 .ok_or_else(|| DrawingListError::invalid("fallback pixel count overflows usize"))?;
-            validate_count(
-                "fallback_pixels",
-                fallback_pixels,
-                limits.max_fallback_pixels,
-            )?;
+            control.count("fallback_pixels", fallback_pixels as u64)?;
         }
 
         let mut referenced_fallbacks = BTreeSet::new();
@@ -713,13 +730,39 @@ impl DrawingListDocument {
         let mut text_bytes = 0usize;
         let mut glyph_count = 0usize;
         for command in &self.commands {
-            command.validate_numbers()?;
+            control.checkpoint()?;
+            let stroke = match command {
+                DrawingCommand::DrawPath { style, .. } => style.stroke.as_ref(),
+                DrawingCommand::DrawText { run } => {
+                    text_bytes = text_bytes.checked_add(run.text.len()).ok_or_else(|| {
+                        DrawingListError::invalid("text byte count overflows usize")
+                    })?;
+                    control.count("text_bytes", text_bytes as u64)?;
+                    if let TextObligation::GlyphRun { glyphs } = &run.obligation {
+                        glyph_count = glyph_count.checked_add(glyphs.len()).ok_or_else(|| {
+                            DrawingListError::invalid("glyph count overflows usize")
+                        })?;
+                        control.count("glyphs", glyph_count as u64)?;
+                    }
+                    run.style.stroke.as_ref()
+                }
+                _ => None,
+            };
+            if let Some(stroke) = stroke {
+                stroke_dash_entries = stroke_dash_entries
+                    .checked_add(stroke.dash_array.len())
+                    .ok_or_else(|| {
+                        DrawingListError::invalid("stroke dash count overflows usize")
+                    })?;
+                control.count("stroke_dash_entries", stroke_dash_entries as u64)?;
+            }
+            command.validate_numbers(&mut control)?;
             match command {
                 DrawingCommand::Save => {
                     state_depth = state_depth
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("state depth overflows usize"))?;
-                    validate_count("nesting_depth", state_depth, limits.max_nesting_depth)?;
+                    control.count("nesting_depth", state_depth as u64)?;
                     state_scopes.push((
                         semantic_depth,
                         layer_depth,
@@ -735,27 +778,33 @@ impl DrawingListDocument {
                         saved_scopes,
                     )) = state_scopes.pop()
                     else {
-                        return Err(DrawingListError::invalid("restore without matching save"));
+                        return Err(
+                            DrawingListError::invalid("restore without matching save").into()
+                        );
                     };
                     if semantic_depth != saved_semantic_depth {
                         return Err(DrawingListError::invalid(
                             "restore cannot cross an open semantic group",
-                        ));
+                        )
+                        .into());
                     }
                     if layer_depth != saved_layer_depth {
                         return Err(DrawingListError::invalid(
                             "restore cannot cross an open layer",
-                        ));
+                        )
+                        .into());
                     }
                     if clip_depth < saved_clip_depth {
                         return Err(DrawingListError::invalid(
                             "clip scope cannot end before its save scope",
-                        ));
+                        )
+                        .into());
                     }
                     if !restore_group_scopes(&group_scopes, &saved_scopes) {
                         return Err(DrawingListError::invalid(
                             "restore cannot cross an open semantic or layer group",
-                        ));
+                        )
+                        .into());
                     }
                     group_scopes.truncate(saved_scopes.len());
                     clip_depth = saved_clip_depth;
@@ -767,7 +816,7 @@ impl DrawingListDocument {
                     layer_depth = layer_depth
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("layer depth overflows usize"))?;
-                    validate_count("nesting_depth", layer_depth, limits.max_nesting_depth)?;
+                    control.count("nesting_depth", layer_depth as u64)?;
                     group_scopes.push(GroupScope::Layer(next_scope_id));
                     next_scope_id = next_scope_id
                         .checked_add(1)
@@ -777,7 +826,8 @@ impl DrawingListDocument {
                     if !matches!(group_scopes.pop(), Some(GroupScope::Layer(_))) {
                         return Err(DrawingListError::invalid(
                             "layer end does not match the open group",
-                        ));
+                        )
+                        .into());
                     }
                     layer_depth = layer_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("layer end without matching begin")
@@ -788,35 +838,32 @@ impl DrawingListDocument {
                         return Err(DrawingListError::invalid(format!(
                             "draw_path references unknown path {}",
                             path.as_str()
-                        )));
+                        ))
+                        .into());
                     }
                     validate_paint(style.fill.as_ref(), &paint_ids)?;
                     if let Some(stroke) = &style.stroke {
                         validate_paint(Some(&stroke.paint), &paint_ids)?;
-                        checked_accumulate(
-                            "stroke_dash_entries",
-                            &mut stroke_dash_entries,
-                            stroke.dash_array.len(),
-                            limits.max_stroke_dash_entries,
-                        )?;
                     }
                 }
                 DrawingCommand::ClipPath { path, .. } => {
                     if state_depth == 0 {
                         return Err(DrawingListError::invalid(
                             "clip_path must be scoped by save/restore",
-                        ));
+                        )
+                        .into());
                     }
                     if !path_ids.contains(path) {
                         return Err(DrawingListError::invalid(format!(
                             "clip_path references unknown path {}",
                             path.as_str()
-                        )));
+                        ))
+                        .into());
                     }
                     clip_depth = clip_depth
                         .checked_add(1)
                         .ok_or_else(|| DrawingListError::invalid("clip depth overflows usize"))?;
-                    validate_count("nesting_depth", clip_depth, limits.max_nesting_depth)?;
+                    control.count("nesting_depth", clip_depth as u64)?;
                     group_scopes.push(GroupScope::Clip(next_scope_id));
                     next_scope_id = next_scope_id
                         .checked_add(1)
@@ -827,19 +874,21 @@ impl DrawingListDocument {
                         return Err(DrawingListError::invalid(format!(
                             "draw_image references unknown image {}",
                             image.as_str()
-                        )));
+                        ))
+                        .into());
                     }
                 }
                 DrawingCommand::BeginSemanticGroup { semantic_id } => {
                     if !semantic_ids.contains(semantic_id.as_str()) {
                         return Err(DrawingListError::invalid(format!(
                             "semantic group references unknown id {semantic_id}"
-                        )));
+                        ))
+                        .into());
                     }
                     semantic_depth = semantic_depth.checked_add(1).ok_or_else(|| {
                         DrawingListError::invalid("semantic depth overflows usize")
                     })?;
-                    validate_count("nesting_depth", semantic_depth, limits.max_nesting_depth)?;
+                    control.count("nesting_depth", semantic_depth as u64)?;
                     group_scopes.push(GroupScope::Semantic(next_scope_id));
                     next_scope_id = next_scope_id
                         .checked_add(1)
@@ -849,7 +898,8 @@ impl DrawingListDocument {
                     if !matches!(group_scopes.pop(), Some(GroupScope::Semantic(_))) {
                         return Err(DrawingListError::invalid(
                             "semantic group end does not match the open group",
-                        ));
+                        )
+                        .into());
                     }
                     semantic_depth = semantic_depth.checked_sub(1).ok_or_else(|| {
                         DrawingListError::invalid("semantic group end without matching begin")
@@ -859,24 +909,15 @@ impl DrawingListDocument {
                     if !fallback_ids.contains(fallback_id.as_str()) {
                         return Err(DrawingListError::invalid(format!(
                             "raster command references unknown fallback {fallback_id}"
-                        )));
+                        ))
+                        .into());
                     }
                     referenced_fallbacks.insert(fallback_id.as_str());
                 }
                 DrawingCommand::DrawText { run } => {
-                    text_bytes = text_bytes.checked_add(run.text.len()).ok_or_else(|| {
-                        DrawingListError::invalid("text byte count overflows usize")
-                    })?;
-                    validate_count("text_bytes", text_bytes, limits.max_text_bytes)?;
                     validate_paint(Some(&run.style.fill), &paint_ids)?;
                     if let Some(stroke) = &run.style.stroke {
                         validate_paint(Some(&stroke.paint), &paint_ids)?;
-                        checked_accumulate(
-                            "stroke_dash_entries",
-                            &mut stroke_dash_entries,
-                            stroke.dash_array.len(),
-                            limits.max_stroke_dash_entries,
-                        )?;
                     }
                     if let Some(font) = &run.style.font.resource
                         && !font_ids.contains(font)
@@ -884,7 +925,8 @@ impl DrawingListDocument {
                         return Err(DrawingListError::invalid(format!(
                             "text references unknown font resource {}",
                             font.as_str()
-                        )));
+                        ))
+                        .into());
                     }
                     match &run.obligation {
                         TextObligation::Outline { path } => {
@@ -892,25 +934,20 @@ impl DrawingListDocument {
                                 return Err(DrawingListError::invalid(format!(
                                     "text outline references unknown path {}",
                                     path.as_str()
-                                )));
+                                ))
+                                .into());
                             }
                         }
                         TextObligation::RasterFallback { fallback_id } => {
                             if !fallback_ids.contains(fallback_id.as_str()) {
                                 return Err(DrawingListError::invalid(format!(
                                     "text references unknown fallback {fallback_id}"
-                                )));
+                                ))
+                                .into());
                             }
                             referenced_fallbacks.insert(fallback_id.as_str());
                         }
-                        TextObligation::GlyphRun { glyphs } => {
-                            glyph_count =
-                                glyph_count.checked_add(glyphs.len()).ok_or_else(|| {
-                                    DrawingListError::invalid("glyph count overflows usize")
-                                })?;
-                            validate_count("glyphs", glyph_count, limits.max_glyphs)?;
-                        }
-                        TextObligation::HostText { .. } => {}
+                        TextObligation::GlyphRun { .. } | TextObligation::HostText { .. } => {}
                     }
                 }
                 DrawingCommand::SetOpacity { .. }
@@ -922,39 +959,37 @@ impl DrawingListDocument {
                 .and_then(|depth| depth.checked_add(layer_depth))
                 .and_then(|depth| depth.checked_add(clip_depth))
                 .ok_or_else(|| DrawingListError::invalid("nesting depth overflows usize"))?;
-            validate_count("nesting_depth", nesting_depth, limits.max_nesting_depth)?;
+            control.count("nesting_depth", nesting_depth as u64)?;
         }
         if state_depth != 0 {
-            return Err(DrawingListError::invalid(
-                "save/restore state is unbalanced",
-            ));
+            return Err(DrawingListError::invalid("save/restore state is unbalanced").into());
         }
         if !state_scopes.is_empty() {
-            return Err(DrawingListError::invalid(
-                "save/restore scopes are unbalanced",
-            ));
+            return Err(DrawingListError::invalid("save/restore scopes are unbalanced").into());
         }
         if !group_scopes.is_empty() {
-            return Err(DrawingListError::invalid("group scopes are unbalanced"));
+            return Err(DrawingListError::invalid("group scopes are unbalanced").into());
         }
         if clip_depth != 0 {
-            return Err(DrawingListError::invalid("clip scopes are unbalanced"));
+            return Err(DrawingListError::invalid("clip scopes are unbalanced").into());
         }
         if semantic_depth != 0 {
-            return Err(DrawingListError::invalid("semantic groups are unbalanced"));
+            return Err(DrawingListError::invalid("semantic groups are unbalanced").into());
         }
         if layer_depth != 0 {
-            return Err(DrawingListError::invalid("layers are unbalanced"));
+            return Err(DrawingListError::invalid("layers are unbalanced").into());
         }
         if referenced_fallbacks.len() != fallback_ids.len() {
             return Err(DrawingListError::invalid(
                 "every raster fallback must be referenced by a drawing command",
-            ));
+            )
+            .into());
         }
         if matches!(self.policy, DrawingListPolicy::VectorOnly) && !self.fallbacks.is_empty() {
             return Err(DrawingListError::invalid(
                 "vector-only policy cannot contain raster fallbacks",
-            ));
+            )
+            .into());
         }
         Ok(())
     }
@@ -1767,13 +1802,26 @@ fn canonical_base64_json_decoded_len(json_string: &str) -> Result<usize, Drawing
 }
 
 fn validate_extensions(extensions: &BTreeMap<String, Value>) -> Result<(), DrawingListError> {
-    if extensions.keys().any(|key| !key.starts_with("x-")) {
-        return Err(DrawingListError::invalid(
-            "only x-* metadata extensions are forward-compatible",
-        ));
-    }
-    for value in extensions.values() {
-        validate_extension_depth(value, 0)?;
+    validate_extensions_with_control(extensions, &mut ValidationControl::new(|_| Ok(())))
+}
+
+fn validate_extensions_with_control<E, F>(
+    extensions: &BTreeMap<String, Value>,
+    control: &mut ValidationControl<E, F>,
+) -> Result<(), E>
+where
+    E: From<DrawingListError>,
+    F: FnMut(ValidationEvent) -> Result<(), E>,
+{
+    for (key, value) in extensions {
+        control.checkpoint()?;
+        if !key.starts_with("x-") {
+            return Err(DrawingListError::invalid(
+                "only x-* metadata extensions are forward-compatible",
+            )
+            .into());
+        }
+        validate_extension_depth(value, 0, control)?;
     }
     Ok(())
 }
@@ -1787,7 +1835,16 @@ where
     Ok(extensions)
 }
 
-fn validate_extension_depth(value: &Value, parent_depth: usize) -> Result<(), DrawingListError> {
+fn validate_extension_depth<E, F>(
+    value: &Value,
+    parent_depth: usize,
+    control: &mut ValidationControl<E, F>,
+) -> Result<(), E>
+where
+    E: From<DrawingListError>,
+    F: FnMut(ValidationEvent) -> Result<(), E>,
+{
+    control.checkpoint()?;
     if !matches!(value, Value::Array(_) | Value::Object(_)) {
         return Ok(());
     }
@@ -1796,12 +1853,12 @@ fn validate_extension_depth(value: &Value, parent_depth: usize) -> Result<(), Dr
     match value {
         Value::Array(values) => {
             for child in values {
-                validate_extension_depth(child, depth)?;
+                validate_extension_depth(child, depth, control)?;
             }
         }
         Value::Object(values) => {
             for child in values.values() {
-                validate_extension_depth(child, depth)?;
+                validate_extension_depth(child, depth, control)?;
             }
         }
         _ => {}

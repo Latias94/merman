@@ -1,3 +1,4 @@
+use crate::validation::{ValidationControl, ValidationEvent};
 use crate::{Color, DrawingListError, Point, Rect, Transform};
 use base64::{Engine as _, display::Base64Display, engine::general_purpose::STANDARD};
 use png::ColorType;
@@ -99,29 +100,26 @@ impl DrawingResource {
         }
     }
 
-    pub(crate) fn validate(
+    pub(crate) fn validate<E, F>(
         &self,
-        max_path_segments: usize,
         image_bytes_used: usize,
-        max_image_bytes: usize,
         image_pixels_used: usize,
-        max_image_pixels: usize,
-        max_font_bytes: usize,
-    ) -> Result<ResourceValidationUsage, DrawingListError> {
+        control: &mut ValidationControl<E, F>,
+    ) -> Result<ResourceValidationUsage, E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
+        control.checkpoint()?;
         match self {
-            Self::Path(resource) => resource.validate(max_path_segments)?,
-            Self::LinearGradient(resource) => resource.validate()?,
-            Self::RadialGradient(resource) => resource.validate()?,
+            Self::Path(resource) => resource.validate(control)?,
+            Self::LinearGradient(resource) => resource.validate(control)?,
+            Self::RadialGradient(resource) => resource.validate(control)?,
             Self::Image(resource) => {
-                return resource.validate(
-                    image_bytes_used,
-                    max_image_bytes,
-                    image_pixels_used,
-                    max_image_pixels,
-                );
+                return resource.validate(image_bytes_used, image_pixels_used, control);
             }
             Self::Pattern(resource) => resource.validate()?,
-            Self::Font(resource) => resource.validate(max_font_bytes)?,
+            Self::Font(resource) => resource.validate(control)?,
         }
         Ok(ResourceValidationUsage::default())
     }
@@ -141,36 +139,38 @@ pub struct PathResource {
 }
 
 impl PathResource {
-    pub(crate) fn validate(&self, max_segments: usize) -> Result<(), DrawingListError> {
+    pub(crate) fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if self.id.as_str().is_empty() {
-            return Err(DrawingListError::invalid(
-                "path resource id must not be empty",
-            ));
+            return Err(DrawingListError::invalid("path resource id must not be empty").into());
         }
         if self.segments.is_empty() {
             return Err(DrawingListError::invalid(format!(
                 "path resource {} must contain at least one segment",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         if !matches!(self.segments.first(), Some(PathSegment::MoveTo { .. })) {
             return Err(DrawingListError::invalid(format!(
                 "path resource {} must begin with move_to",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
-        if self.segments.len() > max_segments {
-            return Err(DrawingListError::ResourceLimit {
-                resource: "path_segments",
-                actual: self.segments.len(),
-                maximum: max_segments,
-            });
-        }
-        if self.segments.iter().any(|segment| !segment.is_finite()) {
-            return Err(DrawingListError::invalid(format!(
-                "path resource {} contains non-finite geometry",
-                self.id.as_str()
-            )));
+        control.count("path_segments", self.segments.len() as u64)?;
+        for segment in &self.segments {
+            control.checkpoint()?;
+            if !segment.is_finite() {
+                return Err(DrawingListError::invalid(format!(
+                    "path resource {} contains non-finite geometry",
+                    self.id.as_str()
+                ))
+                .into());
+            }
         }
         Ok(())
     }
@@ -268,7 +268,11 @@ pub struct LinearGradientResource {
 }
 
 impl LinearGradientResource {
-    fn validate(&self) -> Result<(), DrawingListError> {
+    fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if self.id.as_str().is_empty()
             || !self.start.is_finite()
             || !self.end.is_finite()
@@ -276,9 +280,10 @@ impl LinearGradientResource {
         {
             return Err(DrawingListError::invalid(
                 "linear gradient has invalid identity or geometry",
-            ));
+            )
+            .into());
         }
-        validate_gradient_stops("linear gradient", &self.id, &self.stops)
+        validate_gradient_stops("linear gradient", &self.id, &self.stops, control)
     }
 }
 
@@ -295,7 +300,11 @@ pub struct RadialGradientResource {
 }
 
 impl RadialGradientResource {
-    fn validate(&self) -> Result<(), DrawingListError> {
+    fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if self.id.as_str().is_empty()
             || !self.center.is_finite()
             || !self.focal.is_finite()
@@ -305,36 +314,46 @@ impl RadialGradientResource {
         {
             return Err(DrawingListError::invalid(
                 "radial gradient has invalid identity or geometry",
-            ));
+            )
+            .into());
         }
-        validate_gradient_stops("radial gradient", &self.id, &self.stops)
+        validate_gradient_stops("radial gradient", &self.id, &self.stops, control)
     }
 }
 
-fn validate_gradient_stops(
+fn validate_gradient_stops<E, F>(
     kind: &str,
     id: &ResourceId,
     stops: &[GradientStop],
-) -> Result<(), DrawingListError> {
+    control: &mut ValidationControl<E, F>,
+) -> Result<(), E>
+where
+    E: From<DrawingListError>,
+    F: FnMut(ValidationEvent) -> Result<(), E>,
+{
     if stops.is_empty() {
         return Err(DrawingListError::invalid(format!(
             "{kind} {} must contain stops",
             id.as_str()
-        )));
+        ))
+        .into());
     }
     let mut previous = -f64::EPSILON;
     for stop in stops {
+        control.checkpoint()?;
         if !stop.offset.is_finite() || !(0.0..=1.0).contains(&stop.offset) {
             return Err(DrawingListError::invalid(format!(
                 "{kind} {} has an invalid stop offset",
                 id.as_str()
-            )));
+            ))
+            .into());
         }
         if stop.offset < previous {
             return Err(DrawingListError::invalid(format!(
                 "{kind} {} stops must be ordered",
                 id.as_str()
-            )));
+            ))
+            .into());
         }
         previous = stop.offset;
     }
@@ -424,26 +443,26 @@ pub struct FontResource {
 }
 
 impl FontResource {
-    fn validate(&self, max_font_bytes: usize) -> Result<(), DrawingListError> {
+    fn validate<E, F>(&self, control: &mut ValidationControl<E, F>) -> Result<(), E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if self.id.as_str().is_empty() || self.font.data.is_empty() {
             return Err(DrawingListError::invalid(format!(
                 "font resource {} has invalid metadata",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         if !is_font_media_type(&self.font.media_type) {
             return Err(DrawingListError::invalid(format!(
                 "font resource {} must use a supported font media type",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
-        if self.font.data.len() > max_font_bytes {
-            return Err(DrawingListError::ResourceLimit {
-                resource: "font_bytes",
-                actual: self.font.data.len(),
-                maximum: max_font_bytes,
-            });
-        }
+        control.count("font_bytes", self.font.data.len() as u64)?;
         Ok(())
     }
 }
@@ -462,13 +481,16 @@ fn is_font_media_type(media_type: &str) -> bool {
 }
 
 impl ImageResource {
-    fn validate(
+    fn validate<E, F>(
         &self,
         image_bytes_used: usize,
-        max_image_bytes: usize,
         image_pixels_used: usize,
-        max_image_pixels: usize,
-    ) -> Result<ResourceValidationUsage, DrawingListError> {
+        control: &mut ValidationControl<E, F>,
+    ) -> Result<ResourceValidationUsage, E>
+    where
+        E: From<DrawingListError>,
+        F: FnMut(ValidationEvent) -> Result<(), E>,
+    {
         if self.id.as_str().is_empty()
             || self.image.media_type.is_empty()
             || self.image.data.is_empty()
@@ -478,24 +500,20 @@ impl ImageResource {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} has invalid metadata",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         let cumulative_image_bytes = image_bytes_used
             .checked_add(self.image.data.len())
             .ok_or_else(|| DrawingListError::invalid("image byte count overflows usize"))?;
-        if cumulative_image_bytes > max_image_bytes {
-            return Err(DrawingListError::ResourceLimit {
-                resource: "image_bytes",
-                actual: cumulative_image_bytes,
-                maximum: max_image_bytes,
-            });
-        }
+        control.count("image_bytes", cumulative_image_bytes as u64)?;
 
         if !media_type_matches(&self.image.media_type, "image", "png") {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} must use static PNG",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         let mut cursor = Cursor::new(self.image.data.as_slice());
         let mut decoder = png::Decoder::new(&mut cursor);
@@ -512,15 +530,9 @@ impl ImageResource {
         };
         let header_pixels = u64::from(header_width) * u64::from(header_height);
         let cumulative_image_pixels = (image_pixels_used as u64).checked_add(header_pixels);
-        if cumulative_image_pixels.is_none_or(|actual| actual > max_image_pixels as u64) {
-            return Err(DrawingListError::ResourceLimit {
-                resource: "image_pixels",
-                actual: cumulative_image_pixels
-                    .and_then(|actual| usize::try_from(actual).ok())
-                    .unwrap_or(usize::MAX),
-                maximum: max_image_pixels,
-            });
-        }
+        control.count("image_pixels", cumulative_image_pixels.unwrap_or(u64::MAX))?;
+        cumulative_image_pixels
+            .ok_or_else(|| DrawingListError::invalid("image pixel count overflows u64"))?;
         let header_pixels = usize::try_from(header_pixels).map_err(|_| {
             DrawingListError::invalid("accepted image pixel count does not fit usize")
         })?;
@@ -534,7 +546,8 @@ impl ImageResource {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} must not contain animated PNG data",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         let info = reader.info();
         if info.width != self.pixel_width || info.height != self.pixel_height {
@@ -545,7 +558,8 @@ impl ImageResource {
                 self.pixel_height,
                 info.width,
                 info.height
-            )));
+            ))
+            .into());
         }
         let actual_has_alpha =
             matches!(info.color_type, ColorType::GrayscaleAlpha | ColorType::Rgba)
@@ -556,18 +570,24 @@ impl ImageResource {
                 self.id.as_str(),
                 self.has_alpha,
                 actual_has_alpha
-            )));
+            ))
+            .into());
         }
-        while reader
-            .next_row()
-            .map_err(|error| {
-                DrawingListError::invalid(format!(
-                    "image resource {} has invalid PNG pixel data: {error}",
-                    self.id.as_str()
-                ))
-            })?
-            .is_some()
-        {}
+        loop {
+            control.checkpoint()?;
+            if reader
+                .next_row()
+                .map_err(|error| {
+                    DrawingListError::invalid(format!(
+                        "image resource {} has invalid PNG pixel data: {error}",
+                        self.id.as_str()
+                    ))
+                })?
+                .is_none()
+            {
+                break;
+            }
+        }
         reader.finish().map_err(|error| {
             DrawingListError::invalid(format!(
                 "image resource {} has an incomplete or corrupt PNG payload: {error}",
@@ -579,7 +599,8 @@ impl ImageResource {
             return Err(DrawingListError::invalid(format!(
                 "image resource {} contains data after its PNG IEND chunk",
                 self.id.as_str()
-            )));
+            ))
+            .into());
         }
         Ok(ResourceValidationUsage {
             image_bytes: self.image.data.len(),

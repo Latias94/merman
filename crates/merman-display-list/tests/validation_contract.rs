@@ -4,8 +4,116 @@ use common::{apng_1x1, extended_document, png_1x1, png_64x64, png_alpha_1x1, sam
 use merman_display_list::{
     AlphaMode, DrawingCommand, DrawingListError, DrawingListLimits, DrawingResource, EncodedAsset,
     EncodedImage, FallbackReason, FillRule, FontResource, ImageResource, Paint, PathSegment, Point,
-    RasterFallback, RasterFormat, Rect, ResourceId, StrokeStyle, TextPaintOrder, VisualSource,
+    RasterFallback, RasterFormat, Rect, ResourceId, StrokeStyle, TextPaintOrder, ValidationEvent,
+    VisualSource,
 };
+
+#[derive(Debug, PartialEq, Eq)]
+enum ControlledValidationError {
+    Document(DrawingListError),
+    Stopped,
+}
+
+impl From<DrawingListError> for ControlledValidationError {
+    fn from(error: DrawingListError) -> Self {
+        Self::Document(error)
+    }
+}
+
+#[test]
+fn controlled_validation_separates_quantity_policy_from_correctness() {
+    let mut document = sample_document();
+    let depth = DrawingListLimits::default().max_nesting_depth + 1;
+    document.commands = vec![DrawingCommand::Save; depth];
+    document
+        .commands
+        .extend(vec![DrawingCommand::Restore; depth]);
+    assert!(matches!(
+        document.validate(),
+        Err(DrawingListError::ResourceLimit {
+            resource: "nesting_depth",
+            ..
+        })
+    ));
+    document
+        .validate_with_control(|_| Ok::<_, DrawingListError>(()))
+        .unwrap();
+
+    // The ordinary decoder keeps its default policy even when another consumer admits the model.
+    let bytes = serde_json::to_vec(&document).unwrap();
+    assert!(matches!(
+        merman_display_list::DrawingListDocument::from_json_bytes(&bytes),
+        Err(DrawingListError::ResourceLimit {
+            resource: "nesting_depth",
+            ..
+        })
+    ));
+    document.commands.push(DrawingCommand::Restore);
+    assert!(matches!(
+        document.validate_with_control(|_| Ok::<_, ControlledValidationError>(())),
+        Err(ControlledValidationError::Document(
+            DrawingListError::InvalidDocument(_)
+        ))
+    ));
+}
+
+#[test]
+fn controlled_image_admission_precedes_pixel_decode_and_remains_cancellable() {
+    let mut document = sample_document();
+    document
+        .resources
+        .push(DrawingResource::Image(ImageResource {
+            id: ResourceId::new("controlled-image"),
+            image: EncodedAsset::new("image/png", corrupt_png_deflate_with_valid_crc(png_64x64())),
+            pixel_width: 64,
+            pixel_height: 64,
+            has_alpha: false,
+        }));
+    let result = document.validate_with_control(|event| {
+        if let ValidationEvent::ResourceCount {
+            resource: "image_pixels",
+            actual,
+        } = event
+        {
+            assert_eq!(actual, 4096);
+            return Err(ControlledValidationError::Stopped);
+        }
+        Ok(())
+    });
+    assert_eq!(result, Err(ControlledValidationError::Stopped));
+    assert!(matches!(
+        document.validate_with_control(|_| Ok::<_, ControlledValidationError>(())),
+        Err(ControlledValidationError::Document(
+            DrawingListError::InvalidDocument(_)
+        ))
+    ));
+
+    let DrawingResource::Image(image) = document.resources.last_mut().unwrap() else {
+        unreachable!();
+    };
+    image.image.data = png_64x64();
+    let mut pixels_admitted = false;
+    let mut row_checkpoints = 0;
+    let result = document.validate_with_control(|event| {
+        match event {
+            ValidationEvent::ResourceCount {
+                resource: "image_pixels",
+                ..
+            } => pixels_admitted = true,
+            ValidationEvent::Checkpoint if pixels_admitted => {
+                row_checkpoints += 1;
+                if row_checkpoints == 3 {
+                    return Err(ControlledValidationError::Stopped);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    });
+    assert_eq!(result, Err(ControlledValidationError::Stopped));
+    assert_eq!(row_checkpoints, 3);
+    document.validate().unwrap();
+}
 
 fn png_crc32(bytes: &[u8]) -> u32 {
     let mut crc = u32::MAX;
