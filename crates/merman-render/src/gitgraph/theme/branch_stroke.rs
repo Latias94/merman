@@ -27,7 +27,6 @@ struct GitGraphBranchStroke {
 #[derive(Debug, Default)]
 struct RuleObservation {
     applicable: bool,
-    config_owned: bool,
     pending: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
@@ -138,9 +137,7 @@ impl GitGraphBranchStrokePlan {
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
                         ) if stroke_rule == Some(rule_index) => {
-                            if config_owns_stroke {
-                                observation.config_owned = true;
-                            } else {
+                            if !config_owns_stroke {
                                 observation.pending = true;
                             }
                         }
@@ -172,8 +169,6 @@ impl GitGraphBranchStrokePlan {
             } else if observation.pending {
                 debug_assert!(plan.pending_key.is_none());
                 plan.pending_key = Some(key);
-            } else if observation.config_owned {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -261,7 +256,6 @@ fn observe_style(
     winner_properties.extend(
         style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
     typed_static_stroke(theme, style)

@@ -138,14 +138,11 @@ impl GitGraphStaticPaintPlan {
         }
 
         plan.assignment = assignment;
-        if plan.pending_key.is_none() && plan.assignment.is_some() {
-            plan.evidence.mark_not_applicable(
-                plan.assignment
-                    .as_ref()
-                    .expect("assignment exists")
-                    .route_key
-                    .clone(),
-            );
+        if plan.pending_key.is_none()
+            && let Some(assignment) = plan.assignment.as_ref()
+        {
+            plan.evidence
+                .mark_not_applicable(assignment.route_key.clone());
         }
 
         Ok(plan)

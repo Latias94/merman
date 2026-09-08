@@ -343,9 +343,6 @@ impl TimelineEventTheme {
                                 if typed_count != 0 {
                                     observation.fill_pending = true;
                                 }
-                                if source_owned_count == event_count {
-                                    observation.suppressed = true;
-                                }
                             } else {
                                 observation.incomplete = true;
                             }
@@ -440,8 +437,6 @@ impl TimelineEventTheme {
                         capabilities,
                     },
                 );
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -735,33 +730,31 @@ fn apply_event_style(
             });
         }
     }
-    if let Some(origin) = style.radius_resolution().winner() {
-        if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Radius)
+    if let Some(origin) = style.radius_resolution().winner()
+        && theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Radius)
             == Some(FamilyThemeDisposition::TypedAdapter)
-        {
-            match style.radius_resolution().specified() {
-                Specified::Value(value) => {
-                    event.radius = Some(TimelineEventRadius::value(*value, node));
-                    event.radius_rule_index = Some(origin.rule_index());
-                }
-                Specified::Clear => {
-                    event.radius = None;
-                    event.radius_rule_index = Some(origin.rule_index());
-                }
-                Specified::Unspecified => {}
+    {
+        match style.radius_resolution().specified() {
+            Specified::Value(value) => {
+                event.radius = Some(TimelineEventRadius::value(*value, node));
+                event.radius_rule_index = Some(origin.rule_index());
             }
+            Specified::Clear => {
+                event.radius = None;
+                event.radius_rule_index = Some(origin.rule_index());
+            }
+            Specified::Unspecified => {}
         }
     }
-    if let Some(origin) = style.opacity_resolution().winner() {
-        if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Opacity)
+    if let Some(origin) = style.opacity_resolution().winner()
+        && theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::Opacity)
             == Some(FamilyThemeDisposition::TypedAdapter)
-        {
-            event.opacity_token = match style.opacity_resolution().specified() {
-                Specified::Value(value) => Some(value.to_string().into_boxed_str()),
-                Specified::Unspecified | Specified::Clear => None,
-            };
-            event.opacity_rule_index = Some(origin.rule_index());
-        }
+    {
+        event.opacity_token = match style.opacity_resolution().specified() {
+            Specified::Value(value) => Some(value.to_string().into_boxed_str()),
+            Specified::Unspecified | Specified::Clear => None,
+        };
+        event.opacity_rule_index = Some(origin.rule_index());
     }
 }
 
@@ -773,7 +766,6 @@ struct TimelineEventRuleObservation {
     radius_pending: bool,
     opacity_pending: bool,
     fill_pending: bool,
-    suppressed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -903,20 +895,14 @@ impl TimelineEventThemeReceipt {
         };
         self.next_event_index += 1;
         self.attributes_match &= opacity_matches && radius_matches && fill_matches;
-        if opacity_matches {
-            if let Some(rule_index) = opacity_rule_index {
-                self.opacity_rules.insert(rule_index);
-            }
+        if opacity_matches && let Some(rule_index) = opacity_rule_index {
+            self.opacity_rules.insert(rule_index);
         }
-        if radius_matches {
-            if let Some(rule_index) = radius_rule_index {
-                self.radius_rules.insert(rule_index);
-            }
+        if radius_matches && let Some(rule_index) = radius_rule_index {
+            self.radius_rules.insert(rule_index);
         }
-        if fill_matches {
-            if let Some(rule_index) = fill_rule_index {
-                self.fill_rules.insert(rule_index);
-            }
+        if fill_matches && let Some(rule_index) = fill_rule_index {
+            self.fill_rules.insert(rule_index);
         }
     }
 
@@ -952,10 +938,10 @@ impl TimelineEventThemeReceipt {
             && emitted_fill == expected.fill.as_ref().map(|fill| fill.css.as_ref());
         let line_matches = emitted_line_stroke == expected.classic_line_stroke.as_deref();
         self.palette_values_match &= fill_matches && line_matches;
-        if fill_matches {
-            if let Some(capability) = expected.fill.as_ref().and_then(|fill| fill.capability) {
-                self.palette_capabilities.insert(capability);
-            }
+        if fill_matches
+            && let Some(capability) = expected.fill.as_ref().and_then(|fill| fill.capability)
+        {
+            self.palette_capabilities.insert(capability);
         }
     }
 

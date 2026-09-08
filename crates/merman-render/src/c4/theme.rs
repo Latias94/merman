@@ -128,7 +128,6 @@ impl C4ClusterThemePlan {
         )?;
         let static_winner_rules = static_style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (property, origin.rule_index()))
             .collect::<BTreeMap<_, _>>();
         let static_winners = static_winner_rules
@@ -181,7 +180,6 @@ impl C4ClusterThemePlan {
                         work_meter,
                     )?
                     .winner_rule_properties()
-                    .into_iter()
                     .map(|(property, origin)| (property, origin.rule_index()))
                     .collect::<BTreeMap<_, _>>()
             } else {
@@ -308,9 +306,7 @@ impl C4ClusterThemePlan {
                             FamilyThemeRuleFacet::Fill(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
-                        ) if source_owned_fill_rules.contains(&rule_index) => {
-                            observation.suppressed = true;
-                        }
+                        ) if source_owned_fill_rules.contains(&rule_index) => {}
                         (
                             FamilyThemeDisposition::TypedAdapter,
                             FamilyThemeSelectorShape::Static { variant: None },
@@ -327,9 +323,7 @@ impl C4ClusterThemePlan {
                             FamilyThemeRuleFacet::Stroke(
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
-                        ) if source_owned_stroke_rules.contains(&rule_index) => {
-                            observation.suppressed = true;
-                        }
+                        ) if source_owned_stroke_rules.contains(&rule_index) => {}
                         (FamilyThemeDisposition::Unsupported, _, facet) => {
                             observation
                                 .residual
@@ -380,8 +374,6 @@ impl C4ClusterThemePlan {
                 // Mixed rules remain fail-closed until every winning facet has one terminal owner.
             } else if observation.pending.requires_terminal_proof() {
                 pending.insert(key, observation.pending);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -553,7 +545,6 @@ fn add_paint_capabilities(
 struct C4ClusterRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
     pending: C4ClusterPendingEvidence,
 }

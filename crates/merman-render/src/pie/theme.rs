@@ -113,6 +113,7 @@ pub(crate) struct PieThemePlan {
 }
 
 impl PieThemePlan {
+    #[cfg(test)]
     pub(crate) fn baseline(
         model: &PieDiagramRenderModel,
         effective_config: &serde_json::Value,
@@ -150,6 +151,7 @@ impl PieThemePlan {
         plan
     }
 
+    #[cfg(test)]
     pub(crate) fn resolve(
         model: &PieDiagramRenderModel,
         effective_config: &MermaidConfig,
@@ -331,7 +333,6 @@ impl PieThemePlan {
         )?;
         let winner_properties = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
         self.stroke = typed_static_stroke(theme, &style, slice_site, outer_site);
@@ -569,7 +570,6 @@ impl PieThemePlan {
 
             observation.applicable = true;
             if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                observation.fill_config_owned = true;
                 continue;
             }
             match (route.disposition(), selector, facet) {
@@ -619,8 +619,6 @@ impl PieThemePlan {
             } else if observation.fill_pending {
                 self.pending_rules
                     .insert(key, PiePendingEvidence::fill_only());
-            } else if observation.fill_config_owned {
-                self.evidence.mark_not_applicable(key);
             } else {
                 self.evidence.mark_not_applicable(key);
             }
@@ -647,7 +645,6 @@ impl PieThemePlan {
         )?;
         let winner_properties = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
         let typed_fill = (!config_owns_fill)
@@ -702,7 +699,6 @@ impl PieThemePlan {
 
             observation.applicable = true;
             if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                observation.config_owned = true;
                 continue;
             }
             match (route.disposition(), selector, facet) {
@@ -742,8 +738,6 @@ impl PieThemePlan {
                 // Qualified and mixed rules remain fail-closed until every winner is owned.
             } else if observation.fill_pending {
                 pending = Some(key);
-            } else if observation.config_owned {
-                self.evidence.mark_not_applicable(key);
             } else {
                 self.evidence.mark_not_applicable(key);
             }
@@ -1396,7 +1390,6 @@ struct PieSliceRuleObservation {
 #[derive(Debug, Default)]
 struct PieTitleRuleObservation {
     applicable: bool,
-    fill_config_owned: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     fill_pending: bool,
@@ -1405,7 +1398,6 @@ struct PieTitleRuleObservation {
 #[derive(Debug, Default)]
 struct PieTextRuleObservation {
     applicable: bool,
-    config_owned: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     fill_pending: bool,

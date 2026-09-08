@@ -114,7 +114,6 @@ impl JourneyTaskTheme {
         )?;
         let static_winners = static_style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
 
@@ -318,9 +317,6 @@ impl JourneyTaskTheme {
                                             }),
                                     );
                                 }
-                                if source_owned && !typed {
-                                    observation.suppressed = true;
-                                }
                             } else {
                                 observation.incomplete = true;
                             }
@@ -431,8 +427,6 @@ impl JourneyTaskTheme {
                 // has one terminal owner.
             } else if observation.pending.requires_terminal_proof() {
                 pending.insert(key, observation.pending);
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -764,10 +758,10 @@ impl JourneyTaskThemeReceipt {
         let expected_fill = expected.palette.as_ref().map(|paint| paint.css.as_ref());
         let terminal_matches = emitted_fill == expected_fill;
         self.terminals_match &= terminal_matches;
-        if terminal_matches {
-            if let Some(capability) = expected.palette.as_ref().and_then(|paint| paint.capability) {
-                self.palette_capabilities.insert(capability);
-            }
+        if terminal_matches
+            && let Some(capability) = expected.palette.as_ref().and_then(|paint| paint.capability)
+        {
+            self.palette_capabilities.insert(capability);
         }
     }
 
@@ -797,7 +791,6 @@ impl JourneyTaskThemeReceipt {
 struct JourneyTaskRuleObservation {
     applicable: bool,
     incomplete: bool,
-    suppressed: bool,
     residual: Option<FamilyThemeResidualReason>,
     pending: JourneyTaskPendingEvidence,
 }

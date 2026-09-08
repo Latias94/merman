@@ -16,18 +16,13 @@ use crate::family::{
 use crate::model::TreemapDiagramLayout;
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 enum TreemapSourceTextOverride<T> {
+    #[default]
     Generated,
     Inherited,
     Value(T),
     Unverified,
-}
-
-impl<T> Default for TreemapSourceTextOverride<T> {
-    fn default() -> Self {
-        Self::Generated
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1172,7 +1167,6 @@ impl TreemapTitleThemePlan {
 
                     observation.applicable = true;
                     if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        observation.fill_config_owned = true;
                         continue;
                     }
                     match (route.disposition(), selector, facet) {
@@ -1238,8 +1232,6 @@ impl TreemapTitleThemePlan {
             } else if observation.fill_pending {
                 debug_assert!(pending_fill_key.is_none());
                 pending_fill_key = Some(key);
-            } else if observation.fill_config_owned {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -1331,7 +1323,6 @@ impl TreemapTitleThemeReceipt {
 #[derive(Debug, Default)]
 struct TreemapRuleObservation {
     applicable: bool,
-    fill_config_owned: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     fill_pending: bool,
