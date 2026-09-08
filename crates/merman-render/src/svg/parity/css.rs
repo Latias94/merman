@@ -346,11 +346,7 @@ pub(super) fn info_css_into_with_font_family<I>(out: &mut String, diagram_id: I,
 where
     I: SvgDiagramIdValue,
 {
-    let values = InfoCssValues::new(
-        &serde_json::Value::Null,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        Some(font_family),
-    );
+    let values = InfoCssValues::new(&serde_json::Value::Null, Some(font_family));
     values
         .write_all(
             out,
@@ -370,12 +366,6 @@ pub(super) struct InfoCssParts {
     pub(super) line_color: String,
 }
 
-#[derive(Clone, Copy)]
-enum InfoCssFontSizeSource {
-    ThemeThenTopLevel,
-    RawTheme,
-}
-
 struct InfoCssValues {
     font_family: String,
     font_size_css: String,
@@ -388,26 +378,15 @@ struct InfoCssValues {
 }
 
 impl InfoCssValues {
-    fn new(
-        effective_config: &serde_json::Value,
-        font_size_source: InfoCssFontSizeSource,
-        resolved_font_family: Option<&str>,
-    ) -> Self {
+    fn new(effective_config: &serde_json::Value, resolved_font_family: Option<&str>) -> Self {
         let font_family = resolved_font_family.map_or_else(
             || crate::config::config_font_family_css(effective_config),
             str::to_owned,
         );
-        let font_size_css = match font_size_source {
-            InfoCssFontSizeSource::ThemeThenTopLevel => {
-                crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
-                    .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
-            }
-            InfoCssFontSizeSource::RawTheme => crate::config::config_css_number_or_string(
-                effective_config,
-                &["themeVariables", "fontSize"],
-            ),
-        }
-        .unwrap_or_else(|| "16px".to_string());
+        let font_size_css =
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
+                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
+                .unwrap_or_else(|| "16px".to_string());
 
         Self::with_resolved_typography(effective_config, font_family, font_size_css)
     }
@@ -508,19 +487,6 @@ pub(super) struct InfoCssWriter {
 }
 
 impl InfoCssWriter {
-    pub(super) fn raw_theme_font_size_with_font_family(
-        effective_config: &serde_json::Value,
-        font_family: &str,
-    ) -> Self {
-        Self {
-            values: InfoCssValues::new(
-                effective_config,
-                InfoCssFontSizeSource::RawTheme,
-                Some(font_family),
-            ),
-        }
-    }
-
     pub(super) fn with_resolved_typography(
         effective_config: &serde_json::Value,
         font_family: &str,
@@ -573,12 +539,8 @@ pub(super) fn info_css_parts_with_config<I>(
 where
     I: Copy + std::fmt::Display,
 {
-    info_css_parts_with_font_size_source(
-        diagram_id,
-        effective_config,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        None,
-    )
+    let values = InfoCssValues::new(effective_config, None);
+    info_css_parts_from_values(diagram_id, values)
 }
 
 pub(super) fn info_css_parts_with_font_family<I>(
@@ -589,12 +551,8 @@ pub(super) fn info_css_parts_with_font_family<I>(
 where
     I: Copy + std::fmt::Display,
 {
-    info_css_parts_with_font_size_source(
-        diagram_id,
-        effective_config,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        Some(font_family),
-    )
+    let values = InfoCssValues::new(effective_config, Some(font_family));
+    info_css_parts_from_values(diagram_id, values)
 }
 
 pub(super) fn info_css_parts_with_resolved_typography<I>(
@@ -611,19 +569,6 @@ where
         font_family.to_string(),
         font_size_css.to_string(),
     );
-    info_css_parts_from_values(diagram_id, values)
-}
-
-fn info_css_parts_with_font_size_source<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    font_size_source: InfoCssFontSizeSource,
-    resolved_font_family: Option<&str>,
-) -> InfoCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    let values = InfoCssValues::new(effective_config, font_size_source, resolved_font_family);
     info_css_parts_from_values(diagram_id, values)
 }
 
@@ -651,26 +596,6 @@ where
         text_color: values.text_color,
         line_color: values.line_color,
     }
-}
-
-pub(super) fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
-where
-    I: SvgDiagramIdValue,
-{
-    let values = InfoCssValues::new(
-        effective_config,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        None,
-    );
-    let mut out = String::new();
-    values
-        .write_all(
-            &mut out,
-            CssSelectorDiagramId(diagram_id),
-            FragmentDiagramId(diagram_id),
-        )
-        .expect("String-backed Mermaid CSS emission cannot fail");
-    out
 }
 
 /// Font-family values recorded at the successful writer events for the three inherited rules.
@@ -708,11 +633,7 @@ pub(super) fn write_info_css_with_font_family<I>(
 where
     I: SvgDiagramIdValue,
 {
-    let values = InfoCssValues::new(
-        effective_config,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        Some(font_family),
-    );
+    let values = InfoCssValues::new(effective_config, Some(font_family));
     let selector_id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     values.write_prefix(out, selector_id)?;
@@ -883,13 +804,6 @@ where
     architecture_css_parts_with_config(diagram_id, effective_config).css
 }
 
-pub(super) fn requirement_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
-where
-    I: SvgDiagramIdValue,
-{
-    requirement_css_with_typography(diagram_id, effective_config, None, None).css
-}
-
 /// Values emitted by the Requirement stylesheet writer for terminal evidence.
 #[derive(Debug)]
 pub(super) struct RequirementCssEmission {
@@ -952,7 +866,6 @@ where
     let mut out = css_prefix;
     let font_family = font_family.into_boxed_str();
     let font = font_family.as_ref();
-    let text_color = text_color;
     let node_text_color = config_string(effective_config, &["themeVariables", "nodeTextColor"])
         .unwrap_or_else(|| text_color.clone());
 
@@ -1045,13 +958,6 @@ pub(super) struct ErCssEmission {
     pub(super) css: String,
     pub(super) font_family: Box<str>,
     pub(super) font_size: Box<str>,
-}
-
-pub(super) fn er_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> Result<String>
-where
-    I: SvgDiagramIdValue,
-{
-    Ok(er_css_with_resolved_typography(diagram_id, effective_config, None, None)?.css)
 }
 
 pub(super) fn er_css_with_resolved_typography<I>(
@@ -1260,27 +1166,6 @@ impl PieCssEmission {
 }
 
 impl PieCss {
-    pub(super) fn new(effective_config: &serde_json::Value) -> Self {
-        Self::with_theme_overrides(effective_config, None, None, None, None)
-    }
-
-    fn with_theme_overrides(
-        effective_config: &serde_json::Value,
-        slice_stroke: Option<&str>,
-        outer_stroke: Option<&str>,
-        title_fill: Option<&str>,
-        section_text_fill: Option<&str>,
-    ) -> Self {
-        Self::with_theme_overrides_and_font_family(
-            effective_config,
-            slice_stroke,
-            outer_stroke,
-            title_fill,
-            section_text_fill,
-            None,
-        )
-    }
-
     fn with_theme_overrides_and_font_family(
         effective_config: &serde_json::Value,
         slice_stroke: Option<&str>,
@@ -1289,11 +1174,7 @@ impl PieCss {
         section_text_fill: Option<&str>,
         font_family: Option<&str>,
     ) -> Self {
-        let info = InfoCssValues::new(
-            effective_config,
-            InfoCssFontSizeSource::ThemeThenTopLevel,
-            font_family,
-        );
+        let info = InfoCssValues::new(effective_config, font_family);
         let theme = SvgTheme::new(effective_config);
         let task_text_dark_color = theme.color("taskTextDarkColor", "black");
         let pie_title_text_color = title_fill
@@ -1372,48 +1253,6 @@ impl PieCss {
     }
 }
 
-pub(super) fn pie_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
-where
-    I: SvgDiagramIdValue,
-{
-    let mut out = String::new();
-    write_pie_css_with_theme_overrides(
-        &mut out,
-        diagram_id,
-        effective_config,
-        None,
-        None,
-        None,
-        None,
-    )
-    .expect("String-backed Pie CSS emission cannot fail");
-    out
-}
-
-pub(super) fn write_pie_css_with_theme_overrides<I>(
-    out: &mut impl SvgOutput,
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    slice_stroke: Option<&str>,
-    outer_stroke: Option<&str>,
-    title_fill: Option<&str>,
-    section_text_fill: Option<&str>,
-) -> Result<PieCssEmission>
-where
-    I: SvgDiagramIdValue,
-{
-    write_pie_css_with_theme_overrides_and_font_family(
-        out,
-        diagram_id,
-        effective_config,
-        slice_stroke,
-        outer_stroke,
-        title_fill,
-        section_text_fill,
-        None,
-    )
-}
-
 pub(super) fn write_pie_css_with_theme_overrides_and_font_family<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
@@ -1490,11 +1329,7 @@ where
     // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = CssSelectorDiagramId(diagram_id);
-    let mut values = InfoCssValues::new(
-        effective_config,
-        InfoCssFontSizeSource::ThemeThenTopLevel,
-        font_family_css,
-    );
+    let mut values = InfoCssValues::new(effective_config, font_family_css);
     if let Some(text_fill_css) = text_fill_css {
         values.text_color = text_fill_css.to_owned();
     }
@@ -1664,26 +1499,6 @@ where
     // same CSS emission used by layout measurement so a typed FontStack cannot drift between the
     // measured text and the final SVG cascade.
     info_css_into_with_font_family(out, diagram_id, resolved_font_family);
-}
-
-pub(super) fn gantt_css<I>(
-    diagram_id: I,
-    effective_config: &serde_json::Value,
-    resolved_font_family: Option<&str>,
-) -> String
-where
-    I: SvgDiagramIdValue,
-{
-    gantt_css_with_overrides(
-        diagram_id,
-        effective_config,
-        resolved_font_family,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
 }
 
 pub(super) fn gantt_css_with_overrides<I>(

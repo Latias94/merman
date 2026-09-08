@@ -888,9 +888,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .or_else(|| typed_stroke.map(|(_, stroke)| stroke))
             .unwrap_or(&default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
-        let fill_style_attr = (fill_override.is_some() || typed_fill.is_some())
-            .then(|| format!(r#" style="fill:{} !important""#, escape_xml(fill_color)))
-            .unwrap_or_default();
+        let fill_style_attr = if fill_override.is_some() || typed_fill.is_some() {
+            format!(r#" style="fill:{} !important""#, escape_xml(fill_color))
+        } else {
+            String::new()
+        };
         let stroke_style_declaration = (stroke_override.is_some() || typed_stroke.is_some())
             .then(|| format!("stroke:{} !important", stroke_color));
         let stroke_style_attr = stroke_style_declaration
@@ -1351,7 +1353,13 @@ mod tests {
         });
         assert_eq!(super::requirement_theme_color_limit(&config), 3);
 
-        let mut merged = crate::svg::parity::css::requirement_css("requirement-colors", &config);
+        let mut merged = crate::svg::parity::css::requirement_css_with_typography(
+            "requirement-colors",
+            &config,
+            None,
+            None,
+        )
+        .css;
         let generated = super::requirement_color_css(
             "requirement-colors",
             "classic",

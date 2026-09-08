@@ -1,6 +1,17 @@
 use super::*;
 use std::collections::BTreeMap;
 
+fn info_css_with_config<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+where
+    I: SvgDiagramIdValue,
+{
+    let font_family = crate::config::config_font_family_css(effective_config);
+    let mut out = String::new();
+    write_info_css_with_font_family(&mut out, diagram_id, effective_config, &font_family)
+        .expect("String-backed Mermaid CSS emission cannot fail");
+    out
+}
+
 fn assert_fragments_in_order(css: &str, fragments: &[&str]) {
     let mut cursor = 0;
     for fragment in fragments {
@@ -78,7 +89,9 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         ));
     }
 
-    let er = er_css("diag", &cfg).expect("valid ER theme colors");
+    let er = er_css_with_resolved_typography("diag", &cfg, None, None)
+        .expect("valid ER theme colors")
+        .css;
     assert_fragments_in_order(
         &er,
         &[
@@ -274,9 +287,11 @@ fn pie_css_honors_mermaid_11_16_theme_options() {
         }
     });
 
-    let plan = PieCss::new(&cfg);
     let mut css = String::new();
-    plan.write_for_normalized_id(&mut css, "pie").unwrap();
+    write_pie_css_with_theme_overrides_and_font_family(
+        &mut css, "pie", &cfg, None, None, None, None, None,
+    )
+    .unwrap();
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
     assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));
@@ -311,7 +326,9 @@ fn er_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = er_css("er", &cfg).expect("valid ER theme colors");
+    let css = er_css_with_resolved_typography("er", &cfg, None, None)
+        .expect("valid ER theme colors")
+        .css;
 
     assert!(css.contains(
         r#"#er{font-family:"ibm plex sans",arial,sans-serif;font-size:18px;fill:#101010;}"#
@@ -340,13 +357,15 @@ fn er_css_honors_mermaid_11_15_theme_options() {
 
 #[test]
 fn er_css_rejects_unsupported_tertiary_color() {
-    let error = er_css(
+    let error = er_css_with_resolved_typography(
         "er",
         &serde_json::json!({
             "themeVariables": {
                 "tertiaryColor": "not-a-css-color"
             }
         }),
+        None,
+        None,
     )
     .expect_err("unsupported khroma color must fail stylesheet generation");
 
@@ -382,7 +401,7 @@ fn gantt_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = gantt_css("g", &cfg, None);
+    let css = gantt_css_with_overrides("g", &cfg, None, None, None, None, None, None);
 
     assert!(css.contains(r#"#g .exclude-range{fill:#101010;}"#));
     assert!(css.contains(r#"#g .section0{fill:#202020;}"#));
@@ -458,7 +477,7 @@ fn requirement_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = requirement_css("req", &cfg);
+    let css = requirement_css_with_typography("req", &cfg, None, None).css;
 
     assert!(css.contains(r#"#req marker{fill:#222222;stroke:#222222;}"#));
     assert!(css.contains(r#"#req marker.cross{stroke:#333333;}"#));
