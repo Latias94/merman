@@ -206,11 +206,7 @@ impl<'a> GanttBuilder<'a> {
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
         }
-        self.emit_axis(
-            &self.layout.bottom_ticks,
-            self.layout.height - self.layout.top_padding,
-            true,
-        )?;
+        self.emit_axis(&self.layout.bottom_ticks, self.layout.bottom_axis_y(), true)?;
         if self.layout.top_axis {
             self.emit_axis(&self.layout.top_ticks, self.layout.top_padding, false)?;
         }
@@ -1253,7 +1249,7 @@ mod tests {
             .with_site_config(MermaidConfig::from_value(json!({
                 "securityLevel": "loose",
                 "themeVariables": { "gridColor": "#ff0000" },
-                "gantt": { "displayMode": "compact", "useWidth": 800, "topAxis": true }
+                "gantt": { "displayMode": "compact", "useWidth": 800, "topAxis": true, "topPadding": 70 }
             })))
             .parse_diagram_for_render_model_sync(COMPACT_TASKS, ParseOptions::strict())
             .unwrap()
@@ -1356,11 +1352,7 @@ mod tests {
                     let index: usize = semantic_id.rsplit('.').next().unwrap().parse().unwrap();
                     let bottom = semantic_id.starts_with("gantt.axis.bottom.");
                     let (ticks, y, baseline) = if bottom {
-                        (
-                            &layout.bottom_ticks,
-                            layout.height - layout.top_padding,
-                            13.0,
-                        )
+                        (&layout.bottom_ticks, layout.height - 50.0, 13.0)
                     } else {
                         (&layout.top_ticks, layout.top_padding, -3.0)
                     };

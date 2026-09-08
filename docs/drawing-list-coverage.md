@@ -205,6 +205,14 @@ integration contract explicitly defines layer bounds in the user space active at
 This resolves the redundant tick wrapper but not the remaining inherited-style/text-shell
 differences from the full candidate report; Gantt is still not admitted.
 
+Source inspection during this projection found a pre-existing nondefault-padding error in both
+render paths: Mermaid's `makeGrid` places the bottom axis at `height - 50`, not
+`height - topPadding`. The layout type now owns that fixed-inset calculation for both emitters.
+The existing SVG config and public-axis tests use `topPadding: 70` and verify the corrected bottom
+axis while retaining the top axis at 70. Both tests failed before the correction (a 20px bottom
+axis displacement); default-padding fixture geometry is unchanged. This is a source-backed
+geometry correction, not a comparator normalization or browser measurement residual.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

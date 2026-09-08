@@ -285,6 +285,7 @@ config:
     useWidth: 420
     rightPadding: 10
     topAxis: true
+    topPadding: 70
     numberSectionStyles: 2
 ---
 gantt
@@ -317,6 +318,38 @@ gantt
             .count(),
         2,
         "frontmatter gantt.topAxis should render both top and bottom axes: {svg}"
+    );
+    let height: f64 = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .nth(3)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let axis_y = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && class_has(*node, "grid"))
+        .map(|node| {
+            node.attribute("transform")
+                .unwrap()
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split(',')
+                .nth(1)
+                .unwrap()
+                .trim()
+                .parse::<f64>()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        axis_y,
+        [height - 50.0, 70.0],
+        "Mermaid fixes the bottom inset at 50, independently of topPadding"
     );
     for section in ["section0", "section1"] {
         assert!(

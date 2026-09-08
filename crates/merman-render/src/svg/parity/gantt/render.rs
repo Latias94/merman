@@ -236,7 +236,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         }
     }
 
-    let bottom_axis_y = h - layout.top_padding;
+    let bottom_axis_y = layout.bottom_axis_y();
     render_gantt_axis_group(&mut out, layout, &layout.bottom_ticks, bottom_axis_y, true);
 
     if layout.top_axis {

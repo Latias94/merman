@@ -1531,6 +1531,13 @@ pub struct GanttDiagramLayout {
     pub title_y: f64,
 }
 
+impl GanttDiagramLayout {
+    /// Mermaid's `makeGrid` fixes the bottom inset at 50px, independently of `topPadding`.
+    pub(crate) fn bottom_axis_y(&self) -> f64 {
+        self.height - 50.0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct C4TextRowLayout {
     /// Source words emitted into one Mermaid `createText` outer tspan.
