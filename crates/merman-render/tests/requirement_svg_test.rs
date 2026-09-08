@@ -13,9 +13,10 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn requirement_fill_theme(fill: CanvasPaint) -> DiagramTheme {
@@ -288,6 +289,246 @@ fn requirement_source() -> &'static str {
     verifymethod: analysis
   }
 "#
+}
+
+fn requirement_svg_label_source() -> &'static str {
+    r#"requirementDiagram
+  requirement req1 {
+    id: "R-1"
+    text: "**Strong** and *emphasis* &amp; entity"
+    risk: high
+    verifymethod: analysis
+  }
+  element elem1 {
+    type: simulation
+    docref: "*Document* &amp; reference"
+  }
+  req1 - satisfies -> elem1
+  req1 - traces -> req1
+  style req1 color:#123456,fill:#abcdef
+"#
+}
+
+#[test]
+fn requirement_svg_labels_cover_nodes_relationships_and_self_loop_anchors() {
+    let rendered = render_requirement_with_theme_and_engine(
+        requirement_svg_label_source(),
+        &requirement_typography_theme(ThemeTextStyle::default()),
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": false
+        }))),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG label document");
+    for (id, expected_lines) in [
+        ("requirement-theme-req1", 6),
+        ("requirement-theme-elem1", 4),
+    ] {
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .expect("semantic node");
+        assert_eq!(
+            node.descendants()
+                .filter(|node| node.has_tag_name("foreignObject"))
+                .count(),
+            0,
+            "{id}"
+        );
+        let labels: Vec<_> = node
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect();
+        assert_eq!(
+            labels.len(),
+            expected_lines,
+            "each populated line of {id} is SVG text"
+        );
+        assert!(
+            labels
+                .iter()
+                .all(|label| label.descendants().any(|node| node.has_tag_name("tspan")))
+        );
+    }
+    let req = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("requirement-theme-req1"))
+        .unwrap();
+    let text = req
+        .descendants()
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .collect::<String>();
+    assert!(text.contains("Strong and emphasis & entity"), "{text}");
+    for (word, property, value) in [
+        ("Strong", "font-weight", "bold"),
+        ("emphasis", "font-style", "italic"),
+    ] {
+        assert!(
+            req.descendants().any(|node| node.has_tag_name("tspan")
+                && node.text().is_some_and(|text| text.trim() == word)
+                && node.attribute(property) == Some(value)),
+            "missing Markdown {word}"
+        );
+    }
+    assert!(
+        req.descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .all(|label| {
+                label
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("fill:#123456"))
+                    && label.descendants().any(|node| {
+                        node.has_tag_name("tspan")
+                            && node
+                                .attribute("style")
+                                .is_some_and(|style| style.contains("color:#123456"))
+                    })
+            })
+    );
+    assert_eq!(
+        terminal_fill_for(&document, "requirement-theme-req1"),
+        "#abcdef"
+    );
+    let header = req
+        .descendants()
+        .find(|node| node.has_tag_name("tspan") && node.text() == Some("req1"))
+        .unwrap();
+    assert!(
+        header
+            .attribute("style")
+            .is_some_and(|style| style.contains("font-weight: bold"))
+    );
+    assert!(
+        req.descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .all(|node| node.attribute("text-anchor").is_none())
+    );
+    let edge_labels: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("data-id").is_some())
+        .collect();
+    assert!(!edge_labels.is_empty());
+    for label in edge_labels {
+        assert!(
+            !label
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+        );
+        assert!(label.descendants().any(|node| node.has_tag_name("text")));
+    }
+    for id in ["req1---req1---1", "req1---req1---2"] {
+        let anchor = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .expect("self-loop anchor");
+        assert!(
+            !anchor
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+        );
+        assert!(anchor.descendants().any(|node| node.has_tag_name("text")));
+    }
+}
+
+#[test]
+fn requirement_default_labels_match_explicit_html_labels() {
+    let theme = requirement_typography_theme(ThemeTextStyle::default());
+    let default = render_requirement_with_theme(requirement_svg_label_source(), &theme);
+    let explicit = render_requirement_with_theme_and_engine(
+        requirement_svg_label_source(),
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"htmlLabels": true}),
+        )),
+    );
+    assert_eq!(default.svg(), explicit.svg());
+    let document = roxmltree::Document::parse(default.svg()).expect("valid default HTML labels");
+    let req = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("requirement-theme-req1"))
+        .unwrap();
+    assert_eq!(
+        req.descendants()
+            .filter(|node| node.has_tag_name("foreignObject"))
+            .count(),
+        6
+    );
+}
+
+#[derive(Debug)]
+struct RequirementSvgModeProbe {
+    calls: Arc<Mutex<Vec<(WrapMode, TextStyle)>>>,
+}
+
+impl TextMeasurer for RequirementSvgModeProbe {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        TextMetrics {
+            width: text.len() as f64 * 5.0,
+            height: style.font_size,
+            line_count: 1,
+        }
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        _width: Option<f64>,
+        mode: WrapMode,
+    ) -> TextMetrics {
+        self.calls.lock().unwrap().push((mode, style.clone()));
+        self.measure(text, style)
+    }
+}
+
+#[test]
+fn requirement_svg_labels_measure_with_svg_mode_and_portable_typed_typography() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let stack = FontStack::new(["Requirement SVG", "sans-serif"]).unwrap();
+    let expected_font = stack.as_css();
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(stack)
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.requirement-svg-mode").unwrap(),
+            "test",
+        )
+        .unwrap(),
+        Arc::new(RequirementSvgModeProbe {
+            calls: Arc::clone(&calls),
+        }),
+    );
+    let rendered = render_requirement_with_theme_requirement_and_environment(
+        requirement_svg_label_source(),
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"htmlLabels": false}),
+        )),
+        ThemePortabilityRequirement::RequirePortable,
+        RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+    );
+    let calls = calls.lock().unwrap();
+    assert!(!calls.is_empty());
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(mode, _)| *mode != WrapMode::SvgLike)
+            .count(),
+        0,
+        "all wrapped Requirement requests must use SVG mode"
+    );
+    assert!(calls.iter().all(|(_, style)| style.font_family.as_deref()
+        == Some(expected_font.as_str())
+        && style.font_size == 24.0));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn same_named_requirement_and_element_source() -> &'static str {

@@ -81,6 +81,8 @@ pub(crate) struct RequirementLabelMetrics {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RequirementLabelMeasurementBinding {
+    html_labels: bool,
+    edge_html_labels: bool,
     font_family: String,
     font_size_bits: u64,
     calculation_font_family: String,
@@ -97,6 +99,8 @@ impl RequirementLabelMeasurementBinding {
         // Only the operation-owned built-in route can prove that suppressing the SVG-stage
         // request is unobservable. Host and custom measurers deliberately return no carrier.
         Some(Self {
+            html_labels: settings.html_labels,
+            edge_html_labels: settings.edge_html_labels,
             font_family: settings.font_family.clone(),
             font_size_bits: settings.font_size.to_bits(),
             calculation_font_family: settings.calculation_font_family.clone(),
@@ -114,7 +118,9 @@ impl RequirementLabelMeasurementBinding {
         settings: &config::RequirementLayoutSettings,
         measurer: &dyn TextMeasurer,
     ) -> bool {
-        self.font_family == settings.font_family
+        self.html_labels == settings.html_labels
+            && self.edge_html_labels == settings.edge_html_labels
+            && self.font_family == settings.font_family
             && self.font_size_bits == settings.font_size.to_bits()
             && self.calculation_font_family == settings.calculation_font_family
             && self.calculation_font_size_bits == settings.calculation_font_size.to_bits()
@@ -236,7 +242,9 @@ impl RequirementRenderLabelMeasurements<'_> {
             display_text,
             display_text,
             measurement_bold,
+            styles.node_wrap_mode,
         )
+        .map(|metrics| requirement_node_label_metrics(metrics, styles.node_wrap_mode))
     }
 
     pub(crate) fn node_plan_for_render<'a>(
@@ -282,16 +290,7 @@ impl RequirementRenderLabelMeasurements<'_> {
             .as_ref()
             .expect("opaque Requirement measurements retain their styles");
 
-        measure_requirement_label_metrics(
-            self.measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
-            &edge.display_text,
-            &edge.display_text,
-            false,
-        )
-        .map(drop)
+        measure_requirement_edge_label_metrics(self.measurer, styles, &edge.display_text).map(drop)
     }
 }
 
@@ -343,6 +342,7 @@ pub(crate) fn measure_requirement_label_metrics(
     display_text: &str,
     calculation_text: &str,
     bold: bool,
+    wrap_mode: WrapMode,
 ) -> Option<RequirementLabelMetrics> {
     if display_text.trim().is_empty() {
         return None;
@@ -357,13 +357,12 @@ pub(crate) fn measure_requirement_label_metrics(
         (calculate_text_width_like_mermaid_px(measurer, calculation_style, calculation_text) + 50)
             .max(0);
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
-    let measured = crate::text::measure_markdown_with_inline_styles(
-        measurer,
-        calculation_text,
-        html_style,
-        max_width,
-        WrapMode::HtmlLike,
-    );
+    let measure = if wrap_mode == WrapMode::HtmlLike {
+        crate::text::measure_markdown_with_inline_styles
+    } else {
+        crate::text::measure_wrapped_markdown_with_inline_styles
+    };
+    let measured = measure(measurer, calculation_text, html_style, max_width, wrap_mode);
     let height = measured.height.max(1.0);
     let width = measured.width.max(1.0);
 
@@ -371,6 +370,52 @@ pub(crate) fn measure_requirement_label_metrics(
         width,
         height,
         max_width_px,
+    })
+}
+
+fn requirement_node_label_metrics(
+    mut metrics: RequirementLabelMetrics,
+    wrap_mode: WrapMode,
+) -> RequirementLabelMetrics {
+    if wrap_mode == WrapMode::SvgLike {
+        // requirementBox.addText expands the SVG bbox before stacking node lines.
+        metrics.height += 6.0;
+    }
+    metrics
+}
+
+fn measure_requirement_edge_label_metrics(
+    measurer: &dyn TextMeasurer,
+    styles: &RequirementMeasurementStyles,
+    text: &str,
+) -> Option<RequirementLabelMetrics> {
+    if styles.edge_wrap_mode == WrapMode::HtmlLike {
+        return measure_requirement_label_metrics(
+            measurer,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            text,
+            text,
+            false,
+            WrapMode::HtmlLike,
+        );
+    }
+    if text.trim().is_empty() {
+        return None;
+    }
+    let measured = crate::text::measure_wrapped_markdown_with_inline_styles(
+        measurer,
+        text,
+        &styles.html_regular,
+        Some(200.0),
+        WrapMode::SvgLike,
+    );
+    // Shared edge createText adds a background with 2px padding on each side.
+    Some(RequirementLabelMetrics {
+        width: measured.width.max(1.0) + 4.0,
+        height: measured.height.max(1.0) + 4.0,
+        max_width_px: 200,
     })
 }
 
@@ -403,6 +448,7 @@ fn requirement_box_layout(
     lines: Vec<RequirementLabelSpec>,
     gap: f64,
     padding: f64,
+    wrap_mode: WrapMode,
 ) -> RequirementBoxLayout {
     // Mirrors Mermaid `requirementBox.ts` label stacking and bbox-based sizing.
     let measured_lines = lines
@@ -417,7 +463,9 @@ fn requirement_box_layout(
                 &line.display_text,
                 &line.display_text,
                 line.measurement_bold,
+                wrap_mode,
             )?;
+            let metrics = requirement_node_label_metrics(metrics, wrap_mode);
             Some((idx, line, metrics))
         })
         .collect();
@@ -608,6 +656,8 @@ fn element_node_label_specs(node: &RequirementRenderElement) -> Vec<RequirementL
 }
 
 struct RequirementMeasurementStyles {
+    node_wrap_mode: WrapMode,
+    edge_wrap_mode: WrapMode,
     html_regular: TextStyle,
     html_bold: TextStyle,
     calculation: TextStyle,
@@ -618,6 +668,16 @@ fn requirement_measurement_styles(
 ) -> RequirementMeasurementStyles {
     let font_family = Some(settings.font_family.clone());
     RequirementMeasurementStyles {
+        node_wrap_mode: if settings.html_labels {
+            WrapMode::HtmlLike
+        } else {
+            WrapMode::SvgLike
+        },
+        edge_wrap_mode: if settings.edge_html_labels {
+            WrapMode::HtmlLike
+        } else {
+            WrapMode::SvgLike
+        },
         html_regular: TextStyle {
             font_family: font_family.clone(),
             font_size: settings.font_size,
@@ -724,6 +784,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             requirement_node_label_specs(r),
             gap,
             padding,
+            styles.node_wrap_mode,
         );
         let (width, height, label_plan) = box_layout.into_node_plan();
         g.set_node(
@@ -755,6 +816,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             element_node_label_specs(e),
             gap,
             padding,
+            styles.node_wrap_mode,
         );
         let (width, height, label_plan) = box_layout.into_node_plan();
         g.set_node(
@@ -783,22 +845,14 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
         }
 
         let label_display = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
-        let label_calculation = label_display.clone();
-        let metrics = measure_requirement_label_metrics(
-            text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
-            &styles.calculation,
-            &label_display,
-            &label_calculation,
-            false,
-        )
-        .ok_or_else(|| Error::InvalidModel {
-            message: format!(
-                "missing relationship label for {} -> {} ({})",
-                rel.src, rel.dst, rel.rel_type
-            ),
-        })?;
+        let metrics =
+            measure_requirement_edge_label_metrics(text_measurer, &styles, &label_display)
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "missing relationship label for {} -> {} ({})",
+                        rel.src, rel.dst, rel.rel_type
+                    ),
+                })?;
 
         let is_contains = rel.rel_type == "contains";
         if rel.src == rel.dst {
@@ -1190,10 +1244,19 @@ mod tests {
             body,
             body,
             false,
+            WrapMode::HtmlLike,
         )
         .expect("text line should be measured");
-        let layout =
-            requirement_box_layout(&measurer, &regular, &bold, &calculation, lines, 20.0, 20.0);
+        let layout = requirement_box_layout(
+            &measurer,
+            &regular,
+            &bold,
+            &calculation,
+            lines,
+            20.0,
+            20.0,
+            WrapMode::HtmlLike,
+        );
 
         let expected_max_width =
             calculate_text_width_like_mermaid_px(&measurer, &calculation, body) + 50;
@@ -1215,6 +1278,8 @@ mod tests {
     fn opaque_render_measurements_rebuild_node_stacking_offsets() {
         let measurer = PhaseHeightMeasurer::default();
         let styles = RequirementMeasurementStyles {
+            node_wrap_mode: WrapMode::HtmlLike,
+            edge_wrap_mode: WrapMode::HtmlLike,
             html_regular: TextStyle::default(),
             html_bold: TextStyle {
                 font_weight: Some("bold".to_string()),
@@ -1239,6 +1304,7 @@ mod tests {
             ],
             20.0,
             20.0,
+            WrapMode::HtmlLike,
         )
         .into_node_plan()
         .2;
@@ -1262,5 +1328,70 @@ mod tests {
             rendered.divider_y_offset,
             Some(rendered.lines[0].metrics.height + rendered.lines[1].metrics.height + 20.0)
         );
+    }
+
+    #[test]
+    fn requirement_svg_node_and_edge_padding_have_separate_owners() {
+        let measurer = PhaseHeightMeasurer::default();
+        let config = serde_json::json!({"htmlLabels": false});
+        let settings = RequirementConfigView::new(&config).layout_settings();
+        let styles = requirement_measurement_styles(&settings);
+        let raw = measure_requirement_label_metrics(
+            &measurer,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            "line",
+            "line",
+            false,
+            WrapMode::SvgLike,
+        )
+        .unwrap();
+        let layout = requirement_box_layout(
+            &measurer,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            vec![node_label_spec("line".to_owned(), false, false, true)],
+            20.0,
+            20.0,
+            WrapMode::SvgLike,
+        );
+        assert_eq!(layout.lines[0].metrics.height, raw.height + 6.0);
+        assert_eq!(layout.height, raw.height + 6.0 + 20.0);
+        let edge = measure_requirement_edge_label_metrics(&measurer, &styles, "line").unwrap();
+        assert_eq!(edge.height, raw.height + 4.0);
+        assert_eq!(edge.max_width_px, 200);
+        let prepared = layout.into_node_plan().2;
+        let measurements = RequirementRenderLabelMeasurements {
+            measurer: &measurer,
+            styles: Some(styles),
+            reuse_prepared: false,
+        };
+        let rendered = measurements.node_plan_for_render(&prepared).unwrap();
+        assert_eq!(rendered.lines[0].metrics.height, raw.height + 6.0);
+    }
+
+    #[test]
+    fn requirement_prepared_binding_includes_node_and_edge_label_modes() {
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let html_config = serde_json::json!({});
+        let svg_config = serde_json::json!({"htmlLabels": false});
+        let html = RequirementConfigView::new(&html_config).layout_settings();
+        let svg = RequirementConfigView::new(&svg_config).layout_settings();
+        let html_binding =
+            RequirementLabelMeasurementBinding::for_measurer(&html, &measurer).unwrap();
+        let svg_binding =
+            RequirementLabelMeasurementBinding::for_measurer(&svg, &measurer).unwrap();
+        assert!(html_binding.matches(&html, &measurer));
+        assert!(svg_binding.matches(&svg, &measurer));
+        assert!(!html_binding.matches(&svg, &measurer));
+        assert!(!svg_binding.matches(&html, &measurer));
+        let edge_config = serde_json::json!({"flowchart": {"htmlLabels": false}});
+        let mixed = RequirementConfigView::new(&edge_config).layout_settings();
+        assert!(!html_binding.matches(&mixed, &measurer));
     }
 }

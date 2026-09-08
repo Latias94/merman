@@ -1,6 +1,7 @@
 use crate::config::{
-    DiagramLook, MERMAID_DEFAULT_FONT_FAMILY_CSS, config_bool, config_diagram_look, config_f64,
-    config_f64_css_px, config_font_family_or_first_array_css, config_string_or_first_array,
+    DiagramLook, MERMAID_DEFAULT_FONT_FAMILY_CSS, config_bool, config_diagram_look,
+    config_effective_html_labels, config_f64, config_f64_css_px,
+    config_font_family_or_first_array_css, config_string_or_first_array,
     config_theme_or_root_font_size_px, normalize_css_font_family,
 };
 use serde_json::Value;
@@ -29,6 +30,8 @@ impl<'a> RequirementConfigView<'a> {
 
     pub(crate) fn layout_settings(&self) -> RequirementLayoutSettings {
         RequirementLayoutSettings {
+            html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
+            edge_html_labels: config_effective_html_labels(self.effective_config),
             nodesep: self.layout_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
             ranksep: self.layout_spacing("rankSpacing", DEFAULT_RANK_SPACING),
             font_family: self.font_family(),
@@ -56,6 +59,10 @@ impl<'a> RequirementConfigView<'a> {
 
     pub(crate) fn render_settings(&self) -> RequirementRenderSettings<'a> {
         RequirementRenderSettings {
+            html_labels: config_bool(self.effective_config, &["htmlLabels"]).unwrap_or(true),
+            edge_html_labels: config_effective_html_labels(self.effective_config),
+            body_text_start: self.effective_config.get("layout").and_then(Value::as_str)
+                == Some("elk"),
             look: config_diagram_look(self.effective_config),
             viewport_padding: DEFAULT_VIEWPORT_PADDING,
             use_max_width: self
@@ -144,6 +151,8 @@ impl<'a> RequirementConfigView<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementLayoutSettings {
+    pub(crate) html_labels: bool,
+    pub(crate) edge_html_labels: bool,
     pub(crate) nodesep: f64,
     pub(crate) ranksep: f64,
     pub(crate) font_family: String,
@@ -154,6 +163,9 @@ pub(crate) struct RequirementLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementRenderSettings<'a> {
+    pub(crate) html_labels: bool,
+    pub(crate) edge_html_labels: bool,
+    pub(crate) body_text_start: bool,
     pub(crate) look: DiagramLook<'a>,
     pub(crate) viewport_padding: f64,
     pub(crate) use_max_width: bool,
@@ -185,6 +197,36 @@ mod tests {
             crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
         assert_eq!(settings.calculation_font_size, DEFAULT_FONT_SIZE);
+        assert!(settings.html_labels);
+        assert!(settings.edge_html_labels);
+    }
+
+    #[test]
+    fn requirement_label_modes_follow_node_and_shared_edge_ownership() {
+        for (config, node_html, edge_html, body_start) in [
+            (json!({"htmlLabels": false}), false, false, false),
+            (
+                json!({"flowchart": {"htmlLabels": false}}),
+                true,
+                false,
+                false,
+            ),
+            (
+                json!({"htmlLabels": true, "flowchart": {"htmlLabels": false}, "layout": "elk"}),
+                true,
+                true,
+                true,
+            ),
+        ] {
+            let view = RequirementConfigView::new(&config);
+            let layout = view.layout_settings();
+            let render = view.render_settings();
+            assert_eq!(layout.html_labels, node_html);
+            assert_eq!(layout.edge_html_labels, edge_html);
+            assert_eq!(render.html_labels, node_html);
+            assert_eq!(render.edge_html_labels, edge_html);
+            assert_eq!(render.body_text_start, body_start);
+        }
     }
 
     #[test]

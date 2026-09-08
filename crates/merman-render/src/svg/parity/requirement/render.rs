@@ -110,12 +110,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
     );
 
     fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
+        let sanitized = requirement_label_source(raw, sanitize_config);
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
+    }
+
+    fn requirement_label_source(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
         let decoded = raw
             .replace("ﬂ°°", "&#")
             .replace("ﬂ°", "&")
             .replace("¶ß", ";");
-        let sanitized = merman_core::sanitize::sanitize_text(&decoded, sanitize_config);
-        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
+        merman_core::sanitize::sanitize_text(&decoded, sanitize_config)
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -221,16 +225,17 @@ pub(crate) fn render_requirement_diagram_svg_model(
         id == "__proto__"
     }
 
-    fn parse_node_style_overrides(
-        css_styles: &[String],
-    ) -> (
-        String, // labelStyles (span/g)
-        String, // labelStyles as a `<div style="...">` prefix
-        String, // nodeStyles
-        Option<String>,
-        Option<String>,
-        Option<f64>,
-    ) {
+    struct NodeStyleOverrides {
+        label_styles: String,
+        label_div_style_prefix: String,
+        svg_text_styles: String,
+        node_styles: String,
+        fill: Option<String>,
+        stroke: Option<String>,
+        stroke_width: Option<f64>,
+    }
+
+    fn parse_node_style_overrides(css_styles: &[String], html_labels: bool) -> NodeStyleOverrides {
         // Mirror Mermaid `styles2String(node)` output:
         // - De-duplicate by key (`Map` semantics) while preserving first insertion order.
         // - Split into label vs node styles via Mermaid `isLabelStyle`.
@@ -290,6 +295,20 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .map(|(k, v)| format!("{k}:{v} !important"))
             .collect::<Vec<_>>()
             .join(";");
+        // createText converts color only on <text>; requirementBox retains the
+        // original declarations on the label group and first-row inner tspans.
+        let svg_text_styles = if html_labels {
+            String::new()
+        } else {
+            label_kv
+                .iter()
+                .map(|(key, value)| {
+                    let key = if *key == "color" { "fill" } else { key };
+                    format!("{key}:{value} !important")
+                })
+                .collect::<Vec<_>>()
+                .join(";")
+        };
         let label_div_style_prefix = label_kv
             .iter()
             .map(|(k, v)| format!("{k}: {v} !important; "))
@@ -307,14 +326,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .get("stroke-width")
             .and_then(|v| v.trim_end_matches("px").trim().parse::<f64>().ok());
 
-        (
+        NodeStyleOverrides {
             label_styles,
             label_div_style_prefix,
+            svg_text_styles,
             node_styles,
             fill,
             stroke,
             stroke_width,
-        )
+        }
     }
 
     let diagram_id = options.diagram_id_or("requirement");
@@ -660,6 +680,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .as_ref()
             .map(|label| (label.width, label.height))
             .unwrap_or((0.0, 0.0));
+        let svg_text_height = (h - 4.0).max(0.0);
+        let svg_text_y = if !render_settings.edge_html_labels && prepared_label.has_label {
+            measurer.measure_svg_create_text_bbox_y_offset_px(label_text, &html_style_regular)
+        } else {
+            0.0
+        };
         if prepared_label.has_label {
             let label_position = rendered_edge_label_positions
                 .get(&identity)
@@ -670,8 +696,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_position.x),
                 y = fmt(label_position.y),
                 id = escape_xml(&prepared_label.rendered_id),
-                lx = fmt(-w / 2.0),
-                ly = fmt(-h / 2.0),
+                lx = fmt(if render_settings.edge_html_labels {
+                    -w / 2.0
+                } else {
+                    0.0
+                }),
+                ly = fmt(if render_settings.edge_html_labels {
+                    -h / 2.0
+                } else {
+                    -svg_text_y - svg_text_height / 2.0
+                }),
             );
         } else {
             let _ = write!(
@@ -680,20 +714,45 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 id = escape_xml(&prepared_label.rendered_id),
             );
         }
-        let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
-        mk_label_foreign_object(
-            &mut out,
-            LabelForeignObject {
-                html: &label_html,
-                width: w,
-                height: h,
-                span_class: "edgeLabel",
-                span_style: None,
-                div_class: Some("labelBkg"),
-                div_style_prefix: None,
-                max_width_px: 200,
-            },
-        );
+        if render_settings.edge_html_labels {
+            let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
+            mk_label_foreign_object(
+                &mut out,
+                LabelForeignObject {
+                    html: &label_html,
+                    width: w,
+                    height: h,
+                    span_class: "edgeLabel",
+                    span_style: None,
+                    div_class: Some("labelBkg"),
+                    div_style_prefix: None,
+                    max_width_px: 200,
+                },
+            );
+        } else {
+            out.push_str("<g>");
+            if prepared_label.has_label {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    fmt(-w / 2.0),
+                    fmt(svg_text_y - 2.0),
+                    fmt(w),
+                    fmt(h)
+                );
+            } else {
+                out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+            }
+            super::super::label::write_svg_text_markdown_wrapped_centered_from_create_text_source(
+                &mut out,
+                label_text,
+                true,
+                measurer,
+                &html_style_regular,
+                Some(200.0),
+            );
+            out.push_str("</g>");
+        }
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
@@ -721,19 +780,27 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 cx = fmt(cx),
                 cy = fmt(cy),
             );
-            mk_label_foreign_object(
-                &mut out,
-                LabelForeignObject {
-                    html: "",
-                    width: 0.0,
-                    height: 0.0,
-                    span_class: "nodeLabel",
-                    span_style: None,
-                    div_class: None,
-                    div_style_prefix: None,
-                    max_width_px: 10,
-                },
-            );
+            if render_settings.edge_html_labels {
+                mk_label_foreign_object(
+                    &mut out,
+                    LabelForeignObject {
+                        html: "",
+                        width: 0.0,
+                        height: 0.0,
+                        span_class: "nodeLabel",
+                        span_style: None,
+                        div_class: None,
+                        div_style_prefix: None,
+                        max_width_px: 10,
+                    },
+                );
+            } else {
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                super::super::label::write_svg_text_markdown_from_create_text_source(
+                    &mut out, "", true,
+                );
+                out.push_str("</g>");
+            }
             out.push_str("</g></g>");
             continue;
         }
@@ -798,14 +865,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
             cy = fmt(cy),
         );
 
-        let (
+        let NodeStyleOverrides {
             label_styles,
             label_div_style_prefix,
+            svg_text_styles,
             node_styles,
-            fill_override,
-            stroke_override,
-            stroke_width_override,
-        ) = parse_node_style_overrides(css_styles);
+            fill: fill_override,
+            stroke: stroke_override,
+            stroke_width: stroke_width_override,
+        } = parse_node_style_overrides(css_styles, render_settings.html_labels);
         let typed_fill = paint_theme.typed_fill(paint_theme_index, fill_override.is_some());
         let typed_stroke = paint_theme.typed_stroke(paint_theme_index, stroke_override.is_some());
         let fill_color = fill_override
@@ -920,20 +988,47 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x = fmt(label_x),
                 y = fmt(label_y),
             );
-            let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
-            mk_label_foreign_object(
-                &mut out,
-                LabelForeignObject {
-                    html: &display_html,
-                    width: metrics.width,
-                    height: metrics.height,
-                    span_class: "nodeLabel markdown-node-label",
-                    span_style,
-                    div_class: None,
-                    div_style_prefix,
-                    max_width_px: metrics.max_width_px,
-                },
-            );
+            if render_settings.html_labels {
+                let display_html = mermaid_markdown_to_html(&line.display_text, sanitize_config);
+                mk_label_foreign_object(
+                    &mut out,
+                    LabelForeignObject {
+                        html: &display_html,
+                        width: metrics.width,
+                        height: metrics.height,
+                        span_class: "nodeLabel markdown-node-label",
+                        span_style,
+                        div_class: None,
+                        div_style_prefix,
+                        max_width_px: metrics.max_width_px,
+                    },
+                );
+            } else {
+                let source = requirement_label_source(&line.display_text, sanitize_config);
+                let svg_style = if line.bold {
+                    format!("{svg_text_styles}; font-weight: bold;")
+                } else {
+                    svg_text_styles.clone()
+                };
+                let text_style = TextStyle {
+                    font_weight: line.measurement_bold.then(|| "bold".to_owned()),
+                    ..html_style_regular.clone()
+                };
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                super::super::label::write_svg_text_markdown_wrapped_with_first_row_style(
+                    &mut out,
+                    &source,
+                    &svg_style,
+                    super::super::label::SvgTextFirstRowStyle {
+                        style: &style,
+                        start: render_settings.body_text_start && !line.keep_centered,
+                    },
+                    measurer,
+                    &text_style,
+                    Some(metrics.max_width_px as f64),
+                );
+                out.push_str("</g>");
+            }
             out.push_str("</g>");
         }
 
@@ -1549,32 +1644,47 @@ mod tests {
             "<script>alert(3)</script>"
         )
         .to_string();
-        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
-            "securityLevel": "strict"
-        }));
         let measurer = DeterministicTextMeasurer::default();
-        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
-            &model,
-            config.as_value(),
-            &measurer,
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
-        .unwrap();
+        for html_labels in [true, false] {
+            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                "securityLevel": "strict", "htmlLabels": html_labels
+            }));
+            let prepared =
+                crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+                    &model,
+                    config.as_value(),
+                    &measurer,
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                )
+                .unwrap();
 
-        let svg = render_prepared_requirement_for_test(
-            &prepared,
-            &model,
-            &config,
-            None,
-            &measurer,
-            &SvgRenderOptions::default(),
-        )
-        .unwrap();
+            let svg = render_prepared_requirement_for_test(
+                &prepared,
+                &model,
+                &config,
+                None,
+                &measurer,
+                &SvgRenderOptions::default(),
+            )
+            .unwrap();
 
-        assert!(svg.contains("<strong>safe</strong>"), "{svg}");
-        assert!(!svg.contains("<script"), "{svg}");
-        assert!(!svg.contains("onclick="), "{svg}");
-        assert!(!svg.contains("<a href="), "{svg}");
+            if html_labels {
+                assert!(svg.contains("<strong>safe</strong>"), "{svg}");
+            } else {
+                let document = roxmltree::Document::parse(&svg).expect("valid SVG labels");
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| node.has_tag_name("foreignObject"))
+                );
+                assert!(document.descendants().any(|node| node.has_tag_name("tspan")
+                    && node.attribute("font-weight") == Some("bold")
+                    && node.text().is_some_and(|text| text.trim() == "safe")));
+            }
+            assert!(!svg.contains("<script"), "{svg}");
+            assert!(!svg.contains("onclick="), "{svg}");
+            assert!(!svg.contains("<a href="), "{svg}");
+        }
     }
 
     #[test]

@@ -10,6 +10,12 @@ enum SvgTextEntityMode {
     CreateTextSource,
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::svg::parity) struct SvgTextFirstRowStyle<'a> {
+    pub style: &'a str,
+    pub start: bool,
+}
+
 fn write_svg_text_inner_word(
     out: &mut impl crate::svg::parity::SvgOutput,
     word_index: usize,
@@ -145,7 +151,7 @@ fn write_svg_text_source_word_lines_impl(
     }
 
     for (line_index, words) in lines.iter().enumerate() {
-        open_tspan(out, line_index, center_text, true, line_height_em);
+        open_tspan(out, line_index, center_text, true, line_height_em, false);
         for (word_index, word) in words.iter().enumerate() {
             write_svg_text_inner_word(
                 out,
@@ -225,9 +231,12 @@ fn open_tspan(
     center_text: bool,
     include_row_class: bool,
     line_height_em: f64,
+    start_text: bool,
 ) {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
+    } else if start_text {
+        r#" text-anchor="start""#
     } else {
         ""
     };
@@ -273,7 +282,7 @@ fn write_svg_text_impl(
     }
 
     for (index, line) in lines.iter().enumerate() {
-        open_tspan(out, index, center_text, include_row_class, 1.1);
+        open_tspan(out, index, center_text, include_row_class, 1.1, false);
         for (word_index, word) in crate::text::non_markdown_svg_words(line).enumerate() {
             write_svg_text_inner_word(out, word_index, word, entity_mode, true);
         }
@@ -360,6 +369,7 @@ fn write_svg_text_markdown_lines(
         center_text,
         include_row_class,
         entity_mode,
+        None,
     );
 }
 
@@ -370,6 +380,7 @@ fn write_svg_text_markdown_lines_with_style(
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
+    first_row_style: Option<SvgTextFirstRowStyle<'_>>,
 ) {
     open_svg_text(out, style, center_text, None);
 
@@ -380,16 +391,33 @@ fn write_svg_text_markdown_lines_with_style(
     }
 
     for (index, words) in lines.iter().enumerate() {
-        open_tspan(out, index, center_text, include_row_class, 1.1);
+        let row_style = first_row_style.filter(|_| index == 0);
+        open_tspan(
+            out,
+            index,
+            center_text,
+            include_row_class,
+            1.1,
+            row_style.is_some_and(|style| style.start),
+        );
 
         for (word_index, (word, is_strong, is_em)) in words.iter().enumerate() {
             let font_style = if *is_em { "italic" } else { "normal" };
             let font_weight = if *is_strong { "bold" } else { "normal" };
             let _ = write!(
                 out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}""#,
                 font_style, font_weight
             );
+            if let Some(row_style) = row_style {
+                if !row_style.style.is_empty() {
+                    let _ = write!(out, r#" style="{}""#, escape_attr_display(row_style.style));
+                }
+                if row_style.start {
+                    out.push_str(r#" text-anchor="start""#);
+                }
+            }
+            out.push('>');
             if word_index == 0 {
                 write_svg_text_word(out, word, entity_mode);
             } else {
@@ -450,6 +478,32 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    style: &str,
+    first_row_style: SvgTextFirstRowStyle<'_>,
+    measurer: &dyn crate::text::TextMeasurer,
+    text_style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let lines = markdown_to_wrapped_svg_word_lines(
+        measurer,
+        normalized_markdown_label(markdown),
+        text_style,
+        max_width_px,
+    );
+    write_svg_text_markdown_lines_with_style(
+        out,
+        &lines,
+        Some(style),
+        false,
+        true,
+        SvgTextEntityMode::CreateTextSource,
+        Some(first_row_style),
     );
 }
 
@@ -522,6 +576,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
+        None,
     );
 }
 
