@@ -292,6 +292,15 @@ use RGBA rather than the source's HSL/hex spelling, while text areas still diffe
 `font-size` attributes and direct `foreignObject` child structure. Neither mode passes overall.
 Temporary route/inventory admission was withdrawn after the diagnostic.
 
+The color-equivalence follow-up (`target/compare/venn_canonical_color_parity_root.md`) also rendered
+all 12 fixtures canonically. Nine pass parity-root; only the three fixtures with text nodes still
+fail on text-area font attributes and `foreignObject` ownership. Venn rough-path static strokes
+now compare by resolved 8-bit RGB and alpha to twelve decimal places, removing only HSL/hex/RGBA
+spelling and color-conversion roundoff. Changed RGB channels and opacity differences below one
+8-bit alpha step remain detectable; dynamic/invalid paint and strict mode are unchanged.
+This is not a geometry or text residual waiver. The temporary route/inventory admission was again
+withdrawn, and the full-family gate remains unsuccessful.
+
 The earlier classic circle/title mismatches are resolved without comparator changes. Source-shaped
 `M/m/a/a` paths are emitted only when the relative offsets reconstruct the public coordinates
 exactly. Otherwise the serializer retains absolute commands. Title CSS comes from the public
@@ -300,8 +309,8 @@ actual 32px default size. Public edits to font size, position, paint, and stroke
 SVG. No external config or private geometry is reinterpreted to reconstruct those values.
 
 This is not full-family admission: Venn remains on the explicit legacy SVG route. Remaining
-text-node and hand-drawn DOM differences have not been accepted as residuals or hidden by
-normalization, and must be resolved before full-family admission.
+text-node DOM differences have not been accepted as residuals or hidden by normalization, and
+must be resolved before full-family admission.
 
 Venn's hand-drawn circle and intersection generators now stream typed Rough.js operations from
 `venn/rough.rs` directly into the DrawingList builder. Legacy SVG wrappers collect and format the

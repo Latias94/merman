@@ -944,6 +944,43 @@ fn build_node(
                 continue;
             }
 
+            // Venn rough paint is public RGBA plus a floating-point opacity scope. Compare
+            // static color values, not HSL/hex spelling. Keep alpha beyond its 8-bit encoding;
+            // twelve decimal places remove conversion roundoff, not visible opacity changes.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "stroke"
+                && n.has_tag_name("path")
+                && n.parent()
+                    .filter(|parent| parent.has_tag_name("g"))
+                    .and_then(|parent| parent.parent())
+                    .is_some_and(|area| {
+                        area.has_tag_name("g")
+                            && has_class_token(area, "venn-area")
+                            && (has_class_token(area, "venn-circle")
+                                || has_class_token(area, "venn-intersection"))
+                    })
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("venn")
+                })
+                && let Ok(color) = merman_core::theme_color::ThemeColor::parse(&val)
+            {
+                let color = color.rgba_channels();
+                attrs.insert(
+                    key,
+                    format!(
+                        "rgba({},{},{},{:.12})",
+                        color.red.round(),
+                        color.green.round(),
+                        color.blue.round(),
+                        color.alpha
+                    ),
+                );
+                continue;
+            }
+
             // Pie's canonical document stores static colors as RGBA rather than preserving
             // their HSL/hex spelling. Compare only successfully parsed static fills here;
             // dynamic/invalid paints remain byte-sensitive, and Strict mode is unchanged.
@@ -2629,6 +2666,40 @@ mod tests {
         assert_eq!(
             path.attrs.get("label-offset-y").map(|s| s.as_str()),
             Some("9.193")
+        );
+    }
+
+    #[test]
+    fn venn_rough_stroke_spellings_preserve_color_and_precise_opacity() {
+        let signature = |role: &str, stroke: &str, mode| {
+            dom_signature(&format!(r#"<svg aria-roledescription="{role}"><g class="venn-area venn-circle" data-venn-sets="A"><g><path stroke="{stroke}" fill="none"/></g></g></svg>"#), mode, 3).unwrap()
+        };
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            let stroke = |paint| signature("venn", paint, mode);
+            assert_eq!(
+                stroke("hsla(240, 100%, 66.2745098039%, 0.30000000000000004)"),
+                stroke("rgba(83, 83, 255, 0.3)")
+            );
+            assert_eq!(stroke("#ff6b6b"), stroke("rgba(255, 107, 107, 1)"));
+            assert_ne!(
+                stroke("rgba(83, 83, 255, 0.3)"),
+                stroke("rgba(84, 83, 255, 0.3)")
+            );
+            assert_ne!(
+                stroke("rgba(83, 83, 255, 0.3)"),
+                stroke("rgba(83, 83, 255, 0.30001)")
+            );
+            for unresolved in ["currentColor", "var(--stroke)", "hsl(240, 100%, NaN%)"] {
+                assert_ne!(stroke(unresolved), stroke("#000"));
+            }
+        }
+        assert_ne!(
+            signature("venn", "#ff6b6b", DomMode::Strict),
+            signature("venn", "rgb(255,107,107)", DomMode::Strict)
+        );
+        assert_ne!(
+            signature("other", "#ff6b6b", DomMode::Parity),
+            signature("other", "rgb(255,107,107)", DomMode::Parity)
         );
     }
 
