@@ -601,6 +601,164 @@ impl TextMeasurer for RequirementTypedFontProbeMeasurer {
 }
 
 #[test]
+fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for html_labels in [false, true] {
+        for source_style in [
+            "style req1 font-family:SourceFont,font-size:32px",
+            "classDef sourceFont font-family:SourceFont,font-size:32px\nclass req1 sourceFont",
+        ] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.requirement-source-fonts").unwrap(),
+                    "test",
+                )
+                .unwrap(),
+                Arc::new(RequirementSvgModeProbe {
+                    calls: Arc::clone(&calls),
+                }),
+            );
+            let rendered = render_requirement_with_theme_requirement_and_environment(
+                &format!("{}\n{source_style}\n", requirement_source()),
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"htmlLabels": html_labels}),
+                )),
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+            );
+            let calls = calls.lock().unwrap();
+            assert!(!calls.is_empty());
+            assert!(
+                calls.iter().all(
+                    |(_, style)| style.font_family.as_deref() == Some("SourceFont")
+                        && style.font_size == 32.0
+                ),
+                "{html_labels}/{source_style}: {calls:?}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(document.descendants().any(|node| {
+                node.attribute("style").is_some_and(|style| {
+                    style.contains("font-family:SourceFont !important")
+                        && style.contains("font-size:32px !important")
+                })
+            }));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 2);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_source_font_evidence_is_property_local_and_fails_closed() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for html_labels in [false, true] {
+        for (style, applied, not_applicable, residual) in [
+            ("font-family:SourceFont", 1, 1, 0),
+            ("font-size:32px", 1, 1, 0),
+            ("font-size:0", 0, 2, 0),
+            ("font-family:var(--source)", 1, 0, 1),
+            ("font-size:calc(1em)", 1, 0, 1),
+        ] {
+            let source = format!("{}\nstyle req1 {style}\n", requirement_source());
+            let engine = || {
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"htmlLabels": html_labels}),
+                ))
+            };
+            let rendered = render_requirement_with_theme_requirement(
+                &source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::BestEffort,
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), applied, "{html_labels}/{style}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                not_applicable,
+                "{html_labels}/{style}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                residual,
+                "{html_labels}/{style}"
+            );
+            let strict = try_render_requirement_with_theme_requirement_and_environment(
+                &source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic(),
+            );
+            if residual == 0 {
+                strict.expect("static source typography is measurable");
+            } else {
+                let error = strict
+                    .err()
+                    .expect("unknown source typography must fail closed");
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::REQUIREMENT, 1))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_source_owned_nodes_do_not_suppress_inherited_edge_and_title_fonts() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    let node = format!(
+        "{}\nstyle req1 font-family:SourceFont,font-size:32px\n",
+        requirement_source()
+    );
+    for source in [
+        format!("---\ntitle: Inherited title\n---\n{node}"),
+        format!(
+            "{node}\nelement impl {{\n type: source\n}}\nstyle impl font-family:SourceFont,font-size:32px\nimpl - satisfies -> req1\n"
+        ),
+    ] {
+        let rendered = render_requirement_with_theme_and_engine(&source, &theme, Engine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| {
+            matches!(
+                node.attribute("class"),
+                Some("requirementDiagramTitleText" | "edgeLabel")
+            ) && node.descendants().any(|child| {
+                child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+            })
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn requirement_typed_font_stack_reaches_measurement_stylesheet_and_evidence() {
     let font_stack = FontStack::new(["Requirement Typed", "sans-serif"])
         .expect("valid Requirement typed font stack");

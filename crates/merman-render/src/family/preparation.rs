@@ -927,7 +927,7 @@ fn prepare_requirement_family(
             execution.text_measurer(),
             paint_theme.font_family_override(),
             paint_theme.font_size_override(),
-            execution.work_meter_ref(),
+            &execution.work_meter(),
         )?;
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(
         RequirementFamilyArtifact {

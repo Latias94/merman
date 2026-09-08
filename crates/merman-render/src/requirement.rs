@@ -17,9 +17,11 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod config;
+mod source_typography;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
+pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use theme::{RequirementDividerEmission, RequirementPaintThemePlan};
 
 fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
@@ -187,6 +189,7 @@ pub(crate) enum RequirementNodeRenderPlan {
 pub(crate) struct RequirementNodeLabelPlan {
     pub(crate) lines: Vec<RequirementNodeLabelLine>,
     pub(crate) divider_y_offset: Option<f64>,
+    pub(crate) typography: RequirementNodeTypography,
 }
 
 #[derive(Debug, Clone)]
@@ -219,6 +222,7 @@ pub(crate) struct RequirementRenderLabelMeasurements<'a> {
 impl RequirementRenderLabelMeasurements<'_> {
     fn resolve(
         &self,
+        styles: &RequirementMeasurementStyles,
         display_text: &str,
         measurement_bold: bool,
         prepared: RequirementLabelMetrics,
@@ -226,11 +230,6 @@ impl RequirementRenderLabelMeasurements<'_> {
         if self.reuse_prepared {
             return Some(prepared);
         }
-        let styles = self
-            .styles
-            .as_ref()
-            .expect("opaque Requirement measurements retain their styles");
-
         // Mermaid 11.16's `requirementBox.addText` performs `calculateTextWidth`/`createText`
         // during SVG emission. Replaying that request keeps host callback order and provenance
         // observable whenever the private built-in binding cannot prove safe reuse.
@@ -254,13 +253,21 @@ impl RequirementRenderLabelMeasurements<'_> {
         if self.reuse_prepared {
             return Some(Cow::Borrowed(prepared));
         }
-
+        let styles = prepared.typography.apply_to(
+            self.styles
+                .as_ref()
+                .expect("opaque Requirement measurements retain their styles"),
+        );
         let lines = prepared
             .lines
             .iter()
             .map(|line| {
-                let metrics =
-                    self.resolve(&line.display_text, line.measurement_bold, line.metrics)?;
+                let metrics = self.resolve(
+                    &styles,
+                    &line.display_text,
+                    line.measurement_bold,
+                    line.metrics,
+                )?;
                 Some((
                     line.source_index,
                     RequirementLabelSpec {
@@ -273,8 +280,9 @@ impl RequirementRenderLabelMeasurements<'_> {
                 ))
             })
             .collect::<Option<Vec<_>>>()?;
-        let (_, _, plan) =
+        let (_, _, mut plan) =
             requirement_box_layout_from_measured_lines(lines, 20.0, 20.0).into_node_plan();
+        plan.typography = prepared.typography.clone();
         Some(Cow::Owned(plan))
     }
 
@@ -435,6 +443,7 @@ impl RequirementBoxLayout {
             RequirementNodeLabelPlan {
                 lines: self.lines,
                 divider_y_offset: self.divider_y_offset,
+                typography: RequirementNodeTypography::default(),
             },
         )
     }
@@ -655,6 +664,7 @@ fn element_node_label_specs(node: &RequirementRenderElement) -> Vec<RequirementL
     ]
 }
 
+#[derive(Clone)]
 struct RequirementMeasurementStyles {
     node_wrap_mode: WrapMode,
     edge_wrap_mode: WrapMode,
@@ -707,7 +717,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     text_measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
 ) -> Result<RequirementPreparedArtifact> {
-    let work_meter = OperationWorkMeter::new(resource_limits);
+    let work_meter = std::sync::Arc::new(OperationWorkMeter::new(resource_limits));
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
         effective_config,
@@ -725,7 +735,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     text_measurer: &dyn TextMeasurer,
     font_family_override: Option<&str>,
     font_size_override: Option<f64>,
-    work_meter: &OperationWorkMeter,
+    work_meter: &std::sync::Arc<OperationWorkMeter>,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
         .policy()
@@ -776,17 +786,20 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             });
         }
 
+        let typography = RequirementNodeTypography::resolve(&r.css_styles, work_meter)?;
+        let node_styles = typography.apply_to(&styles);
         let box_layout = requirement_box_layout(
             text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
+            &node_styles.html_regular,
+            &node_styles.html_bold,
             &styles.calculation,
             requirement_node_label_specs(r),
             gap,
             padding,
             styles.node_wrap_mode,
         );
-        let (width, height, label_plan) = box_layout.into_node_plan();
+        let (width, height, mut label_plan) = box_layout.into_node_plan();
+        label_plan.typography = typography;
         g.set_node(
             r.name.clone(),
             NodeLabel {
@@ -808,17 +821,20 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             });
         }
 
+        let typography = RequirementNodeTypography::resolve(&e.css_styles, work_meter)?;
+        let node_styles = typography.apply_to(&styles);
         let box_layout = requirement_box_layout(
             text_measurer,
-            &styles.html_regular,
-            &styles.html_bold,
+            &node_styles.html_regular,
+            &node_styles.html_bold,
             &styles.calculation,
             element_node_label_specs(e),
             gap,
             padding,
             styles.node_wrap_mode,
         );
-        let (width, height, label_plan) = box_layout.into_node_plan();
+        let (width, height, mut label_plan) = box_layout.into_node_plan();
+        label_plan.typography = typography;
         g.set_node(
             e.name.clone(),
             NodeLabel {

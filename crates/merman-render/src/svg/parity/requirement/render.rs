@@ -754,6 +754,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
         out.push_str("</g></g>");
+        if prepared_label.has_label {
+            paint_theme_receipt.record_edge_text(label_text);
+        }
     }
     out.push_str("</g>");
 
@@ -1012,7 +1015,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 };
                 let text_style = TextStyle {
                     font_weight: line.measurement_bold.then(|| "bold".to_owned()),
-                    ..html_style_regular.clone()
+                    ..rendered_node
+                        .typography
+                        .resolve_text_style(&html_style_regular)
                 };
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
                 super::super::label::write_svg_text_markdown_wrapped_with_first_row_style(
@@ -1093,6 +1098,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 .lines
                 .iter()
                 .any(|line| !line.display_text.trim().is_empty()),
+            &rendered_node.typography,
+            &label_styles,
             fill_override.is_some(),
             typed_fill,
             fill_color,
