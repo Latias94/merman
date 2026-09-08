@@ -2008,6 +2008,120 @@ mod tests {
     }
 
     #[test]
+    fn cynefin_document_projects_source_groups_and_distinct_text_baselines() {
+        for (accessibility, title_id) in [
+            ("", None),
+            (
+                "  accTitle: Accessible practices\n",
+                Some("chart-title-cynefin"),
+            ),
+        ] {
+            let source = format!(
+                "cynefin-beta\n{accessibility}  title Practices\n  complex\n    \"Observe\"\n  complex --> clear : \"move\"\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            // Exercise the candidate serializer directly, without enabling or falling back through
+            // the public SVG route while this family's remaining migration work is incomplete.
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert_eq!(xml.root_element().attribute("aria-labelledby"), title_id);
+            if let Some(id) = title_id {
+                let title = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                assert!(title.has_tag_name("title"));
+                assert_eq!(title.text(), Some("Accessible practices"));
+            }
+            for class in [
+                "cynefin-backgrounds",
+                "cynefin-boundaries",
+                "cynefin-labels",
+                "cynefin-subtitles",
+                "cynefin-items",
+                "cynefin-arrows",
+            ] {
+                assert!(
+                    xml.descendants().any(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some(class)
+                    }),
+                    "missing source group {class}"
+                );
+            }
+            for (label, baseline) in [("Observe", "central"), ("Practices", "middle")] {
+                let text = xml
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+                    .unwrap();
+                assert_eq!(
+                    text.attribute("dominant-baseline"),
+                    Some(baseline),
+                    "{label}"
+                );
+            }
+            let items = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("cynefin-items")
+                })
+                .unwrap();
+            let item = items
+                .children()
+                .find(|node| node.has_tag_name("g"))
+                .unwrap();
+            assert!(item.attribute("transform").is_some());
+            assert!(item.children().any(|node| node.has_tag_name("rect")));
+            assert!(item.children().any(|node| node.has_tag_name("text")));
+            let BuiltinFamilyArtifact::Cynefin(pair) = &artifact.family else {
+                panic!("expected Cynefin artifact");
+            };
+            let expected_item = &pair.layout().items[0];
+            let (x, y) = item
+                .attribute("transform")
+                .unwrap()
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split_once(',')
+                .unwrap();
+            assert!((x.trim().parse::<f64>().unwrap() - expected_item.x).abs() < 0.001);
+            assert!((y.trim().parse::<f64>().unwrap() - expected_item.y).abs() < 0.001);
+            let text = item
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(
+                text.attribute("x").unwrap().parse::<f64>().unwrap(),
+                expected_item.text_x
+            );
+            assert_eq!(
+                text.attribute("y").unwrap().parse::<f64>().unwrap(),
+                expected_item.text_y
+            );
+        }
+    }
+
+    #[test]
     fn pie_svg_uses_public_paint_text_and_background_not_external_config() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new()

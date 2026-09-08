@@ -162,17 +162,22 @@ impl<'a> CynefinBuilder<'a> {
             .push_control(DrawingCommand::ConcatTransform {
                 transform: translate(self.layout.padding, self.layout.padding),
             })?;
-        self.emit_domain_backgrounds()?;
-        self.emit_boundaries()?;
-        self.emit_labels()?;
+        self.begin_container("cynefin.content", "")?;
+        self.emit_section("backgrounds", Self::emit_domain_backgrounds)?;
+        self.emit_section("boundaries", Self::emit_boundaries)?;
+        self.emit_section("labels", Self::emit_labels)?;
         if self.layout.show_domain_descriptions {
-            self.emit_subtitles()?;
+            self.emit_section("subtitles", Self::emit_subtitles)?;
         }
-        self.emit_items()?;
-        self.emit_transitions()?;
+        self.emit_section("items", Self::emit_items)?;
+        if !self.layout.transitions.is_empty() {
+            self.emit_section("arrows", Self::emit_transitions)?;
+        }
         if let Some(title) = title {
             self.emit_title(&title)?;
         }
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
         self.document.push_control(DrawingCommand::Restore)?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
@@ -204,12 +209,39 @@ impl<'a> CynefinBuilder<'a> {
                 body: SvgStructureBody::Cynefin(CynefinSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
                     use_max_width: self.layout.use_max_width,
+                    expose_accessibility_title: self
+                        .model
+                        .acc_title
+                        .as_deref()
+                        .is_some_and(|title| !title.is_empty()),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
                 }),
             },
         })
+    }
+
+    fn begin_container(&mut self, id: &str, class: &str) -> Result<()> {
+        self.semantic_classes
+            .insert(id.to_string(), class.to_string());
+        self.document.push_semantic(SemanticAnnotation {
+            id: id.to_string(),
+            role: SemanticRole::Group,
+            title: None,
+            description: None,
+            link: None,
+        })?;
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: id.to_string(),
+            })
+    }
+
+    fn emit_section(&mut self, name: &str, emit: fn(&mut Self) -> Result<()>) -> Result<()> {
+        self.begin_container(&format!("cynefin.{name}"), &format!("cynefin-{name}"))?;
+        emit(self)?;
+        self.document.push_control(DrawingCommand::EndSemanticGroup)
     }
 
     fn emit_background(&mut self) -> Result<()> {
@@ -458,6 +490,11 @@ impl<'a> CynefinBuilder<'a> {
             );
             self.text_classes
                 .insert(semantic_id.clone(), "cynefinItemText".to_string());
+            self.document.push_control(DrawingCommand::Save)?;
+            self.document
+                .push_control(DrawingCommand::ConcatTransform {
+                    transform: translate(item.x, item.y),
+                })?;
             self.document
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
@@ -465,8 +502,8 @@ impl<'a> CynefinBuilder<'a> {
             self.add_path(
                 format!("{semantic_id}.shape"),
                 rounded_rect_path(
-                    item.x + item.width / 2.0,
-                    item.y + item.height / 2.0,
+                    item.width / 2.0,
+                    item.height / 2.0,
                     item.width,
                     item.height,
                     4.0,
@@ -491,16 +528,17 @@ impl<'a> CynefinBuilder<'a> {
                 &format!("{semantic_id}.label"),
                 &item.label,
                 TextEmitSpec {
-                    origin: Point::new(item.x + item.text_x, item.y + item.text_y),
+                    origin: Point::new(item.text_x, item.text_y),
                     font_size: self.theme.item_font_size,
                     weight: 400,
                     color: self.text_color,
                     anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Middle,
+                    baseline: TextBaseline::Central,
                 },
             )?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_control(DrawingCommand::Restore)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,

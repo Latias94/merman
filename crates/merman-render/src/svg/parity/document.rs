@@ -27,6 +27,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
+mod cynefin;
 mod pie;
 
 /// Serializes one validated canonical document to SVG.
@@ -263,6 +264,15 @@ impl<'a> DocumentSvgEncoder<'a> {
                 (body.acc_title.clone(), body.acc_description.clone())
             }
             SvgStructureBody::Packet(body) => (
+                self.document_semantic().and_then(|semantic| {
+                    body.expose_accessibility_title
+                        .then(|| semantic.title.clone())
+                        .flatten()
+                }),
+                self.document_semantic()
+                    .and_then(|semantic| semantic.description.clone()),
+            ),
+            SvgStructureBody::Cynefin(body) => (
                 self.document_semantic().and_then(|semantic| {
                     body.expose_accessibility_title
                         .then(|| semantic.title.clone())
@@ -1370,6 +1380,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
             return self.begin_mindmap_semantic_group(semantic_id);
         }
+        if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            return self.begin_cynefin_semantic_group(semantic_id, semantic.role);
+        }
         if matches!(self.svg_body, SvgStructureBody::Pie(_)) {
             let emitted = semantic_id == "pie.content"
                 || semantic_id == "pie.plot"
@@ -2138,6 +2151,12 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
             let raw_id = path_id.as_str();
             let path = self.path_resource(path_id)?;
+            if raw_id.starts_with("cynefin.item.")
+                && raw_id.ends_with(".shape")
+                && let Some((bounds, radius)) = rounded_rectangle_from_path(path)
+            {
+                return self.emit_rounded_rect(path_id, bounds, radius, style);
+            }
             if (raw_id == "cynefin.background"
                 || raw_id.starts_with("cynefin.domain.") && raw_id.ends_with(".background"))
                 && let Some(bounds) = rectangle_from_path(path)
@@ -3105,6 +3124,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             SvgStructureBody::XyChart(_) => xychart_text_baseline(run.baseline),
             SvgStructureBody::Wardley(_) => wardley_text_baseline(run.baseline),
+            SvgStructureBody::Cynefin(_) => match run.baseline {
+                TextBaseline::Middle => "middle",
+                other => text_baseline(other),
+            },
             _ => text_baseline(run.baseline),
         };
         let gitgraph_branch_label = matches!(self.svg_body, SvgStructureBody::GitGraph(body)

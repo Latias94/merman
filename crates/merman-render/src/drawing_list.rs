@@ -446,6 +446,7 @@ pub(crate) struct EventModelingSvgBody {
 pub(crate) struct CynefinSvgBody {
     pub(crate) diagram_type: String,
     pub(crate) use_max_width: bool,
+    pub(crate) expose_accessibility_title: bool,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,
     pub(crate) text_classes: BTreeMap<String, String>,

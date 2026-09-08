@@ -1244,17 +1244,18 @@ Animal <|-- Duck
             .find("<desc>Practice movement</desc>")
             .expect("renderer accessibility description");
         let root_group = svg
-            .find(r#"class="merman-semantic semantic-document cynefin"#)
+            .find(r#"<g transform="translate(40, 40)">"#)
             .expect("cynefin root group");
 
         assert!(scoped_title < scoped_descr, "{svg}");
+        assert!(scoped_descr < style, "{svg}");
         assert!(style < framework_group, "{svg}");
-        assert!(framework_group < scoped_title, "{svg}");
-        assert!(scoped_descr < root_group, "{svg}");
+        assert!(framework_group < renderer_title, "{svg}");
         assert!(renderer_title < renderer_descr, "{svg}");
+        assert!(renderer_descr < root_group, "{svg}");
         assert!(
-            !svg.contains("<marker"),
-            "canonical Cynefin must not use SVG markers"
+            svg.contains(r#"<marker id="cynefin-arrow-cynefin-test""#),
+            "Cynefin must retain Mermaid's marker DOM contract"
         );
     }
 
