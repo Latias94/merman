@@ -1996,6 +1996,56 @@ fn sankey_outlined_labels_preserve_two_source_ordered_text_layers() {
 }
 
 #[test]
+fn radar_text_inherits_fill_independently_of_css_color() {
+    let config = MermaidConfig::from_value(serde_json::json!({
+        "theme": "base",
+        "themeVariables": {
+            "textColor": "#123456", "titleColor": "#00ff00",
+            "radar": {"axisColor": "#ff0000"}
+        }
+    }));
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config));
+    let RenderOutput::DrawingList(Some(output)) = renderer
+        .render(RenderRequest::drawing_list(
+            "radar-beta\n title Health\n axis Speed, Quality, Reach\n curve Current{80, 60, 90}\n",
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .unwrap()
+    else {
+        panic!("expected DrawingList");
+    };
+    let commands = &output.document().commands;
+    for text in ["Health", "Speed", "Quality", "Reach"] {
+        let run = commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text == text => Some(run),
+                _ => None,
+            })
+            .expect("Radar text is drawn");
+        assert_eq!(
+            run.style.fill,
+            Paint::solid(merman_display_list::Color::rgba(18, 52, 86, 255)),
+            "{text}: CSS color does not replace SVG text fill"
+        );
+    }
+    let line = commands
+        .iter()
+        .find_map(|command| match command {
+            DrawingCommand::DrawPath { path, style } if path.as_str() == "radar.axis.0.line" => {
+                Some(style)
+            }
+            _ => None,
+        })
+        .expect("axis is drawn");
+    assert_eq!(
+        line.stroke.as_ref().unwrap().paint,
+        Paint::solid(merman_display_list::Color::rgba(255, 0, 0, 255))
+    );
+}
+
+#[test]
 fn radar_emits_grids_series_axes_legends_and_title_with_separate_fill_opacity() {
     let output = Renderer::new()
         .render(RenderRequest::drawing_list(

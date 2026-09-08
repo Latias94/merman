@@ -62,7 +62,6 @@ struct RadarBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     text_color: String,
-    title_color: String,
     title_font_size: String,
     axis_color: String,
     axis_stroke_width: f64,
@@ -118,7 +117,6 @@ impl<'a> RadarBuilder<'a> {
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             text_color: theme.text_color,
-            title_color: theme.title_color,
             title_font_size: theme.title_font_size_css,
             axis_color: theme.axis_color,
             axis_stroke_width: theme.axis_stroke_width,
@@ -309,7 +307,8 @@ impl<'a> RadarBuilder<'a> {
 
         let placement = radar_axis_label_placement(&axis);
         let font_size = portable_length("axisLabelFontSize", self.axis_label_font_size)?;
-        let text_color = self.axis_color.clone();
+        // The source sets CSS `color` on axis labels, but their SVG fill stays inherited.
+        let text_color = self.text_color.clone();
         self.emit_text(
             &axis.label,
             Point::new(placement.x, placement.y),
@@ -436,7 +435,7 @@ impl<'a> RadarBuilder<'a> {
             })?;
         let font_size =
             PortableStyleResolver::new("radar").length("title font-size", &self.title_font_size)?;
-        let title_color = self.title_color.clone();
+        let title_color = self.text_color.clone();
         self.emit_text(
             &title,
             Point::new(0.0, self.layout.title_y),
