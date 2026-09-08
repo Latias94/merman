@@ -127,6 +127,11 @@ fn published_draft_2020_12_schema_accepts_the_runtime_document() {
             !validator.is_valid(&missing_field),
             "schema must require text style field {required_field}"
         );
+        let decoded = serde_json::from_value::<DrawingListDocument>(missing_field);
+        assert!(
+            decoded.is_err(),
+            "decoder must require text style field {required_field}"
+        );
     }
 
     let mut central_baseline = value.clone();

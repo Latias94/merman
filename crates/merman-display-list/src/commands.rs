@@ -1,5 +1,6 @@
 use crate::{DrawingListError, Point, Rect, ResourceId, Transform};
-use serde::{Deserialize, Serialize, de};
+use serde::{Deserialize, Serialize, de, de::MapAccess, de::Visitor};
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -250,7 +251,7 @@ pub struct TextRun {
     pub obligation: TextObligation,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextStyle {
     pub font: FontDescriptor,
@@ -260,6 +261,90 @@ pub struct TextStyle {
     pub fill: crate::Paint,
     pub stroke: Option<StrokeStyle>,
     pub paint_order: TextPaintOrder,
+}
+
+impl<'de> Deserialize<'de> for TextStyle {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "font",
+            "font_size",
+            "letter_spacing",
+            "line_height",
+            "fill",
+            "stroke",
+            "paint_order",
+        ];
+
+        struct TextStyleVisitor;
+
+        impl<'de> Visitor<'de> for TextStyleVisitor {
+            type Value = TextStyle;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a DrawingList text style object")
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut font = None;
+                let mut font_size = None;
+                let mut letter_spacing = None;
+                let mut line_height = None;
+                let mut fill = None;
+                let mut stroke = None;
+                let mut paint_order = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "font" => set_once(&mut font, map.next_value()?, "font")?,
+                        "font_size" => set_once(&mut font_size, map.next_value()?, "font_size")?,
+                        "letter_spacing" => {
+                            set_once(&mut letter_spacing, map.next_value()?, "letter_spacing")?
+                        }
+                        "line_height" => {
+                            set_once(&mut line_height, map.next_value()?, "line_height")?
+                        }
+                        "fill" => set_once(&mut fill, map.next_value()?, "fill")?,
+                        "stroke" => set_once(&mut stroke, map.next_value()?, "stroke")?,
+                        "paint_order" => {
+                            set_once(&mut paint_order, map.next_value()?, "paint_order")?
+                        }
+                        other => return Err(de::Error::unknown_field(other, FIELDS)),
+                    }
+                }
+
+                Ok(TextStyle {
+                    font: font.ok_or_else(|| de::Error::missing_field("font"))?,
+                    font_size: font_size.ok_or_else(|| de::Error::missing_field("font_size"))?,
+                    letter_spacing: letter_spacing
+                        .ok_or_else(|| de::Error::missing_field("letter_spacing"))?,
+                    line_height: line_height
+                        .ok_or_else(|| de::Error::missing_field("line_height"))?,
+                    fill: fill.ok_or_else(|| de::Error::missing_field("fill"))?,
+                    stroke: stroke.ok_or_else(|| de::Error::missing_field("stroke"))?,
+                    paint_order: paint_order
+                        .ok_or_else(|| de::Error::missing_field("paint_order"))?,
+                })
+            }
+        }
+
+        fn set_once<T, E>(slot: &mut Option<T>, value: T, field: &'static str) -> Result<(), E>
+        where
+            E: de::Error,
+        {
+            if slot.replace(value).is_some() {
+                return Err(de::Error::duplicate_field(field));
+            }
+            Ok(())
+        }
+
+        deserializer.deserialize_map(TextStyleVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
