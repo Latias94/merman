@@ -520,34 +520,45 @@ impl<'a> GanttBuilder<'a> {
             self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
             self.path_classes
                 .insert(bar_id.clone(), task.bar.class.clone());
-            let path = if source.milestone {
-                transformed_rect_path(
-                    task.bar.x,
-                    task.bar.y,
-                    task.bar.width,
-                    task.bar.height,
-                    task.bar.rx,
-                    task.bar.x + task.bar.width / 2.0,
-                    task.bar.y + task.bar.height / 2.0,
-                )
-            } else {
+            if source.milestone {
+                // CSS transforms the complete painted rect, including its stroke. The origin
+                // follows the task row even when `vert` changes the rectangle's y and height.
+                let x = task.bar.x + task.bar.width / 2.0;
+                let y = task.order as f64 * (self.layout.bar_height + self.layout.bar_gap)
+                    + self.layout.top_padding
+                    + self.layout.bar_height / 2.0;
+                let component = std::f64::consts::FRAC_1_SQRT_2 * 0.8;
+                self.document.push_control(DrawingCommand::Save)?;
+                self.document
+                    .push_control(DrawingCommand::ConcatTransform {
+                        transform: Transform {
+                            a: component,
+                            b: component,
+                            c: -component,
+                            d: component,
+                            e: x - component * x + component * y,
+                            f: y - component * x - component * y,
+                        },
+                    })?;
+            }
+            self.add_path(
+                bar_id,
                 rect_path(
                     task.bar.x,
                     task.bar.y,
                     task.bar.width,
                     task.bar.height,
                     task.bar.rx,
-                )
-            };
-            self.add_path(
-                bar_id,
-                path,
+                ),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(fill)),
                     stroke: Some(stroke(border, stroke_width)),
                 },
             )?;
+            if source.milestone {
+                self.document.push_control(DrawingCommand::Restore)?;
+            }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
@@ -1166,75 +1177,6 @@ fn label_anchor(class: &str) -> TextAnchor {
 
 fn rect_path(x: f64, y: f64, width: f64, height: f64, radius: f64) -> Vec<PathSegment> {
     rounded_rect_path(x + width / 2.0, y + height / 2.0, width, height, radius)
-}
-
-fn transformed_rect_path(
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    radius: f64,
-    origin_x: f64,
-    origin_y: f64,
-) -> Vec<PathSegment> {
-    let scale = 0.8;
-    let angle = std::f64::consts::FRAC_PI_4;
-    let cos = angle.cos() * scale;
-    let sin = angle.sin() * scale;
-    rect_path(x, y, width, height, radius)
-        .into_iter()
-        .map(|segment| transform_segment(segment, origin_x, origin_y, cos, sin))
-        .collect()
-}
-
-fn transform_segment(
-    segment: PathSegment,
-    origin_x: f64,
-    origin_y: f64,
-    cos: f64,
-    sin: f64,
-) -> PathSegment {
-    let transform = |point: Point| {
-        let dx = point.x - origin_x;
-        let dy = point.y - origin_y;
-        Point::new(
-            origin_x + cos * dx - sin * dy,
-            origin_y + sin * dx + cos * dy,
-        )
-    };
-    match segment {
-        PathSegment::MoveTo { to } => PathSegment::MoveTo { to: transform(to) },
-        PathSegment::LineTo { to } => PathSegment::LineTo { to: transform(to) },
-        PathSegment::QuadTo { control, to } => PathSegment::QuadTo {
-            control: transform(control),
-            to: transform(to),
-        },
-        PathSegment::CubicTo {
-            control1,
-            control2,
-            to,
-        } => PathSegment::CubicTo {
-            control1: transform(control1),
-            control2: transform(control2),
-            to: transform(to),
-        },
-        PathSegment::ArcTo {
-            radius_x,
-            radius_y,
-            x_axis_rotation_degrees,
-            large_arc,
-            sweep_clockwise,
-            to,
-        } => PathSegment::ArcTo {
-            radius_x: radius_x * 0.8,
-            radius_y: radius_y * 0.8,
-            x_axis_rotation_degrees: x_axis_rotation_degrees + 45.0,
-            large_arc,
-            sweep_clockwise,
-            to: transform(to),
-        },
-        PathSegment::Close => PathSegment::Close,
-    }
 }
 
 fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {

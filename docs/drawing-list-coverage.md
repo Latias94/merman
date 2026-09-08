@@ -232,6 +232,17 @@ does not establish a full Mermaid browser comparison or native font parity. No f
 fixture comparator or accepted residual changed, and the earlier full-family report still records
 its original snapshot rather than a current pass count.
 
+Milestones now retain untransformed rounded-rectangle resources inside a public save/transform/
+restore scope. This replaces the separate path-segment rewriting code and preserves the source's
+45-degree rotation and 0.8 scale for both geometry and stroke (a two-unit stroke becomes 1.6 in
+world space). The transform origin follows the task row even for combined `milestone, vert`
+tags, where it is not the tall rectangle's center. The candidate SVG projects the same resource
+as a transformed rectangle without replaying milestone CSS. A direct document-to-SVG regression
+checks both tag combinations, the fixed origin, stroke scale, untransformed labels/next tasks,
+and public transform edits. The focused 32 renderer/Gantt/effect tests, two facade tests and
+renderer Clippy check pass. Gantt remains outside canonical admission pending the remaining
+full-family DOM and presentation work.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

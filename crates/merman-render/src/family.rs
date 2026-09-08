@@ -2007,6 +2007,141 @@ mod tests {
     }
 
     #[test]
+    fn gantt_milestones_transform_rectangles_and_strokes_without_transforming_labels() {
+        use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Point};
+        for tags in ["milestone", "milestone, vert"] {
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Release\nGate :{tags}, gate, 2026-01-01, 1d\nNext :next, 2026-01-03, 1d\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let BuiltinFamilyArtifact::Gantt(pair) = &artifact.family else {
+                panic!("Gantt")
+            };
+            let task = &pair.layout().tasks[0];
+            let bar = &task.bar;
+            let center_x = bar.x + bar.width / 2.0;
+            // Upstream transform-origin follows the task row even for a vertical milestone.
+            let center_y = task.order as f64 * 24.0 + 50.0 + 10.0;
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let path_id = "gantt.task.0.bar";
+            let index = document
+                .public
+                .commands
+                .iter()
+                .position(|command| {
+                    matches!(command,
+                        DrawingCommand::DrawPath { path, .. } if path.as_str() == path_id
+                    )
+                })
+                .unwrap();
+            let DrawingCommand::ConcatTransform { transform } =
+                &document.public.commands[index - 1]
+            else {
+                panic!("milestone geometry and stroke must share a public transform")
+            };
+            assert!(matches!(
+                document.public.commands[index - 2],
+                DrawingCommand::Save
+            ));
+            assert!(matches!(
+                document.public.commands[index + 1],
+                DrawingCommand::Restore
+            ));
+            let map = |point: Point| {
+                Point::new(
+                    transform.a * point.x + transform.c * point.y + transform.e,
+                    transform.b * point.x + transform.d * point.y + transform.f,
+                )
+            };
+            let center = map(Point::new(center_x, center_y));
+            assert!((center.x - center_x).abs() < 1e-9);
+            assert!((center.y - center_y).abs() < 1e-9);
+            let right = map(Point::new(center_x + 10.0, center_y));
+            assert!((right.x - center.x - 8.0 / 2.0_f64.sqrt()).abs() < 1e-9);
+            assert!((right.y - center.y - 8.0 / 2.0_f64.sqrt()).abs() < 1e-9);
+            let DrawingCommand::DrawPath { style, .. } = &document.public.commands[index] else {
+                unreachable!()
+            };
+            assert!(
+                (style.stroke.as_ref().unwrap().width * transform.a.hypot(transform.b) - 1.6).abs()
+                    < 1e-9
+            );
+            let path = document
+                .public
+                .resources
+                .iter()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path) if path.id.as_str() == path_id => Some(path),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                path.segments.first(),
+                Some(&PathSegment::MoveTo {
+                    to: Point::new(bar.x + 3.0, bar.y)
+                })
+            );
+            let render = |doc: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    doc,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            assert!(rect.has_tag_name("rect"));
+            assert_eq!(rect.attribute("rx"), Some("3"));
+            assert_eq!(rect.attribute("stroke-width"), Some("2"));
+            let matrix = rect.attribute("transform").unwrap().to_owned();
+            assert!(matrix.starts_with("matrix("));
+            let label = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text") && node.text() == Some(task.label.text.as_str())
+                })
+                .unwrap();
+            assert_eq!(label.attribute("transform"), None);
+            let next = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some("gantt.task.1.bar"))
+                .unwrap();
+            assert_eq!(next.attribute("transform"), None);
+            let DrawingCommand::ConcatTransform { transform } =
+                &mut document.public.commands[index - 1]
+            else {
+                unreachable!()
+            };
+            transform.e += 7.0;
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            assert_ne!(rect.attribute("transform"), Some(matrix.as_str()));
+        }
+    }
+
+    #[test]
     fn gantt_section_text_projects_public_lines_including_empty_lines() {
         use merman_display_list::{DrawingCommand, TextBaseline};
         for (section, expected, offsets) in [
