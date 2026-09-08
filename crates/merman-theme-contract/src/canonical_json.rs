@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn jcs_uses_ecmascript_number_serialization_and_normalizes_negative_zero() {
         let input = [
-            333333333.33333329,
+            333_333_333.333_333_3,
             1e30,
             4.50,
             2e-3,
