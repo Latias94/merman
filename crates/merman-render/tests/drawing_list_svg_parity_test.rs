@@ -969,7 +969,6 @@ fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
     let svg = render_svg("sankey-beta\nA,B,10\n", "sankey-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical Sankey SVG is XML");

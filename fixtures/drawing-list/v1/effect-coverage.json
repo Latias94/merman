@@ -116,7 +116,7 @@
     {
       "family": "info",
       "source": "info",
-      "expected_effects": ["host_text"]
+      "expected_effects": ["host_text", "path"]
     },
     {
       "family": "treemap",
@@ -185,7 +185,7 @@
       "family": "info",
       "source": "info",
       "assertion": "host_text",
-      "expected_effects": ["host_text"],
+      "expected_effects": ["host_text", "path"],
       "evidence": "DrawingCommand::DrawText with TextObligation::HostText"
     },
     {
