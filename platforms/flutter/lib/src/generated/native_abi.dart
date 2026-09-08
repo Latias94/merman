@@ -467,6 +467,102 @@ typedef MermanNativeExecuteCollectControlledFn =
       ffi.NativeFunction<MermanNativeExecuteCollectControlledFnFunction>
     >;
 
+final class MermanNativeTextMeasureResultV2 extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  @ffi.Uint8()
+  external int handled;
+
+  @ffi.Uint8()
+  external int has_raw_width;
+
+  @ffi.Int32()
+  external int result_kind;
+
+  @ffi.Double()
+  external double width;
+
+  @ffi.Double()
+  external double height;
+
+  @ffi.Double()
+  external double length;
+
+  @ffi.Double()
+  external double bbox_left;
+
+  @ffi.Double()
+  external double bbox_right;
+
+  @ffi.Double()
+  external double raw_width;
+
+  @ffi.Size()
+  external int line_count;
+
+  @ffi.Double()
+  external double line_height;
+
+  @ffi.Double()
+  external double baseline_offset;
+}
+
+typedef MermanNativeTextMeasureCallbackV2Function =
+    MermanNativeStatus Function(
+      ffi.Pointer<MermanNativeTextMeasureRequest> request,
+      ffi.Pointer<MermanNativeTextMeasureResultV2> out_result,
+      ffi.Pointer<ffi.Void> user_data,
+    );
+typedef DartMermanNativeTextMeasureCallbackV2Function =
+    DartMermanNativeStatus Function(
+      ffi.Pointer<MermanNativeTextMeasureRequest> request,
+      ffi.Pointer<MermanNativeTextMeasureResultV2> out_result,
+      ffi.Pointer<ffi.Void> user_data,
+    );
+typedef MermanNativeTextMeasureCallbackV2 =
+    ffi.Pointer<ffi.NativeFunction<MermanNativeTextMeasureCallbackV2Function>>;
+
+final class MermanNativeEngineConfigV2 extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  external MermanNativeSlice options_json;
+
+  external MermanNativeTextMeasureCallbackV2 text_measure;
+
+  external ffi.Pointer<ffi.Void> text_measure_user_data;
+}
+
+final class MermanNativeEngineServicesConfigV2 extends ffi.Struct {
+  @ffi.Uint32()
+  external int struct_size;
+
+  external MermanNativeEngineConfigV2 engine_config;
+
+  external ffi.Pointer<MermanNativeIconPack> icon_packs;
+
+  @ffi.Size()
+  external int icon_pack_count;
+}
+
+typedef MermanNativeEngineNewWithServicesV2FnFunction =
+    MermanNativeStatus Function(
+      ffi.Pointer<MermanNativeEngineServicesConfigV2> config,
+      ffi.Pointer<MermanNativeEngineToken> out_engine,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef DartMermanNativeEngineNewWithServicesV2FnFunction =
+    DartMermanNativeStatus Function(
+      ffi.Pointer<MermanNativeEngineServicesConfigV2> config,
+      ffi.Pointer<MermanNativeEngineToken> out_engine,
+      ffi.Pointer<MermanNativeResult> out_result,
+    );
+typedef MermanNativeEngineNewWithServicesV2Fn =
+    ffi.Pointer<
+      ffi.NativeFunction<MermanNativeEngineNewWithServicesV2FnFunction>
+    >;
+
 final class MermanNativeApi extends ffi.Struct {
   @ffi.Uint32()
   external int struct_size;
@@ -503,6 +599,8 @@ final class MermanNativeApi extends ffi.Struct {
   external MermanNativeOperationControlReleaseFn operation_control_release;
 
   external MermanNativeExecuteCollectControlledFn execute_collect_controlled;
+
+  external MermanNativeEngineNewWithServicesV2Fn engine_new_with_services_v2;
 }
 
 const int MERMAN_TEXT_WRAP_MODE_SVG_LIKE = 0;
@@ -667,6 +765,8 @@ const int MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9;
 
 const int MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10;
 
+const int MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES_V2 = 11;
+
 const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
 
 const int MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION = 2;
@@ -677,7 +777,7 @@ const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
     'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:c5321d02436582fea97869bfa62703531ecf49357f6690f5f77c269ddf016f0c';
+    'sha256:c010497069147ac1aac9fe171b2b22ed30d0e0d0029dab875990b7a17ae8ae74';
 
 const int MERMAN_NATIVE_RESULT_SCHEMA_VERSION = 1;
 

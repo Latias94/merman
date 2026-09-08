@@ -21,6 +21,21 @@ static MermanNativeResult empty_result(void) {
     return (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
 }
 
+static MermanNativeStatus measure_v2(
+    const MermanNativeTextMeasureRequest *request,
+    MermanNativeTextMeasureResultV2 *result,
+    void *user_data
+) {
+    size_t *calls = (size_t *)user_data;
+    if (request->text_measurement_protocol_version != MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION ||
+        result->struct_size != sizeof(MermanNativeTextMeasureResultV2)) {
+        return MERMAN_NATIVE_STATUS_CALLBACK_ERROR;
+    }
+    *calls += 1;
+    result->handled = 0;
+    return MERMAN_NATIVE_STATUS_OK;
+}
+
 static int bytes_contain(const uint8_t *data, size_t len, const char *needle) {
     const size_t needle_len = strlen(needle);
     size_t index = 0;
@@ -179,7 +194,8 @@ int merman_c_consumer_smoke(
     MermanGetNativeApiFn get_native_api,
     int require_complete_artifact,
     const uint8_t *drawing_list_source,
-    size_t drawing_list_source_len
+    size_t drawing_list_source_len,
+    int has_svg
 ) {
     static const uint8_t source[] = "flowchart TD\nA --> B";
     static const uint8_t icon_source[] =
@@ -549,6 +565,43 @@ int merman_c_consumer_smoke(
     }
     if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_INVALID_ENGINE) {
         return 9;
+    }
+    {
+        MermanNativeEngineServicesConfigV2 services_v2;
+        size_t calls = 0;
+        memset(&services_v2, 0, sizeof(services_v2));
+        services_v2.struct_size = sizeof(services_v2);
+        services_v2.engine_config.struct_size = sizeof(services_v2.engine_config);
+        services_v2.engine_config.options_json = borrowed_slice(NULL, 0);
+        if (has_svg) {
+            services_v2.engine_config.text_measure = measure_v2;
+            services_v2.engine_config.text_measure_user_data = &calls;
+        }
+        engine = 0;
+        result = empty_result();
+        if (api.engine_new_with_services_v2 == NULL) {
+            return 90;
+        }
+        status = api.engine_new_with_services_v2(&services_v2, &engine, &result);
+        api.result_free(&result);
+        if (status != MERMAN_NATIVE_STATUS_OK || engine == 0 || calls != 0) {
+            return 91;
+        }
+        if (has_svg) {
+            request.operation = MERMAN_NATIVE_OPERATION_SVG;
+            request.source = borrowed_slice(source, sizeof(source) - 1);
+            request.options_json = borrowed_slice(NULL, 0);
+            result = empty_result();
+            status = api.execute_collect(engine, &request, &result);
+            api.result_free(&result);
+            if (status != MERMAN_NATIVE_STATUS_OK || calls == 0) {
+                api.engine_try_close(engine);
+                return 92;
+            }
+        }
+        if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) {
+            return 93;
+        }
     }
     return 0;
 }

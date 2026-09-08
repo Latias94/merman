@@ -85,7 +85,8 @@ int merman_header_smoke(void) {
         MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE >= MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ||
         MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE >= MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ||
         MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE >= MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ||
-        MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE != sizeof(MermanNativeApi)
+        MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE >= MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE ||
+        MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE != sizeof(MermanNativeApi)
     ) {
         return 19;
     }
@@ -174,7 +175,9 @@ static_assert(
             MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE &&
         MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE <
             MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE &&
-        MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE == sizeof(MermanNativeApi),
+        MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE <
+            MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE &&
+        MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE == sizeof(MermanNativeApi),
     "operation-control and controlled-execute slots must expose ordered appended prefixes"
 );
 static_assert(
@@ -211,6 +214,20 @@ static_assert(
         MermanNativeResult *
     >,
     "C++ service constructor function type must be noexcept"
+);
+static_assert(
+    std::is_nothrow_invocable_r_v<
+        MermanNativeStatus, MermanNativeTextMeasureCallbackV2,
+        const MermanNativeTextMeasureRequest *, MermanNativeTextMeasureResultV2 *, void *
+    > && !std::is_same_v<MermanNativeTextMeasureCallback, MermanNativeTextMeasureCallbackV2>,
+    "protocol-2 callbacks must be noexcept and distinct from protocol 1"
+);
+static_assert(
+    std::is_nothrow_invocable_r_v<
+        MermanNativeStatus, MermanNativeEngineNewWithServicesV2Fn,
+        const MermanNativeEngineServicesConfigV2 *, MermanNativeEngineToken *, MermanNativeResult *
+    >,
+    "C++ protocol-2 service constructor must be noexcept"
 );
 
 int merman_cpp_header_smoke() {

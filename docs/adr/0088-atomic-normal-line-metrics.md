@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted design; implementation is in progress and is not yet transport-complete.
+Accepted design; atomic metrics and transport projections are implemented. Rust normal-text layout
+and Venn text-node integration remain in progress; no additional family is admitted by this ADR.
 
 ## Date
 

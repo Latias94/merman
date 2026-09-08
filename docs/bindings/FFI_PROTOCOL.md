@@ -63,12 +63,19 @@ dynamically look up per-operation exports.
 The descriptor-selected minimum prefix includes `metadata_collect` at function-slot code `5` and
 `engine_new_with_services` at code `6`. The current table then appends
 `operation_control_new`, `operation_control_cancel`, and `operation_control_release` at codes `7`,
-`8`, and `9`, followed by `execute_collect_controlled` at code `10`. The generated prefix-size
+`8`, and `9`, followed by `execute_collect_controlled` at code `10` and
+`engine_new_with_services_v2` at code `11`. The generated prefix-size
 macros identify each complete table boundary. Release consumers require the complete current
-prefix through `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; they must not treat the
+prefix through `MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE`; they must not treat the
 smaller minimum prefix as the complete release surface, fall back to the older constructor, or
 discard constructor services. The controlled entry point is append-only so the original ABI 3
 operation-request record remains byte-for-byte stable.
+
+The V2 services constructor selects text-measurement protocol 2 using independently named
+`MermanNativeEngineConfigV2` and `MermanNativeEngineServicesConfigV2` records. Existing clients may
+continue using their earlier complete prefix and protocol-1 callback; no old record, function
+signature, or minimum-prefix digest changes. Never cast between callback versions or pass a V2
+record to a V1 constructor.
 
 The returned digests have separate roles:
 
@@ -443,8 +450,13 @@ The callback and `user_data` are immutable constructor state. The host may relea
 `MermanNativeTextMeasureRequest` fields valid only during the callback and writes a size-tagged
 `MermanNativeTextMeasureResult`. The generated
 [`merman_text_measurement_abi.h`](../../crates/merman-ffi/include/merman_text_measurement_abi.h)
-defines the independent text-measurement protocol version, 19 operation codes, and required result
-kinds.
+defines the independent text-measurement protocol versions and required result kinds. The original
+callback retains protocol 1 (operations 0–18); normal-line requests fall back before foreign
+dispatch. `MermanNativeEngineConfigV2.text_measure` uses `MermanNativeTextMeasureCallbackV2` and
+`MermanNativeTextMeasureResultV2`. Its borrowed request has the same layout but reports protocol 2,
+including operation 19, `normal-line-metrics`. That operation requires both `line_height` and
+`baseline_offset`; a partially initialized pair is invalid. Both callback versions share the same
+status validation, fallback, admission, and quiescent-close rules.
 
 Use the same display font system that will render the final SVG. A host that cannot answer an
 operation accurately should initialize the result, set `handled = 0`, and return

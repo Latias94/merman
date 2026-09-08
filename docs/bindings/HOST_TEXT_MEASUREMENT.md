@@ -147,9 +147,11 @@ The request includes:
 The stable operation mapping is:
 
 Protocol 1 retains operations 0–18 and result kinds 0–3. Current unreleased Rust, UniFFI API 8,
-Android, and Web projections add protocol-2 operation 19 and result kind 4. The published C callback
+Android, Web, and C services V2 projections add protocol-2 operation 19 and result kind 4. The published C callback
 record remains protocol 1 and is never sent operation 19; it declines that request before crossing
-the foreign boundary. The additive C services extension described in ADR-0088 is still in progress.
+the foreign boundary. Select `engine_new_with_services_v2` with its independently named V2 config
+and callback records to handle protocol 2. The current Flutter wrapper uses this V2 entry point
+and requires its complete table prefix; the old C callback signature is unchanged.
 
 | Code | Operation | Expected result kind |
 | ---: | --- | --- |

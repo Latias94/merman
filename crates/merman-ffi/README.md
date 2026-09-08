@@ -80,11 +80,17 @@ The host supplies `MERMAN_NATIVE_ABI_VERSION` and `MERMAN_NATIVE_ABI_MINIMUM_PRE
 The ABI 3 minimum prefix ends at `engine_new_with_services` (function slot `6`). Operation control
 is an additive current-contract extension: `operation_control_new`, `operation_control_cancel`, and
 `operation_control_release` occupy slots `7`, `8`, and `9`, while
-`execute_collect_controlled` occupies slot `10`. The generated prefix-size macros identify each
+`execute_collect_controlled` occupies slot `10` and `engine_new_with_services_v2` occupies slot `11`.
+The generated prefix-size macros identify each
 complete appended prefix. Release-matched consumers require the complete table through
-`MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; the smaller minimum prefix remains the
+`MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE`; the smaller minimum prefix remains the
 layout-compatibility key rather than a supported reduced host surface. The append-only function
 preserves the original ABI 3 request-record layout.
+
+Use the separately named V2 engine configuration and callback result records for protocol-2
+normal-line metrics. Existing C callback records remain protocol 1; never cast callback signatures
+or append fields to a published record. Both versions share transactional construction and
+quiescent-close ownership.
 
 Caller-supplied record pointers must be naturally aligned. Every record and reachable byte range
 must remain readable, live, and immutable for the complete call, except for declared output

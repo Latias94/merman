@@ -80,8 +80,10 @@ only complete fields safely initialized within that capacity, so a host never re
 function pointer. Release builds use the matching generated header and current complete table;
 historical five- or six-slot producers are not a supported compatibility target. The minimum ABI 3
 prefix still ends at `engine_new_with_services` (slot `6`), while the current Dart package requires
-the complete appended table through `execute_collect_controlled` (slot `10`). The generated prefix
-constants for slots `7`-`10` make those complete boundaries explicit.
+the complete appended table through `engine_new_with_services_v2` (slot `11`). The generated prefix
+constants for slots `7`-`11` make those complete boundaries explicit. The wrapper uses separately
+typed V2 configuration and callback records for protocol-2 normal-line metrics; the original C
+callback and record layouts remain unchanged for existing native consumers.
 
 The returned digests have separate roles:
 
@@ -309,7 +311,7 @@ dart run example/smoke.dart
 ```
 
 The local contract test validates the current complete ABI
-3 table boundary through controlled-execution slot `10`, runtime-catalog and typed metadata relations,
+3 table boundary through services-V2 slot `11`, runtime-catalog and typed metadata relations,
 package-version projection, BUSY/REENTRANT/CANCELLED decoding, and malformed native error payloads. The real-library smoke intentionally
 exercises service-backed SVG, DrawingList, ASCII, and analysis, verifies typed absence for the three binary
 exporters, then closes the engine. Owner-local Rust and Dart contract tests carry the exhaustive

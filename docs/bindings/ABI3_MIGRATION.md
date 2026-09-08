@@ -17,8 +17,9 @@ source revision; do not call an operation that an older header does not declare.
 4. Require every function in the release-matched table. The descriptor-selected minimum prefix
    ends at `engine_new_with_services` (slot `6`); the current table appends
    `operation_control_new`, `operation_control_cancel`, and `operation_control_release` at slots
-   `7`, `8`, and `9`, followed by `execute_collect_controlled` at slot `10`. Require the complete
-   `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE` instead of treating the minimum
+   `7`, `8`, and `9`, followed by `execute_collect_controlled` at slot `10` and
+   `engine_new_with_services_v2` at slot `11`. Require the complete
+   `MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE` instead of treating the minimum
    prefix as the complete current table.
 5. Fully zero-initialize `MermanNativeResult` with `MERMAN_NATIVE_RESULT_INIT` before every
    producing call.

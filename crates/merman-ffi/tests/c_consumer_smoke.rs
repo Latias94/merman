@@ -23,7 +23,7 @@ fn c_consumer_smoke() {
             )
         });
         let smoke: libloading::Symbol<
-            unsafe extern "C" fn(NativeGetApi, i32, *const u8, usize) -> i32,
+            unsafe extern "C" fn(NativeGetApi, i32, *const u8, usize, i32) -> i32,
         > = library
             .get(b"merman_c_consumer_smoke")
             .expect("load merman_c_consumer_smoke symbol");
@@ -33,6 +33,7 @@ fn c_consumer_smoke() {
             i32::from(has_native_sdk_operation_features()),
             DRAWING_LIST_FIXTURE.as_ptr(),
             DRAWING_LIST_FIXTURE.len(),
+            i32::from(cfg!(feature = "svg")),
         );
         assert_eq!(result, 0, "C consumer smoke returned {result}");
 

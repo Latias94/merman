@@ -2671,6 +2671,35 @@ mod tests {
     }
 
     #[test]
+    fn services_v2_is_an_append_only_native_extension() {
+        let descriptor = committed_descriptor();
+        let slot = descriptor
+            .function_slots
+            .iter()
+            .find(|slot| slot.code == 11);
+        assert_eq!(
+            slot.map(|slot| slot.id.as_str()),
+            Some("engine_new_with_services_v2")
+        );
+        assert_eq!(descriptor.minimum_prefix.callback_count, 1);
+        assert_eq!(descriptor.minimum_prefix.function_slot_count, 7);
+        assert_eq!(descriptor.minimum_prefix.record_count, 11);
+        let callback = descriptor
+            .callbacks
+            .iter()
+            .find(|callback| callback.code == 1)
+            .unwrap();
+        assert_eq!(callback.id, "text_measure_v2");
+        assert!(
+            callback
+                .parameters
+                .iter()
+                .any(|parameter| { parameter.rust_type == "*mut MermanNativeTextMeasureResultV2" })
+        );
+        validate_descriptor(&descriptor).expect("appended services contract");
+    }
+
+    #[test]
     fn prefix_and_full_digests_separate_compatibility_from_provenance() {
         let descriptor = committed_descriptor();
         let root = crate::cmd::workspace_root();

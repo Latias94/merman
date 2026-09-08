@@ -22,7 +22,7 @@ extern "C" {
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
 #define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c5321d02436582fea97869bfa62703531ecf49357f6690f5f77c269ddf016f0c"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:c010497069147ac1aac9fe171b2b22ed30d0e0d0029dab875990b7a17ae8ae74"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -162,7 +162,8 @@ enum {
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW = 7,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL = 8,
     MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE = 9,
-    MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10
+    MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED = 10,
+    MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES_V2 = 11
 };
 
 typedef uint64_t MermanNativeEngineToken;
@@ -179,8 +180,12 @@ typedef struct MermanNativeApiRequest MermanNativeApiRequest;
 typedef struct MermanNativeApi MermanNativeApi;
 typedef struct MermanNativeIconPack MermanNativeIconPack;
 typedef struct MermanNativeEngineServicesConfig MermanNativeEngineServicesConfig;
+typedef struct MermanNativeTextMeasureResultV2 MermanNativeTextMeasureResultV2;
+typedef struct MermanNativeEngineConfigV2 MermanNativeEngineConfigV2;
+typedef struct MermanNativeEngineServicesConfigV2 MermanNativeEngineServicesConfigV2;
 
 typedef MermanNativeStatus (*MermanNativeTextMeasureCallback)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResult *out_result, void *user_data) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeTextMeasureCallbackV2)(const MermanNativeTextMeasureRequest *request, MermanNativeTextMeasureResultV2 *out_result, void *user_data) MERMAN_NATIVE_NOEXCEPT;
 
 typedef MermanNativeStatus (*MermanNativeRuntimeCatalogFn)(MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeEngineNewFn)(const MermanNativeEngineConfig *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
@@ -193,6 +198,7 @@ typedef MermanNativeStatus (*MermanNativeOperationControlNewFn)(uint64_t timeout
 typedef MermanNativeStatus (*MermanNativeOperationControlCancelFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeOperationControlReleaseFn)(MermanNativeOperationControlToken control) MERMAN_NATIVE_NOEXCEPT;
 typedef MermanNativeStatus (*MermanNativeExecuteCollectControlledFn)(MermanNativeEngineToken engine, MermanNativeOperationControlToken control, const MermanNativeOperationRequest *request, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
+typedef MermanNativeStatus (*MermanNativeEngineNewWithServicesV2Fn)(const MermanNativeEngineServicesConfigV2 *config, MermanNativeEngineToken *out_engine, MermanNativeResult *out_result) MERMAN_NATIVE_NOEXCEPT;
 
 struct MermanNativeSlice {
     uint32_t struct_size;
@@ -289,6 +295,7 @@ struct MermanNativeApi {
     MermanNativeOperationControlCancelFn operation_control_cancel;
     MermanNativeOperationControlReleaseFn operation_control_release;
     MermanNativeExecuteCollectControlledFn execute_collect_controlled;
+    MermanNativeEngineNewWithServicesV2Fn engine_new_with_services_v2;
 };
 
 struct MermanNativeIconPack {
@@ -304,12 +311,43 @@ struct MermanNativeEngineServicesConfig {
     size_t icon_pack_count;
 };
 
+struct MermanNativeTextMeasureResultV2 {
+    uint32_t struct_size;
+    uint8_t handled;
+    uint8_t has_raw_width;
+    int32_t result_kind;
+    double width;
+    double height;
+    double length;
+    double bbox_left;
+    double bbox_right;
+    double raw_width;
+    size_t line_count;
+    double line_height;
+    double baseline_offset;
+};
+
+struct MermanNativeEngineConfigV2 {
+    uint32_t struct_size;
+    MermanNativeSlice options_json;
+    MermanNativeTextMeasureCallbackV2 text_measure;
+    void *text_measure_user_data;
+};
+
+struct MermanNativeEngineServicesConfigV2 {
+    uint32_t struct_size;
+    MermanNativeEngineConfigV2 engine_config;
+    const MermanNativeIconPack *icon_packs;
+    size_t icon_pack_count;
+};
+
 #define MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services) + sizeof(((MermanNativeApi *)0)->engine_new_with_services)))
 
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_new) + sizeof(((MermanNativeApi *)0)->operation_control_new)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_cancel) + sizeof(((MermanNativeApi *)0)->operation_control_cancel)))
 #define MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, operation_control_release) + sizeof(((MermanNativeApi *)0)->operation_control_release)))
 #define MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, execute_collect_controlled) + sizeof(((MermanNativeApi *)0)->execute_collect_controlled)))
+#define MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE ((uint32_t)(offsetof(MermanNativeApi, engine_new_with_services_v2) + sizeof(((MermanNativeApi *)0)->engine_new_with_services_v2)))
 
 /*
  * The minimum-prefix digest negotiates layout compatibility. The full descriptor and capability

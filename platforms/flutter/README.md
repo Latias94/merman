@@ -193,6 +193,8 @@ try {
 
 The callback is isolate-local and synchronous. Create, render with, and close the measured engine on the same Dart isolate. Do not call back into that engine from the measurer. Precompute or cache WebView, platform-channel, and font results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) describes result shapes and cache keys.
 
+Current source uses ABI 3's appended `engine_new_with_services_v2` entry point and requires a matching native library containing that complete slot. For `normalLineMetrics`, return `MermanTextMeasureResult.normalLineMetrics(lineHeight: ..., baselineOffset: ...)` from the actual text/font measurement, or return `null` to use the complete fallback pair. The values describe normal line height and alphabetic baseline relative to the line-box top; the request's zero explicit-line-height hint does not mean a zero-height line.
+
 `MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name override. `MermanIconPackSet.fromPacks` enforces the fixed transport byte/count limits and snapshots packs into immutable UTF-8 buffers, so the source strings need not be retained. Flutter's C ABI has no separate native registry handle: those buffers are borrowed only during each `MermanEngine` constructor call, and the engine owns the parsed registry after construction returns. Native semantic validation is transactional at engine construction; a failure publishes no engine and exposes `MermanException.iconRegistryDetails` when available.
 
 ```dart

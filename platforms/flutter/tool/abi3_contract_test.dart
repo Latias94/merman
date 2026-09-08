@@ -265,6 +265,10 @@ void projectsCurrentAbi3TableBoundaries() {
     'operation-control functions and controlled execution must retain their appended ABI 3 slots',
   );
   _expect(
+    native.MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES_V2 == 11,
+    'protocol-2 services must append without moving existing slots',
+  );
+  _expect(
     native.MERMAN_NATIVE_STATUS_BUSY == 16 &&
         native.MERMAN_NATIVE_STATUS_CANCELLED == 17,
     'cancelled must append after every pre-existing ABI 3 status',
@@ -1585,6 +1589,28 @@ void rejectsMalformedResourceDescriptors() {
 }
 
 void textMeasurementFactoriesRejectMalformedValues() {
+  final normal = MermanTextMeasureResult.normalLineMetrics(
+    lineHeight: 28,
+    baselineOffset: 21,
+  );
+  _expect(
+    normal.resultKind == MermanTextMeasurementResultKind.normalLineMetrics &&
+        normal.normalLineHeight == 28 &&
+        normal.normalBaselineOffset == 21,
+    'normal line metrics must preserve the complete pair',
+  );
+  _expectThrows<RangeError>(() {
+    MermanTextMeasureResult.normalLineMetrics(
+      lineHeight: -1,
+      baselineOffset: 21,
+    );
+  });
+  _expectThrows<ArgumentError>(() {
+    MermanTextMeasureResult.normalLineMetrics(
+      lineHeight: 28,
+      baselineOffset: double.nan,
+    );
+  });
   _expectThrows<RangeError>(() {
     MermanTextMeasureResult.metrics(width: 1, height: 1, lineCount: 0);
   });

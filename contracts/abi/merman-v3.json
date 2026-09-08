@@ -196,6 +196,20 @@
         { "name": "user_data", "c_type": "void *", "rust_type": "*mut std::ffi::c_void" }
       ],
       "description": "A synchronous host text-measurement callback on the invoking operation thread. It receives borrowed pointer records valid only for the callback duration. Any thread that attempts to re-enter or retire the same engine while this callback is active receives reentrant-call. The callback and user_data remain host-owned and must stay valid until the engine is retired and every operation that acquired it before retirement has returned."
+    },
+    {
+      "id": "text_measure_v2",
+      "c_name": "MermanNativeTextMeasureCallbackV2",
+      "rust_name": "MermanNativeTextMeasureCallbackV2",
+      "code": 1,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "request", "c_type": "const MermanNativeTextMeasureRequest *", "rust_type": "*const MermanNativeTextMeasureRequest" },
+        { "name": "out_result", "c_type": "MermanNativeTextMeasureResultV2 *", "rust_type": "*mut MermanNativeTextMeasureResultV2" },
+        { "name": "user_data", "c_type": "void *", "rust_type": "*mut std::ffi::c_void" }
+      ],
+      "description": "A synchronous protocol-2 callback with the same borrowed request and quiescent-close lifetime as text_measure, but a separately size-tagged result supporting atomic normal-line metrics. It must never be cast to the protocol-1 callback type."
     }
   ],
   "function_slots": [
@@ -343,6 +357,20 @@
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
       "description": "Execute one generic operation with a live caller-owned control token. The request record remains byte-for-byte compatible with the original ABI 3 layout; zero selects the ordinary uncontrolled execution semantics."
+    },
+    {
+      "id": "engine_new_with_services_v2",
+      "c_name": "MermanNativeEngineNewWithServicesV2Fn",
+      "rust_name": "MermanNativeEngineNewWithServicesV2Fn",
+      "code": 11,
+      "return_c_type": "MermanNativeStatus",
+      "return_rust_type": "MermanNativeStatus",
+      "parameters": [
+        { "name": "config", "c_type": "const MermanNativeEngineServicesConfigV2 *", "rust_type": "*const MermanNativeEngineServicesConfigV2" },
+        { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
+        { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
+      ],
+      "description": "Create an engine with a protocol-2 text callback and optional icon registry. It uses the same transactional publication, disjoint caller-storage requirements, no-callback-during-construction rule, and quiescent close as engine_new_with_services."
     }
   ],
   "records": [
@@ -497,6 +525,51 @@
       "fields": [
         { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineServicesConfig)" },
         { "name": "engine_config", "c_type": "MermanNativeEngineConfig", "rust_type": "MermanNativeEngineConfig", "ownership": "embedded published engine configuration; options are borrowed for the call and callback state is retained only by a successfully published engine" },
+        { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
+        { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
+      ]
+    },
+    {
+      "id": "text_measure_result_v2",
+      "c_name": "MermanNativeTextMeasureResultV2",
+      "rust_name": "MermanNativeTextMeasureResultV2",
+      "description": "A separately size-tagged protocol-2 result. For normal-line-metrics, line_height and baseline_offset are one atomic pair; other result kinds retain their protocol-1 field meanings.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "Merman initializes to sizeof(MermanNativeTextMeasureResultV2); callback preserves it" },
+        { "name": "handled", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean" },
+        { "name": "has_raw_width", "c_type": "uint8_t", "rust_type": "u8", "ownership": "boolean" },
+        { "name": "result_kind", "c_type": "int32_t", "rust_type": "i32", "ownership": "text measurement protocol result kind" },
+        { "name": "width", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "height", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "length", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "bbox_left", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "bbox_right", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "raw_width", "c_type": "double", "rust_type": "f64", "ownership": "value" },
+        { "name": "line_count", "c_type": "size_t", "rust_type": "usize", "ownership": "value" },
+        { "name": "line_height", "c_type": "double", "rust_type": "f64", "ownership": "finite nonnegative normal line height" },
+        { "name": "baseline_offset", "c_type": "double", "rust_type": "f64", "ownership": "finite signed alphabetic baseline relative to line-box top" }
+      ]
+    },
+    {
+      "id": "engine_config_v2",
+      "c_name": "MermanNativeEngineConfigV2",
+      "rust_name": "MermanNativeEngineConfigV2",
+      "description": "A reusable-engine configuration with a strongly typed protocol-2 callback.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineConfigV2)" },
+        { "name": "options_json", "c_type": "MermanNativeSlice", "rust_type": "MermanNativeSlice", "ownership": "borrowed for the call" },
+        { "name": "text_measure", "c_type": "MermanNativeTextMeasureCallbackV2", "rust_type": "Option<MermanNativeTextMeasureCallbackV2>", "ownership": "host-owned callback retained until successful quiescent close" },
+        { "name": "text_measure_user_data", "c_type": "void *", "rust_type": "*mut std::ffi::c_void", "ownership": "host-owned opaque pointer with the same lifetime as text_measure; null when callback is null" }
+      ]
+    },
+    {
+      "id": "engine_services_config_v2",
+      "c_name": "MermanNativeEngineServicesConfigV2",
+      "rust_name": "MermanNativeEngineServicesConfigV2",
+      "description": "A size-tagged protocol-2 services configuration. All caller storage follows the original services constructor's borrowing and non-overlap requirements.",
+      "fields": [
+        { "name": "struct_size", "c_type": "uint32_t", "rust_type": "u32", "ownership": "caller initializes to sizeof(MermanNativeEngineServicesConfigV2)" },
+        { "name": "engine_config", "c_type": "MermanNativeEngineConfigV2", "rust_type": "MermanNativeEngineConfigV2", "ownership": "embedded protocol-2 configuration; callback retained only by a successfully published engine" },
         { "name": "icon_packs", "c_type": "const MermanNativeIconPack *", "rust_type": "*const MermanNativeIconPack", "ownership": "borrowed contiguous record array for the call; null only when icon_pack_count is zero" },
         { "name": "icon_pack_count", "c_type": "size_t", "rust_type": "usize", "ownership": "number of logical pack records; zero installs no icon-registry service" }
       ]
