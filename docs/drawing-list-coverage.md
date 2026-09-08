@@ -287,9 +287,28 @@ for this diagnostic was withdrawn; neither run is evidence of full-family readin
 This is not full-family admission: Venn remains on the explicit legacy SVG route. The stricter
 candidate parity-root comparison still reports circle path command spelling and title
 presentation-attribute/style differences. These have not been accepted as residuals or hidden by
-normalization. Wrapped area labels, text-node layout/text-area geometry, and typed RoughJS path
-projection also remain migration work. These features are not inherently outside the vector
-protocol; missing implementations must be resolved before full-family admission.
+normalization. Text-node layout/text-area geometry and typed RoughJS path projection also remain
+migration work. These features are not inherently outside the vector protocol; missing
+implementations must be resolved before full-family admission.
+
+### Venn text-layout source characterization
+
+The September 8, 2026 Chromium 151 probe corrected the earlier assumption that ordinary area
+labels require width-based wrapping. Mermaid calls `@upsetjs/venn.js`'s `wrapText` while its dummy
+SVG is detached, before final font styles or attachment. Instrumenting the pinned Mermaid render
+showed all computed-length probes returning zero with `isConnected=false`; a deliberately long
+label retained one tspan. Calling the same library wrapper after attachment produced three lines.
+The direct adapter therefore keeps one area-label run, but now reproduces JavaScript whitespace
+tokenization, including NBSP, EM SPACE, and BOM. Borrowed fragments pass through the bounded text
+builder before allocation and measurement. Visible titles keep their separate SVG whitespace
+rules. The public regression checks both behaviors without relying on the legacy SVG route.
+
+HTML text nodes have a different contract: plain `.text()` content, normal whitespace/word
+breaking, intrinsic flex sizing, and `line-height: normal`, resolved after attachment. In the
+same browser probe a 20px node used two 23px line boxes, not 1.5em lines; this observation is not
+a portable font constant. Implementing this surface requires explicit normal-line metrics and
+resolved line positions. Existing SVG wrappers that split long words or interpret `<br>` are
+not behavior-equivalent substitutes, so text-node output remains an explicit capability error.
 
 ## Exercised effect accounting
 

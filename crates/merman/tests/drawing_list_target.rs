@@ -2700,6 +2700,55 @@ style A,B fill:#00ffcc, color:#003333
 }
 
 #[test]
+fn venn_area_labels_use_detached_js_whitespace_without_width_wrapping() {
+    let label =
+        "A\u{a0}very\u{2003}long\u{feff}label with many words that cannot fit a tiny circle";
+    let source = format!(
+        "---\nconfig:\n  venn:\n    width: 160\n    height: 100\n---\nvenn-beta\ntitle Heading\u{a0}Title\nset A[\"{label}\"]\n"
+    );
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            &source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .unwrap();
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("DrawingList output")
+    };
+    let runs = output
+        .document()
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DrawingCommand::DrawText { run } => Some(run),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        runs.len(),
+        2,
+        "detached Venn area labels stay single-line even when wider than their circle"
+    );
+    assert_eq!(
+        runs[0].text, "Heading\u{a0}Title",
+        "visible titles use SVG whitespace, not the Venn.js token loop"
+    );
+    assert_eq!(
+        runs[1].text,
+        "A very long label with many words that cannot fit a tiny circle"
+    );
+    assert!(
+        output
+            .document()
+            .semantics
+            .iter()
+            .any(|semantic| semantic.id == "venn.area.0"
+                && semantic.title.as_deref() == Some(runs[1].text.as_str()))
+    );
+}
+
+#[test]
 fn venn_rejects_foreign_object_text_nodes_instead_of_dropping_them() {
     let error = Renderer::new()
         .render(RenderRequest::drawing_list(

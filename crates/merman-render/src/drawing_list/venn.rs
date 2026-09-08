@@ -239,7 +239,7 @@ impl<'a> VennBuilder<'a> {
             // The `.venn-title` author rule wins over the scaled SVG presentation attribute, so
             // the browser-visible font size is always 32px even though its y position still scales.
             self.emit_text(
-                &title,
+                std::iter::once(title.as_str()),
                 Point::new(self.layout.width / 2.0, 32.0 * self.layout.scale),
                 TITLE_FONT_SIZE_PX,
                 fill,
@@ -295,12 +295,12 @@ impl<'a> VennBuilder<'a> {
         let segments = parse_svg_path(&area.path)?;
         self.add_path(format!("{semantic_id}.shape"), segments, fill, area_stroke)?;
 
-        let label = svg_plain_text(venn_area_label(area));
+        let label = venn_area_label(area);
         if let Some(fill) = styles.optional_color("label color", &presentation.text_color)? {
             let font_size = 48.0 * self.layout.scale;
             // The child tspan resets y and applies Mermaid's single `.35em` centering offset.
             self.emit_text(
-                &label,
+                area_label_parts(label),
                 Point::new(area.text_x, area.text_y + 0.35 * font_size),
                 font_size,
                 fill,
@@ -420,9 +420,9 @@ impl<'a> VennBuilder<'a> {
         Ok(true)
     }
 
-    fn emit_text(
+    fn emit_text<'s>(
         &mut self,
-        value: &str,
+        parts: impl Iterator<Item = &'s str> + Clone,
         origin: Point,
         font_size: f64,
         fill: Color,
@@ -436,7 +436,7 @@ impl<'a> VennBuilder<'a> {
         let font_family_css = &self.font_family_css;
         let font = &self.font;
         let obligation = &self.text_obligation;
-        self.output.draw_host_text_parts(&[value], |text| {
+        self.output.draw_host_text_iter(parts, |text| {
             let measurement_style = MeasurementTextStyle {
                 font_family: Some(font_family_css.clone()),
                 font_size,
@@ -486,8 +486,20 @@ impl<'a> VennBuilder<'a> {
     }
 }
 
+/// Venn.js tokenizes with JavaScript `\s+` before the temporary SVG is attached. Its detached
+/// length probes return zero, so this normalizes words but does not perform width-based wrapping.
+fn area_label_parts(value: &str) -> impl Iterator<Item = &str> + Clone {
+    value
+        .split(crate::text::is_ecmascript_whitespace)
+        .filter(|word| !word.is_empty())
+        .enumerate()
+        .flat_map(|(index, word)| [if index == 0 { "" } else { " " }, word])
+}
+
 fn visible_area_title(area: &VennAreaLayout) -> Option<String> {
-    let label = svg_plain_text(venn_area_label(area));
+    let raw_label = venn_area_label(area);
+    let mut label = String::with_capacity(raw_label.len());
+    label.extend(area_label_parts(raw_label));
     if !label.is_empty() {
         Some(label)
     } else if area.sets.is_empty() {
