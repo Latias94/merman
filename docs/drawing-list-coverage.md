@@ -307,10 +307,19 @@ an unused polygon. Rejecting the second operation of a high-resolution ellipse s
 points, and a stalled or underflowed angular step returns an error rather than looping forever.
 Venn circle generation uses this path and shares the same operation meter with hachure filling.
 
-Intersection curve subdivision still needs fallible production before the public hand-drawn
-DrawingList gate can be removed. The direct adapter must also send operations to its bounded path
-builder, rather than collect complete operation sets first. Preserve outline-before-fill random
-consumption; do not substitute a guessed size cutoff or a final post-allocation footprint check.
+Intersection curve subdivision and Douglas-Peucker simplification now use fallibly growing
+explicit stacks. Work is admitted during subdivision and every simplification scan, without the
+legacy recursive full-result clones. Normalized paths are sampled once and reused for outline
+generation. The outline is consumed one source segment at a time solely to preserve its random
+draws; no complete discarded outline is retained. Tests compare exact sampled points, fill
+operations, and seeded outline RNG progression with the collecting implementation.
+
+Source segments are admitted and collected fallibly, but the legacy normalization step still
+owns eager intermediate arrays without internal checkpoints. The direct adapter must also send
+operations to its bounded path builder rather than collect complete operation sets first. These
+remaining boundaries keep the public hand-drawn DrawingList gate closed. Preserve
+outline-before-fill random consumption; do not substitute a guessed size cutoff or a final
+post-allocation footprint check.
 The new roughr API also needs its independently versioned package release before a Merman
 release can resolve this implementation from the registry.
 

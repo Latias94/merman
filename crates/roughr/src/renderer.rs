@@ -17,6 +17,8 @@ use crate::SvgPathSegment;
 
 mod ellipse_stream;
 pub use ellipse_stream::try_ellipse_with_params;
+mod path_stream;
+pub use path_stream::try_svg_normalized_segments;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct EllipseParams<F: Float> {

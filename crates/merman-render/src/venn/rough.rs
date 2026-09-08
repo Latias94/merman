@@ -1,7 +1,7 @@
 //! Typed Venn Rough.js geometry, independent of SVG serialization.
 //!
-//! Ellipse and scanline work are cancellable and charged during production. Intersection curve
-//! sampling still needs bounded production before use by the DrawingList builder.
+//! Ellipse, curve sampling, simplification, and scanline work are charged during production.
+//! Path normalization and direct DrawingList builder admission remain separate concerns.
 
 use crate::model::VennCircleLayout;
 use crate::resources::OperationWorkMeter;
@@ -90,10 +90,41 @@ pub(crate) fn intersection_fill_geometry(
     options.stroke = None;
 
     let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
-    let mut polygons =
-        roughr::points_on_path::points_on_path::<f64>(path.to_owned(), Some(1.0), Some(distance));
+    let mut segments = Vec::new();
+    for segment in svgtypes::PathParser::from(path) {
+        work_meter.charge_at(1, OperationPhase::Emit)?;
+        let segment = segment.map_err(|error| Error::InvalidModel {
+            message: format!("invalid Venn intersection path: {error}"),
+        })?;
+        segments
+            .try_reserve(1)
+            .map_err(|_| Error::DrawingListAllocationFailed {
+                collection: "Venn intersection source segments",
+            })?;
+        segments.push(segment);
+    }
+    // The legacy normalizer still owns its intermediate arrays. Reuse this normalized
+    // sequence for sampling and outline RNG consumption instead of parsing the path twice.
+    let normalized = roughr::points_on_path::normalized_segments(&segments);
+    let mut polygons = roughr::points_on_path::try_points_on_normalized_segments::<f64, _>(
+        &normalized,
+        1.0,
+        Some(distance),
+        |units| {
+            work_meter
+                .charge_at(units, OperationPhase::Emit)
+                .map_err(Error::from)
+        },
+    )
+    .map_err(generation_error)?;
     // Rough.js advances the outline PRNG even with stroke:none, before generating the fill.
-    let _discarded_outline = roughr::renderer::svg_path::<f64>(path.to_owned(), &mut options);
+    roughr::renderer::try_svg_normalized_segments::<f64, _>(&normalized, &mut options, |event| {
+        if let GenerationEvent::Work(units) = event {
+            work_meter.charge_at(units, OperationPhase::Emit)?;
+        }
+        Ok(())
+    })
+    .map_err(generation_error)?;
     collect_hachure(&mut polygons, &mut options, work_meter)
 }
 
@@ -157,6 +188,70 @@ fn invalid_options(context: &str, error: impl std::fmt::Display) -> Error {
 mod tests {
     use super::*;
     use roughr::core::{RoughJsSeed, RoughMathRandom};
+
+    #[test]
+    fn intersection_sampling_preserves_legacy_fill_and_stops_on_work_rejection() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        use merman_core::OperationControl;
+        let paths = [
+            "M0 0 C0 100 100 100 100 0 C100 -100 0 -100 0 0 Z",
+            "M0 0 A80 80 0 1 0 160 0 A80 80 0 1 0 0 0",
+            "M80 80 m-80 0 a80 80 0 1 0 160 0 a80 80 0 1 0 -160 0",
+        ];
+        let fill = roughr::Srgba::new(1.0, 0.3, 0.2, 1.0);
+        for seed in [0.0, 1.0, 42.0] {
+            for path in paths {
+                let random =
+                    || RoughRandomness::new(RoughJsSeed::new(seed), RoughMathRandom::new(123));
+                let mut options = OptionsBuilder::default()
+                    .randomness(random())
+                    .roughness(0.7)
+                    .bowing(1.0)
+                    .fill(fill)
+                    .fill_style(FillStyle::CrossHatch)
+                    .fill_weight(2.0)
+                    .hachure_gap(6.0)
+                    .hachure_angle(60.0)
+                    .disable_multi_stroke(false)
+                    .disable_multi_stroke_fill(false)
+                    .build()
+                    .unwrap();
+                options.stroke = None;
+                let distance = (1.0 + f64::from(options.roughness.unwrap())) / 2.0;
+                let polygons = roughr::points_on_path::points_on_path::<f64>(
+                    path.to_owned(),
+                    Some(1.0),
+                    Some(distance),
+                );
+                let _outline = roughr::renderer::svg_path::<f64>(path.to_owned(), &mut options);
+                let expected = roughr::renderer::pattern_fill_polygons(polygons, &mut options);
+                let meter =
+                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+                let actual = intersection_fill_geometry(path, fill, &random(), &meter).unwrap();
+                assert_eq!(actual, expected, "seed={seed}, path={path}");
+            }
+        }
+        let random = RoughRandomness::new(RoughJsSeed::new(1.0), RoughMathRandom::new(123));
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 20)
+                .unwrap(),
+            control.clone(),
+        );
+        assert!(matches!(
+            intersection_fill_geometry(paths[0], fill, &random, &meter),
+            Err(Error::ResourceLimitExceeded(_))
+        ));
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Emit)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control.terminal_checkpoint_at(OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
 
     #[test]
     fn hachure_collection_shares_exact_work_and_keeps_errors_terminal() {

@@ -11,6 +11,9 @@ use crate::curve_points::{points_on_bezier_curves, simplify};
 use crate::svg_path::{absolutize, normalize};
 use crate::SvgPathSegment;
 
+mod bounded;
+pub use bounded::try_points_on_normalized_segments;
+
 pub fn points_on_path<F>(
     path: String,
     tolerance: Option<F>,
