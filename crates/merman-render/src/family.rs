@@ -974,12 +974,30 @@ impl FamilyRenderArtifact {
         policy: DrawingListPolicy,
         limits: DrawingListLimits,
     ) -> Result<RenderedDrawingList> {
+        self.render_drawing_list_with_diagram_id(policy, limits, None)
+    }
+
+    /// Renders using the same normalized instance identity as SVG.
+    ///
+    /// Identity-dependent geometry (such as Cynefin's default boundary seed) is resolved before
+    /// document serialization. `None` preserves the family default; an explicit empty string
+    /// follows the normal render-ID normalization rules. Explicit Mermaid seeds take precedence.
+    pub fn render_drawing_list_with_diagram_id(
+        self,
+        policy: DrawingListPolicy,
+        limits: DrawingListLimits,
+        diagram_id: Option<&str>,
+    ) -> Result<RenderedDrawingList> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        let document = crate::drawing_list::build_for_family(
+        let diagram_id = diagram_id
+            .map(|id| crate::svg::normalize_render_diagram_id(id, &self.session))
+            .transpose()?;
+        let document = crate::drawing_list::build_for_family_with_diagram_id(
             &self.family,
             &self.metadata,
             policy,
             limits,
+            diagram_id.as_deref(),
             &self.session,
         )?;
         document.admit_serialization(limits, &self.session)?;
@@ -1161,11 +1179,12 @@ fn render_family_artifact_svg(
     // private renderer remains a bridge only for families/effects that do not yet have a
     // source-backed canonical SVG serializer.  A failed document build is never converted into
     // an empty SVG.
-    match crate::drawing_list::build_for_family(
+    match crate::drawing_list::build_for_family_with_diagram_id(
         &artifact.family,
         &artifact.metadata,
         DrawingListPolicy::AllowRasterSubtree,
         crate::drawing_list::DocumentBudget::SvgOperation,
+        options.diagram_id.as_deref(),
         &artifact.session,
     ) {
         Ok(document) => crate::svg::render_document_svg(
@@ -2914,6 +2933,63 @@ mod tests {
     }
 
     #[test]
+    fn cynefin_identity_geometry_matches_the_source_svg_before_serialization() {
+        for id in [None, Some("first"), Some(" a b "), Some("")] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync("cynefin-beta\n", ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let options = crate::svg::normalize_svg_render_options(
+                &SvgRenderOptions {
+                    diagram_id: id.map(str::to_owned),
+                    ..SvgRenderOptions::default()
+                },
+                &artifact.session,
+            )
+            .unwrap();
+            let source_svg =
+                render_legacy_family_artifact_svg(&artifact, &options, &SvgDebugOptions::default())
+                    .unwrap();
+            let xml = roxmltree::Document::parse(&source_svg).unwrap();
+            let expected = xml
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("cynefinBoundary"))
+                .map(|node| {
+                    crate::drawing_list::parse_svg_path(node.attribute("d").unwrap()).unwrap()
+                })
+                .collect::<Vec<_>>();
+            let result = artifact
+                .render_drawing_list_with_diagram_id(
+                    DrawingListPolicy::VectorOnly,
+                    DrawingListLimits::default(),
+                    id,
+                )
+                .unwrap();
+            let actual = ["cynefin.boundary.fold", "cynefin.boundary.horizontal"].map(|id| {
+                result
+                    .document()
+                    .resources
+                    .iter()
+                    .find_map(|resource| match resource {
+                        merman_display_list::DrawingResource::Path(path)
+                            if path.id.as_str() == id =>
+                        {
+                            Some(path.segments.clone())
+                        }
+                        _ => None,
+                    })
+                    .unwrap()
+            });
+            assert_eq!(
+                actual.as_slice(),
+                expected,
+                "identity {id:?} must determine the same boundary paths for both outputs"
+            );
+        }
+    }
+
+    #[test]
     fn cynefin_document_projects_source_groups_and_distinct_text_baselines() {
         for (accessibility, title_id) in [
             ("", None),
@@ -3861,7 +3937,10 @@ mod tests {
         };
         assert_eq!(details.limit, "max_svg_bytes");
         assert_eq!(details.max, maximum);
-        assert_eq!(details.actual, maximum + diagram_id.len());
+        // Streaming admission reports the first rejected append, not a later full-document
+        // size. Both forms must reject before exposing bytes beyond the configured ceiling.
+        assert!(details.actual > maximum);
+        assert!(details.actual <= baseline_len);
     }
 
     #[test]

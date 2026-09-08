@@ -669,6 +669,8 @@ pub struct SvgRequest {
 #[cfg(feature = "drawing-list")]
 #[derive(Debug, Clone)]
 pub struct DrawingListRequest {
+    /// Instance identity shared with SVG, including source-defined identity-seeded geometry.
+    pub diagram_id: Option<String>,
     pub environment: SvgEnvironment,
     pub layout: LayoutOptions,
     pub policy: DrawingListPolicy,
@@ -684,6 +686,7 @@ pub struct DrawingListRequest {
 impl Default for DrawingListRequest {
     fn default() -> Self {
         Self {
+            diagram_id: None,
             environment: SvgEnvironment::deterministic(),
             layout: LayoutOptions::headless_svg_defaults(),
             policy: DrawingListPolicy::AllowRasterSubtree,
@@ -1093,7 +1096,7 @@ fn render_drawing_list_target(
         limits.max_serialized_bytes = limits.max_serialized_bytes.min(max_output_bytes);
     }
     let rendered = artifact
-        .render_drawing_list(request.policy, limits)
+        .render_drawing_list_with_diagram_id(request.policy, limits, request.diagram_id.as_deref())
         .map_err(RenderError::from)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let (document, json, _, _, _, session) = rendered.into_parts();

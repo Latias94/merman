@@ -269,6 +269,31 @@ mod tests {
 
     #[cfg(feature = "drawing-list")]
     #[test]
+    fn drawing_list_uses_the_shared_render_identity() {
+        let render = |id: &str, source: &[u8]| {
+            let options =
+                serde_json::to_vec(&serde_json::json!({"svg": {"diagram_id": id}})).unwrap();
+            let bytes = crate::BindingEngine::new(&options)
+                .unwrap()
+                .render_drawing_list(source)
+                .unwrap();
+            serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+        };
+        let source = b"cynefin-beta\n";
+        let first = render("first", source);
+        let second = render("second", source);
+        assert_ne!(
+            first["resources"], second["resources"],
+            "identity must reach boundary geometry"
+        );
+        assert_eq!(render(" a b ", source), render("a-b", source));
+        assert_eq!(render("", source), render("m-untitled", source));
+        let seeded = b"---\nconfig:\n  cynefin:\n    seed: 42\n---\ncynefin-beta\n";
+        assert_eq!(render("first", seeded), render("second", seeded));
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
     fn render_drawing_list_uses_protocol_limits_from_options_json() {
         let engine = crate::BindingEngine::new(
             br#"{

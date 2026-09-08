@@ -41,9 +41,10 @@ pub(crate) fn build_cynefin_document(
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
     limits: impl Into<super::DocumentBudget>,
+    diagram_id: Option<&str>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    CynefinBuilder::new(pair, metadata, policy, limits, session)?.build()
+    CynefinBuilder::new(pair, metadata, policy, limits, diagram_id, session)?.build()
 }
 
 struct CynefinBuilder<'a> {
@@ -52,6 +53,7 @@ struct CynefinBuilder<'a> {
     document: DrawingListBuilder<'a>,
     model: &'a CynefinDiagramRenderModel,
     layout: &'a CynefinDiagramLayout,
+    boundary_seed: f64,
     theme: CynefinTheme,
     font: FontDescriptor,
     text_obligation: TextObligation,
@@ -82,6 +84,7 @@ impl<'a> CynefinBuilder<'a> {
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
         limits: impl Into<super::DocumentBudget>,
+        diagram_id: Option<&str>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -121,6 +124,7 @@ impl<'a> CynefinBuilder<'a> {
             document,
             model,
             layout,
+            boundary_seed: resolve_seed(layout.seed, diagram_id.unwrap_or("cynefin")),
             label_color: styles.color("cynefin.labelColor", &theme.label_color)?,
             text_color: styles.color("cynefin.textColor", &theme.text_color)?,
             boundary_color: styles.color("cynefin.boundaryColor", &theme.boundary_color)?,
@@ -195,7 +199,7 @@ impl<'a> CynefinBuilder<'a> {
                 "x-merman-cynefin".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
-                    "boundary_seed": resolve_seed(self.layout.seed, "cynefin"),
+                    "boundary_seed": self.boundary_seed,
                     "text_mode": "plain_host_text",
                     "svg_marker": "expanded_triangle",
                     "use_max_width": self.layout.use_max_width,
@@ -293,7 +297,7 @@ impl<'a> CynefinBuilder<'a> {
     }
 
     fn emit_boundaries(&mut self) -> Result<()> {
-        let seed = resolve_seed(self.layout.seed, "cynefin");
+        let seed = self.boundary_seed;
         self.path_classes.insert(
             "cynefin.boundary.fold".to_string(),
             "cynefinBoundary".to_string(),

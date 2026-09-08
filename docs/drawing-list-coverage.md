@@ -230,8 +230,20 @@ Marker definitions now reuse public local paths and paint with the source `refX`
 The marker-edit regression checks deduplication, changed shape/color, removed drawing commands,
 and a non-clipping ordinary-path projection for edits outside the marker viewBox.
 
-Cynefin remains bridged. Diagram-ID-dependent default boundary seeding still needs migration
-before complete family comparison can admit its canonical SVG route.
+Cynefin default boundary seeding now consumes the normalized render-instance identity before
+document construction. SVG passes its resolved ID to the common builder; DrawingList exposes
+`DrawingListRequest.diagram_id` and the renderer's `render_drawing_list_with_diagram_id` entry.
+The shared binding facade forwards the existing `svg.diagram_id` option without adding another
+ABI record or option namespace. Default family identity, explicit empty identity, normalized
+identity, and explicit Mermaid seed precedence remain distinct and tested. The boundary-path
+regression compares DrawingList resources against the source-shaped SVG path segments directly.
+
+Cynefin remains bridged. The September 8, 2026 candidate structure run selected and rendered all
+13 fixtures with canonical route evidence, zero skips, and no residual policy, but all 13 still
+had structural differences. The temporary admission was removed. The report is
+`target/compare/cynefin_identity_structure.md`; remaining work includes domain-background order,
+source-shaped text and default attributes, marker attributes, and framework/overlay ordering.
+No comparator normalization was changed to accept these differences.
 The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
 it is not evidence for the candidate serializer.
 

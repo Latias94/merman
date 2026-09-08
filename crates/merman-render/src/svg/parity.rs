@@ -369,14 +369,17 @@ pub(crate) fn normalize_svg_render_options(
     let diagram_id = request
         .diagram_id
         .as_deref()
-        .map(|raw| plan_svg_diagram_id_sanitization(raw, session))
-        .transpose()?
-        .map(|plan| materialize_svg_diagram_id(plan, session))
+        .map(|raw| normalize_render_diagram_id(raw, session))
         .transpose()?;
     Ok(SvgRenderOptions {
         viewbox_padding: request.viewbox_padding,
         diagram_id,
     })
+}
+
+/// Shared instance identity for source-seeded geometry and SVG DOM ownership.
+pub(crate) fn normalize_render_diagram_id(raw: &str, session: &RenderSession) -> Result<String> {
+    materialize_svg_diagram_id(plan_svg_diagram_id_sanitization(raw, session)?, session)
 }
 
 /// A point captured while diagnosing one flowchart edge route.

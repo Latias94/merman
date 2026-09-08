@@ -102,6 +102,7 @@ impl RenderRequestPlan {
         #[cfg(feature = "drawing-list")]
         {
             let request = DrawingListRequest {
+                diagram_id: self.svg.options.diagram_id.clone(),
                 environment: self.svg.environment.clone(),
                 layout: self.svg.layout.clone(),
                 presentation: self.svg.presentation,

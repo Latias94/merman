@@ -733,11 +733,24 @@ impl ErrorSvgBody {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn build_for_family(
     family: &BuiltinFamilyArtifact,
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
     limits: impl Into<DocumentBudget>,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    build_for_family_with_diagram_id(family, metadata, policy, limits, None, session)
+}
+
+/// The identity is normalized at the target boundary, before any geometry is constructed.
+pub(crate) fn build_for_family_with_diagram_id(
+    family: &BuiltinFamilyArtifact,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    limits: impl Into<DocumentBudget>,
+    diagram_id: Option<&str>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
     let limits = limits.into();
@@ -835,7 +848,7 @@ pub(crate) fn build_for_family(
             eventmodeling::build_eventmodeling_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::Cynefin(pair) => {
-            cynefin::build_cynefin_document(pair, metadata, policy, limits, session)
+            cynefin::build_cynefin_document(pair, metadata, policy, limits, diagram_id, session)
         }
         BuiltinFamilyArtifact::Gantt(pair) => {
             gantt::build_gantt_document(pair, metadata, policy, limits, session)

@@ -627,7 +627,7 @@ does not depend on them.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
+| `svg.diagram_id` | string | renderer default | Shared render-instance identity for SVG and DrawingList. Overrides SVG DOM ownership and source-defined identity-seeded geometry (for example, Cynefin boundaries). Both targets use the same ID normalization. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
@@ -666,6 +666,12 @@ renderer may emit an explicit raster subtree fallback and supplies protocol-leve
 returned renderer-neutral document. These limits are independent from the artifact-wide
 `resources.limits` profile, but `max_serialized_bytes` is always clamped by the effective
 `resources.limits.max_svg_bytes` ceiling.
+
+The historically named `svg.diagram_id` also applies to `drawing-list-json`: it supplies the
+instance identity before geometry construction, not an SVG postprocessing instruction. Omitting
+it preserves the family default; an explicit empty string is normalized like any other supplied
+ID. A Mermaid configuration seed (for example, `cynefin.seed`) overrides the identity-derived seed.
+Other SVG pipeline options do not gain DrawingList semantics from this shared identity field.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
