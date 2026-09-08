@@ -85,6 +85,19 @@ npm run check:packages --prefix platforms/node
 benchmark contract with test transports. `check:packages` verifies the source manifests; native
 candidate assembly and installed-package smoke run in the target-specific release workflow.
 
+The Linux GNU builder uses the full Node Bullseye image to preserve the declared glibc 2.31
+floor. Its inherited `buildpack-deps` tools and CA bundle are checked during image assembly;
+the Dockerfile does not reinstall them from Bullseye's retired package repositories. Slim
+images are not interchangeable with this build image. After pulling the base images, the
+build steps can be verified without network access:
+
+```sh
+docker build --network=none --platform linux/amd64 --file platforms/node/Dockerfile.gnu --tag merman-node-gnu:check platforms/node
+```
+
+This keeps the existing compatibility builder usable; it does not restore security maintenance
+for Bullseye. A maintained replacement needs separate glibc-floor and native-package evidence.
+
 The package group is versioned and published in lockstep. See the [package surface
 guide](../../docs/release/PACKAGE_SURFACES.md) for the artifact, target, provenance, and release
 contract.
