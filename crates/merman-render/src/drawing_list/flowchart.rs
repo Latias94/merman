@@ -1025,6 +1025,13 @@ impl<'a> FlowchartBuilder<'a> {
             )?;
         }
 
+        // Mermaid applies edge styles to the route and its markers, while the label is a
+        // separate sibling with only label styles. Keep the shared semantic identity without
+        // allowing route opacity or blending to hide the label and its background.
+        if style.opacity != 1.0 || style.blend_mode != BlendMode::Normal {
+            self.output.push_control(DrawingCommand::Restore)?;
+        }
+
         if let Some(raw_label) = self.model.edge_label_for_render(&edge).map(str::to_string)
             && !flowchart_label_is_empty_for_render(&raw_label)
         {
@@ -1076,7 +1083,7 @@ impl<'a> FlowchartBuilder<'a> {
                 &label_style,
             )?;
         }
-        self.end_group(style.opacity != 1.0 || style.blend_mode != BlendMode::Normal)?;
+        self.end_group(false)?;
         self.output
             .push_semantic(self.edge_semantic(&edge, Some(semantic_id)))?;
         Ok(())
@@ -2760,6 +2767,100 @@ mod tests {
         );
         assert_eq!(builder.output.command_count(), committed + 1);
         assert!(matches!(builder.build(), Err(Error::Cancelled(_))));
+    }
+
+    #[test]
+    fn edge_opacity_does_not_leak_into_its_label_or_background() {
+        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+        for opacity in [0.0, 0.4, 1.0] {
+            let source = format!("flowchart TD\nA -->|Visible| B\nlinkStyle 0 opacity:{opacity}\n");
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let (metadata, model, context) = parsed.into_render_parts();
+            let RenderSemanticModel::Flowchart(semantic) = model else {
+                panic!("expected Flowchart");
+            };
+            let context = context.into_flowchart_render_context();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let options = crate::LayoutOptions::default();
+            let execution = crate::LayoutExecution::new(&options, &session);
+            let layout = crate::layout_flowchart_typed_with_render_labels_by_engine(
+                &metadata.diagram_type,
+                &semantic,
+                &context,
+                &metadata.effective_config,
+                &execution,
+                None,
+            )
+            .unwrap();
+            let document = FlowchartBuilder::new(
+                FlowchartBuilderInputs {
+                    semantic: &semantic,
+                    layout: FlowchartLayoutSource::Flowchart(&layout),
+                    render_context: &context,
+                    presentation: None,
+                    family_kind: RenderFamilyKind::Flowchart,
+                    swimlane_layout: None,
+                },
+                &metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &session,
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+            .into_public();
+
+            // Replay public graphics state rather than just looking for a Restore command:
+            // the path and marker must keep edge opacity, but the label must remain visible.
+            let mut current_opacity = 1.0;
+            let mut saved_opacities = Vec::new();
+            let mut route_count = 0;
+            let mut marker_count = 0;
+            let mut background_count = 0;
+            let mut label_count = 0;
+            for command in &document.commands {
+                match command {
+                    DrawingCommand::Save => saved_opacities.push(current_opacity),
+                    DrawingCommand::Restore => {
+                        current_opacity = saved_opacities.pop().expect("balanced save");
+                    }
+                    DrawingCommand::SetOpacity { opacity } => current_opacity = *opacity,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".route") => {
+                        assert_eq!(current_opacity, opacity);
+                        route_count += 1;
+                    }
+                    DrawingCommand::DrawPath { path, .. }
+                        if path.as_str().ends_with(".end-marker") =>
+                    {
+                        assert_eq!(current_opacity, opacity);
+                        marker_count += 1;
+                    }
+                    DrawingCommand::DrawPath { path, .. }
+                        if path.as_str().ends_with(".label-background") =>
+                    {
+                        assert_eq!(current_opacity, 1.0);
+                        background_count += 1;
+                    }
+                    DrawingCommand::DrawText { run } if run.text == "Visible" => {
+                        assert_eq!(current_opacity, 1.0);
+                        label_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+            assert!(saved_opacities.is_empty());
+            assert_eq!(
+                (route_count, marker_count, background_count, label_count),
+                (1, 1, 1, 1)
+            );
+        }
     }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
