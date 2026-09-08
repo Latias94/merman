@@ -116,6 +116,31 @@ impl<'a> SankeyBuilder<'a> {
             link: None,
         })?;
 
+        let bounds = &self.plan.bounds;
+        self.output.draw_path_with(
+            ResourceId::new("sankey.background"),
+            PathStyle {
+                fill: Some(Paint::solid(Color::rgba(255, 255, 255, 255))),
+                stroke: None,
+                fill_rule: FillRule::NonZero,
+            },
+            |emit| {
+                emit(PathSegment::MoveTo {
+                    to: Point::new(bounds.min_x, bounds.min_y),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(bounds.max_x, bounds.min_y),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(bounds.max_x, bounds.max_y),
+                })?;
+                emit(PathSegment::LineTo {
+                    to: Point::new(bounds.min_x, bounds.max_y),
+                })?;
+                emit(PathSegment::Close)
+            },
+        )?;
+
         self.begin_collection("sankey.nodes", "nodes")?;
         for node_index in 0..self.plan.nodes.len() {
             self.session.checkpoint(OperationPhase::Emit)?;

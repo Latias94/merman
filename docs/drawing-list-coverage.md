@@ -87,8 +87,12 @@ Referenced linear gradients are now placed with their link paint, retain source 
 project edited public colors/transforms without copying them into the sidecar. Unreferenced
 resources cannot create painted links.
 
-Sankey remains bridged. Compact label DOM and canonical root background still require source-backed projection and
-complete family comparison before admission. The focused tests are not full-family parity proof.
+The root background is an explicit public paint command. SVG projects the full-viewport white
+paint into its root background style; changing or removing that command changes the output
+without retaining an implicit white background. The mutation regression covers both cases.
+
+Sankey remains bridged. Compact label DOM and complete family comparison are still required
+before admission. The focused tests are not full-family parity proof.
 
 ### Cynefin migration evidence
 

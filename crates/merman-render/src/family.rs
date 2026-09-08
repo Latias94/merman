@@ -1978,6 +1978,66 @@ mod tests {
     }
 
     #[test]
+    fn sankey_root_background_is_owned_by_the_public_paint_command() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("sankey-beta\nA,B,10\n", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let DrawingCommand::DrawPath { path, style } = &document.public.commands[2] else {
+            panic!("Sankey must begin with an explicit background paint");
+        };
+        assert_eq!(path.as_str(), "sankey.background");
+        assert_eq!(
+            style.fill,
+            Some(Paint::solid(Color::rgba(255, 255, 255, 255)))
+        );
+        let background = document
+            .public
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "sankey.background" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(background.segments.len(), 5);
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        assert!(svg.contains("background-color: white;"));
+        let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[2] else {
+            unreachable!()
+        };
+        style.fill = Some(Paint::solid(Color::rgba(12, 34, 56, 128)));
+        let svg = render(&document);
+        assert!(!svg.contains("background-color: white;"));
+        assert!(svg.contains("#0c2238"));
+        document.public.commands.remove(2);
+        let svg = render(&document);
+        assert!(!svg.contains("background-color: white;") && !svg.contains("#0c2238"));
+    }
+
+    #[test]
     fn sankey_svg_places_referenced_public_gradients_inside_links() {
         use merman_display_list::{Color, DrawingResource};
         let parsed = Engine::new()

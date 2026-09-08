@@ -573,11 +573,15 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
-            SvgStructureBody::Sankey(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )
-            .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width))),
+            SvgStructureBody::Sankey(body) => {
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
+                    .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width));
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Requirement(body) => Ok(root_svg::RootViewportSpec::mermaid(
                 viewport_bounds,
                 body.use_max_width,
@@ -690,6 +694,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Packet(_) => ("packet.document", "packet.background"),
             SvgStructureBody::Pie(_) => ("pie.document", "pie.background"),
             SvgStructureBody::Cynefin(_) => ("cynefin.document", "cynefin.background"),
+            SvgStructureBody::Sankey(_) => ("sankey.document", "sankey.background"),
             _ => return false,
         };
         let [
