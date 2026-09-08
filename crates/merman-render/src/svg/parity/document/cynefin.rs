@@ -2,7 +2,65 @@
 
 use super::*;
 use crate::render_geometry::cynefin::{MARKER_SIZE, REF_X, REF_Y, VIEW_BOX_SIZE, marker_transform};
-use merman_display_list::TextStyle;
+use merman_display_list::{StrokeStyle, TextStyle};
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct PathCssStyle<'a> {
+    stroke: Option<&'a StrokeStyle>,
+    marker_fill: Option<&'a Paint>,
+}
+
+pub(super) fn shared_path_styles<'a>(
+    document: &'a DrawingListDocument,
+    body: &crate::drawing_list::CynefinSvgBody,
+    session: &RenderSession,
+) -> Result<BTreeMap<String, Option<PathCssStyle<'a>>>> {
+    let mut styles = BTreeMap::new();
+    for command in &document.commands {
+        session.checkpoint(OperationPhase::Emit)?;
+        let DrawingCommand::DrawPath { path, style } = command else {
+            continue;
+        };
+        let Some(class) = body.path_classes.get(path.as_str()) else {
+            continue;
+        };
+        if !matches!(
+            class.as_str(),
+            "cynefinDomain"
+                | "cynefinBoundary"
+                | "cynefinCliff"
+                | "cynefinConfusion"
+                | "cynefinItem"
+                | "cynefinItemOverflow"
+                | "cynefinArrowLine"
+                | "cynefinArrowHead"
+        ) {
+            continue;
+        }
+        let marker_fill = (class == "cynefinArrowHead")
+            .then_some(style.fill.as_ref())
+            .flatten();
+        let candidate = (style.fill_rule == FillRule::NonZero
+            && style
+                .stroke
+                .as_ref()
+                .is_none_or(|stroke| matches!(stroke.paint, Paint::Solid { .. }))
+            && marker_fill.is_none_or(|paint| matches!(paint, Paint::Solid { .. })))
+        .then_some(PathCssStyle {
+            stroke: style.stroke.as_ref(),
+            marker_fill,
+        });
+        styles
+            .entry(class.clone())
+            .and_modify(|shared| {
+                if *shared != candidate {
+                    *shared = None;
+                }
+            })
+            .or_insert(candidate);
+    }
+    Ok(styles)
+}
 
 /// Only identical resolved styles may move into a shared class rule. Edited heterogeneous
 /// commands retain explicit attributes, so class projection never invents a visual default.
@@ -55,7 +113,7 @@ pub(super) fn shared_text_styles<'a>(
 }
 
 impl DocumentSvgEncoder<'_> {
-    pub(super) fn write_cynefin_text_styles(&mut self) -> Result<()> {
+    pub(super) fn write_cynefin_styles(&mut self) -> Result<()> {
         self.output.push_str("<style>")?;
         for (class, style) in &self.cynefin_text_styles {
             let Some(style) = style else {
@@ -79,7 +137,130 @@ impl DocumentSvgEncoder<'_> {
                 fmt(f64::from(color.alpha) / 255.0)
             )?;
         }
-        self.output.push_str("</style>")
+        for (class, style) in &self.cynefin_path_styles {
+            let Some(style) = style else {
+                continue;
+            };
+            write!(self.output, "#{} .{}{{", self.diagram_id, class)?;
+            if let Some(stroke) = style.stroke {
+                let Paint::Solid { color } = stroke.paint else {
+                    return Err(invalid("Cynefin shared stroke must be solid"));
+                };
+                write!(
+                    self.output,
+                    "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
+                    color_css(color),
+                    fmt(f64::from(color.alpha) / 255.0),
+                    fmt(stroke.width),
+                    line_cap(stroke.line_cap),
+                    line_join(stroke.line_join),
+                    fmt(stroke.miter_limit),
+                    fmt(stroke.dash_offset)
+                )?;
+                if stroke.dash_array.is_empty() {
+                    self.output.push_str("none")?;
+                }
+                for (index, value) in stroke.dash_array.iter().enumerate() {
+                    if index != 0 {
+                        self.output.push(',')?;
+                    }
+                    write!(self.output, "{}", fmt(*value))?;
+                }
+                self.output.push(';')?;
+            } else {
+                self.output.push_str("stroke:none;")?;
+            }
+            if class == "cynefinArrowHead" {
+                if let Some(Paint::Solid { color }) = style.marker_fill {
+                    write!(
+                        self.output,
+                        "fill:{};fill-opacity:{};",
+                        color_css(*color),
+                        fmt(f64::from(color.alpha) / 255.0)
+                    )?;
+                } else {
+                    self.output.push_str("fill:none;")?;
+                }
+            }
+            self.output.push('}')?;
+        }
+        // Mermaid inserts an empty structural group between its stylesheet and content.
+        self.output.push_str("</style><g/>")
+    }
+
+    fn cynefin_compact_path_class(&self, path_id: &ResourceId, style: &PathStyle) -> Option<&str> {
+        let SvgStructureBody::Cynefin(body) = self.svg_body else {
+            return None;
+        };
+        let class = body.path_classes.get(path_id.as_str())?;
+        let expected = self.cynefin_path_styles.get(class)?.as_ref()?;
+        (style.fill_rule == FillRule::NonZero
+            && expected.stroke == style.stroke.as_ref()
+            && (class != "cynefinArrowHead" || expected.marker_fill == style.fill.as_ref()))
+        .then_some(class.as_str())
+    }
+
+    pub(super) fn emit_compact_cynefin_path(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        let Some(class) = self
+            .cynefin_compact_path_class(path_id, style)
+            .map(str::to_owned)
+        else {
+            return Ok(false);
+        };
+        let path = self.path_resource(path_id)?;
+        if matches!(class.as_str(), "cynefinItem" | "cynefinItemOverflow") {
+            let Some((bounds, radius)) = rounded_rectangle_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<rect class=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" ry=\"{}\"",
+                class,
+                fmt(bounds.x),
+                fmt(bounds.y),
+                fmt(bounds.width),
+                fmt(bounds.height),
+                fmt(radius),
+                fmt(radius)
+            )?;
+        } else if class == "cynefinDomain" {
+            let Some(bounds) = rectangle_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<rect class=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+                class,
+                fmt(bounds.x),
+                fmt(bounds.y),
+                fmt(bounds.width),
+                fmt(bounds.height)
+            )?;
+        } else {
+            write!(
+                self.output,
+                "<path class=\"{}\" d=\"{}\"",
+                class,
+                path_d(&path.segments)
+            )?;
+        }
+        if class != "cynefinArrowHead" {
+            if let Some(paint) = &style.fill {
+                self.write_paint("fill", paint)?;
+            } else {
+                self.output.push_str(" fill=\"none\"")?;
+            }
+        }
+        if class == "cynefinDomain" && style.stroke.is_none() {
+            self.output.push_str(" stroke=\"none\"")?;
+        }
+        self.write_state_attrs()?;
+        self.output.push_str("/>")?;
+        Ok(true)
     }
 
     pub(super) fn emit_compact_cynefin_text(
@@ -154,6 +335,17 @@ impl DocumentSvgEncoder<'_> {
         {
             return Ok(false);
         }
+        let SvgStructureBody::Cynefin(body) = self.svg_body else {
+            return Ok(false);
+        };
+        // ID-shaped additions are not registered source elements. Giving them the source
+        // classes would let another transition's shared CSS override their public paint.
+        if body.path_classes.get(line_id.as_str()).map(String::as_str) != Some("cynefinArrowLine")
+            || body.path_classes.get(arrow_id.as_str()).map(String::as_str)
+                != Some("cynefinArrowHead")
+        {
+            return Ok(false);
+        }
         let Some(stroke) = line_style.stroke.as_ref() else {
             return Ok(false);
         };
@@ -186,13 +378,23 @@ impl DocumentSvgEncoder<'_> {
             // Do not clip arbitrary edited paths to the source marker's viewBox.
             return Ok(false);
         }
-        let marker_body = format!(
-            "<path d=\"{}\" class=\"cynefinArrowHead\" fill=\"{}\" fill-opacity=\"{}\" fill-rule=\"{}\" stroke=\"none\"/>",
-            escaped_attr(&path_d(&arrow.segments)),
-            color_css(*color),
-            fmt(f64::from(color.alpha) / 255.0),
-            fill_rule_name(arrow_style.fill_rule),
-        );
+        let marker_body = if self
+            .cynefin_compact_path_class(arrow_id, arrow_style)
+            .is_some()
+        {
+            format!(
+                "<path d=\"{}\" class=\"cynefinArrowHead\"/>",
+                path_d(&arrow.segments)
+            )
+        } else {
+            format!(
+                "<path d=\"{}\" class=\"cynefinArrowHead\" fill=\"{}\" fill-opacity=\"{}\" fill-rule=\"{}\" stroke=\"none\"/>",
+                escaped_attr(&path_d(&arrow.segments)),
+                color_css(*color),
+                fmt(f64::from(color.alpha) / 255.0),
+                fill_rule_name(arrow_style.fill_rule),
+            )
+        };
         let count = self.cynefin_marker_definitions.len();
         let diagram_id = &self.diagram_id;
         let marker_id = self
@@ -213,7 +415,18 @@ impl DocumentSvgEncoder<'_> {
             escaped_attr(&path_data),
             escaped_attr(&marker_id)
         )?;
-        self.write_path_style(line_style)?;
+        if self
+            .cynefin_compact_path_class(line_id, line_style)
+            .is_some()
+        {
+            if let Some(paint) = &line_style.fill {
+                self.write_paint("fill", paint)?;
+            } else {
+                self.output.push_str(" fill=\"none\"")?;
+            }
+        } else {
+            self.write_path_style(line_style)?;
+        }
         self.write_state_attrs()?;
         self.output.push_str("/>")?;
         Ok(true)

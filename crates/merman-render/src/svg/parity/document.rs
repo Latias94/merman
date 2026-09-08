@@ -82,6 +82,7 @@ struct DocumentSvgEncoder<'a> {
     pie_styles: Option<super::pie::PieSvgStyles<'a>>,
     cynefin_marker_definitions: BTreeMap<String, String>,
     cynefin_text_styles: BTreeMap<String, Option<&'a merman_display_list::TextStyle>>,
+    cynefin_path_styles: BTreeMap<String, Option<cynefin::PathCssStyle<'a>>>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -252,6 +253,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             cynefin_marker_definitions: BTreeMap::new(),
             cynefin_text_styles: if let SvgStructureBody::Cynefin(body) = &document.svg.body {
                 cynefin::shared_text_styles(&document.public, body, session)?
+            } else {
+                BTreeMap::new()
+            },
+            cynefin_path_styles: if let SvgStructureBody::Cynefin(body) = &document.svg.body {
+                cynefin::shared_path_styles(&document.public, body, session)?
             } else {
                 BTreeMap::new()
             },
@@ -757,7 +763,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             return self.write_info_style();
         }
         if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
-            return self.write_cynefin_text_styles();
+            return self.write_cynefin_styles();
         }
         let css = match self.svg_body {
             SvgStructureBody::Error(_) => Some((
@@ -2256,6 +2262,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Cynefin(_)) {
+            if self.emit_compact_cynefin_path(path_id, style)? {
+                return Ok(());
+            }
             let raw_id = path_id.as_str();
             let path = self.path_resource(path_id)?;
             if raw_id.starts_with("cynefin.item.")

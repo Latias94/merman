@@ -3025,6 +3025,20 @@ mod tests {
             )
             .unwrap();
             let xml = roxmltree::Document::parse(&svg).unwrap();
+            let style = xml
+                .root_element()
+                .children()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap();
+            let empty_group = style.next_sibling_element().unwrap();
+            assert!(empty_group.has_tag_name("g"));
+            assert_eq!(
+                empty_group
+                    .children()
+                    .filter(|node| node.is_element())
+                    .count(),
+                0
+            );
             let marker = xml
                 .descendants()
                 .find(|node| node.has_tag_name("marker"))
@@ -3037,6 +3051,13 @@ mod tests {
             assert_eq!(marker.attribute("markerHeight"), Some("6"));
             assert_eq!(marker.attribute("orient"), Some("auto-start-reverse"));
             assert!(marker.parent().unwrap().parent().unwrap() == xml.root_element());
+            let marker_path = marker.first_element_child().unwrap();
+            assert_eq!(
+                marker_path.attribute("fill"),
+                None,
+                "marker paint comes from the resolved class rule"
+            );
+            assert_eq!(marker_path.attribute("stroke"), None);
             let arrow_line = xml
                 .descendants()
                 .find(|node| node.attribute("class") == Some("cynefinArrowLine"))
@@ -3045,6 +3066,7 @@ mod tests {
                 arrow_line.attribute("marker-end"),
                 Some("url(#cynefin-arrow-cynefin)")
             );
+            assert_eq!(arrow_line.attribute("stroke"), None);
             assert_eq!(xml.root_element().attribute("aria-labelledby"), title_id);
             if let Some(id) = title_id {
                 let title = xml
@@ -3245,6 +3267,22 @@ mod tests {
                 assert_eq!(node.attribute("font-size"), Some(size));
                 assert_eq!(node.attribute("fill"), Some("#123456"));
             }
+            for command in &mut document.public.commands {
+                if let merman_display_list::DrawingCommand::DrawPath { path, style } = command
+                    && path.as_str() == "cynefin.boundary.fold"
+                {
+                    style.stroke.as_mut().unwrap().width = 9.0;
+                }
+            }
+            let heterogeneous = render(&document, &conflicting_config);
+            assert!(!heterogeneous.contains(".cynefinBoundary{"));
+            let xml = roxmltree::Document::parse(&heterogeneous).unwrap();
+            let widths = xml
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("cynefinBoundary"))
+                .map(|node| node.attribute("stroke-width").unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(widths, ["9", "2"]);
         }
     }
 
@@ -3294,6 +3332,49 @@ mod tests {
                 .count(),
             2
         );
+        // New public paths must not inherit registered transitions' shared CSS by ID shape.
+        let mut added = document.clone();
+        for resource in &mut added.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && let Some(suffix) = path.id.as_str().strip_prefix("cynefin.transition.0.")
+            {
+                path.id = merman_display_list::ResourceId::new(format!(
+                    "cynefin.transition.added.{suffix}"
+                ));
+            }
+        }
+        for command in &mut added.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && let Some(suffix) = path.as_str().strip_prefix("cynefin.transition.0.")
+            {
+                *path = merman_display_list::ResourceId::new(format!(
+                    "cynefin.transition.added.{suffix}"
+                ));
+                if let Some(stroke) = &mut style.stroke {
+                    stroke.paint = Paint::solid(Color::rgba(11, 22, 33, 128));
+                }
+                if style.fill.is_some() {
+                    style.fill = Some(Paint::solid(Color::rgba(11, 22, 33, 128)));
+                }
+            }
+        }
+        let added_svg = render(&added);
+        let added_xml = roxmltree::Document::parse(&added_svg).unwrap();
+        assert_eq!(
+            added_xml
+                .descendants()
+                .filter(|node| node.attribute("marker-end").is_some())
+                .count(),
+            1,
+            "unregistered paths must remain independent of shared marker CSS"
+        );
+        for attribute in ["fill", "stroke"] {
+            let path = added_xml
+                .descendants()
+                .find(|node| node.attribute(attribute) == Some("#0b1621"))
+                .unwrap();
+            assert!(path.attribute("class").is_none());
+        }
         let marker_id = "cynefin.transition.0.arrowhead";
         for resource in &mut document.public.resources {
             if let DrawingResource::Path(path) = resource

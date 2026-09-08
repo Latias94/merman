@@ -222,8 +222,8 @@ translations; the SVG projection retains the source group classes, rounded badge
 distinct `middle`/`central` text baselines, and explicit accessibility-title exposure. The same
 test verifies that changing external configuration after construction cannot change the SVG,
 while edits to public text, paint, and background commands do change the serialized result.
-Resolved presentation attributes replace the legacy theme stylesheet in the candidate serializer;
-the empty style element remains structural only. The public DrawingList regression also checks
+Resolved command styles replace the legacy theme stylesheet in the candidate serializer;
+identical styles may share source class rules. The public DrawingList regression also checks
 normal and overflow badge centers against their text.
 
 Marker definitions now reuse public local paths and paint with the source `refX`/`refY` placement.
@@ -256,6 +256,16 @@ It still proves that changing external config cannot reinterpret the resolved do
 local corrections do not establish complete family parity or admit Cynefin's public SVG route.
 The legacy dispatch test retains the pinned marker and accessibility ordering contracts;
 it is not evidence for the candidate serializer.
+
+Shared path strokes and marker fills now also project into class rules only when all registered
+commands agree. Heterogeneous boundary strokes keep explicit attributes; added public transition
+paths remain independent of registered marker classes and their CSS. The marker mutation test
+first reproduced the unregistered-path CSS leak, then verified the ordinary-path fallback.
+The root-level empty group following the stylesheet is retained. A subsequent full candidate
+structure run selected/rendered 13 fixtures without skips but still failed; see
+`target/compare/cynefin_path_projection_structure.md`. The remaining reported differences include
+hex color spelling and `fill-opacity` versus `opacity` projection. Temporary canonical admission
+was removed again; no comparator normalization or residual exception was added.
 
 The table is a family-level default, not a promise about every request.  The typed SVG result
 exposes `SvgSerializationRoute`: `canonical-document` means the result was serialized from the
