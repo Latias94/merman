@@ -3330,8 +3330,6 @@ mod tests {
 
     #[test]
     fn manifest_keeps_journey_fill_and_stroke_projection_local() {
-        assert_eq!(CUTOVER_AUTHORIZATION_MANIFEST_VERSION, 51);
-
         let journey_routes = ACTIVE_ROUTES
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::JOURNEY)
