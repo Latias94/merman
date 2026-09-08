@@ -81,19 +81,18 @@ impl PendingSourceProvenance {
         channel: crate::diagram_theme::SourceStyleChannel,
         generated_class_css: bool,
     ) -> crate::diagram_theme::SourceStyleProvenance {
-        if generated_class_css {
-            if let Self::AssignedClass {
+        if generated_class_css
+            && let Self::AssignedClass {
                 class_id,
                 declaration_ordinal,
                 ..
             } = self
-            {
-                return crate::diagram_theme::SourceStyleProvenance::generated_class_css(
-                    Arc::clone(class_id),
-                    channel,
-                    *declaration_ordinal,
-                );
-            }
+        {
+            return crate::diagram_theme::SourceStyleProvenance::generated_class_css(
+                Arc::clone(class_id),
+                channel,
+                *declaration_ordinal,
+            );
         }
         self.bind(owner_id, channel)
     }
@@ -475,7 +474,6 @@ impl FlowchartCompiledStyles {
             style,
             prepared_text_overrides,
             terminal_foreground,
-            typography_cascade: crate::flowchart::FlowchartTypographyCascade::default(),
         }
     }
 
@@ -955,18 +953,10 @@ fn parse_flowchart_animation_name(value: &str) -> Option<bool> {
     let names = parser
         .parse_comma_separated(parse_flowchart_animation_name_component)
         .ok()?;
-    if names.len() != 1
-        && names
-            .iter()
-            .any(|name| *name == FlowchartAnimationNameComponent::CssWide)
-    {
+    if names.len() != 1 && names.contains(&FlowchartAnimationNameComponent::CssWide) {
         return None;
     }
-    Some(
-        names
-            .iter()
-            .any(|name| *name == FlowchartAnimationNameComponent::Active),
-    )
+    Some(names.contains(&FlowchartAnimationNameComponent::Active))
 }
 
 fn parse_flowchart_animation_name_component<'i, 't>(
@@ -1610,27 +1600,26 @@ fn source_radius_evidence(
             direct_inline,
             direct_wrapper_has_class,
         );
-        let (component_status, residual) = if direct_inline
+        let prefer_direct = direct_inline
             || (direct_emission.reach().is_verified()
                 && (!receipt.radius_selector_overrides_direct()
                     || generated_source.is_some_and(|generated| {
                         generated.prepared.property() == direct_source.prepared.property()
                             && generated.prepared.value() == direct_source.prepared.value()
-                    })))
-            || generated_source.is_none()
-        {
-            direct_source.evidence(owner_id, direct_emission)
-        } else {
-            let generated_source = generated_source.expect("generated source checked above");
-            let generated_radius = SourceFacetDeclaration {
-                prepared: Arc::clone(&generated_source.prepared),
-                provenance: generated_source.provenance.clone(),
-                admitted: admitted_flowchart_source_radius(generated_source.prepared.value()),
-            };
-            generated_radius.evidence(
-                owner_id,
-                receipt.source_radius_emission(generated_radius.admitted, false, true),
-            )
+                    })));
+        let (component_status, residual) = match generated_source {
+            Some(generated_source) if !prefer_direct => {
+                let generated_radius = SourceFacetDeclaration {
+                    prepared: Arc::clone(&generated_source.prepared),
+                    provenance: generated_source.provenance.clone(),
+                    admitted: admitted_flowchart_source_radius(generated_source.prepared.value()),
+                };
+                generated_radius.evidence(
+                    owner_id,
+                    receipt.source_radius_emission(generated_radius.admitted, false, true),
+                )
+            }
+            _ => direct_source.evidence(owner_id, direct_emission),
         };
         status = merge_source_facet_status(status, component_status);
         residuals.extend(residual);
@@ -2241,15 +2230,19 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
             valid_stroke_dasharray(declaration.prepared.value()),
         );
     }
-    inline_shape_sources.extend(inline_declarations.iter().filter_map(|declaration| {
-        (!crate::flowchart::flowchart_is_source_spelled_label_style_key(
-            declaration.prepared.property_css(),
-        ))
-        .then(|| PendingSourceDeclaration {
-            prepared: Arc::clone(&declaration.prepared),
-            provenance: declaration.provenance.clone(),
-        })
-    }));
+    inline_shape_sources.extend(
+        inline_declarations
+            .iter()
+            .filter(|declaration| {
+                !crate::flowchart::flowchart_is_source_spelled_label_style_key(
+                    declaration.prepared.property_css(),
+                )
+            })
+            .map(|declaration| PendingSourceDeclaration {
+                prepared: Arc::clone(&declaration.prepared),
+                provenance: declaration.provenance.clone(),
+            }),
+    );
     Ok(FlowchartCompiledStyles {
         edge_class_declarations,
         edge_animation_active: animation_name.active(),
