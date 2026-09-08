@@ -1047,7 +1047,7 @@ impl<'a> SequenceBuilder<'a> {
                 Point::new(base.x + normal.x * 5.0, base.y + normal.y * 5.0),
                 Point::new(base.x - normal.x * 5.0, base.y - normal.y * 5.0),
             ]),
-            SequenceMessageMarker::Point => ellipse_path(point.x, point.y, 3.0, 3.0),
+            SequenceMessageMarker::Point => point_marker_path(point, direction),
             SequenceMessageMarker::Cross => vec![
                 PathSegment::MoveTo {
                     to: Point::new(
@@ -1109,6 +1109,7 @@ impl<'a> SequenceBuilder<'a> {
             SequenceMessageMarker::None => return Ok(()),
         };
         let (fill, stroke_style) = match marker {
+            SequenceMessageMarker::Point => (Some(Paint::solid(self.palette.text)), None),
             SequenceMessageMarker::Cross
             | SequenceMessageMarker::OpenHalfTop
             | SequenceMessageMarker::OpenHalfBottom => {
@@ -1829,6 +1830,21 @@ fn collect_controls(
     Ok(blocks)
 }
 
+fn point_marker_path(point: Point, direction: Point) -> Vec<PathSegment> {
+    // Mermaid's filled-head is M18,7 L9,13 L14,7 L9,1 Z, ref=(15.5,7),
+    // with default markerUnits=strokeWidth and orient=auto.
+    let normal = Point::new(-direction.y, direction.x);
+    let points = [(18.0, 7.0), (9.0, 13.0), (14.0, 7.0), (9.0, 1.0)].map(|(x, y)| {
+        let along = (x - 15.5) * SIGNAL_WIDTH;
+        let across = (y - 7.0) * SIGNAL_WIDTH;
+        Point::new(
+            point.x + direction.x * along + normal.x * across,
+            point.y + direction.y * along + normal.y * across,
+        )
+    });
+    polygon_path(&points)
+}
+
 fn self_message_route_segments(edge: &LayoutEdge, right_angles: bool) -> Vec<PathSegment> {
     let start = Point::new(edge.points[0].x, edge.points[0].y);
     if right_angles {
@@ -2208,6 +2224,113 @@ mod tests {
             wrap: false,
             links,
             properties: Map::new(),
+        }
+    }
+
+    #[test]
+    fn point_message_public_markers_preserve_concave_geometry_and_direction() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingListLimits, DrawingListPolicy, DrawingResource, Paint,
+        };
+
+        for (message, right_angles) in [
+            ("A-)B: forward", false),
+            ("B-)A: reverse", false),
+            ("A--)B: dotted", false),
+            ("B--)A: dotted reverse", false),
+            ("A-)A: self", false),
+            ("A--)A: self right angles", true),
+        ] {
+            let source = format!("sequenceDiagram\nparticipant A\nparticipant B\n{message}\n");
+            let parsed = merman_core::Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "theme": "base",
+                    "themeVariables": {
+                        "textColor": "#123456",
+                        "signalColor": "#654321"
+                    },
+                    "sequence": { "rightAngles": right_angles }
+                })))
+                .parse_diagram_for_render_model_sync(&source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let rendered =
+                crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                    .unwrap()
+                    .render_drawing_list(
+                        DrawingListPolicy::VectorOnly,
+                        DrawingListLimits::default(),
+                    )
+                    .unwrap();
+            let document = rendered.document();
+            let path_segments = |suffix: &str| {
+                document
+                    .resources
+                    .iter()
+                    .find_map(|resource| match resource {
+                        DrawingResource::Path(path)
+                            if path.id.as_str().starts_with("sequence.message.")
+                                && path.id.as_str().ends_with(suffix) =>
+                        {
+                            Some(path.segments.as_slice())
+                        }
+                        _ => None,
+                    })
+                    .unwrap()
+            };
+            let route = path_segments(".route");
+            let (end, previous) = match route.last().unwrap() {
+                PathSegment::CubicTo { control2, to, .. } => (*to, *control2),
+                PathSegment::LineTo { to } => {
+                    let previous = match route[route.len() - 2] {
+                        PathSegment::MoveTo { to } | PathSegment::LineTo { to } => to,
+                        ref segment => panic!("unexpected previous route segment: {segment:?}"),
+                    };
+                    (*to, previous)
+                }
+                segment => panic!("unexpected route endpoint: {segment:?}"),
+            };
+            let length = (end.x - previous.x).hypot(end.y - previous.y);
+            let direction =
+                Point::new((end.x - previous.x) / length, (end.y - previous.y) / length);
+            let marker = path_segments(".marker.end");
+            assert_eq!(marker.len(), 5, "{message}");
+            for (segment, (along, across)) in
+                marker[..4]
+                    .iter()
+                    .zip([(3.75, 0.0), (-9.75, 9.0), (-2.25, 0.0), (-9.75, -9.0)])
+            {
+                let (PathSegment::MoveTo { to } | PathSegment::LineTo { to }) = segment else {
+                    panic!("Point markers must be a concave polygon: {message}");
+                };
+                let expected = Point::new(
+                    end.x + direction.x * along - direction.y * across,
+                    end.y + direction.y * along + direction.x * across,
+                );
+                assert!((to.x - expected.x).abs() < 1e-9, "{message}: {segment:?}");
+                assert!((to.y - expected.y).abs() < 1e-9, "{message}: {segment:?}");
+            }
+            assert!(matches!(marker.last(), Some(PathSegment::Close)));
+            let marker_style = document
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str().ends_with(".marker.end") =>
+                    {
+                        Some(style)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                marker_style.fill,
+                Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255)))
+            );
+            assert!(marker_style.stroke.is_none(), "{message}");
         }
     }
 

@@ -875,11 +875,7 @@ impl<'a> MindmapBuilder<'a> {
         } else {
             c_scale
         };
-        let width = if index >= self.theme_color_limit {
-            3.0
-        } else {
-            (17.0 - 3.0 * index as f64).max(0.0)
-        };
+        let width = mindmap_edge_width(edge.depth, self.theme_color_limit, self.look == "neo");
         Ok((stroke, width))
     }
 
@@ -1054,6 +1050,24 @@ fn mindmap_palette_index(node: &MindmapDiagramRenderNode) -> usize {
             .map(|section| section.rem_euclid(11) as usize + 1)
             .unwrap_or(0)
     }
+}
+
+fn mindmap_edge_width(parent_depth: i64, theme_color_limit: usize, neo: bool) -> f64 {
+    // Mermaid assigns edge-depth-(parent.level + 1), then styles edge-depth-(i - 1).
+    let Some(index) = parent_depth
+        .checked_add(2)
+        .and_then(|index| usize::try_from(index).ok())
+        .filter(|index| *index < theme_color_limit)
+    else {
+        return 3.0;
+    };
+    let width = if neo {
+        (10.0 - (index as f64 - 1.0) * 2.0).max(2.0)
+    } else {
+        17.0 - 3.0 * index as f64
+    };
+    // A negative CSS stroke-width is invalid; the base .edge width remains effective.
+    if width < 0.0 { 3.0 } else { width }
 }
 
 fn mindmap_edge_points(source: &LayoutNode, target: &LayoutNode) -> Vec<LayoutPoint> {
@@ -1405,6 +1419,68 @@ fn unavailable(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "layout-cytoscape")]
+    fn mindmap_public_edge_width_tracks_depth_not_section() {
+        for (look, expected) in [("classic", 11.0), ("neo", 8.0)] {
+            let source = "mindmap\n  Root\n    A\n    B\n    C\n    D\n    E\n    F\n";
+            let parsed = merman_core::Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "look": look,
+                    "themeVariables": { "dropShadow": "none" }
+                })))
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let rendered =
+                crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                    .unwrap()
+                    .render_drawing_list(
+                        DrawingListPolicy::VectorOnly,
+                        DrawingListLimits::default(),
+                    )
+                    .unwrap();
+            let widths = rendered
+                .document()
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str().starts_with("mindmap.edge.") =>
+                    {
+                        Some(style.stroke.as_ref().unwrap().width)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(widths, vec![expected; 6], "look: {look}");
+        }
+    }
+
+    #[test]
+    fn mindmap_edge_width_matches_depth_rules_and_css_fallback() {
+        assert_eq!(
+            (0..7)
+                .map(|depth| mindmap_edge_width(depth, 12, false))
+                .collect::<Vec<_>>(),
+            vec![11.0, 8.0, 5.0, 2.0, 3.0, 3.0, 3.0]
+        );
+        assert_eq!(
+            (0..7)
+                .map(|depth| mindmap_edge_width(depth, 12, true))
+                .collect::<Vec<_>>(),
+            vec![8.0, 6.0, 4.0, 2.0, 2.0, 2.0, 2.0]
+        );
+        for neo in [false, true] {
+            assert_eq!(mindmap_edge_width(0, 2, neo), 3.0);
+            assert_eq!(mindmap_edge_width(10, 12, neo), 3.0);
+            assert_eq!(mindmap_edge_width(i64::MAX, 12, neo), 3.0);
+        }
+    }
 
     #[test]
     fn mindmap_edge_points_match_svg_endpoint_offset() {
