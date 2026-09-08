@@ -84,8 +84,8 @@ impl VennSemanticState {
             sets: std::mem::take(&mut sets),
             size: resolved_size,
             label: label
-                .map(|value| normalize_text(&value))
-                .filter(|value| !value.is_empty()),
+                .filter(|value| !value.is_empty())
+                .map(|value| normalize_text(&value)),
         });
     }
 
@@ -115,8 +115,8 @@ impl VennSemanticState {
             sets: normalize_identifier_list(identifiers),
             id: normalize_text(&id),
             label: label
-                .map(|value| normalize_text(&value))
-                .filter(|value| !value.is_empty()),
+                .filter(|value| !value.is_empty())
+                .map(|value| normalize_text(&value)),
         });
     }
 
@@ -1446,6 +1446,14 @@ mod tests {
         assert_eq!(model.subsets[3].label.as_deref(), Some("AB"));
         assert_eq!(model.subsets[3].size, 5.3);
         assert_eq!(model.subsets[4].sets, ["A", "B", "C"]);
+    }
+
+    #[test]
+    fn preserves_labels_that_normalize_to_empty_after_the_truthiness_check() {
+        let model = parse("venn-beta\nset A[\" \"]\n  text blank[\" \"]\n  text absent[\"\"]\n");
+        assert_eq!(model.subsets[0].label.as_deref(), Some(""));
+        assert_eq!(model.text_nodes[0].label.as_deref(), Some(""));
+        assert_eq!(model.text_nodes[1].label, None);
     }
 
     #[test]
