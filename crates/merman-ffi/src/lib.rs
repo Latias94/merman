@@ -8,10 +8,11 @@
 
 use merman::OperationControl;
 use merman_bindings_core::{
-    BindingDiagnosticErrorDetails, BindingEngine, BindingEngineAdmission,
-    BindingEngineAdmissionError, BindingEngineAdmissionMode, BindingEngineServices, BindingError,
-    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
-    BindingResourceErrorDetails, BindingStatus, OperationKey, ValidatedArtifactContract,
+    BindingDiagnosticErrorDetails, BindingDrawingListErrorDetails, BindingEngine,
+    BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
+    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, OperationKey,
+    ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -51,6 +52,7 @@ struct NativeFailureDetails {
     resource: Option<BindingResourceErrorDetails>,
     diagnostic: Option<BindingDiagnosticErrorDetails>,
     icon_registry: Option<BindingIconRegistryErrorDetails>,
+    drawing_list: Option<BindingDrawingListErrorDetails>,
     cancellation: Option<NativeCancellationDetails>,
 }
 
@@ -381,6 +383,9 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
                 serde_json::json!(icon_registry),
             );
         }
+        if let Some(drawing_list) = failure_details.drawing_list.as_ref() {
+            details.insert("drawing_list".to_string(), serde_json::json!(drawing_list));
+        }
         if let Some(cancellation) = failure_details.cancellation {
             details.insert(
                 "cancellation".to_string(),
@@ -430,6 +435,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
     let resource = error.resource_details();
     let diagnostic = error.diagnostic_details().cloned();
     let icon_registry = error.icon_registry_details().cloned();
+    let drawing_list = error.drawing_list_details().cloned();
     let cancellation = error
         .cancellation_details()
         .map(|details| NativeCancellationDetails {
@@ -446,12 +452,14 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
     if resource.is_some()
         || diagnostic.is_some()
         || icon_registry.is_some()
+        || drawing_list.is_some()
         || cancellation.is_some()
     {
         failure.details = Some(Box::new(NativeFailureDetails {
             resource,
             diagnostic,
             icon_registry,
+            drawing_list,
             cancellation,
         }));
     }
@@ -2745,6 +2753,39 @@ mod tests {
             u64::MAX.to_string()
         );
         assert_eq!(payload["details"]["resource"]["max"], 800_000);
+    }
+
+    #[test]
+    fn native_error_json_preserves_structured_drawing_list_details() {
+        for (status, expected_status, category, family, reason) in [
+            (
+                BindingStatus::UnsupportedOperation,
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+                "unavailable",
+                Some("flowchart".to_string()),
+                Some("unsupported effect: 阴影".to_string()),
+            ),
+            (
+                BindingStatus::InvalidArgument,
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "contract",
+                None,
+                None,
+            ),
+        ] {
+            let details = BindingDrawingListErrorDetails::new(category, family, reason);
+            let expected = serde_json::to_value(&details).expect("DrawingList details JSON");
+            let error =
+                BindingError::new(status, "DrawingList failed").with_drawing_list_details(details);
+            let failure = native_failure_from_binding(error);
+            let payload: serde_json::Value =
+                serde_json::from_slice(&native_error_json(&failure)).expect("native error JSON");
+
+            assert_eq!(payload["details"]["drawing_list"], expected);
+            assert_eq!(payload["message"], "DrawingList failed");
+            assert_eq!(payload["kind"], "generic");
+            assert_eq!(failure.status, expected_status);
+        }
     }
 
     #[test]

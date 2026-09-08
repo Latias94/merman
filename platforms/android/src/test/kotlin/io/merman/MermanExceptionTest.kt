@@ -96,6 +96,47 @@ class MermanExceptionTest {
     }
 
     @Test
+    fun parsesStructuredDrawingListFailureDetails() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":7,"code_name":"MERMAN_UNSUPPORTED_OPERATION","kind":"generic","capability_id":null,"details":{"drawing_list":{"category":"unavailable","family":"flowchart","reason":"unsupported effect: 阴影"}},"message":"DrawingList is unavailable"}""",
+        )
+
+        assertEquals(7, error.code)
+        assertEquals("DrawingList is unavailable", error.message)
+        assertEquals(
+            MermanDrawingListErrorDetails(
+                category = "unavailable",
+                family = "flowchart",
+                reason = "unsupported effect: 阴影",
+            ),
+            error.drawingListDetails,
+        )
+    }
+
+    @Test
+    fun preservesNullableDrawingListContextAndAbsentDetails() {
+        val error = MermanException(
+            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":{"drawing_list":{"category":"contract","family":null,"reason":null}},"message":"invalid DrawingList"}""",
+        )
+
+        assertEquals(MermanDrawingListErrorDetails("contract", null, null), error.drawingListDetails)
+        assertNull(MermanException("ordinary error").drawingListDetails)
+    }
+
+    @Test
+    fun rejectsMalformedDrawingListFailureDetails() {
+        listOf(
+            """{"category":"","family":null,"reason":null}""",
+            """{"category":"unavailable","family":7,"reason":null}""",
+            """{"category":"unavailable","family":null,"reason":false}""",
+        ).forEach { details ->
+            assertInvalidNativeErrorPayload(
+                """{"version":1,"ok":false,"code":6,"code_name":"MERMAN_RENDER_ERROR","kind":"generic","capability_id":null,"details":{"drawing_list":$details},"message":"DrawingList failed"}""",
+            )
+        }
+    }
+
+    @Test
     fun rejectsMalformedIconRegistryFailureDetails() {
         assertInvalidNativeErrorPayload(
             """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":{"icon_registry":{"kind_id":"","pack_index":-1}},"message":"invalid icon registry"}""",
@@ -176,6 +217,7 @@ class MermanExceptionTest {
         val conflictingDetails = listOf(
             """"resource":{"cause":"ceiling","limit_id":"max_source_bytes","phase":"source","actual":5,"max":4,"profile":"interactive"}""",
             """"diagnostic":{"code":"merman.test","span":null,"field":null,"diagram_type":null}""",
+            """"drawing_list":{"category":"render","family":null,"reason":"failed"}""",
         )
 
         conflictingDetails.forEach { conflictingDetail ->

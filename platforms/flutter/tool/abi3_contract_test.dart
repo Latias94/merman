@@ -47,6 +47,7 @@ void main() {
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
+  decodesDrawingListNativeErrors();
   rejectsInconsistentNativeErrorRelations();
   acceptsFutureNativeCancellationPhases();
   rejectsMalformedNativeDiagnosticDetails();
@@ -1888,6 +1889,71 @@ void decodesMachineReadableNativeErrors() {
   );
 }
 
+void decodesDrawingListNativeErrors() {
+  MermanException decode(int status, String statusName, Object? details) =>
+      MermanException.fromNative(
+        status,
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'version': 1,
+              'ok': false,
+              'status': status,
+              'status_name': statusName,
+              'kind': 'generic',
+              'capability_id': null,
+              'details': {'drawing_list': details},
+              'message': 'DrawingList failed',
+            }),
+          ),
+        ),
+      );
+  final unavailable = decode(
+    native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+    'unsupported-operation',
+    {
+      'category': 'unavailable',
+      'family': 'flowchart',
+      'reason': 'unsupported effect: 阴影',
+    },
+  );
+  _expect(
+    unavailable is MermanUnsupportedOperationException &&
+        unavailable.drawingListDetails?.category == 'unavailable' &&
+        unavailable.drawingListDetails?.family == 'flowchart' &&
+        unavailable.drawingListDetails?.reason == 'unsupported effect: 阴影',
+    'DrawingList details must survive the typed unsupported-operation exception',
+  );
+  final contract = decode(
+    native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+    'invalid-argument',
+    {'category': 'contract', 'family': null, 'reason': null},
+  );
+  _expect(
+    contract.code == native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT &&
+        contract.drawingListDetails?.category == 'contract' &&
+        contract.drawingListDetails?.family == null &&
+        contract.drawingListDetails?.reason == null,
+    'DrawingList contract context must retain nullable fields',
+  );
+  for (final details in [
+    null,
+    {'category': '', 'family': null, 'reason': null},
+    {'category': 'render', 'family': 7, 'reason': null},
+    {'category': 'render', 'family': null, 'reason': false},
+  ]) {
+    _expect(
+      decode(
+            native.MERMAN_NATIVE_STATUS_RENDER_ERROR,
+            'render-error',
+            details,
+          ).codeName ==
+          'DART_NATIVE_CONTRACT_ERROR',
+      'malformed DrawingList details must not silently disappear',
+    );
+  }
+}
+
 void rejectsInconsistentNativeErrorRelations() {
   Map<String, Object?> cancellationEnvelope({
     int? status,
@@ -1944,6 +2010,15 @@ void rejectsInconsistentNativeErrorRelations() {
       },
     ),
     cancellationEnvelope(status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR),
+    cancellationEnvelope(
+      additionalDetails: {
+        'drawing_list': {
+          'category': 'render',
+          'family': null,
+          'reason': 'failed',
+        },
+      },
+    ),
     cancellationEnvelope(statusName: 'parse-error'),
     cancellationEnvelope(reason: 'bogus'),
     cancellationEnvelope(phase: 'future phase'),

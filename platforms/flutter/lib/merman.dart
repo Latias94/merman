@@ -40,6 +40,7 @@ export 'src/merman_ffi.dart'
         MermanDiagnosticErrorDetails,
         MermanDiagnosticSpan,
         MermanDiagramFamilyCapability,
+        MermanDrawingListErrorDetails,
         MermanEngine,
         MermanEngineServices,
         MermanErrorKind,

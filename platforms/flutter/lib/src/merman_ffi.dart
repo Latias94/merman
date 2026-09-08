@@ -170,6 +170,19 @@ class MermanIconRegistryErrorDetails {
   final String? registrationName;
 }
 
+/// Renderer-neutral failure context, independent of the stable status vocabulary.
+class MermanDrawingListErrorDetails {
+  const MermanDrawingListErrorDetails({
+    required this.category,
+    required this.family,
+    required this.reason,
+  });
+
+  final String category;
+  final String? family;
+  final String? reason;
+}
+
 /// Stable details attached to a cooperative operation cancellation.
 class MermanCancellationErrorDetails {
   const MermanCancellationErrorDetails({
@@ -229,6 +242,7 @@ class MermanException implements Exception {
     this.resourceDetails,
     this.diagnosticDetails,
     this.iconRegistryDetails,
+    this.drawingListDetails,
     this.cancellationDetails,
   });
 
@@ -241,6 +255,7 @@ class MermanException implements Exception {
   final MermanResourceErrorDetails? resourceDetails;
   final MermanDiagnosticErrorDetails? diagnosticDetails;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
+  final MermanDrawingListErrorDetails? drawingListDetails;
   final MermanCancellationErrorDetails? cancellationDetails;
 
   factory MermanException.contract(String message) => MermanException(
@@ -267,6 +282,7 @@ class MermanException implements Exception {
     MermanResourceErrorDetails? resourceDetails;
     MermanDiagnosticErrorDetails? diagnosticDetails;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
+    MermanDrawingListErrorDetails? drawingListDetails;
     MermanCancellationErrorDetails? cancellationDetails;
     if (metadata.isNotEmpty) {
       try {
@@ -299,6 +315,10 @@ class MermanException implements Exception {
             iconRegistryDetails = _parseIconRegistryErrorDetails(iconRegistry)!;
           }
           final cancellation = details['cancellation'];
+          final drawingList = details['drawing_list'];
+          if (drawingList is Map) {
+            drawingListDetails = _parseDrawingListErrorDetails(drawingList)!;
+          }
           if (cancellation is Map) {
             cancellationDetails = _parseCancellationErrorDetails(cancellation)!;
           }
@@ -320,6 +340,7 @@ class MermanException implements Exception {
           codeName: codeName,
           message: message,
           diagnosticDetails: diagnosticDetails,
+          drawingListDetails: drawingListDetails,
         );
       }
       if (kind == MermanErrorKind.missingCapability && capabilityId != null) {
@@ -329,6 +350,7 @@ class MermanException implements Exception {
           message: message,
           capabilityId: capabilityId,
           diagnosticDetails: diagnosticDetails,
+          drawingListDetails: drawingListDetails,
         );
       }
       return MermanUnsupportedOperationException(
@@ -338,6 +360,7 @@ class MermanException implements Exception {
         kind: kind,
         capabilityId: capabilityId,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_REENTRANT_CALL) {
@@ -346,6 +369,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_BUSY) {
@@ -354,6 +378,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_CANCELLED &&
@@ -376,6 +401,7 @@ class MermanException implements Exception {
       resourceDetails: resourceDetails,
       diagnosticDetails: diagnosticDetails,
       iconRegistryDetails: iconRegistryDetails,
+      drawingListDetails: drawingListDetails,
       cancellationDetails: cancellationDetails,
     );
   }
@@ -479,12 +505,20 @@ String? _validateNativeErrorEnvelope(
         return '`details.cancellation` is invalid';
       }
     }
+    if (details.containsKey('drawing_list')) {
+      final drawingList = details['drawing_list'];
+      if (drawingList is! Map ||
+          _parseDrawingListErrorDetails(drawingList) == null) {
+        return '`details.drawing_list` is invalid';
+      }
+    }
   }
 
   final hasCancellation = details?.containsKey('cancellation') ?? false;
   final hasResource = details?.containsKey('resource') ?? false;
   final hasDiagnostic = details?.containsKey('diagnostic') ?? false;
   final hasIconRegistry = details?.containsKey('icon_registry') ?? false;
+  final hasDrawingList = details?.containsKey('drawing_list') ?? false;
   if (hasResource &&
       (status != native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED ||
           kind != MermanErrorKind.generic)) {
@@ -504,7 +538,8 @@ String? _validateNativeErrorEnvelope(
         !hasCancellation ||
         hasResource ||
         hasDiagnostic ||
-        hasIconRegistry) {
+        hasIconRegistry ||
+        hasDrawingList) {
       return 'cancellation is not a disjoint generic terminal';
     }
   } else if (hasCancellation) {
@@ -666,6 +701,25 @@ MermanIconRegistryErrorDetails? _parseIconRegistryErrorDetails(
   );
 }
 
+MermanDrawingListErrorDetails? _parseDrawingListErrorDetails(
+  Map<Object?, Object?> drawingList,
+) {
+  final category = drawingList['category'];
+  final family = drawingList['family'];
+  final reason = drawingList['reason'];
+  if (category is! String ||
+      category.isEmpty ||
+      (family != null && family is! String) ||
+      (reason != null && reason is! String)) {
+    return null;
+  }
+  return MermanDrawingListErrorDetails(
+    category: category,
+    family: family as String?,
+    reason: reason as String?,
+  );
+}
+
 const _nativeCancellationReasons = {'requested', 'deadline_exceeded'};
 final _nativeCancellationPhasePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
 
@@ -722,6 +776,7 @@ class MermanReentrantCallException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(kind: MermanErrorKind.reentrantCall);
 }
 
@@ -732,6 +787,7 @@ class MermanBusyException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(kind: MermanErrorKind.busy);
 }
 
@@ -755,6 +811,7 @@ class MermanUnsupportedOperationException extends MermanException {
     super.kind,
     super.capabilityId,
     super.diagnosticDetails,
+    super.drawingListDetails,
   });
 }
 
@@ -766,6 +823,7 @@ class MermanUnknownOperationException
     required String codeName,
     required String message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(
          code: code,
          codeName: codeName,
@@ -783,6 +841,7 @@ class MermanMissingCapabilityException
     required String message,
     required String capabilityId,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(
          code: code,
          codeName: codeName,
