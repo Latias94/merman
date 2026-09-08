@@ -82,7 +82,8 @@ fn info_canonical_svg_keeps_document_root_and_version_structure() {
             .any(|node| node.has_tag_name("text") && node.attribute("class") == Some("version"))
     );
     assert!(svg.contains("<style>"));
-    assert!(svg.contains("</style><g/><g><text"));
+    assert!(svg.contains("</style><g/><g><path"));
+    assert!(svg.contains(r#"data-merman-resource="info.background""#));
     assert!(!svg.contains("aria-labelledby="));
     assert!(!svg.contains("merman-semantic-info-"));
     assert!(svg.contains(&format!(">v{PINNED_MERMAID_BASELINE_VERSION}</text>")));

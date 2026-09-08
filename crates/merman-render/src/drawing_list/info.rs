@@ -19,9 +19,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
 use merman_display_list::{
-    DrawingCommand, DrawingListLimits, DrawingListPolicy, FontDescriptor, FontStyle, Paint, Point,
-    Rect, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline, TextDirection, TextRun,
-    TextStyle, Viewport,
+    DrawingCommand, DrawingListLimits, DrawingListPolicy, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextRun, TextStyle, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -88,6 +88,31 @@ pub(crate) fn build_info_document(
     builder.push_control(DrawingCommand::BeginSemanticGroup {
         semantic_id: "info.document".to_string(),
     })?;
+    builder.draw_path(
+        ResourceId::new("info.background"),
+        vec![
+            PathSegment::MoveTo {
+                to: Point::new(bounds.min_x, bounds.min_y),
+            },
+            PathSegment::LineTo {
+                to: Point::new(bounds.max_x, bounds.min_y),
+            },
+            PathSegment::LineTo {
+                to: Point::new(bounds.max_x, bounds.max_y),
+            },
+            PathSegment::LineTo {
+                to: Point::new(bounds.min_x, bounds.max_y),
+            },
+            PathSegment::Close,
+        ],
+        PathStyle {
+            fill_rule: merman_display_list::FillRule::NonZero,
+            fill: Some(Paint::solid(merman_display_list::Color::rgba(
+                255, 255, 255, 255,
+            ))),
+            stroke: None,
+        },
+    )?;
     builder.push_control(DrawingCommand::BeginSemanticGroup {
         semantic_id: "info.version".to_string(),
     })?;
