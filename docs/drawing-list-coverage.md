@@ -522,6 +522,17 @@ structure; root/browser comparison is not implied. Temporary admission was remov
 non-sandbox URL navigation uses runtime event listeners absent from exported SVG; preserving static
 headless links needs an explicit navigation projection decision and scoped evidence before admission.
 
+Task rectangle radius attributes now retain their source spelling only when per-axis SVG clamping
+reproduces the current public path's radius. The comparison reuses the rectangle recognizer's
+existing coordinate tolerance for nonzero radii; a public zero radius requires exact zero.
+Changed hints cannot add rounding to a straight-corner public path. Zero-extent paths project the
+source radius only when both public paints are absent; adding stroke still emits the drawable
+path. Regressions cover narrow/short tasks, changed hints, straight corners, individual corner
+edits, and zero-width stroke edits. This is equivalent SVG representation, not a second geometry
+source. The 49 focused tests pass; the final zero-radius boundary refinement also passes both
+radius and zero-width focused regressions. Full-family structure evidence remains the preceding
+110/40 report until refreshed.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

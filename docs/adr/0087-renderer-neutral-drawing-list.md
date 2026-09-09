@@ -45,6 +45,9 @@ flowchart LR
    transform. For an absolute origin `P`, `T(P) [T(-P) M T(P)] T(-P)` must remain equal to the
    public element matrix `M`; already-emitted ancestor transforms are outside that compensation.
    The hint must not replay source rotation/scale CSS or become another geometry input.
+   Original SVG radius attributes may likewise be retained only when SVG's per-axis clamping
+   reproduces the current public rectangle path. Inert zero-extent rectangles require no public
+   paint; adding paint to that path must not be hidden by the SVG rectangle's rendering rules.
    SVG-to-DrawingList association attributes (`data-merman-resource`,
    `data-merman-semantic-id`, `data-merman-bounds`, and `data-merman-text-obligation`) are
    opt-in diagnostics, controlled by `SvgDebugOptions.include_drawing_list_metadata`.

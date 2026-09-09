@@ -2897,6 +2897,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn emit_rect(&mut self, path_id: &ResourceId, bounds: Rect, style: &PathStyle) -> Result<()> {
+        if let Some(radius) = self.gantt_radius_attributes(path_id, bounds, 0.0, 0.0, style) {
+            return self.emit_elliptical_rounded_rect(path_id, bounds, radius.x, radius.y, style);
+        }
         self.output.push_str("<rect x=\"")?;
         write!(
             self.output,
@@ -2943,6 +2946,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         radius_y: f64,
         style: &PathStyle,
     ) -> Result<()> {
+        let (radius_x, radius_y) = self
+            .gantt_radius_attributes(path_id, bounds, radius_x, radius_y, style)
+            .map_or((radius_x, radius_y), |radius| (radius.x, radius.y));
         self.output.push_str("<rect x=\"")?;
         write!(
             self.output,
@@ -4678,6 +4684,12 @@ fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {
     ((rx - ry).abs() <= 1e-9).then_some((bounds, rx))
 }
 
+// Shared by path recognition and equivalent SVG radius attributes. Subtracting absolute
+// coordinates may round a saturated diameter by a few ulps.
+fn same_rectangle_coordinate(left: f64, right: f64) -> bool {
+    (left - right).abs() <= 1e-9
+}
+
 fn elliptical_rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64, f64)> {
     let [
         PathSegment::MoveTo { to: p0 },
@@ -4723,7 +4735,7 @@ fn elliptical_rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, 
         return None;
     };
     let epsilon = 1e-9;
-    let same = |left: f64, right: f64| (left - right).abs() <= epsilon;
+    let same = same_rectangle_coordinate;
     let rx = *r1x;
     let ry = *r1y;
     if !rx.is_finite()

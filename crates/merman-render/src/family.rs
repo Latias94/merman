@@ -2377,6 +2377,8 @@ mod tests {
         for bar in svg_bars {
             assert!(bar.has_tag_name("rect"));
             assert_eq!(bar.attribute("width"), Some("0"));
+            assert_eq!(bar.attribute("rx"), Some("3"));
+            assert_eq!(bar.attribute("ry"), Some("3"));
             let style = bar.attribute("style").unwrap();
             assert!(style.contains("fill:none;"));
             assert!(style.contains("stroke:none;"));
@@ -2500,9 +2502,91 @@ mod tests {
                     task.id,
                     path.segments
                 );
-                assert!((rect.attribute("rx").unwrap().parse::<f64>().unwrap() - rx).abs() < 0.001);
-                assert!((rect.attribute("ry").unwrap().parse::<f64>().unwrap() - ry).abs() < 0.001);
+                assert_eq!(
+                    rect.attribute("rx").unwrap().parse::<f64>().unwrap(),
+                    task.bar.rx
+                );
+                assert_eq!(
+                    rect.attribute("ry").unwrap().parse::<f64>().unwrap(),
+                    task.bar.ry
+                );
+                // SVG clamps the representation independently on each axis, just like the path.
+                assert_eq!(task.bar.rx.min(task.bar.width / 2.0), rx);
+                assert_eq!(task.bar.ry.min(task.bar.height / 2.0), ry);
             }
+            let task = &pair.layout().tasks[0];
+            let id = "gantt.task.0.bar";
+            for hint in [
+                merman_display_list::Point::new(7.0, task.bar.ry),
+                merman_display_list::Point::new(0.1, 0.1),
+            ] {
+                let crate::drawing_list::SvgStructureBody::Gantt(body) = &mut document.svg.body
+                else {
+                    unreachable!()
+                };
+                body.task_radius_attributes.insert(id.into(), hint);
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let rect = xml
+                    .descendants()
+                    .find(|node| node.attribute("data-merman-resource") == Some(id))
+                    .unwrap();
+                let rx: f64 = rect.attribute("rx").unwrap().parse().unwrap();
+                let ry: f64 = rect.attribute("ry").unwrap().parse().unwrap();
+                assert!(
+                    (rx.min(task.bar.width / 2.0) - task.bar.rx.min(task.bar.width / 2.0)).abs()
+                        < 1e-9
+                );
+                assert!(
+                    (ry.min(task.bar.height / 2.0) - task.bar.ry.min(task.bar.height / 2.0)).abs()
+                        < 1e-9
+                );
+            }
+            let crate::drawing_list::SvgStructureBody::Gantt(body) = &mut document.svg.body else {
+                unreachable!()
+            };
+            body.task_radius_attributes
+                .insert(id.into(), merman_display_list::Point::new(3.0, 3.0));
+            // A public straight-corner rectangle must not inherit the old source rounding.
+            let mut straight = document.clone();
+            let crate::drawing_list::SvgStructureBody::Gantt(body) = &mut straight.svg.body else {
+                unreachable!()
+            };
+            body.task_radius_attributes
+                .insert(id.into(), merman_display_list::Point::new(1e-12, 1e-12));
+            let resource = straight
+                .public
+                .resources
+                .iter_mut()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path) if path.id.as_str() == id => Some(path),
+                    _ => None,
+                })
+                .unwrap();
+            let point = merman_display_list::Point::new;
+            resource.segments = vec![
+                PathSegment::MoveTo {
+                    to: point(task.bar.x, task.bar.y),
+                },
+                PathSegment::LineTo {
+                    to: point(task.bar.x + task.bar.width, task.bar.y),
+                },
+                PathSegment::LineTo {
+                    to: point(task.bar.x + task.bar.width, task.bar.y + task.bar.height),
+                },
+                PathSegment::LineTo {
+                    to: point(task.bar.x, task.bar.y + task.bar.height),
+                },
+                PathSegment::Close,
+            ];
+            let svg = render(&straight);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(id))
+                .unwrap();
+            assert_eq!(rect.attribute("rx"), None);
+            assert_eq!(rect.attribute("ry"), None);
             let path = document
                 .public
                 .resources

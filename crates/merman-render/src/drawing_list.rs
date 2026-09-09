@@ -565,6 +565,8 @@ pub(crate) struct GanttSvgBody {
     pub(crate) path_classes: BTreeMap<String, String>,
     /// SVG matrix representation bases only; the public command transform owns all geometry.
     pub(crate) path_transform_bases: BTreeMap<String, Point>,
+    /// Source radius attributes, usable only when their clamped shape matches the public path.
+    pub(crate) task_radius_attributes: BTreeMap<String, Point>,
     pub(crate) text_classes: BTreeMap<String, String>,
     pub(crate) dom_ids: BTreeMap<String, String>,
 }

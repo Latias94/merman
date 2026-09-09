@@ -83,6 +83,7 @@ struct GanttBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     path_transform_bases: BTreeMap<String, Point>,
+    task_radius_attributes: BTreeMap<String, Point>,
     transform_origins: GanttSvgTransformOrigins<'a>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
@@ -167,6 +168,7 @@ impl<'a> GanttBuilder<'a> {
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
             path_transform_bases: BTreeMap::new(),
+            task_radius_attributes: BTreeMap::new(),
             transform_origins: GanttSvgTransformOrigins::new(layout, session.local_time_zone()),
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
@@ -282,6 +284,7 @@ impl<'a> GanttBuilder<'a> {
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     path_transform_bases: self.path_transform_bases,
+                    task_radius_attributes: self.task_radius_attributes,
                     text_classes: self.text_classes,
                     dom_ids: self.dom_ids,
                 }),
@@ -545,6 +548,8 @@ impl<'a> GanttBuilder<'a> {
                 self.task_style(&task.bar.class)
             };
             let bar_id = format!("{semantic_id}.bar");
+            self.task_radius_attributes
+                .insert(bar_id.clone(), Point::new(task.bar.rx, task.bar.ry));
             let (x, y) = self.transform_origins.task(task);
             self.path_transform_bases
                 .insert(bar_id.clone(), Point::new(x, y));

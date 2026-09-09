@@ -40,6 +40,39 @@ impl<'a> TextProjection<'a> {
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn gantt_radius_attributes(
+        &self,
+        path_id: &ResourceId,
+        bounds: Rect,
+        radius_x: f64,
+        radius_y: f64,
+        style: &PathStyle,
+    ) -> Option<Point> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return None;
+        };
+        let hint = *body.task_radius_attributes.get(path_id.as_str())?;
+        if !hint.x.is_finite() || !hint.y.is_finite() || hint.x < 0.0 || hint.y < 0.0 {
+            return None;
+        }
+        let unpainted_degenerate = (bounds.width == 0.0 || bounds.height == 0.0)
+            && style.fill.is_none()
+            && style.stroke.is_none();
+        // Source attributes are only an equivalent spelling. A public path edit must never
+        // acquire a different curve just because a captured source radius is still present.
+        let same_radius = |effective: f64, public: f64| {
+            if public == 0.0 {
+                effective == 0.0
+            } else {
+                same_rectangle_coordinate(effective, public)
+            }
+        };
+        (unpainted_degenerate
+            || same_radius(hint.x.min(bounds.width / 2.0), radius_x)
+                && same_radius(hint.y.min(bounds.height / 2.0), radius_y))
+        .then_some(hint)
+    }
+
     fn gantt_task_text(&self, semantic_id: &str) -> Option<&TextRun> {
         let SvgStructureBody::Gantt(body) = self.svg_body else {
             return None;
