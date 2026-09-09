@@ -225,7 +225,6 @@ impl<'a> JourneyBuilder<'a> {
             link: None,
         })?;
         self.emit_actor_legend()?;
-        self.emit_sections()?;
         self.emit_tasks()?;
         let default_name = if let Some(title) = title {
             self.emit_title(title, acc_title.is_none())?
@@ -326,6 +325,7 @@ impl<'a> JourneyBuilder<'a> {
                     stroke: Some(stroke(BLACK, 1.0)),
                 },
             )?;
+            let text_start = self.document.command_count();
             for (line_index, line) in item.label_lines.iter().enumerate() {
                 self.session.checkpoint(OperationPhase::Emit)?;
                 if [line.x, line.y, line.tspan_x, line.text_margin]
@@ -348,87 +348,86 @@ impl<'a> JourneyBuilder<'a> {
                     },
                 )?;
             }
+            let title = self.document.resolved_text_name_since(text_start)?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
-                title: Some(item.actor.clone()),
-                description: Some("Journey actor".to_string()),
+                title: Some(title),
+                description: None,
                 link: None,
             })?;
         }
         Ok(())
     }
 
-    fn emit_sections(&mut self) -> Result<()> {
-        for (index, section) in self.layout.sections.iter().enumerate() {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            validate_section(section)?;
-            let semantic_id = format!("journey.section.{index}");
-            let section_class = format!("journey-section section-type-{}", section.num);
-            self.semantic_classes
-                .insert(semantic_id.clone(), section_class.clone());
-            self.text_classes
-                .insert(semantic_id.clone(), section_class.clone());
-            self.document
-                .push_control(DrawingCommand::BeginSemanticGroup {
-                    semantic_id: semantic_id.clone(),
-                })?;
-            let fill = self.background_color(section.num, &section.fill)?;
-            self.path_classes
-                .insert(format!("{semantic_id}.background"), section_class);
-            self.add_path(
-                format!("{semantic_id}.background"),
-                rounded_rect_path(
-                    section.x + section.width / 2.0,
-                    section.y + section.height / 2.0,
-                    section.width,
-                    section.height,
-                    3.0,
-                ),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(fill)),
-                    stroke: Some(stroke(BORDER_COLOR, 1.0)),
-                },
-            )?;
-            let text_color = if self.text_placement == JourneyTextPlacement::HtmlTable {
-                self.text_color
-            } else {
-                // The section-type class overrides SVG text fill, but not HTML color.
-                self.fill_types
-                    .get(section.num as usize)
-                    .filter(|value| section.num < 8 && !value.is_empty())
-                    .filter(|_| {
-                        self.fill_types
-                            .first()
-                            .is_some_and(|value| !value.is_empty())
-                    })
-                    .map(|value| PortableStyleResolver::new("journey").color("section text", value))
-                    .transpose()?
-                    .unwrap_or(if self.text_placement == JourneyTextPlacement::LegacyText {
-                        self.text_color
-                    } else {
-                        self.section_text_color(index)?
-                    })
-            };
-            let title = self.emit_box_text(
-                &format!("{semantic_id}.label"),
-                &section.section,
-                Rect::new(section.x, section.y, section.width, section.height),
-                text_color,
-            )?;
-            self.document
-                .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_semantic(SemanticAnnotation {
-                id: semantic_id,
-                role: SemanticRole::Group,
-                title: Some(title),
-                description: Some("Journey section".to_string()),
-                link: None,
+    fn emit_section(&mut self, index: usize, section: &JourneySectionLayout) -> Result<()> {
+        self.session.checkpoint(OperationPhase::Emit)?;
+        validate_section(section)?;
+        let semantic_id = format!("journey.section.{index}");
+        let section_class = format!("journey-section section-type-{}", section.num);
+        self.semantic_classes
+            .insert(semantic_id.clone(), section_class.clone());
+        self.text_classes
+            .insert(semantic_id.clone(), section_class.clone());
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
             })?;
-        }
+        let fill = self.background_color(section.num, &section.fill)?;
+        self.path_classes
+            .insert(format!("{semantic_id}.background"), section_class);
+        self.add_path(
+            format!("{semantic_id}.background"),
+            rounded_rect_path(
+                section.x + section.width / 2.0,
+                section.y + section.height / 2.0,
+                section.width,
+                section.height,
+                3.0,
+            ),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(fill)),
+                stroke: Some(stroke(BORDER_COLOR, 1.0)),
+            },
+        )?;
+        let text_color = if self.text_placement == JourneyTextPlacement::HtmlTable {
+            self.text_color
+        } else {
+            // The section-type class overrides SVG text fill, but not HTML color.
+            self.fill_types
+                .get(section.num as usize)
+                .filter(|value| section.num < 8 && !value.is_empty())
+                .filter(|_| {
+                    self.fill_types
+                        .first()
+                        .is_some_and(|value| !value.is_empty())
+                })
+                .map(|value| PortableStyleResolver::new("journey").color("section text", value))
+                .transpose()?
+                .unwrap_or(if self.text_placement == JourneyTextPlacement::LegacyText {
+                    self.text_color
+                } else {
+                    self.section_text_color(index)?
+                })
+        };
+        let title = self.emit_box_text(
+            &format!("{semantic_id}.label"),
+            &section.section,
+            Rect::new(section.x, section.y, section.width, section.height),
+            text_color,
+        )?;
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_semantic(SemanticAnnotation {
+            id: semantic_id,
+            role: SemanticRole::Group,
+            title: Some(title),
+            description: None,
+            link: None,
+        })?;
         Ok(())
     }
 
@@ -439,8 +438,16 @@ impl<'a> JourneyBuilder<'a> {
             self.session.checkpoint(OperationPhase::Emit)?;
             validate_task(task)?;
             if task.section != previous_section {
-                section_index = Some(section_index.map_or(0, |index| index + 1));
+                let next_section = section_index.map_or(0, |index| index + 1);
+                section_index = Some(next_section);
                 previous_section = &task.section;
+                let section = self
+                    .layout
+                    .sections
+                    .get(next_section)
+                    .filter(|section| section.section == task.section)
+                    .ok_or_else(|| invalid("Journey task section does not match section layout"))?;
+                self.emit_section(next_section, section)?;
             }
             let semantic_id = format!("journey.task.{index}");
             self.semantic_classes
@@ -487,7 +494,7 @@ impl<'a> JourneyBuilder<'a> {
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(self.face_color)),
-                    stroke: Some(stroke(FACE_STROKE_COLOR, 1.0)),
+                    stroke: Some(stroke(FACE_STROKE_COLOR, 2.0)),
                 },
             )?;
             self.add_path(
@@ -570,12 +577,14 @@ impl<'a> JourneyBuilder<'a> {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(title),
-                description: Some(format!(
-                    "Journey task in {} with score {}",
-                    task.section, task.score
-                )),
+                description: None,
                 link: None,
             })?;
+        }
+        if section_index.map_or(0, |index| index + 1) != self.layout.sections.len() {
+            return Err(invalid(
+                "Journey section layout has no matching task segment",
+            ));
         }
         Ok(())
     }
@@ -621,7 +630,7 @@ impl<'a> JourneyBuilder<'a> {
                 smile_path(cx, cy + 2.0),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(BLACK)),
+                    fill: Some(Paint::solid(self.text_color)),
                     stroke: Some(stroke(BORDER_COLOR, 1.0)),
                 },
             ),
@@ -630,7 +639,7 @@ impl<'a> JourneyBuilder<'a> {
                 sad_path(cx, cy + 7.0),
                 PathStyle {
                     fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(BLACK)),
+                    fill: Some(Paint::solid(self.text_color)),
                     stroke: Some(stroke(BORDER_COLOR, 1.0)),
                 },
             ),
@@ -805,7 +814,7 @@ impl<'a> JourneyBuilder<'a> {
             arrowhead_path(line.x1, line.y1, line.x2, line.y2, 4.0)?,
             PathStyle {
                 fill_rule: FillRule::NonZero,
-                fill: Some(Paint::solid(BLACK)),
+                fill: Some(Paint::solid(self.text_color)),
                 stroke: None,
             },
         )?;
@@ -815,7 +824,7 @@ impl<'a> JourneyBuilder<'a> {
             id: "journey.activity".to_string(),
             role: SemanticRole::Edge,
             title: None,
-            description: Some("Journey activity axis".to_string()),
+            description: None,
             link: None,
         })?;
         Ok(())
@@ -1057,12 +1066,12 @@ fn arrowhead_path(
     let uy = dy / length;
     let nx = -uy;
     let ny = ux;
-    let scale = stroke_width.max(0.1);
-    let base_x = x2 - ux * 6.0 * scale;
-    let base_y = y2 - uy * 6.0 * scale;
-    let half_width = 2.0 * scale;
+    // The source marker uses strokeWidth units, ref=(5,2), and M0,0 V4 L6,2 Z.
+    let base_x = x2 - ux * 5.0 * stroke_width;
+    let base_y = y2 - uy * 5.0 * stroke_width;
+    let half_width = 2.0 * stroke_width;
     Ok(polygon_path(&[
-        Point::new(x2, y2),
+        Point::new(x2 + ux * stroke_width, y2 + uy * stroke_width),
         Point::new(base_x + nx * half_width, base_y + ny * half_width),
         Point::new(base_x - nx * half_width, base_y - ny * half_width),
     ]))
@@ -1208,6 +1217,33 @@ fn unavailable(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn activity_arrow_expands_source_marker_reference_in_stroke_width_units() {
+        for (start, end, expected) in [
+            (
+                Point::new(0.0, 10.0),
+                Point::new(100.0, 10.0),
+                [
+                    Point::new(104.0, 10.0),
+                    Point::new(80.0, 18.0),
+                    Point::new(80.0, 2.0),
+                ],
+            ),
+            (
+                Point::new(10.0, 0.0),
+                Point::new(10.0, 100.0),
+                [
+                    Point::new(10.0, 104.0),
+                    Point::new(2.0, 80.0),
+                    Point::new(18.0, 80.0),
+                ],
+            ),
+        ] {
+            let arrow = arrowhead_path(start.x, start.y, end.x, end.y, 4.0).unwrap();
+            assert_eq!(arrow, polygon_path(&expected));
+        }
+    }
 
     #[test]
     fn borrowed_lines_and_parts_preserve_journey_text_rules() {

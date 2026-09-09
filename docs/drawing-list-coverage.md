@@ -1023,3 +1023,25 @@ the image. Ordinary headings no longer create redundant root ARIA; explicit acce
 metadata and independently edited public document names remain visible. Names are derived from
 final text, with placeholder decoding accounted through the existing bounded source resolver.
 These focused corrections do not constitute full-family admission.
+
+## Journey source groups and marker follow-up
+
+The public command order now interleaves each section with its tasks, as in the pinned renderer.
+Ordinary root/legend/activity semantic scopes no longer introduce SVG wrappers, while section/task
+scopes retain the source groups. Names come from resolved public text; generated English scope
+prose is removed. Independently edited names, descriptions, links, roles, and diagnostic visibility
+still use the full semantic projection.
+
+The activity triangle now respects the source marker reference `(5,2)` in stroke-width units:
+its tip extends one stroke width beyond the endpoint. Its paint and the filled mouth inherit the
+resolved text color, and the face stroke retains the source width of 2. SVG may fold an equivalent
+public line/triangle pair into a root marker; changed geometry or element opacity retains the
+separate commands. Neither raw labels nor private geometry are used to regenerate these shapes.
+
+The candidate reports `journey_df95382ef_groups_markers_structure.md` and
+`journey_df95382ef_groups_markers_parity_root.md` under `target/compare/` include this working-tree
+follow-up. Both select 26 fixtures, render 25, and pass **0/25**, with the same explicit non-finite
+face bridge and no skips. Extra root `aria-labelledby` differences are gone; text wrappers,
+face subgroups, actor-circle titles, and source CSS/attribute representations still block admission.
+Temporary admission was removed after both processes exited. No comparison normalization or
+public canonical cohort changed.

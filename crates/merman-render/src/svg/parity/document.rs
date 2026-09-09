@@ -31,6 +31,8 @@ use std::fmt::Write as _;
 mod cynefin;
 mod gantt;
 mod info;
+mod journey;
+mod journey_marker;
 mod pie;
 mod sankey;
 mod venn;
@@ -94,6 +96,7 @@ struct DocumentSvgEncoder<'a> {
     venn_text_styles: Option<venn::TextStyles<'a>>,
     sankey_links: Option<sankey::LinkProjection>,
     gantt_text: Option<gantt::TextProjection<'a>>,
+    journey_marker: Option<journey_marker::MarkerProjection<'a>>,
     command_index: usize,
     state: GraphicsState,
     saves: Vec<SavePoint>,
@@ -278,6 +281,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             gantt_text: if matches!(document.svg.body, SvgStructureBody::Gantt(_)) {
                 Some(gantt::TextProjection::new(&document.public, session)?)
+            } else {
+                None
+            },
+            journey_marker: if matches!(document.svg.body, SvgStructureBody::Journey(_)) {
+                journey_marker::MarkerProjection::new(&document.public, session)?
             } else {
                 None
             },
@@ -520,6 +528,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::Venn(_)
+                | SvgStructureBody::Journey(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -531,20 +540,22 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_family_style()?;
         if matches!(
             self.svg_body,
-            SvgStructureBody::Error(_) | SvgStructureBody::Info(_)
+            SvgStructureBody::Error(_) | SvgStructureBody::Info(_) | SvgStructureBody::Journey(_)
         ) {
             // Preserve the empty structural group emitted before the family body by Mermaid's
-            // Error and Info renderers. It is part of their established DOM shape and carries no
+            // renderers. It is part of their established DOM shape and carries no
             // visual content.
             self.output.push_str("<g/>")?;
         }
         self.write_defs()?;
+        self.write_journey_marker_defs()?;
         if !matches!(
             self.svg_body,
             SvgStructureBody::Packet(_)
                 | SvgStructureBody::Pie(_)
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::Venn(_)
+                | SvgStructureBody::Journey(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -565,6 +576,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 continue;
             }
             if root_background && index == 2 {
+                continue;
+            }
+            if self.emit_journey_marked_activity(index)? {
+                consumed_until = index + 2;
                 continue;
             }
             if let Some(count) = self.emit_gantt_section_text(index)? {
@@ -1618,6 +1633,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             return self.begin_sankey_semantic_group(semantic_id);
+        }
+        if self.begin_journey_semantic_group(semantic_id, semantic)? {
+            return Ok(());
         }
         if self.begin_venn_semantic_group(semantic_id, semantic)? {
             return Ok(());

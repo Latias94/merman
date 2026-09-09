@@ -5812,6 +5812,149 @@ gantt
     }
 
     #[test]
+    fn journey_source_groups_preserve_order_and_independent_public_metadata() {
+        use merman_display_list::{DrawingCommand, SemanticRole};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "journey\nsection First\nOne: 5: Alice\nsection Second\nTwo: 3: Bob\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let original = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let order = original
+            .public
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                DrawingCommand::BeginSemanticGroup { semantic_id }
+                    if semantic_id.starts_with("journey.section.")
+                        || semantic_id.starts_with("journey.task.") =>
+                {
+                    Some(semantic_id.as_str())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            order,
+            [
+                "journey.section.0",
+                "journey.task.0",
+                "journey.section.1",
+                "journey.task.1"
+            ]
+        );
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&original);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let root = xml.root_element();
+        let groups = root
+            .children()
+            .filter(|node| node.has_tag_name("g"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            groups.len(),
+            5,
+            "the source has an empty root group and section/task groups"
+        );
+        assert!(groups.iter().all(|group| group.attribute("id").is_none()));
+        assert_eq!(
+            root.children()
+                .filter(|node| node.has_tag_name("circle"))
+                .count(),
+            2
+        );
+        assert!(groups[0].children().next().is_none());
+        for (group, expected) in groups.iter().skip(1).zip([
+            "journey-section section-type-0",
+            "task task-type-0",
+            "journey-section section-type-1",
+            "task task-type-1",
+        ]) {
+            assert!(
+                group
+                    .children()
+                    .any(|node| node.has_tag_name("rect")
+                        && node.attribute("class") == Some(expected))
+            );
+        }
+        for id in [
+            "journey.document",
+            "journey.actor.0",
+            "journey.section.0",
+            "journey.task.0",
+            "journey.activity",
+        ] {
+            for field in ["title", "description", "link", "role"] {
+                let mut document = original.clone();
+                let semantic = document
+                    .public
+                    .semantics
+                    .iter_mut()
+                    .find(|item| item.id == id)
+                    .unwrap();
+                match field {
+                    "title" => semantic.title = Some("Independent &amp; name".into()),
+                    "description" => semantic.description = Some("Independent description".into()),
+                    "link" => semantic.link = Some("https://example.com/a?x=1&y=2".into()),
+                    "role" => {
+                        semantic.role = if semantic.role == SemanticRole::Label {
+                            SemanticRole::Node
+                        } else {
+                            SemanticRole::Label
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                match field {
+                    "title" => assert!(
+                        xml.descendants().any(|node| node.has_tag_name("title")
+                            && node.text() == Some("Independent &amp; name")),
+                        "{id}"
+                    ),
+                    "description" => assert!(
+                        xml.descendants().any(|node| node.has_tag_name("desc")
+                            && node.text() == Some("Independent description")),
+                        "{id}"
+                    ),
+                    "link" => assert!(
+                        xml.descendants()
+                            .any(|node| node.attribute("href")
+                                == Some("https://example.com/a?x=1&y=2")),
+                        "{id}"
+                    ),
+                    "role" => assert!(
+                        xml.descendants()
+                            .any(|node| node.has_tag_name("g") && node.attribute("id").is_some()),
+                        "{id}"
+                    ),
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    #[test]
     fn journey_root_accessibility_preserves_explicit_and_independently_edited_names() {
         for title in ["", "title Alpha     #quot;Beta#quot;\n"] {
             for accessibility in [
@@ -5964,6 +6107,16 @@ gantt
                     Paint::solid(Color::rgba(18, 52, 86, 255)),
                     "the visible HTML label uses textColor, not the section's fill"
                 );
+            }
+            for command in &document.public.commands {
+                if let DrawingCommand::DrawPath { path, style } = command {
+                    if path.as_str() == "journey.task.0.face" {
+                        assert_eq!(style.stroke.as_ref().unwrap().width, 2.0);
+                    }
+                    if path.as_str() == "journey.task.0.face.mouth" {
+                        assert_eq!(style.fill, Some(Paint::solid(Color::rgba(18, 52, 86, 255))));
+                    }
+                }
             }
             let render = |config: &serde_json::Value| {
                 crate::svg::render_document_svg(
@@ -10386,5 +10539,125 @@ Second: second,after first,2ms
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
         assert!(rendered.svg().contains("Syntax error in text"));
+    }
+
+    #[test]
+    fn journey_marker_projection_preserves_public_geometry_and_theme_paint() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
+
+        for (theme_variables, expected_fill, expected_color) in [
+            (json!({}), "#333333", Color::rgba(51, 51, 51, 255)),
+            (
+                json!({"textColor": "#123456"}),
+                "#123456",
+                Color::rgba(18, 52, 86, 255),
+            ),
+        ] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "themeVariables": theme_variables
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "journey\nsection Work\nRead: 5: Alice\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let arrow_style = document
+                .public
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str() == "journey.activity.arrowhead" =>
+                    {
+                        Some(style)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(arrow_style.fill, Some(Paint::solid(expected_color)));
+            let encode = |document: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions {
+                        include_drawing_list_metadata: true,
+                        ..Default::default()
+                    },
+                    &json!({"themeVariables": {"textColor": "red"}}),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let svg = encode(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let marker = xml
+                .descendants()
+                .find(|node| node.has_tag_name("marker"))
+                .unwrap();
+            let arrow = marker
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            assert_eq!(arrow.attribute("d"), Some("M 0,0 V 4 L6,2 Z"));
+            assert_eq!(arrow.attribute("fill"), Some(expected_fill));
+            assert!(xml.descendants().any(|node| node.has_tag_name("line")
+                && node.attribute("marker-end").is_some()));
+
+            let mut translucent = document.clone();
+            let activity = translucent.public.commands.iter().position(|command| matches!(
+                command, DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "journey.activity"
+            )).unwrap();
+            translucent
+                .public
+                .commands
+                .insert(activity, DrawingCommand::SetOpacity { opacity: 0.5 });
+            let translucent_svg = encode(&translucent);
+            let translucent_xml = roxmltree::Document::parse(&translucent_svg).unwrap();
+            assert!(!translucent_xml.descendants().any(|node| node.has_tag_name("line") && node.attribute("marker-end").is_some()));
+            assert!(
+                translucent_xml
+                    .descendants()
+                    .any(|node| node.has_tag_name("path")
+                        && node.attribute("data-merman-resource")
+                            == Some("journey.activity.arrowhead")
+                        && !node.ancestors().any(|parent| parent.has_tag_name("marker"))
+                        && node.attribute("opacity") == Some("0.5"))
+            );
+
+            // An independently edited public arrow is no longer equivalent to the source marker.
+            let arrow = document
+                .public
+                .resources
+                .iter_mut()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path)
+                        if path.id.as_str() == "journey.activity.arrowhead" =>
+                    {
+                        Some(path)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let PathSegment::MoveTo { to } = &mut arrow.segments[0] else {
+                panic!("triangle tip")
+            };
+            to.x += 7.0;
+            let svg = encode(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert!(!xml.descendants().any(|node| node.has_tag_name("marker")));
+            assert!(xml.descendants().any(|node| node.has_tag_name("path")
+                && node.attribute("data-merman-resource") == Some("journey.activity.arrowhead")));
+        }
     }
 }
