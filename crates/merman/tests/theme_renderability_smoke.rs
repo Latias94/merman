@@ -43,11 +43,63 @@ fn render_svg_with_site_config(name: &str, source: &str, site_config: MermaidCon
 }
 
 #[cfg(feature = "layout-cytoscape")]
-fn assert_renderable_theme_signals(
+fn normalize_label(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(feature = "layout-cytoscape")]
+const SVG_NS: &str = "http://www.w3.org/2000/svg";
+#[cfg(feature = "layout-cytoscape")]
+const XHTML_NS: &str = "http://www.w3.org/1999/xhtml";
+
+#[cfg(feature = "layout-cytoscape")]
+fn excluded_label_content(node: roxmltree::Node<'_, '_>) -> bool {
+    node.ancestors().any(|ancestor| {
+        matches!(
+            ancestor.tag_name().name(),
+            "defs" | "symbol" | "metadata" | "style" | "script"
+        )
+    })
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn label_text(document: &roxmltree::Document<'_>) -> Vec<String> {
+    document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && !excluded_label_content(*node)
+                && (node.has_tag_name((SVG_NS, "text"))
+                    || node.has_tag_name((SVG_NS, "tspan"))
+                    || (node.tag_name().namespace() == Some(XHTML_NS)
+                        && matches!(node.tag_name().name(), "div" | "p" | "span")
+                        && node
+                            .ancestors()
+                            .any(|ancestor| ancestor.has_tag_name((SVG_NS, "foreignObject")))))
+        })
+        .map(|node| {
+            let mut text = String::new();
+            for descendant in node
+                .descendants()
+                .filter(|node| !excluded_label_content(*node))
+            {
+                if descendant.is_text() {
+                    text.push_str(descendant.text().expect("text node"));
+                } else if descendant.has_tag_name((XHTML_NS, "br")) {
+                    text.push(' ');
+                }
+            }
+            normalize_label(&text)
+        })
+        .collect()
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn assert_theme_markup_and_labels(
     name: &str,
     svg: &str,
     expected_labels: &[&str],
-    expected_colors: &[&str],
+    expected_markup: &[&str],
 ) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
     assert!(!svg.contains("NaN"), "{name}: SVG leaked NaN geometry");
@@ -62,45 +114,84 @@ fn assert_renderable_theme_signals(
         "{name}: SVG leaked undefined tokens"
     );
 
-    let rendered_text = roxmltree::Document::parse(svg)
-        .ok()
-        .map(|document| {
-            document
-                .descendants()
-                .filter(|node| node.has_tag_name("text"))
-                .map(|text| {
-                    text.descendants()
-                        .filter_map(|node| node.text().filter(|_| node.is_text()))
-                        .collect::<String>()
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let document = roxmltree::Document::parse(svg)
+        .unwrap_or_else(|error| panic!("{name}: invalid SVG XML: {error}"));
+    assert!(document.root_element().has_tag_name((SVG_NS, "svg")));
+    let rendered_text = label_text(&document);
 
     for label in expected_labels {
+        let expected = normalize_label(label);
         assert!(
-            svg.contains(label)
-                || rendered_text
-                    .iter()
-                    .any(|text| text == &label.split_whitespace().collect::<Vec<_>>().join(" ")),
-            "{name}: expected rendered label {label:?}; parsed text nodes: {rendered_text:?}"
+            rendered_text.iter().any(|text| text == &expected),
+            "{name}: expected label {label:?} in SVG text or XHTML; parsed labels: {rendered_text:?}"
         );
     }
 
-    for color in expected_colors {
+    // These are emission smoke checks, not computed-paint or terminal ownership evidence.
+    // Family-specific tests and acceptance receipts qualify the actual paint consumers.
+    for markup in expected_markup {
         assert!(
-            svg.contains(color),
-            "{name}: expected visible theme color {color:?}"
+            svg.contains(markup),
+            "{name}: expected emitted theme markup {markup:?}"
         );
     }
 }
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn representative_dark_theme_diagrams_keep_visible_theme_signals() {
+fn theme_smoke_reads_label_nodes_instead_of_raw_svg_substrings() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+      <metadata>Metadata label</metadata>
+      <defs><text>Definition label</text><symbol><text>Symbol label</text></symbol></defs>
+      <style>.unused { content: "Stylesheet label"; }</style>
+      <!-- Comment label -->
+      <g data-label="Attribute label"/>
+      <text xmlns="urn:other">Wrong namespace label</text>
+      <foreignObject><div>Wrong HTML namespace label</div></foreignObject>
+      <foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><script>Nested script label</script><style>Nested style label</style></div></foreignObject>
+      <text>Inline<tspan>fragment</tspan></text>
+      <text><tspan>SVG </tspan><tspan>label &amp; value</tspan><tspan></tspan></text>
+      <foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><span>HTML</span><br/><span>label &amp; value</span></div></foreignObject>
+    </svg>"#;
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let labels = label_text(&document);
+    assert!(labels.iter().any(|label| label == "SVG label & value"));
+    assert!(labels.iter().any(|label| label == "Inlinefragment"));
+    assert!(labels.iter().any(|label| label == "HTML label & value"));
+    for absent in [
+        "Metadata label",
+        "Definition label",
+        "Symbol label",
+        "Stylesheet label",
+        "Comment label",
+        "Attribute label",
+        "Wrong namespace label",
+        "Wrong HTML namespace label",
+        "Nested script label",
+        "Nested style label",
+    ] {
+        assert!(
+            !labels.iter().any(|label| label.contains(absent)),
+            "{absent}"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
+#[should_panic(expected = "invalid SVG XML")]
+fn theme_smoke_rejects_malformed_svg_even_when_expected_strings_exist() {
+    assert_theme_markup_and_labels(
+        "malformed",
+        r##"<svg><text fill="#123456">Expected label</svg>"##,
+        &["Expected label"],
+        &["#123456"],
+    );
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
+fn representative_dark_theme_diagrams_emit_theme_markup_and_label_nodes() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "theme-flowchart",
@@ -142,7 +233,7 @@ classDiagram
   }
   note for Animal "Dark note"
 "##,
-            &["Animal", "Dog", "bark()", "Dark note"],
+            &["Animal", "Dog", "+bark()", "Dark note"],
             &[
                 "#f8fafc", "#111827", "#38bdf8", "#f59e0b", "#1f2937", "#f97316", "#fde68a",
             ],
@@ -323,7 +414,7 @@ sankey
 Source,Target,10
 Target,Done,2
 "##,
-            &["Source", "Target", "Done", "$10 units"],
+            &["Source $10 units", "Target $10 units", "Done $2 units"],
             &["#f8fafc", "#111827", "#22c55e", "#38bdf8"],
         ),
         (
@@ -361,11 +452,11 @@ requirementDiagram
 "##,
             &[
                 "req1",
-                "Dark requirement",
+                "Text: Dark requirement",
                 "Risk: High",
                 "Verification: Analysis",
                 "sys",
-                "satisfies",
+                "<<satisfies>>",
             ],
             &["#22c55e", "#0f172a", "#f97316", "stroke-width:3"],
         ),
@@ -437,7 +528,7 @@ xychart
             "theme-venn",
             r##"%%{init: {"themeVariables": {"vennTitleTextColor": "#fde68a", "vennSetTextColor": "#f8fafc", "venn1": "#22c55e", "venn2": "#38bdf8"}}}%%
 venn-beta
-  title "Theme Venn"
+  title Theme Venn
   set A["Core"]:10
   set B["Editor"]:8
   union A,B["Shared"]:3
@@ -498,8 +589,8 @@ data ItemAddedData {
                 "Stream: Cart",
                 "Stream: Checkout",
                 "Cart",
-                "AddItem",
-                "ItemAdded",
+                r#"AddItem sku: "SKU-1""#,
+                r#"ItemAdded sku: "SKU-1" quantity: 1"#,
                 "CheckedOut",
             ],
             &[
@@ -509,9 +600,9 @@ data ItemAddedData {
         ),
     ];
 
-    for (name, source, expected_labels, expected_colors) in cases {
+    for (name, source, expected_labels, expected_markup) in cases {
         let svg = render_svg(name, source);
-        assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
+        assert_theme_markup_and_labels(name, &svg, expected_labels, expected_markup);
     }
 }
 
