@@ -35,6 +35,7 @@ mod journey;
 mod journey_marker;
 mod pie;
 mod sankey;
+mod tree_view;
 mod venn;
 
 /// Serializes one validated canonical document to SVG.
@@ -530,6 +531,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Journey(_)
+                | SvgStructureBody::TreeView(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -556,6 +558,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 | SvgStructureBody::Cynefin(_)
                 | SvgStructureBody::Venn(_)
                 | SvgStructureBody::Journey(_)
+                | SvgStructureBody::TreeView(_)
         ) {
             self.write_accessibility_metadata(
                 title.as_deref(),
@@ -1498,6 +1501,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn write_path_metadata(&mut self, path_id: &str) -> Result<()> {
+        write_resource_metadata(&mut self.output, self.debug, path_id)?;
+        self.write_tree_view_leaf_metadata()
+    }
+
     fn emit_command(&mut self, command: &DrawingCommand) -> Result<()> {
         match command {
             DrawingCommand::Save => {
@@ -1643,6 +1651,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         if matches!(self.svg_body, SvgStructureBody::Sankey(_)) {
             return self.begin_sankey_semantic_group(semantic_id);
+        }
+        if self.begin_tree_view_semantic_group(semantic_id, semantic)? {
+            return Ok(());
         }
         if self.begin_journey_semantic_group(semantic_id, semantic)? {
             return Ok(());
@@ -2675,7 +2686,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_path_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -2751,7 +2762,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 if visible { "" } else { " display=\"none\"" },
             )?;
             write_semantic_metadata(&mut self.output, self.debug, semantic_id.as_str())?;
-            write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+            self.write_path_metadata(path_id.as_str())?;
             self.output.push_str("/>")?;
             return Ok(());
         }
@@ -2778,7 +2789,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 fmt(end.x),
                 fmt(end.y),
             )?;
-            write_resource_metadata(&mut self.output, self.debug, raw_id)?;
+            self.write_path_metadata(raw_id)?;
             self.output.push_str("/>")?;
             return Ok(());
         }
@@ -2860,7 +2871,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 )));
             }
         }
-        write_resource_metadata(&mut self.output, self.debug, raw_id)?;
+        self.write_path_metadata(raw_id)?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -2903,7 +2914,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             escaped_attr(&path_data),
         )?;
         self.write_path_style(style)?;
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         self.output.push_str("</svg></g>")?;
         Ok(())
@@ -2934,7 +2945,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_path_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -2983,7 +2994,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3038,7 +3049,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3070,7 +3081,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3104,7 +3115,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs()?;
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3132,7 +3143,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs()?;
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3169,7 +3180,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3189,7 +3200,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_fill_stroke_style(style)?;
         self.write_state_attrs()?;
-        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
     }
@@ -3498,6 +3509,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             font_style(run.style.font.style),
         )?;
         write_text_metadata(&mut self.output, self.debug, run)?;
+        self.write_tree_view_leaf_metadata()?;
         if let Some(language) = run.language.as_deref() {
             self.output.push_str(" xml:lang=\"")?;
             output::escape_attr(&mut self.output, language)?;

@@ -2015,6 +2015,167 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_candidate_projects_scopes_without_losing_edited_semantics() {
+        use merman_display_list::SemanticRole;
+        for declarations in [
+            "",
+            "accTitle: Authored tree\naccDescr: Authored description\n",
+        ] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(
+                    json!({"securityLevel": "loose"}),
+                ))
+                .parse_diagram_for_render_model_sync(
+                    &format!("treeView-beta\n{declarations}Root\n    child ## details\n"),
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let options = SvgRenderOptions {
+                diagram_id: Some("tree-scopes".to_owned()),
+                ..Default::default()
+            };
+            let render = |document: &crate::drawing_list::RenderDocument,
+                          debug: &SvgDebugOptions| {
+                crate::svg::render_document_svg(
+                    document,
+                    &options,
+                    debug,
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let svg = render(&document, &SvgDebugOptions::default());
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let root = xml.root_element();
+            if declarations.is_empty() {
+                assert!(root.attribute("aria-labelledby").is_none());
+                assert!(root.attribute("aria-describedby").is_none());
+            } else {
+                assert_eq!(
+                    root.attribute("aria-labelledby"),
+                    Some("chart-title-tree-scopes")
+                );
+                assert_eq!(
+                    root.attribute("aria-describedby"),
+                    Some("chart-desc-tree-scopes")
+                );
+                let tags = root
+                    .children()
+                    .filter(|node| node.is_element())
+                    .take(3)
+                    .map(|node| node.tag_name().name())
+                    .collect::<Vec<_>>();
+                assert_eq!(tags, ["title", "desc", "style"]);
+            }
+            let tree = root
+                .children()
+                .find(|node| node.attribute("class") == Some("tree-view"))
+                .unwrap();
+            assert!(
+                !tree
+                    .descendants()
+                    .any(|node| node.has_tag_name("title") || node.has_tag_name("desc"))
+            );
+            assert!(tree.children().any(|node| node.has_tag_name("line")));
+            let child = tree
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("child"))
+                .unwrap();
+            assert_eq!(child.parent().unwrap().parent(), Some(tree));
+            let origin = (child.attribute("x"), child.attribute("y"));
+
+            let diagnostic = render(&document, &drawing_list_svg_diagnostics());
+            let diagnostic_xml = roxmltree::Document::parse(&diagnostic).unwrap();
+            assert_eq!(
+                xml.descendants().filter(|node| node.is_element()).count(),
+                diagnostic_xml
+                    .descendants()
+                    .filter(|node| node.is_element())
+                    .count()
+            );
+            assert!(
+                diagnostic_xml
+                    .descendants()
+                    .any(|node| node.has_tag_name("text")
+                        && node.attribute("data-merman-semantic-id").is_some())
+            );
+            assert!(
+                diagnostic_xml
+                    .descendants()
+                    .any(|node| node.has_tag_name("line")
+                        && node.attribute("data-merman-semantic-id").is_some())
+            );
+
+            let node = document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|annotation| {
+                    annotation.role == SemanticRole::Node
+                        && annotation.title.as_deref() == Some("child")
+                })
+                .unwrap();
+            let node_id = node.id.clone();
+            let label = document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|annotation| annotation.id == format!("{node_id}.label"))
+                .unwrap();
+            label.title = Some("Independent label name".into());
+            let label_edit = render(&document, &SvgDebugOptions::default());
+            let label_xml = roxmltree::Document::parse(&label_edit).unwrap();
+            for name in ["child", "Independent label name"] {
+                assert!(
+                    label_xml
+                        .descendants()
+                        .any(|node| node.has_tag_name("title") && node.text() == Some(name))
+                );
+            }
+            let node = document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|annotation| annotation.id == node_id)
+                .unwrap();
+            node.title = Some("Independent node name".into());
+            node.description = Some("Independent node description".into());
+            node.link = Some("https://example.com/tree?a=1&b=2".into());
+            let edited = render(&document, &SvgDebugOptions::default());
+            let edited_xml = roxmltree::Document::parse(&edited).unwrap();
+            for (tag, content) in [
+                ("title", "Independent node name"),
+                ("title", "Independent label name"),
+                ("desc", "Independent node description"),
+            ] {
+                assert!(
+                    edited_xml
+                        .descendants()
+                        .any(|node| node.has_tag_name(tag) && node.text() == Some(content))
+                );
+            }
+            assert!(edited_xml.descendants().any(|node| node.has_tag_name("a")
+                && node.attribute("href") == Some("https://example.com/tree?a=1&b=2")));
+            let child = edited_xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("child"))
+                .unwrap();
+            assert_eq!((child.attribute("x"), child.attribute("y")), origin);
+        }
+    }
+
+    #[test]
     fn tree_view_candidate_uses_public_paint_and_background() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(

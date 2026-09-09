@@ -162,14 +162,21 @@ impl<'a> TreeViewBuilder<'a> {
         self.output.push_semantic(SemanticAnnotation {
             id: "treeView.document".to_string(),
             role: SemanticRole::Document,
+            // Mermaid names the root only through explicit accessibility declarations.
             title: self
                 .model
                 .acc_title
-                .clone()
-                .or_else(|| self.model.title.clone())
-                .or_else(|| self.metadata.title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
-            description: self.model.acc_descr.clone(),
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned),
+            description: self
+                .model
+                .acc_descr
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned),
             link: None,
         })?;
         self.emit_background()?;
@@ -524,7 +531,7 @@ impl<'a> TreeViewBuilder<'a> {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: None,
-            description: Some(format!("{} tree connector", line.kind)),
+            description: None,
             link: None,
         })?;
         Ok(())
