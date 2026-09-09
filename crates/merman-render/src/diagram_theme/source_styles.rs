@@ -111,6 +111,7 @@ impl SourceStyleProvenance {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn owner_id(&self) -> &str {
         &self.owner_id
     }
@@ -119,6 +120,7 @@ impl SourceStyleProvenance {
         Arc::clone(&self.owner_id)
     }
 
+    #[cfg(test)]
     pub(crate) fn class_id(&self) -> Option<&str> {
         self.class_id.as_deref()
     }
@@ -251,10 +253,6 @@ impl SourceStyleDeclaration {
         Ok(Arc::new(prepared).bind(provenance))
     }
 
-    pub(crate) fn raw(&self) -> &str {
-        self.prepared.raw()
-    }
-
     pub(crate) fn property(&self) -> &str {
         self.prepared.property()
     }
@@ -267,21 +265,9 @@ impl SourceStyleDeclaration {
         self.prepared.value()
     }
 
+    #[cfg(test)]
     pub(crate) fn important(&self) -> bool {
         self.prepared.important()
-    }
-
-    /// Validate a declaration before allowing it to participate in a typed winner.
-    ///
-    /// Callers should use this gate before updating an emission map or layout value;
-    /// an invalid later declaration must not displace an earlier admitted winner.
-    pub(crate) fn admit<T>(
-        &self,
-        validator: impl FnOnce(&PreparedSourceStyleDeclaration) -> Option<T>,
-    ) -> Result<T, SourceStyleResidual> {
-        validator(&self.prepared).ok_or_else(|| {
-            SourceStyleResidual::from_declaration(self, SourceStyleResidualReason::InvalidValue)
-        })
     }
 
     pub(crate) fn is_single_component_value(&self) -> bool {
@@ -300,6 +286,7 @@ impl SourceStyleDeclaration {
         &self.provenance
     }
 
+    #[cfg(test)]
     pub(crate) fn property_matches(&self, property: &str) -> bool {
         self.prepared.property_matches(property)
     }
@@ -364,6 +351,7 @@ impl SourceStyleResidual {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn raw(&self) -> &str {
         &self.raw
     }
@@ -372,6 +360,7 @@ impl SourceStyleResidual {
         Arc::clone(&self.raw)
     }
 
+    #[cfg(test)]
     pub(crate) fn property(&self) -> Option<&str> {
         self.property.as_deref()
     }
@@ -466,20 +455,15 @@ mod tests {
     }
 
     #[test]
-    fn admission_keeps_invalid_later_declarations_out_of_winner_selection() {
+    fn numeric_declaration_requires_a_complete_scalar_value() {
         let owner = SourceStyleProvenance::inline("Ready", SourceStyleChannel::Shape, 0);
         let valid = SourceStyleDeclaration::parse("stroke-width: 20px", owner.clone())
             .expect("valid declaration");
-        let invalid = SourceStyleDeclaration::parse("stroke-width: 20px junk", owner)
+        let invalid = SourceStyleDeclaration::parse("stroke-width: 99px junk", owner)
             .expect("safe declaration with invalid scalar grammar");
 
-        let mut winner = valid
-            .admit(|declaration| declaration.svg_number_or_px())
-            .expect("valid declaration is admitted");
-        if let Ok(value) = invalid.admit(|declaration| declaration.svg_number_or_px()) {
-            winner = value;
-        }
-        assert_eq!(winner, 20.0);
+        assert_eq!(valid.svg_number_or_px(), Some(20.0));
+        assert_eq!(invalid.svg_number_or_px(), None);
     }
 
     #[test]
@@ -495,10 +479,6 @@ mod tests {
             declaration.resolve_font_size_px(CssFontSizeContext::uniform(16.0)),
             None
         );
-        let residual = declaration
-            .admit(|prepared| prepared.resolve_font_size_px(CssFontSizeContext::uniform(16.0)))
-            .expect_err("invalid scalar must produce an admission residual");
-        assert_eq!(residual.reason(), SourceStyleResidualReason::InvalidValue);
     }
 
     #[test]

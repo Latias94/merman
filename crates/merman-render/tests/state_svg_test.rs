@@ -296,6 +296,35 @@ fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
 
+#[test]
+fn state_invalid_later_source_width_preserves_the_emitted_class_winner() {
+    let svg = render_state_svg_from_text(
+        "stateDiagram-v2\nstate \"Ready\" as Ready\nclassDef wide stroke-width:20px\nclass Ready wide\nstyle Ready stroke-width:99px junk\n",
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+    let state = document
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("id") == Some("merman-state-Ready-0"))
+        .unwrap_or_else(|| panic!("Ready state terminal: {svg}"));
+    let shape = state
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("rect") && node.attribute("class") == Some("basic label-container")
+        })
+        .expect("Ready state shape");
+    let style = shape.attribute("style").expect("source shape style");
+    assert!(
+        style
+            .split(';')
+            .any(|declaration| declaration.trim() == "stroke-width:20px !important"),
+        "the valid class width must reach the shape: {style}"
+    );
+    assert!(
+        !style.contains("99px"),
+        "invalid inline width must not reach the shape: {style}"
+    );
+}
+
 fn render_state_layout_and_svg_from_text_in_environment(
     text: &str,
     environment: &RenderEnvironment,
