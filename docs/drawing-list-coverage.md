@@ -1065,6 +1065,35 @@ Explicit-visible variants painted outside it. Evidence is
 
 The `fo` adapter therefore emits an explicit rectangular label clip through the bounded builder,
 retaining all text and semantic names. Backgrounds, faces, and actor circles are outside that clip;
-`old` and tspan text remain unclipped. A future HTML shell must consume the public clip rather than
-silently reconstructing a box from private dimensions or independently rewrapping text. The planned
-shell remains unimplemented and does not change Journey admission.
+`old` and tspan text remain unclipped.
+
+The HTML identity shell now consumes the public `Save / ClipPath / DrawText* / Restore` sequence.
+Its dimensions come from that rectangular clip; the XHTML table and nested SVG use visible
+overflow, leaving the public clip as the only clipping authority. Positioned text is serialized
+once inside the existing native-text marker. Native conversion promotes that group, retaining its
+clip reference and removing only the outer container-coordinate compensation. No label source,
+private text box, browser rewrapping, or second fallback text is used. Non-rectangular or removed
+clips, changed graphics state, and interleaved control commands retain the ordinary projection.
+
+The focused pipeline regression changes text, font, paint, position, and clip geometry, then deletes
+the clip. It checks source SVG, readable SVG, and finalized resvg-safe SVG for the same text and
+clipping, including retention of the independently named semantic scope. Journey admission is
+unchanged pending the complete source comparison.
+
+The shell candidate was compared against all 26 pinned Journey fixtures. Both
+`target/compare/journey_fad0bdaa9_html_shell_structure.md` and
+`target/compare/journey_fad0bdaa9_html_shell_parity_root.md` record 25 canonical outputs,
+no skips, and **0/25 passes**; the remaining fixture retains the known non-finite face rejection.
+Root clip definitions, source CSS/attribute representation, positioned text children, and the
+removed duplicate switch fallback remain visible differences. Temporary runtime and fixture
+admission were removed after both commands exited. These are failure reports, not evidence for
+admitting Journey or changing comparator normalization.
+
+The Chromium shell-promotion probe covers three candidate fixtures, 16 HTML shells, and 18 text
+runs (`target/compare/journey-shell-ctm-probe.json`). Ordinary and font-precedence fixtures have
+identical text/clip CTMs before and after promotion. The fractional-coordinate long-label fixture
+has a maximum text/clip CTM delta of 0.007184px and a first-character screen delta of 0.027736px;
+text, font, paint, opacity, and clip references are unchanged. The matching text/clip displacement
+is consistent with HTML subpixel layout quantization, not proven pixel identity. The probe's
+0.001px threshold fails and has not been relaxed; no pixel screenshot comparison was performed.
+This bounded browser residual is recorded separately from the still-failing structural admission.

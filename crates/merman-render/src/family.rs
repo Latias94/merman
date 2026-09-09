@@ -5812,6 +5812,168 @@ gantt
     }
 
     #[test]
+    fn journey_html_shell_and_native_pipeline_preserve_public_text_and_clip() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "journey\nsection First\nVisible: 5: Alice\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let run = document
+            .public
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text == "Visible" => Some(run),
+                _ => None,
+            })
+            .unwrap();
+        run.text = "Edited <literal>".to_owned();
+        run.origin.x += 11.0;
+        run.origin.y += 17.0;
+        run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 255));
+        run.style.font_size = 27.0;
+        let origin = run.origin;
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == "journey.task.0.label.clip"
+            {
+                path.segments = vec![
+                    PathSegment::MoveTo {
+                        to: merman_display_list::Point::new(31.0, 42.0),
+                    },
+                    PathSegment::LineTo {
+                        to: merman_display_list::Point::new(131.0, 42.0),
+                    },
+                    PathSegment::LineTo {
+                        to: merman_display_list::Point::new(131.0, 102.0),
+                    },
+                    PathSegment::LineTo {
+                        to: merman_display_list::Point::new(31.0, 102.0),
+                    },
+                    PathSegment::Close,
+                ];
+            }
+        }
+        for remove_clip in [false, true] {
+            if remove_clip {
+                document.public.commands.retain(|command| !matches!(command,
+                    DrawingCommand::ClipPath { path, .. } if path.as_str() == "journey.task.0.label.clip"));
+            }
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let readable = crate::svg::SvgPipeline::readable()
+                .process_to_string(&svg, &artifact.session)
+                .unwrap();
+            let native = crate::svg::SvgPipeline::resvg_safe()
+                .process_resvg_compatible(&svg, &artifact.session)
+                .unwrap();
+            for (mode, output) in [
+                ("svg", svg.as_str()),
+                ("readable", readable.as_str()),
+                ("native", native.as_str()),
+            ] {
+                let xml = roxmltree::Document::parse(output).unwrap();
+                let texts = xml
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("text") && node.text() == Some("Edited <literal>")
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(texts.len(), 1, "{mode}: one resolved text projection");
+                let text = texts[0];
+                assert!(
+                    text.ancestors()
+                        .any(|node| node
+                            .children()
+                            .any(|child| child.has_tag_name("title")
+                                && child.text() == Some("Visible"))),
+                    "{mode}: text edits must preserve the independently named semantic scope"
+                );
+                assert!(
+                    (text.attribute("x").unwrap().parse::<f64>().unwrap() - origin.x).abs() < 0.001
+                );
+                assert!(
+                    (text.attribute("y").unwrap().parse::<f64>().unwrap() - origin.y).abs() < 0.001
+                );
+                assert_eq!(text.attribute("fill"), Some("#123456"));
+                assert_eq!(text.attribute("font-size"), Some("27"));
+                let clip = text
+                    .ancestors()
+                    .find_map(|node| node.attribute("clip-path"));
+                if remove_clip {
+                    assert!(
+                        clip.is_none(),
+                        "{mode}: deleting the public clip removes clipping"
+                    );
+                } else {
+                    let clip_id = clip
+                        .unwrap()
+                        .strip_prefix("url(#")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let clip = xml
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("clipPath") && node.attribute("id") == Some(clip_id)
+                        })
+                        .unwrap();
+                    assert_eq!(clip.attribute("clipPathUnits"), Some("userSpaceOnUse"));
+                    let path = clip
+                        .children()
+                        .find(|node| node.has_tag_name("path"))
+                        .unwrap();
+                    assert_eq!(
+                        path.attribute("d"),
+                        Some("M 31 42 L 131 42 L 131 102 L 31 102 Z")
+                    );
+                }
+                let fo = text
+                    .ancestors()
+                    .find(|node| node.has_tag_name("foreignObject"));
+                if mode == "native" || remove_clip {
+                    assert!(fo.is_none(), "{mode}: no independent HTML text fallback");
+                    assert!(
+                        !text
+                            .ancestors()
+                            .any(|node| node.attribute("transform") == Some("translate(-31, -42)"))
+                    );
+                } else {
+                    let fo =
+                        fo.expect("public clipped text retains the source HTML identity shell");
+                    assert_eq!(fo.attribute("x"), Some("31"));
+                    assert_eq!(fo.attribute("y"), Some("42"));
+                    assert_eq!(fo.attribute("width"), Some("100"));
+                    assert_eq!(fo.attribute("height"), Some("60"));
+                    assert_eq!(fo.attribute("overflow"), Some("visible"));
+                    assert!(
+                        fo.descendants()
+                            .any(|node| node.attribute("class") == Some("label"))
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn journey_source_groups_preserve_order_and_independent_public_metadata() {
         use merman_display_list::{DrawingCommand, SemanticRole};
         let parsed = Engine::new()

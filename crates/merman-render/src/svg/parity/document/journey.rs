@@ -120,6 +120,87 @@ impl DocumentSvgEncoder<'_> {
         Ok(Some(3))
     }
 
+    /// Preserve the source HTML identity shell around one public clipped text scope. The
+    /// marked group is the complete native projection, including its authoritative clip.
+    pub(super) fn emit_journey_box_text(&mut self, index: usize) -> Result<Option<usize>> {
+        let SvgStructureBody::Journey(body) = self.svg_body else {
+            return Ok(None);
+        };
+        if self.state.transform != Transform::IDENTITY
+            || self.state.opacity != 1.0
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(None);
+        }
+        let Some(
+            [
+                DrawingCommand::Save,
+                DrawingCommand::ClipPath { path, .. },
+                ..,
+            ],
+        ) = self.document.commands.get(index..)
+        else {
+            return Ok(None);
+        };
+        let Some(scope) = self.current_semantic_id() else {
+            return Ok(None);
+        };
+        if path.as_str().strip_suffix(".label.clip") != Some(scope) {
+            return Ok(None);
+        }
+        let Some(class) = body.text_classes.get(scope) else {
+            return Ok(None);
+        };
+        let Some(bounds) = rectangle_from_path(self.path_resource(path)?) else {
+            return Ok(None);
+        };
+        if bounds.width <= 0.0 || bounds.height <= 0.0 {
+            return Ok(None);
+        }
+        let mut end = index + 2;
+        while let Some(DrawingCommand::DrawText { run }) = self.document.commands.get(end) {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            if !matches!(run.obligation, TextObligation::HostText { .. })
+                || run.text.contains(['\n', '\r'])
+            {
+                return Ok(None);
+            }
+            end += 1;
+        }
+        if !matches!(
+            self.document.commands.get(end..),
+            Some([
+                DrawingCommand::Restore,
+                DrawingCommand::EndSemanticGroup,
+                ..
+            ])
+        ) {
+            return Ok(None);
+        }
+        // Overflow is governed only by the public clip below. The HTML and nested SVG shells
+        // must not add independent clipping or ask the browser to wrap this text a second time.
+        write!(
+            self.output,
+            "<switch><foreignObject x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" overflow=\"visible\"><div xmlns=\"http://www.w3.org/1999/xhtml\" class=\"{}\" style=\"display: table; height: 100%; width: 100%; position: relative;\"><div class=\"label\" style=\"display: table-cell; text-align: center; vertical-align: middle;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" overflow=\"visible\" style=\"position: absolute; left: 0; top: 0; overflow: visible;\"><g transform=\"translate({}, {})\"><g data-merman-native-text=\"v1\">",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height),
+            escaped_attr(class),
+            fmt(bounds.width),
+            fmt(bounds.height),
+            fmt(-bounds.x),
+            fmt(-bounds.y)
+        )?;
+        for command in &self.document.commands[index..=end] {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            self.emit_command(command)?;
+        }
+        self.output
+            .push_str("</g></g></svg></div></div></foreignObject></switch>")?;
+        Ok(Some(end - index + 1))
+    }
+
     fn journey_scope_has_native_name(&self, name: &str) -> Result<bool> {
         let mut remaining = name.as_bytes();
         let mut has_text = false;

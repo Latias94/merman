@@ -578,6 +578,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             if root_background && index == 2 {
                 continue;
             }
+            if let Some(count) = self.emit_journey_box_text(index)? {
+                consumed_until = index + count;
+                continue;
+            }
             if let Some(count) = self.emit_journey_actor(index)? {
                 consumed_until = index + count;
                 continue;
