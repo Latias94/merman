@@ -94,7 +94,7 @@ impl DocumentSvgEncoder<'_> {
             .flatten()
     }
 
-    /// Own one element's CSS declaration block so paint, transform and blend compose once.
+    /// Own one element's CSS block so paint, opacity, transform and blend compose once.
     pub(super) fn write_gantt_path_presentation(
         &mut self,
         path_id: &ResourceId,
@@ -158,7 +158,11 @@ impl DocumentSvgEncoder<'_> {
             self.write_fill_stroke_style(style)?;
         }
         let blend = blend_css(self.state.blend_mode);
-        if paint.is_some() || matrix != Transform::IDENTITY || blend.is_some() {
+        if paint.is_some()
+            || matrix != Transform::IDENTITY
+            || blend.is_some()
+            || self.state.opacity != 1.0
+        {
             self.output.push_str(" style=\"")?;
             if let Some(paint) = paint {
                 if let Some(color) = paint.fill {
@@ -195,10 +199,10 @@ impl DocumentSvgEncoder<'_> {
             if let Some(blend) = blend {
                 write!(self.output, "mix-blend-mode:{blend};")?;
             }
+            if self.state.opacity != 1.0 {
+                write!(self.output, "opacity:{};", fmt(self.state.opacity))?;
+            }
             self.output.push('"')?;
-        }
-        if self.state.opacity != 1.0 {
-            write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
         }
         Ok(true)
     }

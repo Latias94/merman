@@ -77,6 +77,30 @@ package. One configuration switch cannot truthfully describe all three.
    - CSP, iframe isolation, opener behavior, gesture arbitration, and navigation enablement remain
      host responsibilities because only the browser host can enforce them.
 
+## Gantt canonical navigation projection (2026-09-09)
+
+For the canonical Gantt document, task URLs become public semantic links on both the bar and
+its label. The SVG serializer projects each linked scope to a separate static `<a href>` without
+reordering paint commands: all task bars still precede all task labels. The href comes from the
+public semantic field, after the existing config-sensitive URL admission; source model URLs in
+extension metadata are not a second serialization input. Changing one public link changes only
+that hit target. Browser target policy remains host-owned.
+
+This deliberately differs from Mermaid 11.17.2's exported non-sandbox SVG. The pinned
+`ganttDb.js::setLink` attaches `window.open(..., '_self')` callbacks to both elements; these event
+listeners do not survive SVG export. `ganttRenderer.js` creates an anchor only inside its sandbox
+iframe and moves the bar and text together. A headless serializer cannot reproduce the event
+runtime or iframe. Static anchors preserve the declared navigation without executing JavaScript
+or changing painter order. Callback declarations remain extension metadata for an explicitly
+integrated host; they are never converted into URLs or executable SVG.
+
+The extra anchor wrappers and their accessible names are an intentional navigation projection,
+not a floating-point/browser-rendering residual. Strict DOM reports must continue to expose them.
+Family admission needs scoped evidence that the anchors retain both hit targets, IDs, geometry,
+paint order, URI policy, and edits to the public semantics; no global anchor/ARIA suppression is
+permitted in the comparator. Gantt remains behind its legacy SVG bridge until its remaining
+family admission checks pass.
+
 ## Consequences
 
 - Kanban ticket links and other sanitized Mermaid navigation remain usable without admitting

@@ -870,3 +870,20 @@ The matrix intentionally does not claim that every protocol resource kind is emi
 family.  Patterns, inline images, glyph/outline text, and raster subtrees remain protocol-level
 capabilities with dedicated display-list validation fixtures until a family admits them through a
 source-backed renderer slice.
+
+Gantt primitive opacity now shares the same CSS declaration block as public paint, transform and
+blend. Today-marker mutations cover opacity 0, 0.25, 0.5 and 1 without adding a second attribute
+or multiplying stroke alpha. ADR-0078 now specifies static anchors for task URLs on both hit
+targets; one public semantic-link edit changes only its own href. The focused regression uses the
+`click_multiple_ids_href_loose` case and retains all-bars-before-labels order and source IDs.
+Chromium confirms that removing just its four anchor wrappers leaves each target's bounds,
+computed paint, opacity and font unchanged; no navigation was executed.
+
+The candidate refresh `target/compare/gantt_aacc5c9bf_candidate_structure.md` includes the radius
+and opacity changes: 157 selected, 150 rendered, **121 strict-structure passes / 29 failures**,
+five existing skips and the same two explicit unsupported-effect route failures. Both today-marker
+opacity fixtures now pass structure; Chromium also matches their computed stroke, width,
+stroke-opacity and opacity against the pinned SVGs (`gantt_aacc5c9bf_today_browser.json`).
+This is not full-family admission: static navigation wrappers remain reported, alongside empty
+source marker DOM, title whitespace, and text/geometry differences. The comparison does not
+check root viewports. Temporary canonical admission was removed after the command completed.

@@ -3705,9 +3705,10 @@ mod tests {
 
     #[test]
     fn gantt_today_collection_preserves_marker_children_and_public_metadata() {
+        use merman_display_list::DrawingCommand;
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(
-                "gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 2d\n",
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker stroke:blue,stroke-width:5px,opacity:0.5\nTask :a, 2026-01-01, 2d\n",
                 ParseOptions::strict(),
             )
             .unwrap()
@@ -3731,12 +3732,21 @@ mod tests {
                 .title,
             None
         );
-        for (title, description) in [
-            (None, None),
-            (Some("Today"), None),
-            (Some("Edited marker"), Some("Public description")),
-            (None, Some("Description without a name")),
+        let today_path = document.public.commands.iter().position(|command| {
+            matches!(command, DrawingCommand::DrawPath { path, .. } if path.as_str() == "gantt.today.line")
+        }).unwrap();
+        for (title, description, opacity) in [
+            (None, None, 0.5),
+            (Some("Today"), None, 0.25),
+            (Some("Edited marker"), Some("Public description"), 0.0),
+            (None, Some("Description without a name"), 1.0),
         ] {
+            let DrawingCommand::SetOpacity { opacity: value } =
+                &mut document.public.commands[today_path - 1]
+            else {
+                panic!("today opacity");
+            };
+            *value = opacity;
             let semantic = document
                 .public
                 .semantics
@@ -3773,6 +3783,23 @@ mod tests {
             assert!(children[0].has_tag_name("line"));
             assert_eq!(children[0].attribute("class"), Some("today"));
             assert!(children[0].attribute("stroke").is_none());
+            assert_eq!(children[0].attribute("opacity"), None);
+            let style = children[0].attribute("style").unwrap();
+            let opacity_declarations: Vec<_> = style
+                .split(';')
+                .filter(|part| part.starts_with("opacity:"))
+                .collect();
+            let expected = format!("opacity:{opacity}");
+            assert_eq!(
+                opacity_declarations,
+                if opacity == 1.0 {
+                    vec![]
+                } else {
+                    vec![expected.as_str()]
+                }
+            );
+            assert!(style.contains("stroke:#0000ff;"));
+            assert!(style.contains("stroke-width:5;"));
             assert!(
                 children[0]
                     .attribute("style")
@@ -4574,6 +4601,141 @@ mod tests {
     }
 
     #[test]
+    fn gantt_static_navigation_preserves_both_hit_targets_and_public_link_edits() {
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(
+                json!({"securityLevel": "loose"}),
+            ))
+            .parse_diagram_for_render_model_sync(
+                // The navigation case from click_multiple_ids_href_loose.mmd; keep crate tests self-contained.
+                r#"%%{init: {"securityLevel":"loose"}}%%
+gantt
+  title Click multiple ids href
+  dateFormat YYYY-MM-DD
+  section A
+  Task1: a1, 2014-01-07, 3d
+  Task2: a2, 2014-01-08, 3d
+
+  click a1,a2 href "https://example.com"
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions {
+                    diagram_id: Some("navigation".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let scopes: Vec<_> = document
+            .public
+            .semantics
+            .iter()
+            .filter(|semantic| semantic.link.is_some())
+            .collect();
+        assert_eq!(scopes.len(), 4);
+        for id in [
+            "gantt.task.0",
+            "gantt.task.1",
+            "gantt.task.0.label",
+            "gantt.task.1.label",
+        ] {
+            assert_eq!(
+                scopes
+                    .iter()
+                    .find(|scope| scope.id == id)
+                    .unwrap()
+                    .link
+                    .as_deref(),
+                Some("https://example.com")
+            );
+        }
+        let initial = render(&document);
+        let xml = roxmltree::Document::parse(&initial).unwrap();
+        let anchors: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("a"))
+            .collect();
+        assert_eq!(anchors.len(), 4);
+        let mut hit_targets = Vec::new();
+        for anchor in anchors {
+            assert_eq!(anchor.attribute("href"), Some("https://example.com"));
+            assert_eq!(
+                anchor.attribute("target"),
+                None,
+                "navigation target remains host-owned"
+            );
+            let children: Vec<_> = anchor
+                .children()
+                .filter(roxmltree::Node::is_element)
+                .collect();
+            assert_eq!(children.len(), 1);
+            hit_targets.push(children[0].attribute("id").unwrap());
+        }
+        assert_eq!(
+            hit_targets,
+            [
+                "navigation-a1",
+                "navigation-a2",
+                "navigation-a1-text",
+                "navigation-a2-text"
+            ],
+            "independent anchors must preserve all-bars-before-labels painter order"
+        );
+        assert!(!xml.descendants().any(|node| {
+            node.has_tag_name("script")
+                || node
+                    .attributes()
+                    .any(|attribute| attribute.name().starts_with("on"))
+        }));
+
+        document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|scope| scope.id == "gantt.task.0")
+            .unwrap()
+            .link = Some("https://example.com/edited?a=1&b=2".into());
+        let edited = render(&document);
+        assert_eq!(
+            edited,
+            initial.replacen(
+                "href=\"https://example.com\"",
+                "href=\"https://example.com/edited?a=1&amp;b=2\"",
+                1
+            ),
+            "one public link edit changes only its anchor, preserving geometry, paint, names and the other hit targets"
+        );
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .find(|node| node.attribute("id") == Some("navigation-a1"))
+                .unwrap()
+                .parent()
+                .unwrap()
+                .attribute("href"),
+            Some("https://example.com/edited?a=1&b=2")
+        );
+    }
+
+    #[test]
     fn gantt_candidate_split_task_scopes_keep_links_and_unique_ids() {
         let parsed = Engine::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
@@ -4920,7 +5082,8 @@ mod tests {
             .descendants()
             .find(|node| node.attribute("data-merman-resource") == Some("gantt.task.1.bar"))
             .unwrap();
-        assert_eq!(bar.attribute("opacity"), Some("0.4"));
+        assert_eq!(bar.attribute("opacity"), None);
+        assert!(bar.attribute("style").unwrap().contains("opacity:0.4;"));
         let group = bar.parent().unwrap();
         assert!(group.has_tag_name("g"));
         assert_eq!(
