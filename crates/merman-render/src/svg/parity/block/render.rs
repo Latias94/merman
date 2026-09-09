@@ -510,6 +510,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         classes: Vec<String>,
         styles: Vec<String>,
         directions: Vec<String>,
+        checkpointed: bool,
     }
 
     fn collect_nodes(
@@ -543,6 +544,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                         classes: n.classes.clone(),
                         styles: n.styles.clone(),
                         directions: n.directions.clone(),
+                        checkpointed: false,
                     },
                 );
             }
@@ -563,8 +565,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    let node_paint_source_ownership = BlockNodePaintSourceOwnership::new(&model.class_defs);
     let mut node_paint_receipt = node_paint_theme.begin_terminal_receipt();
+    let node_paint_source_ownership = node_paint_receipt
+        .as_ref()
+        .map(|_| BlockNodePaintSourceOwnership::new(&model.class_defs));
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
@@ -939,21 +943,23 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let mut has_rough_path = false;
     let mut has_rendered_edge = false;
 
-    for n in &layout.nodes {
-        let Some(node) = nodes_by_id.get(&n.id) else {
+    // Ordinary rendering owns terminal completeness. Keep duplicate output attempts so sink
+    // failures retain precedence over the deferred terminal error.
+    let mut checkpointed_nodes = 0;
+    let mut node_shells_match = true;
+    for (node_index, n) in layout.nodes.iter().enumerate() {
+        let Some(node) = nodes_by_id.get_mut(&n.id) else {
             continue;
         };
-        let node_index =
-            node_paint_theme
-                .index_for_node_id(&n.id)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!("missing Block theme occurrence for node `{}`", n.id),
-                })?;
         let compiled_styles = compile_block_inline_styles(&node.styles);
-        let source_owns_fill =
-            node_paint_source_ownership.owns_fill(compiled_styles.owns_fill, &node.classes);
-        let source_owns_stroke =
-            node_paint_source_ownership.owns_stroke(compiled_styles.owns_stroke, &node.classes);
+        let source_owns_fill = node_paint_source_ownership
+            .as_ref()
+            .is_some_and(|ownership| ownership.owns_fill(compiled_styles.owns_fill, &node.classes));
+        let source_owns_stroke = node_paint_source_ownership
+            .as_ref()
+            .is_some_and(|ownership| {
+                ownership.owns_stroke(compiled_styles.owns_stroke, &node.classes)
+            });
         let typed_fill = node_paint_theme.typed_fill(node_index, source_owns_fill);
         let typed_stroke = node_paint_theme.typed_stroke(node_index, source_owns_stroke);
 
@@ -1161,17 +1167,24 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             }
         }
         out.checkpoint()?;
-        node_paint_receipt.record_checkpointed_node(
-            node_index,
-            source_owns_fill,
-            typed_fill,
-            source_owns_stroke,
-            typed_stroke,
-            shell_kinds
-                .iter()
-                .copied()
-                .map(|kind| (kind, node_box_style.as_str())),
-        );
+        node_shells_match &= shell_kinds == geometry.boundary.canonical_shell_kinds();
+        if !node.checkpointed {
+            node.checkpointed = true;
+            checkpointed_nodes += 1;
+        }
+        if let Some(receipt) = node_paint_receipt.as_mut() {
+            receipt.record_checkpointed_node(
+                node_index,
+                source_owns_fill,
+                typed_fill,
+                source_owns_stroke,
+                typed_stroke,
+                shell_kinds
+                    .iter()
+                    .copied()
+                    .map(|kind| (kind, node_box_style.as_str())),
+            );
+        }
 
         let label = decode_block_label_html(&node.label);
         let label_effectively_empty =
@@ -1448,7 +1461,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
     let rooted = root_document.complete(out.finish()?)?;
-    if !node_paint_theme.record_terminal(node_paint_receipt) {
+    if !node_shells_match
+        || checkpointed_nodes != layout.nodes.len()
+        || !node_paint_theme.record_terminal(node_paint_receipt)
+    {
         return Err(Error::InvalidModel {
             message: "Block node shell paint terminal receipt was incomplete".to_string(),
         });

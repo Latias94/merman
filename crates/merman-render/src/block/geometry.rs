@@ -60,6 +60,27 @@ pub enum BlockShapeBoundary {
     },
 }
 
+/// Concrete SVG shell owned by one semantic Block node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockNodeShellKind {
+    Rect,
+    Circle,
+    Path,
+    Polygon,
+}
+
+impl BlockShapeBoundary {
+    pub(crate) fn canonical_shell_kinds(&self) -> &'static [BlockNodeShellKind] {
+        match self {
+            Self::Rectangle { .. } | Self::Stadium { .. } => &[BlockNodeShellKind::Rect],
+            Self::Circle { .. } => &[BlockNodeShellKind::Circle],
+            Self::DoubleCircle { .. } => &[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle],
+            Self::Cylinder { .. } => &[BlockNodeShellKind::Path],
+            Self::Polygon { .. } => &[BlockNodeShellKind::Polygon],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockShapeGeometry {

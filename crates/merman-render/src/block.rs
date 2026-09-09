@@ -11,12 +11,12 @@ mod theme;
 #[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::{
-    BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockNodeShellKind,
-    BlockTypographyThemePlan,
+    BlockNodePaintSourceOwnership, BlockNodePaintThemePlan, BlockTypographyThemePlan,
 };
 
 mod geometry;
 
+pub(crate) use geometry::BlockNodeShellKind;
 pub use geometry::{
     BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
 };

@@ -141,15 +141,21 @@ fn prepare_block_family(
         typography_theme.text_style().clone(),
         execution.text_measurer(),
     )?;
-    let source_ownership = crate::block::BlockNodePaintSourceOwnership::new(&model.class_defs);
-    let source_owned_fill = source_ownership.source_owned_fill_mask(
-        &model,
-        &layout,
-        merman_core::__private::config_path_overrides_typed_default(
-            &meta.effective_config,
-            "themeVariables.mainBkg",
-        ),
-    );
+    let source_owned_fill = execution
+        .resolved_theme()
+        .map(|_| {
+            let source_ownership =
+                crate::block::BlockNodePaintSourceOwnership::new(&model.class_defs);
+            source_ownership.source_owned_fill_mask(
+                &model,
+                &layout,
+                merman_core::__private::config_path_overrides_typed_default(
+                    &meta.effective_config,
+                    "themeVariables.mainBkg",
+                ),
+            )
+        })
+        .unwrap_or_default();
     let node_paint_theme = crate::block::BlockNodePaintThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

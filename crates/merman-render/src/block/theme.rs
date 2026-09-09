@@ -19,7 +19,7 @@ use crate::family::{
 use crate::model::BlockDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::BlockShapeBoundary;
+use super::BlockNodeShellKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BlockTypographyOutcome {
@@ -268,23 +268,13 @@ struct NodeExpectation {
     shells: Box<[BlockNodeShellKind]>,
 }
 
-/// Concrete SVG shell owned by one semantic Block node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BlockNodeShellKind {
-    Rect,
-    Circle,
-    Path,
-    Polygon,
-}
-
 /// Block node shell paint resolved once and shared by the SVG writer and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct BlockNodePaintThemePlan {
-    node_indices: BTreeMap<String, usize>,
-    expectations: Arc<[NodeExpectation]>,
+    expectations: Option<Arc<[NodeExpectation]>>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
-    terminal_receipt: OnceLock<BlockNodePaintThemeReceipt>,
+    terminal_receipt: OnceLock<Option<BlockNodePaintThemeReceipt>>,
 }
 
 impl BlockNodePaintThemePlan {
@@ -295,10 +285,10 @@ impl BlockNodePaintThemePlan {
         source_owned_fill: &[bool],
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let (node_indices, mut expectations) = terminal_domain(layout);
         let Some(theme) = theme else {
-            return Ok(Self::baseline_from_domain(node_indices, expectations));
+            return Ok(Self::baseline());
         };
+        let mut expectations = terminal_domain(layout);
 
         let node_count = expectations.len();
         let mermaid_owns_fill = mermaid_owns_node_fill(effective_config);
@@ -460,35 +450,20 @@ impl BlockNodePaintThemePlan {
         }
 
         Ok(Self {
-            node_indices,
-            expectations: expectations.into(),
+            expectations: Some(expectations.into()),
             evidence,
             pending,
             terminal_receipt: OnceLock::new(),
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn baseline(layout: &BlockDiagramLayout) -> Self {
-        let (node_indices, expectations) = terminal_domain(layout);
-        Self::baseline_from_domain(node_indices, expectations)
-    }
-
-    fn baseline_from_domain(
-        node_indices: BTreeMap<String, usize>,
-        expectations: Vec<NodeExpectation>,
-    ) -> Self {
+    pub(crate) fn baseline() -> Self {
         Self {
-            node_indices,
-            expectations: expectations.into(),
+            expectations: None,
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
             terminal_receipt: OnceLock::new(),
         }
-    }
-
-    pub(crate) fn index_for_node_id(&self, node_id: &str) -> Option<usize> {
-        self.node_indices.get(node_id).copied()
     }
 
     pub(crate) fn typed_stroke(
@@ -518,22 +493,28 @@ impl BlockNodePaintThemePlan {
         property: ResolvedStyleProperty,
     ) -> Option<(usize, &str)> {
         (!source_owns)
-            .then(|| self.expectations.get(node_index)?.paint(property))
+            .then(|| self.expectations.as_ref()?.get(node_index)?.paint(property))
             .flatten()
             .map(|expected| (expected.rule_index(), expected.css()))
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> BlockNodePaintThemeReceipt {
-        BlockNodePaintThemeReceipt::new(Arc::clone(&self.expectations))
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockNodePaintThemeReceipt> {
+        self.expectations
+            .as_ref()
+            .map(|expectations| BlockNodePaintThemeReceipt::new(Arc::clone(expectations)))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: BlockNodePaintThemeReceipt) -> bool {
-        receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
+    pub(crate) fn record_terminal(&self, receipt: Option<BlockNodePaintThemeReceipt>) -> bool {
+        let complete = match receipt.as_ref() {
+            Some(receipt) => self.expectations.is_some() && receipt.proves_complete(),
+            None => self.expectations.is_none(),
+        };
+        complete && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let Some(receipt) = self.terminal_receipt.get() else {
+        let Some(Some(receipt)) = self.terminal_receipt.get() else {
             return evidence;
         };
         for (key, properties) in &self.pending {
@@ -568,19 +549,13 @@ impl NodeExpectation {
     }
 }
 
-fn terminal_domain(layout: &BlockDiagramLayout) -> (BTreeMap<String, usize>, Vec<NodeExpectation>) {
+fn terminal_domain(layout: &BlockDiagramLayout) -> Vec<NodeExpectation> {
     let geometries = layout
         .shape_geometries
         .iter()
         .map(|geometry| (geometry.id.as_str(), &geometry.boundary))
         .collect::<BTreeMap<_, _>>();
-    let node_indices = layout
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(index, node)| (node.id.clone(), index))
-        .collect();
-    let expectations = layout
+    layout
         .nodes
         .iter()
         .map(|node| NodeExpectation {
@@ -588,25 +563,10 @@ fn terminal_domain(layout: &BlockDiagramLayout) -> (BTreeMap<String, usize>, Vec
             stroke: None,
             shells: geometries
                 .get(node.id.as_str())
-                .map(|boundary| expected_node_shell_kinds(boundary).into())
+                .map(|boundary| boundary.canonical_shell_kinds().into())
                 .unwrap_or_default(),
         })
-        .collect();
-    (node_indices, expectations)
-}
-
-fn expected_node_shell_kinds(boundary: &BlockShapeBoundary) -> &'static [BlockNodeShellKind] {
-    match boundary {
-        BlockShapeBoundary::Rectangle { .. } | BlockShapeBoundary::Stadium { .. } => {
-            &[BlockNodeShellKind::Rect]
-        }
-        BlockShapeBoundary::Circle { .. } => &[BlockNodeShellKind::Circle],
-        BlockShapeBoundary::DoubleCircle { .. } => {
-            &[BlockNodeShellKind::Circle, BlockNodeShellKind::Circle]
-        }
-        BlockShapeBoundary::Cylinder { .. } => &[BlockNodeShellKind::Path],
-        BlockShapeBoundary::Polygon { .. } => &[BlockNodeShellKind::Polygon],
-    }
+        .collect()
 }
 
 fn observe_node_style(
@@ -996,6 +956,39 @@ mod tests {
             );
             assert_eq!(evidence.residuals().is_empty(), not_applicable);
         }
+    }
+
+    #[test]
+    fn unthemed_node_paint_plan_keeps_no_per_node_evidence() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block\n  A[\"Alpha\"] --> B[\"Beta\"]\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("expected a Block render model");
+        };
+        let config = &parsed.metadata().effective_config;
+        let layout = crate::block::layout_block_diagram_typed(
+            model,
+            config.as_value(),
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        assert!(!layout.nodes.is_empty());
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = BlockNodePaintThemePlan::resolve(None, config, &layout, &[], &work_meter)
+            .expect("resolve unthemed Block paint");
+        assert!(plan.expectations.is_none());
+        assert!(plan.pending.is_empty());
+        assert!(plan.begin_terminal_receipt().is_none());
+        assert!(plan.record_terminal(None));
+        assert!(matches!(plan.terminal_receipt.get(), Some(None)));
+        assert!(!plan.record_terminal(None));
     }
 
     fn paint(rule_index: usize, css: &str) -> DirectPaintExpectation {
