@@ -55,9 +55,12 @@ routing. It is withdrawn. Running `compare-tree-view-svgs --check-dom --dom-mode
 --dom-decimals 3` on `bd3dac32e` with TreeView admitted selected 17 fixtures: 12 canonical
 outputs had DOM differences and 5 fell back for unsupported registry icons. None passed.
 The local evidence is `target/compare/treeView_bd3dac32e_canonical_parity_root.md`.
-Remaining work includes public-only style projection, root/semantic grouping, source icon
-structure, and explicit support or error disposition for registry icons. Historical legacy
-parity reports are not canonical admission evidence.
+The candidate now projects paint and font attributes from public commands without replaying
+TreeView theme CSS. Its exact full-viewport white background can use root CSS; edited or
+removed backgrounds keep their public paint semantics. Public text preserves whitespace and
+`middle` baseline semantics. A mutation test verifies config independence, edited text paint,
+and background edits/removal. Root/semantic grouping, source icon structure, and registry-icon
+support remain unfinished. Historical legacy parity reports are not canonical admission evidence.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

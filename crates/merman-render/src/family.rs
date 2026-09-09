@@ -2015,6 +2015,118 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_candidate_uses_public_paint_and_background() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let options = SvgRenderOptions {
+            diagram_id: Some("tree-paint".to_owned()),
+            ..Default::default()
+        };
+        let render = |document: &crate::drawing_list::RenderDocument,
+                      config: &serde_json::Value| {
+            crate::svg::render_document_svg(
+                document,
+                &options,
+                &drawing_list_svg_diagnostics(),
+                config,
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let config = artifact.metadata.effective_config.as_value();
+        let original = render(&document, config);
+        let changed_config = json!({
+            "theme": "dark",
+            "themeCSS": ".treeView-node-label { fill: red !important; }",
+            "themeVariables": {"fontFamily": "Courier", "treeView": {
+                "labelColor": "red", "lineColor": "red", "highlightBg": "red"
+            }}
+        });
+        assert_eq!(
+            original,
+            render(&document, &changed_config),
+            "serializing the same TreeView document must not reinterpret config"
+        );
+        let xml = roxmltree::Document::parse(&original).unwrap();
+        assert!(
+            xml.root_element()
+                .attribute("style")
+                .unwrap()
+                .contains("background-color: white")
+        );
+        assert!(
+            !xml.descendants()
+                .any(|node| node.attribute("data-merman-resource") == Some("treeView.background"))
+        );
+
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } if run.text == "main.rs" => {
+                    run.text = "main  file".to_owned();
+                    run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 255));
+                    run.style.font_size = 23.0;
+                    run.style.font.weight = 700;
+                }
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "treeView.background" =>
+                {
+                    style.fill = Some(Paint::solid(Color::rgba(171, 205, 239, 255)));
+                }
+                _ => {}
+            }
+        }
+        let edited = render(&document, config);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert!(
+            !xml.root_element()
+                .attribute("style")
+                .unwrap_or("")
+                .contains("background-color:")
+        );
+        let label = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("main  file"))
+            .unwrap();
+        assert_eq!(label.attribute("fill"), Some("#123456"));
+        assert_eq!(label.attribute("font-size"), Some("23"));
+        assert_eq!(label.attribute("font-weight"), Some("700"));
+        assert_eq!(label.attribute("dominant-baseline"), Some("middle"));
+        assert_eq!(
+            label.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+            Some("preserve")
+        );
+        let background = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some("treeView.background"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("#abcdef"));
+        document.public.commands.retain(|command| {
+            !matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "treeView.background")
+        });
+        let transparent = render(&document, config);
+        let xml = roxmltree::Document::parse(&transparent).unwrap();
+        assert!(
+            !xml.root_element()
+                .attribute("style")
+                .unwrap_or("")
+                .contains("background-color:")
+        );
+    }
+
+    #[test]
     fn canonical_svg_diagnostics_only_add_association_attributes() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(json!({

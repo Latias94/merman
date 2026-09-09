@@ -58,6 +58,7 @@ pub(crate) fn render_document_svg(
             | SvgStructureBody::Journey(_)
             | SvgStructureBody::Gantt(_)
             | SvgStructureBody::Venn(_)
+            | SvgStructureBody::TreeView(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
@@ -790,10 +791,14 @@ impl<'a> DocumentSvgEncoder<'a> {
                     spec.without_background()
                 })
             }
-            SvgStructureBody::TreeView(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )),
+            SvgStructureBody::TreeView(body) => {
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width);
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Gantt(_) => {
                 let spec = root_svg::RootViewportSpec::responsive(viewport_bounds)
                     .with_max_width(root_svg::RootMaxWidth::SvgNumber(viewport_bounds.width));
@@ -866,6 +871,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Venn(_) => ("venn.document", "venn.background"),
             SvgStructureBody::Sankey(_) => ("sankey.document", "sankey.background"),
             SvgStructureBody::Gantt(_) => ("gantt.document", "gantt.background"),
+            SvgStructureBody::TreeView(_) => ("treeView.document", "treeView.background"),
             _ => return false,
         };
         let [
@@ -996,13 +1002,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
-            SvgStructureBody::TreeView(_) => Some((
-                false,
-                super::tree_view::canonical_tree_view_css(
-                    self.diagram_id.as_str(),
-                    self.effective_config,
-                ),
-            )),
+            // The source style element remains a DOM anchor. Every active TreeView property
+            // is emitted from its public path/text command, including whitespace preservation.
+            SvgStructureBody::TreeView(_) => Some((false, String::new())),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -3413,6 +3415,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         self.output.push_str("<text")?;
+        if matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            self.output.push_str(" xml:space=\"preserve\"")?;
+        }
         self.write_gantt_text_space_attr(run, semantic_id.as_deref())?;
         self.write_gantt_title_name(run)?;
         if let Some(semantic_id) = semantic_id.as_deref() {
@@ -3443,7 +3448,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             SvgStructureBody::XyChart(_) => xychart_text_baseline(run.baseline),
             SvgStructureBody::Wardley(_) => wardley_text_baseline(run.baseline),
-            SvgStructureBody::Cynefin(_) => match run.baseline {
+            SvgStructureBody::Cynefin(_) | SvgStructureBody::TreeView(_) => match run.baseline {
                 TextBaseline::Middle => "middle",
                 other => text_baseline(other),
             },
