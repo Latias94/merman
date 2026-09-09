@@ -53,10 +53,14 @@ record. The current source and generated contract are authoritative for these su
   NotApplicable rather than a new typed column-label consumer.
 - GitGraph static unqualified/Default Text.fill now consumes the three former textColor,
   tagLabelColor, and commitLabelColor projections directly. KTD17 v56 binds all three projection
-  identities with Classic, Neo, and HandDrawn witnesses. Config ownership remains per source,
-  and specific NodeLabel/EdgeLabel rules retain their independent compatibility routes. Visible
-  root-inheriting geometry participates in Text paint evidence; a stylesheet alone does not
-  establish an Applied terminal. GitGraph still requires a bridge for its remaining routes.
+  identities with Classic, Neo, and HandDrawn witnesses. KTD17 v57 also directly migrates the eight
+  static unqualified/Default solid/transparent NodeLabel.fill and EdgeLabel.fill routes, with the
+  same three looks and one corresponding label projection obligation per route. Generic Text
+  retains all three historical replacement obligations. Config ownership remains per source,
+  and Text/specific-label precedence follows global rule order. Visible root-inheriting geometry
+  participates only in Text paint evidence; label routes require their own visible tag/commit
+  text, and a stylesheet alone does not establish an Applied terminal. GitGraph still requires
+  a bridge for its remaining Node and Edge paint routes. KTD23 gains no retirement rows.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

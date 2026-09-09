@@ -443,6 +443,12 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_TEXT_FILL)
         }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL)
+        }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::EdgeLabel, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_LABEL_FILL)
+        }
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
@@ -1703,7 +1709,10 @@ pub(super) fn classify_rule_facet(
                 variant: None | Some(ThemeVariant::Default)
             }
         )
-        && target == ThemeTarget::EdgeLabelBackground
+        && matches!(
+            target,
+            ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
+        )
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
@@ -3921,70 +3930,69 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_text_fill_cutover_preserves_specific_label_legacy_ownership() {
-        for kind in [
-            FamilyThemePaintKind::Transparent,
-            FamilyThemePaintKind::Solid,
+    fn gitgraph_text_and_label_fill_cutovers_are_static_scalar_and_role_local() {
+        for target in [
+            ThemeTarget::Text,
+            ThemeTarget::NodeLabel,
+            ThemeTarget::EdgeLabel,
         ] {
-            for variant in [None, Some(ThemeVariant::Default)] {
-                let facet = FamilyThemeRuleFacet::Fill(kind);
-                let selector = FamilyThemeSelectorShape::Static { variant };
-                assert_eq!(
-                    classify_rule_facet(
-                        DiagramFamilyId::GIT_GRAPH,
-                        ThemeTarget::Text,
-                        selector,
-                        facet
-                    ),
-                    FamilyThemeDisposition::TypedAdapter
-                );
-                for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+            for kind in [
+                FamilyThemePaintKind::Transparent,
+                FamilyThemePaintKind::Solid,
+            ] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    let facet = FamilyThemeRuleFacet::Fill(kind);
                     assert_eq!(
-                        classify_rule_facet(DiagramFamilyId::GIT_GRAPH, target, selector, facet),
-                        FamilyThemeDisposition::LegacyCompatibility
+                        classify_rule_facet(
+                            DiagramFamilyId::GIT_GRAPH,
+                            target,
+                            FamilyThemeSelectorShape::Static { variant },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::TypedAdapter
+                    );
+                    assert_eq!(
+                        classify_rule_facet(
+                            DiagramFamilyId::GIT_GRAPH,
+                            target,
+                            FamilyThemeSelectorShape::Ordinal {
+                                variant,
+                                selector: OrdinalSelector::exact(1).expect("valid ordinal"),
+                            },
+                            facet,
+                        ),
+                        FamilyThemeDisposition::Unsupported
                     );
                 }
+            }
+            for kind in [
+                FamilyThemePaintKind::Clear,
+                FamilyThemePaintKind::LinearGradient,
+                FamilyThemePaintKind::RadialGradient,
+                FamilyThemePaintKind::Pattern,
+            ] {
                 assert_eq!(
                     classify_rule_facet(
                         DiagramFamilyId::GIT_GRAPH,
-                        ThemeTarget::Text,
-                        FamilyThemeSelectorShape::Ordinal {
-                            variant,
-                            selector: OrdinalSelector::exact(1).expect("valid ordinal")
-                        },
-                        facet
+                        target,
+                        FamilyThemeSelectorShape::Static { variant: None },
+                        FamilyThemeRuleFacet::Fill(kind),
                     ),
                     FamilyThemeDisposition::Unsupported
                 );
             }
-        }
-        for kind in [
-            FamilyThemePaintKind::Clear,
-            FamilyThemePaintKind::LinearGradient,
-            FamilyThemePaintKind::RadialGradient,
-            FamilyThemePaintKind::Pattern,
-        ] {
             assert_eq!(
                 classify_rule_facet(
                     DiagramFamilyId::GIT_GRAPH,
-                    ThemeTarget::Text,
-                    FamilyThemeSelectorShape::Static { variant: None },
-                    FamilyThemeRuleFacet::Fill(kind)
+                    target,
+                    FamilyThemeSelectorShape::Static {
+                        variant: Some(ThemeVariant::Active),
+                    },
+                    FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
                 ),
                 FamilyThemeDisposition::Unsupported
             );
         }
-        assert_eq!(
-            classify_rule_facet(
-                DiagramFamilyId::GIT_GRAPH,
-                ThemeTarget::Text,
-                FamilyThemeSelectorShape::Static {
-                    variant: Some(ThemeVariant::Active)
-                },
-                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid)
-            ),
-            FamilyThemeDisposition::Unsupported
-        );
     }
 
     #[test]
@@ -5613,6 +5621,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Transparent,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::NodeLabel,
+                Fill,
+                Solid,
+                vec!["node-label.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
                 ThemeTarget::Edge,
                 Stroke,
                 Transparent,
@@ -5624,6 +5646,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::EdgeLabel,
+                Fill,
+                Transparent,
+                vec!["edge-label.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::EdgeLabel,
+                Fill,
+                Solid,
+                vec!["edge-label.fill"],
             ),
             (
                 DiagramFamilyId::GIT_GRAPH,
@@ -6420,7 +6456,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 152);
+        assert_eq!(qualified.len(), 156);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6534,7 +6570,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
                 .count(),
-            6
+            10
         );
         assert_eq!(
             qualified
@@ -6714,6 +6750,12 @@ mod tests {
                     }
                     (ThemeTarget::EdgeLabelBackground, ThemeRouteCutoverFacet::Fill) => {
                         vec![ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill]
+                    }
+                    (ThemeTarget::NodeLabel, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::NodeLabelFill]
+                    }
+                    (ThemeTarget::EdgeLabel, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::EdgeLabelFill]
                     }
                     (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
                         vec![

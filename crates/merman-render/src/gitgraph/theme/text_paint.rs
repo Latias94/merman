@@ -17,13 +17,28 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::{GitGraphCommitKind, gitgraph_commit_label_is_visible, palette_slot};
 
-// Text owns three distinct legacy sources. Later label rules and each configured source can
-// independently suppress one of them without suppressing the other two.
+// Text supplies three paint sources; NodeLabel and EdgeLabel also compete for their own
+// label source by global rule order. Configuration owns each source independently.
 const SOURCES: [&str; 3] = [
     "themeVariables.textColor",
     "themeVariables.tagLabelColor",
     "themeVariables.commitLabelColor",
 ];
+
+const LABEL_TARGETS: [ThemeTarget; 3] = [
+    ThemeTarget::Text,
+    ThemeTarget::NodeLabel,
+    ThemeTarget::EdgeLabel,
+];
+
+fn source_mask(target: ThemeTarget) -> u8 {
+    match target {
+        ThemeTarget::Text => 0b111,
+        ThemeTarget::NodeLabel => 0b010,
+        ThemeTarget::EdgeLabel => 0b100,
+        _ => 0,
+    }
+}
 
 #[derive(Debug, Default)]
 struct TextObservation {
@@ -88,12 +103,12 @@ impl GitGraphTextPaintPlan {
             if matches!(
                 route.mechanism(),
                 FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Text,
+                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
                     ..
                 } | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Text
+                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
                 } | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Text,
+                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
                     ..
                 }
             ) {
@@ -139,7 +154,7 @@ impl GitGraphTextPaintPlan {
                     resolve_direct_static_fill(
                         theme,
                         &styles[i],
-                        &[ThemeTarget::Text],
+                        &[ThemeTarget::Text, LABEL_TARGETS[i]],
                         DirectStaticSelectorDomain::Default,
                     )
                 })
@@ -154,20 +169,22 @@ impl GitGraphTextPaintPlan {
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index,
+                    target,
                     facet,
                     selector,
-                    ..
                 } => {
+                    let sources = source_mask(target);
                     let property = resolved_style_property_for_facet(facet);
                     if property == ResolvedStyleProperty::Fill {
                         for (i, style) in styles.iter().enumerate() {
-                            if owned[i] {
+                            if sources & (1 << i) == 0 || owned[i] {
                                 continue;
                             }
                             let winner = style.fill_resolution().winner();
-                            let won =
-                                winner.is_some_and(|origin| origin.rule_index() == rule_index);
-                            // Text has no semantic ordinal identity. Only a later static
+                            let won = winner.is_some_and(|origin| {
+                                origin.target() == target && origin.rule_index() == rule_index
+                            });
+                            // Label paint has no semantic ordinal identity. Only a later static
                             // winner supersedes an ordinal, regardless of the winner's target.
                             let unproved_ordinal = matches!(
                                 selector,
@@ -195,8 +212,13 @@ impl GitGraphTextPaintPlan {
                         }
                     } else {
                         for (i, style) in styles.iter().enumerate() {
+                            if sources & (1 << i) == 0 {
+                                continue;
+                            }
                             let won = style.winner_rule_properties().any(|(candidate, origin)| {
-                                candidate == property && origin.rule_index() == rule_index
+                                candidate == property
+                                    && origin.target() == target
+                                    && origin.rule_index() == rule_index
                             });
                             let unproved_ordinal =
                                 matches!(
@@ -219,10 +241,12 @@ impl GitGraphTextPaintPlan {
                         }
                     }
                 }
-                FamilyThemeMechanism::OrdinalPalette { .. } => {
-                    if theme.series_color(ThemeTarget::Text, 1).is_some() {
+                FamilyThemeMechanism::OrdinalPalette { target } => {
+                    let sources = source_mask(target);
+                    if theme.series_color(target, 1).is_some() {
                         for (i, style) in styles.iter().enumerate() {
-                            if !owned[i]
+                            if sources & (1 << i) != 0
+                                && !owned[i]
                                 && matches!(
                                     style.fill_resolution().specified(),
                                     Specified::Unspecified
@@ -235,11 +259,15 @@ impl GitGraphTextPaintPlan {
                             Some(FamilyThemeResidualReason::UnsupportedOrdinalPalette);
                     }
                 }
-                FamilyThemeMechanism::EffectBinding { .. } => {
+                FamilyThemeMechanism::EffectBinding { target, .. } => {
+                    let sources = source_mask(target);
                     for (i, style) in styles.iter().enumerate() {
-                        // A concrete role's effect winner can suppress the Text binding fallback.
+                        if sources & (1 << i) == 0 {
+                            continue;
+                        }
+                        // A concrete role's effect winner can suppress its binding fallback.
                         if let Some(ResolvedThemeEffect::Binding { binding, .. }) =
-                            theme.resolve_effect(ThemeTarget::Text, style.effect_resolution())
+                            theme.resolve_effect(target, style.effect_resolution())
                             && key
                                 == (FamilyThemeMechanismKey::EffectBinding {
                                     target: binding.target(),
@@ -251,7 +279,9 @@ impl GitGraphTextPaintPlan {
                         }
                     }
                 }
-                FamilyThemeMechanism::BaseTypography(_) => unreachable!("Text routes only"),
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    unreachable!("text and label routes only")
+                }
             }
         }
         Ok(plan)
@@ -315,7 +345,7 @@ impl GitGraphTextPaintPlan {
             };
             let visible = facts.visible_mask();
             // Paint/effect/geometry can consume text or root-inheriting shapes. Typography
-            // requires real text in the same role where this Text property remains the winner.
+            // requires real text in the same role where this property remains the winner.
             let other_visible = visible | facts.text_visible;
             let other_reason = observation
                 .other

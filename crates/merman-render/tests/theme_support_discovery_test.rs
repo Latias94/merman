@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 52);
+    assert_eq!(support.claim_revision(), 53);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -643,24 +643,30 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
-fn gitgraph_text_fill_is_a_typed_partial_surface() {
-    let query = ThemeSupportQueryV1::known(
-        DiagramFamilyId::GIT_GRAPH.as_str(),
-        ThemeSupportOutputV1::StandaloneSvg,
-        ThemeTarget::Text.id(),
-        ThemeRuleFacetV1::Fill,
-    );
+fn gitgraph_text_and_label_fill_are_typed_partial_surfaces() {
+    for target in [
+        ThemeTarget::Text,
+        ThemeTarget::NodeLabel,
+        ThemeTarget::EdgeLabel,
+    ] {
+        let query = ThemeSupportQueryV1::known(
+            DiagramFamilyId::GIT_GRAPH.as_str(),
+            ThemeSupportOutputV1::StandaloneSvg,
+            target.id(),
+            ThemeRuleFacetV1::Fill,
+        );
 
-    let support = describe_theme_support(&query);
+        let support = describe_theme_support(&query);
 
-    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
-    assert_eq!(
-        support.reason_ids(),
-        [
-            "theme-support.family-owned-consumer-present",
-            "theme-support.public-value-domain-partial",
-        ]
-    );
+        assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+        assert_eq!(
+            support.reason_ids(),
+            [
+                "theme-support.family-owned-consumer-present",
+                "theme-support.public-value-domain-partial",
+            ]
+        );
+    }
 }
 
 #[test]

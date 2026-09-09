@@ -559,6 +559,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_NODE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::NodeStroke);
     pub const REPLACE_NODE_LABEL_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::NodeLabelFill);
+    pub const REPLACE_EDGE_LABEL_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::EdgeLabelFill);
     pub const REPLACE_EDGE_STROKE: Self = Self::replacing(ThemeRouteCutoverProjection::EdgeStroke);
     pub const REPLACE_EDGE_STROKE_AND_RETIRE_MARKER_FALLBACK: Self = Self::edge_stroke();
     pub const REPLACE_ACTOR_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::ActorFill);
@@ -1205,6 +1207,22 @@ mod tests {
 
     #[test]
     fn gitgraph_text_fill_replaces_all_three_inherited_projections() {
+        for (set, projection) in [
+            (
+                ThemeRouteCutoverProjectionSet::REPLACE_NODE_LABEL_FILL,
+                ThemeRouteCutoverProjection::NodeLabelFill,
+            ),
+            (
+                ThemeRouteCutoverProjectionSet::REPLACE_EDGE_LABEL_FILL,
+                ThemeRouteCutoverProjection::EdgeLabelFill,
+            ),
+        ] {
+            assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
+            assert_eq!(
+                projection.action(),
+                ThemeRouteCutoverProjectionAction::Replace
+            );
+        }
         assert_eq!(
             ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_TEXT_FILL
                 .iter()

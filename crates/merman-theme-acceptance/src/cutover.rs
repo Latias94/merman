@@ -365,10 +365,15 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
-        if matches!(
+        if (matches!(
             route.family_id(),
-            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN | DiagramFamilyId::GIT_GRAPH
-        ) && route.target() == ThemeTarget::Text
+            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN
+        ) && route.target() == ThemeTarget::Text)
+            || (route.family_id() == DiagramFamilyId::GIT_GRAPH
+                && matches!(
+                    route.target(),
+                    ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
+                ))
         {
             return &Self::TEXT_LOOKS;
         }
@@ -572,9 +577,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_PAINT_SOURCE)
         }
-        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
-            Ok(GITGRAPH_TEXT_SOURCE)
-        }
+        (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Ok(GITGRAPH_TEXT_SOURCE),
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke)
         | (
             DiagramFamilyId::GIT_GRAPH,
@@ -1568,11 +1575,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_308_routes_and_362_artifact_witnesses() {
+    fn route_inventory_retains_316_routes_and_386_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 308);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 362);
+        assert_eq!(inventory.len(), 316);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 386);
     }
 
     #[test]
@@ -1695,15 +1702,17 @@ mod tests {
     #[test]
     fn text_routes_require_each_look_specific_witness() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
-        for family in [
-            DiagramFamilyId::C4,
-            DiagramFamilyId::KANBAN,
-            DiagramFamilyId::GIT_GRAPH,
+        for (family, target) in [
+            (DiagramFamilyId::C4, ThemeTarget::Text),
+            (DiagramFamilyId::KANBAN, ThemeTarget::Text),
+            (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text),
+            (DiagramFamilyId::GIT_GRAPH, ThemeTarget::NodeLabel),
+            (DiagramFamilyId::GIT_GRAPH, ThemeTarget::EdgeLabel),
         ] {
             let routes = inventory
                 .iter()
                 .copied()
-                .filter(|route| route.family_id() == family && route.target() == ThemeTarget::Text)
+                .filter(|route| route.family_id() == family && route.target() == target)
                 .collect::<Vec<_>>();
             assert_eq!(routes.len(), 4);
             for route in routes {

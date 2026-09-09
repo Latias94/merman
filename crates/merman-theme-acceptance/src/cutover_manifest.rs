@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 56;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 57;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    150, 62, 146, 100, 35, 23, 45, 102, 217, 124, 156, 118, 36, 32, 54, 164, 48, 29, 157, 140, 171,
-    60, 201, 217, 159, 233, 248, 101, 80, 249, 38, 238,
+    135, 186, 99, 56, 203, 212, 40, 1, 246, 18, 0, 74, 7, 188, 95, 206, 220, 103, 136, 46, 38, 173,
+    227, 184, 198, 162, 218, 87, 21, 88, 192, 102,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -255,6 +255,8 @@ const NODE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NodeStroke];
 const NODE_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::NodeLabelFill];
+const EDGE_LABEL_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::EdgeLabelFill];
 const EDGE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::EdgeStroke,
     ThemeRouteCutoverProjection::MarkerPaintFromEdge,
@@ -374,7 +376,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 308] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 316] = [
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -2076,6 +2078,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 308] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::NodeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::NodeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabel,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_LABEL_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::EdgeLabel,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_LABEL_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::GIT_GRAPH,
@@ -3469,34 +3531,34 @@ mod tests {
 
     #[test]
     fn manifest_keeps_gitgraph_text_inheritance_and_specific_label_routes_separate() {
-        let routes = ACTIVE_ROUTES
-            .iter()
-            .filter(|route| {
-                route.id.family_id() == DiagramFamilyId::GIT_GRAPH
-                    && route.id.target() == ThemeTarget::Text
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(routes.len(), 4);
-        for selector in [
-            ThemeRouteCutoverSelector::StaticUnqualified,
-            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        for (target, projections) in [
+            (ThemeTarget::Text, super::GITGRAPH_TEXT_FILL_PROJECTIONS),
+            (ThemeTarget::NodeLabel, super::NODE_LABEL_FILL_PROJECTIONS),
+            (ThemeTarget::EdgeLabel, super::EDGE_LABEL_FILL_PROJECTIONS),
         ] {
-            for value in [
-                ThemeRouteCutoverValue::Transparent,
-                ThemeRouteCutoverValue::Solid,
+            let routes = ACTIVE_ROUTES
+                .iter()
+                .filter(|route| {
+                    route.id.family_id() == DiagramFamilyId::GIT_GRAPH
+                        && route.id.target() == target
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(routes.len(), 4);
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
             ] {
-                assert!(routes.iter().any(|route| route.id.selector() == selector
-                    && route.id.value() == value
-                    && route.id.facet() == ThemeRouteCutoverFacet::Fill
-                    && route.projections == super::GITGRAPH_TEXT_FILL_PROJECTIONS));
+                for value in [
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ] {
+                    assert!(routes.iter().any(|route| route.id.selector() == selector
+                        && route.id.value() == value
+                        && route.id.facet() == ThemeRouteCutoverFacet::Fill
+                        && route.projections == projections));
+                }
             }
         }
-        assert!(!ACTIVE_ROUTES.iter().any(|route| route.id.family_id()
-            == DiagramFamilyId::GIT_GRAPH
-            && matches!(
-                route.id.target(),
-                ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
-            )));
     }
 
     #[test]

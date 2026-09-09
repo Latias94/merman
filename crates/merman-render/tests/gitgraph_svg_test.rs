@@ -2267,7 +2267,7 @@ fn gitgraph_text_and_specific_labels_preserve_source_order() {
             &gitgraph_edge_rules_theme(rules),
             Engine::new(),
             "git-text-specific",
-            ThemePortabilityRequirement::BestEffort,
+            ThemePortabilityRequirement::RequirePortable,
         )
         .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2292,9 +2292,12 @@ fn gitgraph_text_and_specific_labels_preserve_source_order() {
         }
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        // Specific label compatibility is accounted by parse provenance, not typed evidence.
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.required_count(), 3);
+        assert_eq!(evidence.applied_count(), if text_first { 3 } else { 1 });
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if text_first { 0 } else { 2 }
+        );
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
@@ -2645,8 +2648,8 @@ fn gitgraph_later_text_ordinal_is_not_masked_by_an_earlier_specific_label_rule()
     );
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(
         evidence.theme_residual_count(),
@@ -2697,5 +2700,306 @@ fn gitgraph_text_typography_yields_to_the_winning_label_property() {
             1,
             "the earlier Text font has no winning text terminal"
         );
+    }
+}
+
+#[test]
+fn gitgraph_specific_label_fill_replaces_its_exact_legacy_color() {
+    let source = "---\ntitle: Independent labels\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n  branch next\n  commit id: \"B\" tag: \"v2\"\n";
+    for (target, key, class) in [
+        (ThemeTarget::NodeLabel, "tagLabelColor", "tag-label"),
+        (ThemeTarget::EdgeLabel, "commitLabelColor", "commit-label"),
+    ] {
+        for theme_name in ["default", "neo", "neo-dark", "redux", "redux-color"] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    for (paint, color) in [
+                        (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                        (CanvasPaint::Transparent, "transparent"),
+                    ] {
+                        let mut rule =
+                            ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint));
+                        if let Some(variant) = variant {
+                            rule = rule.with_variant(variant);
+                        }
+                        let config = json!({"theme": theme_name, "look": look});
+                        let rendered = render_gitgraph_with_theme_and_engine(
+                            source,
+                            &gitgraph_edge_rules_theme([rule]),
+                            Engine::new()
+                                .with_site_config(MermaidConfig::from_value(config.clone())),
+                            "git-specific-label",
+                        );
+                        let mut legacy_config = config;
+                        legacy_config["themeVariables"] = json!({key: color});
+                        let legacy = render_gitgraph_with_theme_and_engine(
+                            source,
+                            &gitgraph_edge_rules_theme([]),
+                            Engine::new()
+                                .with_site_config(MermaidConfig::from_value(legacy_config)),
+                            "git-specific-label",
+                        );
+                        assert_eq!(
+                            rendered.svg(),
+                            legacy.svg(),
+                            "{target:?}/{theme_name}/{look}/{variant:?}/{color}"
+                        );
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        assert_eq!(
+                            document
+                                .descendants()
+                                .filter(|node| node.has_tag_name("text") && has_class(node, class))
+                                .count(),
+                            2
+                        );
+                        let source_owned =
+                            target == ThemeTarget::EdgeLabel && theme_name != "default";
+                        if !source_owned {
+                            let css = gitgraph_stylesheet(rendered.svg());
+                            assert_eq!(
+                                css_property_winner(
+                                    &gitgraph_css_rule(
+                                        &css,
+                                        &format!("#git-specific-label .{class}")
+                                    ),
+                                    "fill"
+                                ),
+                                Some(color)
+                            );
+                        }
+                        let completion = rendered.into_completion();
+                        let evidence =
+                            merman_render::__private::family_evidence(completion.report());
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+                        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_label_color_ownership_is_property_local_and_requires_visible_text() {
+    for (target, own_key, other_key, class) in [
+        (
+            ThemeTarget::NodeLabel,
+            "tagLabelColor",
+            "commitLabelColor",
+            "tag-label",
+        ),
+        (
+            ThemeTarget::EdgeLabel,
+            "commitLabelColor",
+            "tagLabelColor",
+            "commit-label",
+        ),
+    ] {
+        let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )]);
+        for key in [own_key, other_key, "textColor"] {
+            render_source_and_site_config_cases(
+                "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+                json!({"themeVariables": {key: "#abcdef"}}),
+                &theme,
+                "git-label-owner",
+                |owner, rendered| {
+                    let css = gitgraph_stylesheet(rendered.svg());
+                    let selector = format!("#git-label-owner-{owner} .{class}");
+                    assert_eq!(
+                        css_property_winner(&gitgraph_css_rule(&css, &selector), "fill"),
+                        Some(if key == own_key { "#abcdef" } else { "#123456" })
+                    );
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.applied_count(), usize::from(key != own_key));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(key == own_key));
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                },
+            );
+        }
+        for source in [
+            "gitGraph\n",
+            "---\ntitle: Only root title\n---\ngitGraph\n  commit id: \"A\"\n",
+        ] {
+            let rendered = render_gitgraph_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    json!({"gitGraph": {"showCommitLabel": false}}),
+                )),
+                "git-label-absent",
+            );
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(!doc.descendants().any(|node| has_class(&node, class)));
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                1,
+                "an unrelated root title is not a label terminal"
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_specific_label_mixed_properties_and_ordinals_fail_closed() {
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+        let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+        let mut mixed = fill();
+        mixed.typography.font_stack =
+            Specified::Value(FontStack::single("UnsupportedLabelFont").unwrap());
+        let own_key = if target == ThemeTarget::NodeLabel {
+            "tagLabelColor"
+        } else {
+            "commitLabelColor"
+        };
+        for (case, rule, config, residuals) in [
+            ("mixed", ThemeRule::new(target, mixed.clone()), json!({}), 1),
+            (
+                "owned-mixed",
+                ThemeRule::new(target, mixed),
+                json!({"themeVariables": {own_key: "#abcdef"}}),
+                1,
+            ),
+            (
+                "ordinal",
+                ThemeRule::new(target, fill()).with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                json!({}),
+                1,
+            ),
+            (
+                "inactive",
+                ThemeRule::new(target, fill()).with_variant(ThemeVariant::Active),
+                json!({}),
+                0,
+            ),
+        ] {
+            let theme = gitgraph_edge_rules_theme([rule]);
+            let engine =
+                || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+            let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+            let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                source,
+                &theme,
+                engine(),
+                "git-label-mixed",
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            roxmltree::Document::parse(rendered.svg()).unwrap();
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.theme_residual_count(),
+                residuals,
+                "{target:?}/{case}"
+            );
+            assert_eq!(evidence.not_applicable_count(), 1 - residuals);
+            let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+                source,
+                &theme,
+                engine(),
+                "git-label-mixed-strict",
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if residuals == 0 {
+                strict.unwrap();
+            } else {
+                let error = match strict {
+                    Err(error) => error,
+                    Ok(_) => panic!("unsupported {target:?}/{case} passed strict"),
+                };
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::GIT_GRAPH, 1))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_label_fallbacks_require_their_own_visible_terminal() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+        for effect in [false, true] {
+            for overridden in [false, true] {
+                let mut styles = ThemeRuleSet::default();
+                let mut spec = DiagramThemeSpec::new();
+                if effect {
+                    spec = spec.with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(
+                                EffectGraph::new(
+                                    "blur",
+                                    [EffectPrimitive::GaussianBlur {
+                                        input: EffectInput::SourceGraphic,
+                                        std_deviation: 1.0,
+                                    }],
+                                )
+                                .unwrap(),
+                            )
+                            .unwrap()
+                            .with_binding(EffectBinding::new(target, "blur").unwrap())
+                            .unwrap(),
+                    );
+                } else {
+                    styles = styles.with_ordinal_palette(
+                        target,
+                        OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+                    );
+                }
+                if overridden {
+                    let mut patch = ThemeStylePatch::default();
+                    if effect {
+                        patch.effects.effect = Specified::Clear;
+                    } else {
+                        patch.paint.fill = Specified::Clear;
+                    }
+                    styles = styles.with_rule(ThemeRule::new(target, patch));
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(spec.with_styles(styles))
+                    .unwrap();
+                for (source, visible) in [
+                    ("---\ntitle: Root only\n---\ngitGraph\n", false),
+                    ("gitGraph\n  commit id: \"A\" tag: \"v1\"\n", true),
+                ] {
+                    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                        source,
+                        &theme,
+                        Engine::new(),
+                        "git-label-fallback",
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .unwrap();
+                    roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.required_count(), 1 + usize::from(overridden));
+                    assert_eq!(evidence.applied_count(), 0);
+                    assert_eq!(
+                        evidence.theme_residual_count(),
+                        usize::from(visible),
+                        "{target:?}/effect={effect}/overridden={overridden}/visible={visible}"
+                    );
+                    assert_eq!(
+                        evidence.not_applicable_count(),
+                        usize::from(overridden) + usize::from(!visible)
+                    );
+                }
+            }
+        }
     }
 }
