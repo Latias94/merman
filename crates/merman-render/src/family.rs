@@ -2144,7 +2144,7 @@ mod tests {
             "#; Accessible",
             "#; Description",
             "#; Phase",
-            "#; Task ",
+            "#; Task",
         ] {
             assert!(
                 xml.descendants()
@@ -2357,7 +2357,7 @@ mod tests {
                 .commands
                 .iter()
                 .find_map(|command| match command {
-                    DrawingCommand::DrawText { run } if run.text == task.label.text => Some(run),
+                    DrawingCommand::DrawText { run } if run.text == "Label" => Some(run),
                     _ => None,
                 })
                 .unwrap();
@@ -2543,9 +2543,7 @@ mod tests {
             assert!(matrix.starts_with("matrix("));
             let label = xml
                 .descendants()
-                .find(|node| {
-                    node.has_tag_name("text") && node.text() == Some(task.label.text.as_str())
-                })
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Gate"))
                 .unwrap();
             assert_eq!(label.attribute("transform"), None);
             let next = xml
@@ -7317,6 +7315,29 @@ linkStyle 0 font-size:12px,font-style:italic
             .begin_session()
             .unwrap();
         prepare(parsed, &LayoutOptions::default(), session)
+    }
+
+    #[test]
+    fn resolved_source_metadata_replays_with_exact_reported_work_budget() {
+        for label in [
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ #quot;",
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ literal",
+        ] {
+            let source = format!("packet\naccTitle: {label}\n0-7: \"Byte\"\n");
+            let render = |artifact: FamilyRenderArtifact| {
+                artifact.render_drawing_list(
+                    DrawingListPolicy::VectorOnly,
+                    DrawingListLimits::default(),
+                )
+            };
+            let unbounded = render(prepare_with_unbounded_layout_work(&source).unwrap()).unwrap();
+            let exact = unbounded.session.report().layout_work_units();
+            let bounded = render(prepare_with_layout_work_limit(&source, exact).unwrap())
+                .expect("reported work must admit a replay of the same source");
+            assert_eq!(bounded.session.report().layout_work_units(), exact);
+            assert_eq!(bounded.json, unbounded.json);
+            assert!(render(prepare_with_layout_work_limit(&source, exact - 1).unwrap()).is_err());
+        }
     }
 
     fn assert_model_item_limit(error: Error, actual: usize, max: usize) {

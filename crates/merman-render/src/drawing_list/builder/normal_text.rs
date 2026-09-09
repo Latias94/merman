@@ -143,7 +143,7 @@ impl DrawingListBuilder<'_> {
         Ok(())
     }
 
-    fn normalize_normal_text(&self, text: &str) -> Result<String> {
+    pub(crate) fn normalize_normal_text(&self, text: &str) -> Result<String> {
         self.session
             .work_meter()
             .charge_at(text.len(), OperationPhase::Emit)?;

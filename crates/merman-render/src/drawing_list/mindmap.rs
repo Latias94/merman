@@ -101,6 +101,7 @@ struct MindmapBuilder<'a> {
     node_border: Color,
     stroke_width: f64,
     use_gradient: bool,
+    hide_dividers: bool,
     gradient_start: Option<Color>,
     gradient_stop: Option<Color>,
     svg_nodes: BTreeMap<String, MindmapSvgNode>,
@@ -204,12 +205,13 @@ impl<'a> MindmapBuilder<'a> {
             return Err(invalid("Mindmap strokeWidth is invalid"));
         }
 
-        let use_gradient = look == "neo"
-            && config_bool(
-                metadata.effective_config.as_value(),
-                &["themeVariables", "useGradient"],
-            )
-            .unwrap_or(false);
+        let hide_dividers = config_bool(
+            metadata.effective_config.as_value(),
+            &["themeVariables", "useGradient"],
+        )
+        .unwrap_or(false);
+        // Gradient node paint is neo-only; the source divider selector applies to both looks.
+        let use_gradient = look == "neo" && hide_dividers;
         let gradient_start = if use_gradient {
             if config_string(
                 metadata.effective_config.as_value(),
@@ -286,6 +288,7 @@ impl<'a> MindmapBuilder<'a> {
             node_border,
             stroke_width,
             use_gradient,
+            hide_dividers,
             gradient_start,
             gradient_stop,
             svg_nodes: BTreeMap::new(),
@@ -721,7 +724,7 @@ impl<'a> MindmapBuilder<'a> {
                     fill: None,
                     stroke: Some(StrokeStyle {
                         paint: Paint::solid(style.divider),
-                        width: 3.0,
+                        width: if self.hide_dividers { 0.0 } else { 3.0 },
                         dash_array: Vec::new(),
                         dash_offset: 0.0,
                         line_cap: LineCap::Butt,
@@ -852,7 +855,11 @@ impl<'a> MindmapBuilder<'a> {
         };
 
         Ok(NodeStyle {
-            fill,
+            fill: if self.use_gradient {
+                self.main_bkg
+            } else {
+                fill
+            },
             stroke,
             text,
             divider: c_scale_inv,
@@ -1419,6 +1426,59 @@ fn unavailable(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "layout-cytoscape")]
+    fn mindmap_gradient_resolves_node_fill_and_hides_dividers() {
+        for (look, use_gradient) in [("neo", true), ("classic", true), ("neo", false)] {
+            let parsed = merman_core::Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "look": look,
+                    "themeVariables": {
+                        "useGradient": use_gradient, "dropShadow": "none",
+                        "mainBkg": "#00ff00", "git0": "#0000ff", "cScale0": "#ff0000",
+                        "gradientStart": "#abcdef", "gradientStop": "#123456"
+                    }
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "mindmap\n  Root\n    Child\n",
+                    merman_core::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let rendered =
+                crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                    .unwrap()
+                    .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+                    .unwrap();
+            let mut dividers = 0;
+            let mut shapes = 0;
+            for command in &rendered.document().commands {
+                if let DrawingCommand::DrawPath { path, style } = command {
+                    if path.as_str().ends_with(".divider") {
+                        dividers += 1;
+                        assert_eq!(
+                            style.stroke.as_ref().unwrap().width,
+                            if use_gradient { 0.0 } else { 3.0 }
+                        );
+                    } else if path.as_str().contains(".shape.") {
+                        shapes += 1;
+                        if look == "neo" && use_gradient {
+                            assert_eq!(style.fill, Some(Paint::solid(Color::rgba(0, 255, 0, 255))));
+                            assert!(matches!(
+                                style.stroke.as_ref().unwrap().paint,
+                                Paint::Resource { .. }
+                            ));
+                        }
+                    }
+                }
+            }
+            assert_eq!((shapes, dividers), (2, 2));
+        }
+    }
 
     #[test]
     #[cfg(feature = "layout-cytoscape")]

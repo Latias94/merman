@@ -749,7 +749,8 @@ impl<'a> ArchitectureBuilder<'a> {
         let text_value = lines.join("\n");
         self.output.draw_host_text(&text_value, |text| TextRun {
             text,
-            origin: Point::new(0.0, 0.0),
+            // createText's first tspan uses y=-0.1em and dy=1.1em.
+            origin: Point::new(0.0, self.font_size),
             bounds: local_bounds,
             style: TextStyle {
                 font,
@@ -2157,6 +2158,32 @@ mod tests {
             )
             .unwrap();
         (layout, rendered)
+    }
+
+    #[test]
+    #[cfg(feature = "layout-cytoscape")]
+    fn architecture_public_edge_label_preserves_first_tspan_offset() {
+        use merman_display_list::{DrawingCommand, Point};
+
+        for (lhs, rhs, size) in [('R', 'L', 16.0), ('B', 'T', 24.0)] {
+            let source = format!(
+                "architecture-beta\nservice a(server)[A]\nservice b(server)[B]\na:{lhs} -[request]-> {rhs}:b\n"
+            );
+            let (_, rendered) = public_architecture_document(&source, size, 80.0);
+            let run = rendered
+                .document()
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == "request" => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            // createText's first tspan combines y=-0.1em with dy=1.1em.
+            assert_eq!(run.origin, Point::new(0.0, size));
+            assert_eq!(run.style.line_height, size * 1.1);
+            assert!(run.bounds.y < size && run.bounds.y + run.bounds.height > size);
+        }
     }
 
     #[test]

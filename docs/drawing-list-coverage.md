@@ -72,6 +72,16 @@ are not admission evidence. Live route tests check the explicit compatibility re
 
 ### Direct-output audit follow-up
 
+The September 9 review follow-up checks half-arrow paths/reference points and marker-start
+orientation in Sequence, the first-tspan offset of Architecture edge labels, and Mindmap gradient
+fills/divider visibility against the pinned source. Gantt task paint now follows only the numbered
+CSS rules that actually exist (0..3), with root-paint inheritance for unmatched categories;
+task text collapses SVG whitespace before measurement while preserving authored semantic text.
+Metadata decoding work is charged rather than only preflighted, with exact-budget replay coverage.
+Required-nullable font, language, semantic, and visual-source fields reject omission in both
+the schema and decoder while still accepting explicit null. These are direct-output regressions,
+not new canonical SVG admissions or a claim of full-family comparison success.
+
 SVG admission and DrawingList correctness are separate gates. The September 8 follow-up addresses
 Mindmap depth-based edge widths, Flowchart node-label opacity isolation, Sequence Point marker
 geometry, Journey background paints, Radar text fill inheritance, exact JSON float round trips,

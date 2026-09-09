@@ -73,9 +73,11 @@ impl DrawingListBuilder<'_> {
                             },
                         ));
                     }
+                    // This temporary decoding work is not part of the final document's
+                    // footprint. Charge each fragment once so reported work admits replay.
                     self.session
                         .work_meter()
-                        .preflight_at(bytes, OperationPhase::Emit)?;
+                        .charge_at(len, OperationPhase::Emit)?;
                 }
                 Ok(())
             },

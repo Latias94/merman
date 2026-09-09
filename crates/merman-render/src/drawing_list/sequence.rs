@@ -1018,6 +1018,7 @@ impl<'a> SequenceBuilder<'a> {
                 endpoint.point,
                 endpoint.direction,
                 semantics.source_marker,
+                MarkerPosition::Start,
             )?;
         }
         if let Some(endpoint) = end_marker {
@@ -1026,6 +1027,7 @@ impl<'a> SequenceBuilder<'a> {
                 endpoint.point,
                 endpoint.direction,
                 semantics.target_marker,
+                MarkerPosition::End,
             )?;
         }
         Ok(())
@@ -1037,9 +1039,33 @@ impl<'a> SequenceBuilder<'a> {
         point: Point,
         direction: Point,
         marker: SequenceMessageMarker,
+        position: MarkerPosition,
     ) -> Result<()> {
+        // Mermaid swaps the half-marker definitions at marker-start before applying
+        // orient=auto-start-reverse. `direction` already points outward at that endpoint.
+        let marker = match (marker, position) {
+            (SequenceMessageMarker::FilledHalfTop, MarkerPosition::Start) => {
+                SequenceMessageMarker::FilledHalfBottom
+            }
+            (SequenceMessageMarker::FilledHalfBottom, MarkerPosition::Start) => {
+                SequenceMessageMarker::FilledHalfTop
+            }
+            (SequenceMessageMarker::OpenHalfTop, MarkerPosition::Start) => {
+                SequenceMessageMarker::OpenHalfBottom
+            }
+            (SequenceMessageMarker::OpenHalfBottom, MarkerPosition::Start) => {
+                SequenceMessageMarker::OpenHalfTop
+            }
+            _ => marker,
+        };
         let normal = Point::new(-direction.y, direction.x);
         let base = Point::new(point.x - direction.x * 10.0, point.y - direction.y * 10.0);
+        let marker_point = |x, y| {
+            Point::new(
+                point.x + direction.x * x + normal.x * y,
+                point.y + direction.y * x + normal.y * y,
+            )
+        };
         let segments = match marker {
             SequenceMessageMarker::Filled => polygon_path(&[
                 point,
@@ -1074,46 +1100,41 @@ impl<'a> SequenceBuilder<'a> {
                 },
             ],
             SequenceMessageMarker::FilledHalfTop | SequenceMessageMarker::FilledHalfBottom => {
-                let side = if marker == SequenceMessageMarker::FilledHalfTop {
-                    1.0
+                // svgDraw.js uses refX=7.9, refY=7.25 (top) or 0.75 (bottom).
+                let coordinates = if marker == SequenceMessageMarker::FilledHalfTop {
+                    [(-7.9, -7.25), (2.1, 0.75), (-7.9, 0.75)]
                 } else {
-                    -1.0
+                    [(-7.9, -0.75), (2.1, -0.75), (-7.9, 7.25)]
                 };
-                polygon_path(&[
-                    point,
-                    base,
-                    Point::new(
-                        base.x + normal.x * side * 7.0,
-                        base.y + normal.y * side * 7.0,
-                    ),
-                ])
+                polygon_path(&coordinates.map(|(x, y)| marker_point(x, y)))
             }
             SequenceMessageMarker::OpenHalfTop | SequenceMessageMarker::OpenHalfBottom => {
-                let side = if marker == SequenceMessageMarker::OpenHalfTop {
-                    1.0
+                let y = if marker == SequenceMessageMarker::OpenHalfTop {
+                    -7.0
                 } else {
-                    -1.0
+                    7.0
                 };
                 vec![
-                    PathSegment::MoveTo { to: point },
-                    PathSegment::LineTo { to: base },
+                    PathSegment::MoveTo {
+                        to: marker_point(-7.5, y),
+                    },
                     PathSegment::LineTo {
-                        to: Point::new(
-                            base.x + normal.x * side * 7.0,
-                            base.y + normal.y * side * 7.0,
-                        ),
+                        to: marker_point(-0.5, 0.0),
                     },
                 ]
             }
             SequenceMessageMarker::None => return Ok(()),
         };
         let (fill, stroke_style) = match marker {
-            SequenceMessageMarker::Point => (Some(Paint::solid(self.palette.text)), None),
-            SequenceMessageMarker::Cross
-            | SequenceMessageMarker::OpenHalfTop
-            | SequenceMessageMarker::OpenHalfBottom => {
-                (None, Some(stroke(self.palette.signal, 1.0)))
+            SequenceMessageMarker::Point
+            | SequenceMessageMarker::FilledHalfTop
+            | SequenceMessageMarker::FilledHalfBottom => {
+                (Some(Paint::solid(self.palette.text)), None)
             }
+            SequenceMessageMarker::OpenHalfTop | SequenceMessageMarker::OpenHalfBottom => {
+                (None, Some(stroke(Color::rgba(0, 0, 0, 255), 1.5)))
+            }
+            SequenceMessageMarker::Cross => (None, Some(stroke(self.palette.signal, 1.0))),
             _ => (
                 Some(Paint::solid(self.palette.signal)),
                 Some(stroke(self.palette.signal, 1.0)),
@@ -2223,6 +2244,141 @@ mod tests {
             wrap: false,
             links,
             properties: Map::new(),
+        }
+    }
+
+    #[test]
+    fn half_message_markers_expand_pinned_paths_and_reference_points() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingListPolicy, DrawingResource, Paint,
+        };
+
+        for (arrow, at_start, top, open) in [
+            (r"-|\", false, true, false),
+            ("-|/", false, false, false),
+            (r"-\\", false, true, true),
+            ("-//", false, false, true),
+            ("/|-", true, false, false),
+            (r"\|-", true, true, false),
+            ("//-", true, false, true),
+            (r"\\-", true, true, true),
+            (r"--|\", false, true, false),
+            ("//--", true, false, true),
+        ] {
+            for (from, to) in [("A", "B"), ("B", "A"), ("A", "A")] {
+                let source = format!(
+                    "sequenceDiagram\nparticipant A\nparticipant B\n{from}{arrow}{to}: test\n"
+                );
+                let parsed = merman_core::Engine::new()
+                    .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                        "theme": "base", "themeVariables": { "textColor": "#123456", "signalColor": "#654321" }
+                    })))
+                    .parse_diagram_for_render_model_sync(&source, merman_core::ParseOptions::strict()).unwrap().unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                let rendered =
+                    crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+                        .unwrap();
+                let document = rendered.document();
+                let path = |suffix: &str| {
+                    document
+                        .resources
+                        .iter()
+                        .find_map(|resource| match resource {
+                            DrawingResource::Path(path) if path.id.as_str().ends_with(suffix) => {
+                                Some(&path.segments)
+                            }
+                            _ => None,
+                        })
+                        .unwrap()
+                };
+                let route = path(".route");
+                let (end, adjacent) = if at_start {
+                    let PathSegment::MoveTo { to: start } = route[0] else {
+                        panic!("route start")
+                    };
+                    let adjacent = match route[1] {
+                        PathSegment::LineTo { to } => to,
+                        PathSegment::CubicTo { control1, .. } => control1,
+                        ref other => panic!("route tangent: {other:?}"),
+                    };
+                    (start, adjacent)
+                } else {
+                    match route.last().unwrap() {
+                        PathSegment::CubicTo { control2, to, .. } => (*to, *control2),
+                        PathSegment::LineTo { to } => {
+                            let (PathSegment::MoveTo { to: previous }
+                            | PathSegment::LineTo { to: previous }) = route[route.len() - 2]
+                            else {
+                                panic!("route tangent")
+                            };
+                            (*to, previous)
+                        }
+                        other => panic!("route end: {other:?}"),
+                    }
+                };
+                let length = (end.x - adjacent.x).hypot(end.y - adjacent.y);
+                let direction =
+                    Point::new((end.x - adjacent.x) / length, (end.y - adjacent.y) / length);
+                let coordinates: &[(f64, f64)] = match (open, top) {
+                    (false, true) => &[(-7.9, -7.25), (2.1, 0.75), (-7.9, 0.75)],
+                    (false, false) => &[(-7.9, -0.75), (2.1, -0.75), (-7.9, 7.25)],
+                    (true, true) => &[(-7.5, -7.0), (-0.5, 0.0)],
+                    (true, false) => &[(-7.5, 7.0), (-0.5, 0.0)],
+                };
+                let suffix = if at_start {
+                    ".marker.start"
+                } else {
+                    ".marker.end"
+                };
+                let marker = path(suffix);
+                assert_eq!(
+                    marker.len(),
+                    coordinates.len() + usize::from(!open),
+                    "{source}"
+                );
+                for (segment, (x, y)) in marker.iter().zip(coordinates) {
+                    let (PathSegment::MoveTo { to } | PathSegment::LineTo { to }) = segment else {
+                        panic!("half marker segment")
+                    };
+                    assert!(
+                        (to.x - (end.x + direction.x * x - direction.y * y)).abs() < 1e-9,
+                        "{source}: {segment:?}"
+                    );
+                    assert!(
+                        (to.y - (end.y + direction.y * x + direction.x * y)).abs() < 1e-9,
+                        "{source}: {segment:?}"
+                    );
+                }
+                assert_eq!(matches!(marker.last(), Some(PathSegment::Close)), !open);
+                let style = document
+                    .commands
+                    .iter()
+                    .find_map(|command| match command {
+                        DrawingCommand::DrawPath { path, style }
+                            if path.as_str().ends_with(suffix) =>
+                        {
+                            Some(style)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                if open {
+                    assert!(style.fill.is_none());
+                    let stroke = style.stroke.as_ref().unwrap();
+                    assert_eq!(stroke.width, 1.5);
+                    assert_eq!(stroke.paint, Paint::solid(Color::rgba(0, 0, 0, 255)));
+                } else {
+                    assert!(style.stroke.is_none());
+                    assert_eq!(
+                        style.fill,
+                        Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255)))
+                    );
+                }
+            }
         }
     }
 

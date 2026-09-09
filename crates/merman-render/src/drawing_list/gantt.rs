@@ -518,7 +518,7 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            let (fill, border, stroke_width) = self.task_style(source);
+            let style = self.task_style(&task.bar.class);
             let bar_id = format!("{semantic_id}.bar");
             self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
             self.path_classes
@@ -554,11 +554,7 @@ impl<'a> GanttBuilder<'a> {
                     task.bar.rx,
                     task.bar.ry,
                 ),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(fill)),
-                    stroke: Some(stroke(border, stroke_width)),
-                },
+                style,
             )?;
             if source.milestone {
                 self.document.push_control(DrawingCommand::Restore)?;
@@ -603,19 +599,23 @@ impl<'a> GanttBuilder<'a> {
             self.text_classes.insert(semantic_id.clone(), label_class);
             self.dom_ids
                 .insert(semantic_id.clone(), task.label.id.clone());
-            self.emit_text(
-                &semantic_id,
-                &task.label.text,
-                TextEmitSpec {
-                    origin: Point::new(task.label.x, task.label.y),
-                    font_size: label_size,
-                    weight: if clickable { 700 } else { 400 },
-                    color: label_color,
-                    anchor,
-                    baseline: TextBaseline::Alphabetic,
-                    italic: source.milestone,
-                },
-            )?;
+            let resolved = self
+                .document
+                .resolve_mermaid_layout_text(&task.label.text)?;
+            let text = self.document.normalize_normal_text(&resolved)?;
+            let spec = TextEmitSpec {
+                origin: Point::new(task.label.x, task.label.y),
+                font_size: label_size,
+                weight: if clickable { 700 } else { 400 },
+                color: label_color,
+                anchor,
+                baseline: TextBaseline::Alphabetic,
+                italic: source.milestone,
+            };
+            if !text.is_empty() {
+                let bounds = self.measure_text_bounds(&text, &spec)?;
+                self.emit_text_in_bounds(&semantic_id, &text, spec, bounds)?;
+            }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_mermaid_semantic(SemanticAnnotation {
@@ -910,35 +910,41 @@ impl GanttBuilder<'_> {
         }
     }
 
-    fn task_style(&self, task: &GanttRenderTask) -> (Color, Color, f64) {
-        let (fill, border) = if task.active && task.crit {
-            (self.active_task_fill, self.crit_border)
-        } else if task.active {
-            (self.active_task_fill, self.active_task_border)
-        } else if task.done && task.crit {
-            (self.done_task_fill, self.crit_border)
-        } else if task.done {
-            (self.done_task_fill, self.done_task_border)
-        } else if task.crit {
-            (self.crit_fill, self.crit_border)
+    fn task_style(&self, class: &str) -> PathStyle {
+        // Apply the source stylesheet's numbered rules in cascade order. Unmatched sections
+        // inherit root fill and no stroke; the unnumbered .vert rule still applies.
+        let (fill, border) = if numbered_class(class, "doneCrit") {
+            (self.done_task_fill, Some(self.crit_border))
+        } else if numbered_class(class, "activeCrit") {
+            (self.active_task_fill, Some(self.crit_border))
+        } else if numbered_class(class, "crit") {
+            (self.crit_fill, Some(self.crit_border))
+        } else if numbered_class(class, "done") {
+            (self.done_task_fill, Some(self.done_task_border))
+        } else if numbered_class(class, "active") {
+            (self.active_task_fill, Some(self.active_task_border))
+        } else if numbered_class(class, "task") {
+            (self.task_fill, Some(self.task_border))
         } else {
-            (self.task_fill, self.task_border)
+            (self.text_fill, None)
         };
-        let border = if task.vert { self.vert_line } else { border };
-        (fill, border, 2.0)
+        let border = if class.split_whitespace().any(|token| token == "vert") {
+            Some(self.vert_line)
+        } else {
+            border
+        };
+        PathStyle {
+            fill_rule: FillRule::NonZero,
+            fill: Some(Paint::solid(fill)),
+            stroke: border.map(|color| stroke(color, 2.0)),
+        }
     }
 
     fn task_text_style(&self, class: &str) -> Color {
         let has = |name| class.split_whitespace().any(|token| token == name);
         // Mermaid defines numbered paint rules only for sections 0..3. Resolve those exact
         // rules here, rather than inferring a style from flags that may not have a CSS rule.
-        let numbered = |prefix| {
-            class.split_whitespace().any(|token| {
-                token
-                    .strip_prefix(prefix)
-                    .is_some_and(|suffix| matches!(suffix, "0" | "1" | "2" | "3"))
-            })
-        };
+        let numbered = |prefix| numbered_class(class, prefix);
         let outside = has("taskTextOutsideLeft") || has("taskTextOutsideRight");
         let done = numbered("doneText") || numbered("doneCritText");
         // Both selectors have two classes and !important; the done-outside rule is later.
@@ -1185,6 +1191,14 @@ fn gantt_insert_before_width(base: &str, insert: &str) -> String {
     parts.join(" ")
 }
 
+fn numbered_class(class: &str, prefix: &str) -> bool {
+    class.split_whitespace().any(|token| {
+        token
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| matches!(suffix, "0" | "1" | "2" | "3"))
+    })
+}
+
 fn class_suffix(class: &str) -> Option<usize> {
     class
         .split_whitespace()
@@ -1260,6 +1274,136 @@ mod tests {
             .begin_session_with_control(OperationControl::new())
             .unwrap();
         crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap()
+    }
+
+    fn render_task_fixture(
+        source: &str,
+        config: serde_json::Value,
+    ) -> crate::family::RenderedDrawingList {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(config))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+            .unwrap()
+            .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+            .unwrap()
+    }
+
+    #[test]
+    fn task_labels_collapse_svg_whitespace_before_measurement() {
+        for (source_label, expected) in [
+            ("Alpha     Beta", "Alpha Beta"),
+            ("Alpha\t Beta ", "Alpha Beta"),
+            ("Alpha #32; Beta", "Alpha Beta"),
+            ("Alpha\u{a0}Beta", "Alpha\u{a0}Beta"),
+        ] {
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{source_label} :a, 2026-01-01, 1d\n"
+            );
+            let rendered = render_task_fixture(&source, json!({}));
+            let run = rendered
+                .document()
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text.starts_with("Alpha") => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(run.text, expected);
+            let spec = TextEmitSpec {
+                origin: run.origin,
+                font_size: run.style.font_size,
+                weight: 400,
+                color: Color::rgba(0, 0, 0, 255),
+                anchor: run.anchor,
+                baseline: run.baseline,
+                italic: false,
+            };
+            assert_eq!(
+                run.bounds,
+                measure_text_bounds(
+                    rendered.session(),
+                    &run.style.font.families.join(", "),
+                    expected,
+                    &spec
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn task_styles_outside_the_four_numbered_rules_inherit_root_paint() {
+        for count in [4, 5] {
+            for state in ["", "active,", "done,", "crit,", "milestone,", "vert,"] {
+                let mut source = String::from("gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n");
+                for index in 0..5 {
+                    source.push_str(&format!("section S{index}\n"));
+                    if state == "vert," {
+                        // Vertical markers alone do not register categories in Mermaid.
+                        source.push_str(&format!("Anchor{index} :anchor{index}, 2026-01-01, 1d\n"));
+                    }
+                    source.push_str(&format!("Task{index} :{state}t{index}, 2026-01-01, 1d\n"));
+                }
+                let rendered = render_task_fixture(
+                    &source,
+                    json!({
+                        "gantt": { "numberSectionStyles": count },
+                        "themeVariables": { "textColor": "#123456", "vertLineColor": "#abcdef" }
+                    }),
+                );
+                let styles = rendered
+                    .document()
+                    .commands
+                    .iter()
+                    .filter_map(|command| match command {
+                        DrawingCommand::DrawPath { path, style }
+                            if path.as_str().ends_with(".bar")
+                                && (state != "vert,"
+                                    || path
+                                        .as_str()
+                                        .split('.')
+                                        .nth(2)
+                                        .unwrap()
+                                        .parse::<usize>()
+                                        .unwrap()
+                                        % 2
+                                        == 1) =>
+                        {
+                            Some(style)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(styles.len(), 5);
+                if count == 4 {
+                    assert_eq!(styles[4], styles[0], "default four-style modulo: {state}");
+                } else {
+                    assert_eq!(
+                        styles[4].fill,
+                        Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255))),
+                        "{state}"
+                    );
+                    if state == "vert," {
+                        assert_eq!(
+                            styles[4].stroke.as_ref().unwrap().paint,
+                            Paint::solid(Color::rgba(0xab, 0xcd, 0xef, 255))
+                        );
+                    } else {
+                        assert!(
+                            styles[4].stroke.is_none(),
+                            "unmatched numbered rule: {state}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -1429,7 +1573,12 @@ mod tests {
                     let scope = *scopes.last().unwrap();
                     let semantic = document.semantics.iter().find(|s| s.id == scope).unwrap();
                     assert_eq!(semantic.role, SemanticRole::Label);
-                    assert_eq!(semantic.title.as_deref(), Some(run.text.as_str()));
+                    // Authored metadata retains the separator space before ':', but SVG
+                    // text rendering discards that trailing collapsible whitespace.
+                    assert_eq!(
+                        semantic.title.as_deref().unwrap().trim_end_matches(' '),
+                        run.text
+                    );
                     task_paints.push(("label", scope.to_owned()));
                 }
                 _ => {}
