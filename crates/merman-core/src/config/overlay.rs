@@ -350,19 +350,17 @@ impl PostDetectionConfigOverlay {
             return Ok(());
         };
 
+        let defaults = PostDetectionConfigDefaults {
+            explicit_site_config,
+            explicit_source_config,
+            config_before_detection,
+        };
         for contribution in &family_overlay.contributions {
             control.checkpoint()?;
             let mut applied_assignments = Vec::new();
             for assignment in contribution.assignments.iter() {
                 control.checkpoint()?;
-                if application.claims_path(&assignment.path)
-                    || owns_path(explicit_site_config, effective_config, &assignment.path)
-                    || owns_path(explicit_source_config, effective_config, &assignment.path)
-                    || effective_config
-                        .path_was_mutated_after(config_before_detection, &assignment.path)
-                    || value_at_path(config_before_detection, &assignment.path)
-                        != value_at_path(effective_config, &assignment.path)
-                {
+                if defaults.blocks_path(effective_config, application, &assignment.path) {
                     continue;
                 }
                 if lane == ConfigOverlayLane::Host {
@@ -380,6 +378,33 @@ impl PostDetectionConfigOverlay {
             application.record_contribution(lane, &contribution.opaque_id, applied_assignments);
         }
         Ok(())
+    }
+}
+
+/// Borrowed inputs that determine whether a post-detection default may fill a path.
+///
+/// Unlike typed-default ownership, this checks surviving raw input values, not ownership
+/// propagated through theme calculations. The effective config and prior claims stay live
+/// so each assignment observes earlier host/fallback writes without retaining a snapshot.
+struct PostDetectionConfigDefaults<'a> {
+    explicit_site_config: &'a MermaidConfig,
+    explicit_source_config: &'a MermaidConfig,
+    config_before_detection: &'a MermaidConfig,
+}
+
+impl PostDetectionConfigDefaults<'_> {
+    fn blocks_path(
+        &self,
+        effective_config: &MermaidConfig,
+        application: &ConfigOverlayApplication,
+        dotted_path: &str,
+    ) -> bool {
+        application.claims_path(dotted_path)
+            || owns_path(self.explicit_site_config, effective_config, dotted_path)
+            || owns_path(self.explicit_source_config, effective_config, dotted_path)
+            || effective_config.path_was_mutated_after(self.config_before_detection, dotted_path)
+            || value_at_path(self.config_before_detection, dotted_path)
+                != value_at_path(effective_config, dotted_path)
     }
 }
 
@@ -804,6 +829,148 @@ mod tests {
         );
         assert!(!provenance.contains("legacy.flowchart.node.fill"));
         assert!(provenance.contains("legacy.flowchart.line"));
+    }
+
+    #[test]
+    fn post_detection_defaults_distinguish_raw_inputs_from_derived_ownership() {
+        let explicit = MermaidConfig::from_value(json!({
+            "themeVariables": {"primaryColor": "#123456"}
+        }));
+        let empty = MermaidConfig::empty_object();
+        let mut before_detect = MermaidConfig::from_value(json!({"theme": "base"}));
+        before_detect.deep_merge_explicit(explicit.as_value());
+        crate::theme::apply_theme_defaults(&mut before_detect).unwrap();
+        assert!(before_detect.explicit_config_owns_path("themeVariables.primaryBorderColor"));
+        assert!(before_detect.config_path_overrides_typed_default("themeVariables.mainBkg"));
+        let overlay = PostDetectionConfigOverlay::new()
+            .with_family_contribution(
+                "flowchart",
+                contribution(
+                    "post-detection.node",
+                    json!({"themeVariables": {
+                        "primaryColor": "#abcdef",
+                        "primaryBorderColor": "#abcdef",
+                        "mainBkg": "#abcdef"
+                    }}),
+                ),
+            )
+            .unwrap();
+
+        for (site, source) in [(&explicit, &empty), (&empty, &explicit)] {
+            let mut effective = before_detect.clone();
+            let provenance = apply(&overlay, site, source, &before_detect, &mut effective);
+            assert_eq!(
+                effective.get_str("themeVariables.primaryColor"),
+                Some("#123456")
+            );
+            assert_eq!(
+                effective.get_str("themeVariables.primaryBorderColor"),
+                Some("#abcdef")
+            );
+            assert_eq!(effective.get_str("themeVariables.mainBkg"), Some("#abcdef"));
+            assert!(provenance.contains("post-detection.node"));
+        }
+    }
+
+    #[test]
+    fn normalized_raw_values_do_not_block_post_detection_defaults() {
+        let explicit = MermaidConfig::from_value(json!({
+            "themeVariables": {"primaryColor": null}
+        }));
+        let empty = MermaidConfig::empty_object();
+        let mut before_detect = MermaidConfig::from_value(json!({"theme": "base"}));
+        before_detect.set_value_explicit("themeVariables.primaryColor", Value::Null);
+        crate::theme::apply_theme_defaults(&mut before_detect).unwrap();
+        assert!(
+            before_detect
+                .get_str("themeVariables.primaryColor")
+                .is_some()
+        );
+        assert!(before_detect.explicit_config_owns_path("themeVariables.primaryColor"));
+        let overlay = PostDetectionConfigOverlay::new()
+            .with_family_contribution(
+                "flowchart",
+                contribution(
+                    "post-detection.node",
+                    json!({"themeVariables": {"primaryColor": "#abcdef"}}),
+                ),
+            )
+            .unwrap();
+
+        for (site, source) in [(&explicit, &empty), (&empty, &explicit)] {
+            let mut effective = before_detect.clone();
+            let provenance = apply(&overlay, site, source, &before_detect, &mut effective);
+            assert_eq!(
+                effective.get_str("themeVariables.primaryColor"),
+                Some("#abcdef")
+            );
+            assert!(provenance.contains("post-detection.node"));
+        }
+    }
+
+    #[test]
+    fn prior_claims_block_overlapping_defaults_without_value_changes() {
+        let empty = MermaidConfig::empty_object();
+        let before_detect = MermaidConfig::from_value(json!({
+            "custom": {"child": "same"}, "sibling": "same"
+        }));
+        let defaults = PostDetectionConfigDefaults {
+            explicit_site_config: &empty,
+            explicit_source_config: &empty,
+            config_before_detection: &before_detect,
+        };
+        let mut application = ConfigOverlayApplication::default();
+        assert!(!defaults.blocks_path(&before_detect, &application, "custom.child"));
+        application.claim_path(Arc::from("custom.child"));
+        assert!(defaults.blocks_path(&before_detect, &application, "custom.child"));
+        assert!(defaults.blocks_path(&before_detect, &application, "custom"));
+        assert!(!defaults.blocks_path(&before_detect, &application, "sibling"));
+        application.claim_path(Arc::from("custom"));
+        assert!(defaults.blocks_path(&before_detect, &application, "custom.other"));
+    }
+
+    #[test]
+    fn same_value_host_assignment_still_blocks_fallback() {
+        let make_overlay = |id, color| {
+            PostDetectionConfigOverlay::new()
+                .with_family_contribution(
+                    "flowchart",
+                    contribution(id, json!({"themeVariables": {"lineColor": color}})),
+                )
+                .unwrap()
+        };
+        let host = make_overlay("host.line", "#333333");
+        let fallback = make_overlay("fallback.line", "#abcdef");
+        let empty = MermaidConfig::empty_object();
+        let before_detect = MermaidConfig::from_value(json!({
+            "themeVariables": {"lineColor": "#333333"}
+        }));
+        let mut effective = before_detect.clone();
+        let mut application = ConfigOverlayApplication::default();
+        for (overlay, lane) in [
+            (&host, ConfigOverlayLane::Host),
+            (&fallback, ConfigOverlayLane::Fallback),
+        ] {
+            overlay
+                .apply_family_controlled_in_lane(
+                    "flowchart",
+                    &empty,
+                    &empty,
+                    &before_detect,
+                    &mut effective,
+                    &mut application,
+                    lane,
+                    &OperationControl::new(),
+                )
+                .unwrap();
+        }
+        let provenance = application.finalize(&effective);
+        assert_eq!(
+            effective.get_str("themeVariables.lineColor"),
+            Some("#333333")
+        );
+        assert!(provenance.contains("host.line"));
+        assert!(!provenance.contains("fallback.line"));
     }
 
     #[test]

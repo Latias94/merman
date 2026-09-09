@@ -1857,6 +1857,161 @@ mod tests {
     }
 
     #[test]
+    fn gitgraph_node_defaults_are_post_materialization_assignments() {
+        const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+        const PATHS: [(&str, &str); 6] = [
+            ("primaryColor", "#123456"),
+            ("mainBkg", "#123456"),
+            ("tagLabelBackground", "#123456"),
+            ("primaryBorderColor", "#abcdef"),
+            ("nodeBorder", "#abcdef"),
+            ("tagLabelBorder", "#abcdef"),
+        ];
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(solid("#123456"))
+                        .with_stroke(solid("#abcdef")),
+                )
+                .for_family(DiagramFamilyId::GIT_GRAPH),
+            ),
+        );
+        let resolver = bridge(&spec);
+        let plan = ThemeCompatibilityPlan::try_new(
+            [0x6c; 32],
+            MermaidConfig::empty_object(),
+            move |family, control| resolver.overlay_for_family(family, control),
+        )
+        .unwrap();
+        for theme_name in [
+            "default",
+            "base",
+            "dark",
+            "forest",
+            "neutral",
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            for explicit in std::iter::once(None).chain(PATHS.iter().map(|(key, _)| Some(*key))) {
+                let mut config = serde_json::json!({"theme": theme_name});
+                if let Some(key) = explicit {
+                    config["themeVariables"] = serde_json::json!({key: "#fedcba"});
+                }
+                let engine =
+                    merman_core::Engine::new().with_site_config(MermaidConfig::from_value(config));
+                let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
+                let mut expected = baseline.effective_config.as_value().clone();
+                for (key, color) in PATHS {
+                    if explicit != Some(key) {
+                        expected["themeVariables"][key] = serde_json::json!(color);
+                    }
+                }
+                let parsed = install_theme_compatibility(engine, &plan)
+                    .parse_metadata_sync(SOURCE)
+                    .unwrap();
+                assert_eq!(
+                    parsed.effective_config.as_value(),
+                    &expected,
+                    "{theme_name}/{explicit:?}: post-detection defaults must only replace the six unowned paths, without deriving palette or gradient values again"
+                );
+                for (key, _) in PATHS {
+                    let path = format!("themeVariables.{key}");
+                    assert_eq!(
+                        merman_core::__private::fallback_overlay_owns_path(
+                            &parsed.effective_config,
+                            &path
+                        ),
+                        explicit != Some(key),
+                        "{theme_name}/{explicit:?}/{key}"
+                    );
+                }
+                if theme_name == "base" && explicit == Some("primaryColor") {
+                    assert!(merman_core::__private::config_path_overrides_typed_default(
+                        &baseline.effective_config,
+                        "themeVariables.primaryBorderColor"
+                    ));
+                    assert_eq!(
+                        parsed
+                            .effective_config
+                            .get_str("themeVariables.primaryBorderColor"),
+                        Some("#abcdef"),
+                        "a derived owner is distinct from the directly authored owner used by post-detection defaults"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_source_selected_theme_does_not_turn_derived_colors_into_direct_owners() {
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default()
+                        .with_fill(solid("#123456"))
+                        .with_stroke(solid("#abcdef")),
+                )
+                .for_family(DiagramFamilyId::GIT_GRAPH),
+            ),
+        );
+        let source = r##"---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#fedcba'
+---
+gitGraph
+  commit id: "A" tag: "v1"
+"##;
+        // Source theme variables require an explicit host policy opt-in.
+        let engine = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(serde_json::json!({"secure": []})));
+        let baseline = engine.parse_metadata_sync(source).unwrap();
+        assert_eq!(
+            baseline
+                .effective_config
+                .get_str("themeVariables.primaryColor"),
+            Some("#fedcba")
+        );
+        assert!(merman_core::__private::config_path_overrides_typed_default(
+            &baseline.effective_config,
+            "themeVariables.primaryBorderColor"
+        ));
+        let mut expected = baseline.effective_config.as_value().clone();
+        for (key, value) in [
+            ("mainBkg", "#123456"),
+            ("tagLabelBackground", "#123456"),
+            ("primaryBorderColor", "#abcdef"),
+            ("nodeBorder", "#abcdef"),
+            ("tagLabelBorder", "#abcdef"),
+        ] {
+            expected["themeVariables"][key] = serde_json::json!(value);
+        }
+        let resolver = bridge(&spec);
+        let plan = ThemeCompatibilityPlan::try_new(
+            [0x6d; 32],
+            MermaidConfig::empty_object(),
+            move |family, control| resolver.overlay_for_family(family, control),
+        )
+        .unwrap();
+        let parsed = install_theme_compatibility(engine, &plan)
+            .parse_metadata_sync(source)
+            .unwrap();
+        assert_eq!(
+            parsed.effective_config.as_value(),
+            &expected,
+            "source theme reselection precedes the independent post-detection assignments"
+        );
+    }
+
+    #[test]
     fn gitgraph_legacy_paint_keeps_only_node_projections() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
