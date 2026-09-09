@@ -555,21 +555,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let relation_paint = paint_theme.relation_paint();
     let mut relation_receipt =
         relation_paint.and_then(|plan| plan.begin_terminal_receipt(layout.edges.len()));
-    let mut css_emission = match relation_paint.and_then(|plan| plan.typed_color()) {
-        Some(color) => super::super::css::requirement_css_with_relation_paint(
-            diagram_id,
-            effective_config,
-            font_family_override,
-            paint_theme.font_size_override_css(),
-            Some(color),
-        ),
-        None => requirement_css_with_typography(
-            diagram_id,
-            effective_config,
-            font_family_override,
-            paint_theme.font_size_override_css(),
-        ),
-    };
+    let mut css_emission = super::super::css::requirement_css_with_relation_paint(
+        diagram_id,
+        effective_config,
+        font_family_override,
+        paint_theme.font_size_override_css(),
+        relation_paint.and_then(|plan| plan.typed_color()),
+    );
     let color_css = requirement_color_css(
         diagram_id,
         look,

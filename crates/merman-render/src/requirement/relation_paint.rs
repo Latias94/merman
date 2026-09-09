@@ -34,7 +34,24 @@ impl RequirementRelationPaintPlan {
         model: &RequirementDiagramRenderModel,
         evidence: &mut FamilyThemeEvidence,
         work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
+    ) -> Result<Option<Self>, OperationWorkError> {
+        let routes = theme.family_mechanism_routes();
+        if !routes.iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Relation,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Relation
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Relation,
+                    ..
+                }
+            )
+        }) {
+            return Ok(None);
+        }
         let source_owned = merman_core::__private::config_path_overrides_typed_default(
             config,
             REQUIREMENT_RELATION_PAINT_PATH,
@@ -76,7 +93,7 @@ impl RequirementRelationPaintPlan {
             .flatten()
             .map(|paint| (property, DirectPaintExpectation::from_paint(paint)));
 
-        let resolves_per_ordinal = theme.family_mechanism_routes().iter().any(|route| {
+        let resolves_per_ordinal = routes.iter().any(|route| {
             matches!(
                 route.mechanism(),
                 FamilyThemeMechanism::RuleFacet {
@@ -94,18 +111,7 @@ impl RequirementRelationPaintPlan {
         let mut winners = BTreeSet::new();
         let mut palette_applicable = false;
         let mut effect_bindings = BTreeSet::new();
-        let style_count = if resolves_per_ordinal {
-            model.relationships.len()
-        } else {
-            usize::from(!model.relationships.is_empty())
-        };
-        for ordinal in 0..style_count {
-            let style = theme.style_with_work_meter(
-                ThemeTarget::Relation,
-                ThemeVariant::Default,
-                resolves_per_ordinal.then_some(ordinal + 1),
-                work_meter,
-            )?;
+        let mut observe_style = |style: &crate::diagram_theme::ResolvedThemeStyle, ordinal| {
             let fill_fallback = matches!(
                 style.stroke_resolution().specified(),
                 Specified::Unspecified
@@ -127,10 +133,23 @@ impl RequirementRelationPaintPlan {
             {
                 effect_bindings.insert(binding.effect_id().to_owned());
             }
+        };
+        if resolves_per_ordinal {
+            for ordinal in 1..=model.relationships.len() {
+                let style = theme.style_with_work_meter(
+                    ThemeTarget::Relation,
+                    ThemeVariant::Default,
+                    Some(ordinal),
+                    work_meter,
+                )?;
+                observe_style(&style, ordinal);
+            }
+        } else if !model.relationships.is_empty() {
+            observe_style(&style, 1);
         }
 
         let mut observations = BTreeMap::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
+        for route in routes.iter().copied() {
             work_meter.charge(1)?;
             match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -202,11 +221,11 @@ impl RequirementRelationPaintPlan {
                 evidence.mark_not_applicable(key);
             }
         }
-        Ok(Self {
+        Ok(Some(Self {
             assignment,
             pending,
             terminal_receipt: OnceLock::new(),
-        })
+        }))
     }
 
     pub(crate) fn typed_color(&self) -> Option<(usize, &str)> {

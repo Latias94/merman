@@ -188,33 +188,13 @@ impl RequirementPaintThemePlan {
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
-        let relation_paint = theme
-            .family_mechanism_routes()
-            .iter()
-            .any(|route| {
-                matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Relation,
-                        ..
-                    } | FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Relation
-                    } | FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Relation,
-                        ..
-                    }
-                )
-            })
-            .then(|| {
-                super::RequirementRelationPaintPlan::resolve(
-                    theme,
-                    effective_config,
-                    model,
-                    &mut evidence,
-                    work_meter,
-                )
-            })
-            .transpose()?;
+        let relation_paint = super::RequirementRelationPaintPlan::resolve(
+            theme,
+            effective_config,
+            model,
+            &mut evidence,
+            work_meter,
+        )?;
         let mut observations = BTreeMap::<usize, RequirementPaintRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {

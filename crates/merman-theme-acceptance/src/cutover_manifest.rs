@@ -315,6 +315,8 @@ const REQUIREMENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementFill];
 const REQUIREMENT_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementStroke];
+const REQUIREMENT_RELATION_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::RequirementRelationPaint];
 const PIE_SLICE_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::PieSliceStroke];
 const PIE_SLICE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -402,28 +404,28 @@ const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
         ThemeTarget::Relation,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::REQUIREMENT,
         ThemeTarget::Relation,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::REQUIREMENT,
         ThemeTarget::Relation,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::REQUIREMENT,
         ThemeTarget::Relation,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::REQUIREMENT,
@@ -431,7 +433,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Transparent,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::REQUIREMENT,
@@ -439,7 +441,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::REQUIREMENT,
@@ -447,7 +449,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Transparent,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route_variant(
         DiagramFamilyId::REQUIREMENT,
@@ -455,7 +457,7 @@ const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
         ThemeVariant::Default,
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
-        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+        REQUIREMENT_RELATION_PAINT_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::KANBAN,
