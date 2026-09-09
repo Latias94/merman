@@ -678,9 +678,9 @@ impl<'a> MindmapBuilder<'a> {
         let shape_paths = mindmap_node_paths(node, layout_node)?;
         let stroke_paint = if let Some((gradient_id, gradient)) = style.gradient {
             self.document.push_linear_gradient(gradient)?;
-            Paint::resource(gradient_id)
+            Some(Paint::resource(gradient_id))
         } else {
-            Paint::solid(style.stroke)
+            style.stroke.map(Paint::solid)
         };
         for (part, segments) in shape_paths {
             self.add_path(
@@ -689,8 +689,8 @@ impl<'a> MindmapBuilder<'a> {
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: Some(Paint::solid(style.fill)),
-                    stroke: Some(StrokeStyle {
-                        paint: stroke_paint.clone(),
+                    stroke: stroke_paint.clone().map(|paint| StrokeStyle {
+                        paint,
                         width: style.stroke_width,
                         dash_array: Vec::new(),
                         dash_offset: 0.0,
@@ -722,8 +722,8 @@ impl<'a> MindmapBuilder<'a> {
                 PathStyle {
                     fill_rule: FillRule::NonZero,
                     fill: None,
-                    stroke: Some(StrokeStyle {
-                        paint: Paint::solid(style.divider),
+                    stroke: style.divider.map(|color| StrokeStyle {
+                        paint: Paint::solid(color),
                         width: if self.hide_dividers { 0.0 } else { 3.0 },
                         dash_array: Vec::new(),
                         dash_offset: 0.0,
@@ -780,6 +780,7 @@ impl<'a> MindmapBuilder<'a> {
         layout: &LayoutNode,
     ) -> Result<NodeStyle> {
         let palette_index = mindmap_palette_index(node);
+        let has_section_style = palette_index < self.theme_color_limit;
         let c_scale = self.palette_color(palette_index, false)?;
         let c_scale_inv = self.palette_color(palette_index, true)?;
         let c_scale_label = self.palette_label(palette_index)?;
@@ -792,7 +793,16 @@ impl<'a> MindmapBuilder<'a> {
             || self.theme.eq_ignore_ascii_case("redux-dark");
         let neutral = self.theme.eq_ignore_ascii_case("neutral");
 
-        let (fill, stroke, text) = if is_root {
+        let (fill, stroke, text) = if !has_section_style {
+            // Without a generated section rule, node fill/text inherit the SVG root.
+            // Shared neo node rules still supply the border, including gradient paint.
+            let text = theme_color(
+                self.metadata.effective_config.as_value(),
+                "textColor",
+                "#333",
+            )?;
+            (text, self.node_border, text)
+        } else if is_root {
             let fill = if self.look == "neo" && redux {
                 self.main_bkg
             } else {
@@ -855,14 +865,15 @@ impl<'a> MindmapBuilder<'a> {
         };
 
         Ok(NodeStyle {
-            fill: if self.use_gradient {
+            fill: if self.use_gradient && has_section_style {
                 self.main_bkg
             } else {
                 fill
             },
-            stroke,
+            stroke: (has_section_style || self.look == "neo").then_some(stroke),
             text,
-            divider: c_scale_inv,
+            // Both the normal and gradient divider rules require a matching section.
+            divider: has_section_style.then_some(c_scale_inv),
             stroke_width: self.stroke_width,
             gradient,
         })
@@ -918,9 +929,9 @@ impl<'a> MindmapBuilder<'a> {
 #[derive(Debug, Clone)]
 struct NodeStyle {
     fill: Color,
-    stroke: Color,
+    stroke: Option<Color>,
     text: Color,
-    divider: Color,
+    divider: Option<Color>,
     stroke_width: f64,
     gradient: Option<(ResourceId, LinearGradientResource)>,
 }
@@ -1426,6 +1437,92 @@ fn unavailable(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "layout-cytoscape")]
+    fn mindmap_gradient_respects_theme_section_limit_and_wrap() {
+        let source = "mindmap\n  Root\n    A\n    B\n    C\n    D\n    E\n    F\n    G\n    H\n    I\n    J\n    K\n    L\n";
+        for look in ["classic", "neo"] {
+            for limit in [1, 2] {
+                let parsed = merman_core::Engine::new()
+                    .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                        "look": look,
+                        "themeVariables": {
+                            "THEME_COLOR_LIMIT": limit,
+                            "useGradient": true, "dropShadow": "none",
+                            "mainBkg": "#00ff00", "git0": "#0000ff",
+                            "cScale0": "#ff0000", "cScale1": "#ff0000",
+                            "textColor": "#112233",
+                            "gradientStart": "#abcdef", "gradientStop": "#123456"
+                        }
+                    })))
+                    .parse_diagram_for_render_model_sync(
+                        source,
+                        merman_core::ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session()
+                    .unwrap();
+                let rendered =
+                    crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+                        .unwrap();
+                let paths = |suffix: &str| {
+                    rendered
+                        .document()
+                        .commands
+                        .iter()
+                        .filter_map(|command| match command {
+                            DrawingCommand::DrawPath { path, style }
+                                if path.as_str().starts_with("mindmap.node.")
+                                    && path.as_str().ends_with(suffix) =>
+                            {
+                                Some(style)
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let shapes = paths(".shape.outer");
+                let dividers = paths(".divider");
+                assert_eq!((shapes.len(), dividers.len()), (13, 13));
+                // Root is section--1; children cycle through section-0..10, then section-0.
+                for (index, (shape, divider)) in shapes.iter().zip(&dividers).enumerate() {
+                    let in_range = index == 0 || (limit == 2 && matches!(index, 1 | 12));
+                    let fill = if !in_range {
+                        Color::rgba(0x11, 0x22, 0x33, 255)
+                    } else if look == "neo" {
+                        Color::rgba(0, 255, 0, 255)
+                    } else if index == 0 {
+                        Color::rgba(0, 0, 255, 255)
+                    } else {
+                        Color::rgba(255, 0, 0, 255)
+                    };
+                    assert_eq!(
+                        shape.fill,
+                        Some(Paint::solid(fill)),
+                        "{look}, {limit}, {index}"
+                    );
+                    if look == "neo" {
+                        assert!(matches!(
+                            shape.stroke.as_ref().unwrap().paint,
+                            Paint::Resource { .. }
+                        ));
+                    } else if !in_range {
+                        assert!(shape.stroke.is_none());
+                    }
+                    if in_range {
+                        assert_eq!(divider.stroke.as_ref().unwrap().width, 0.0);
+                    } else {
+                        assert!(divider.stroke.is_none(), "{look}, {limit}, {index}");
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     #[cfg(feature = "layout-cytoscape")]
