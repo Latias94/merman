@@ -5,8 +5,8 @@
 //! family-local CSS tokens without reconstructing the SVG group tree.
 
 use super::{
-    QuadrantChartSvgBody, RenderDocument, SvgStructureBody, SvgStructureSidecar,
-    parse_font_families_for,
+    QuadrantChartSvgBody, QuadrantPaintSpelling, RenderDocument, SvgStructureBody,
+    SvgStructureSidecar, parse_font_families_for,
 };
 use crate::config::config_font_family_css_raw;
 use crate::drawing_list::builder::DrawingListBuilder;
@@ -21,9 +21,8 @@ use crate::model::{
     QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::quadrantchart::{
-    QUADRANT_BROWSER_POINT_STROKE, QuadrantChartConfigView, QuadrantTextAnchor,
-    QuadrantTextBaseline, is_mermaid_missing_amount_hsl, quadrant_text_anchor,
-    quadrant_text_baseline,
+    QuadrantChartConfigView, QuadrantTextAnchor, QuadrantTextBaseline, is_quadrant_inherited_paint,
+    quadrant_text_anchor, quadrant_text_baseline,
 };
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
 use crate::{Error, Result};
@@ -62,6 +61,8 @@ struct QuadrantChartBuilder<'a> {
     font: FontDescriptor,
     text_obligation: TextObligation,
     svg_semantic_classes: BTreeMap<String, String>,
+    svg_path_paint: BTreeMap<String, QuadrantPaintSpelling>,
+    svg_text_fill: BTreeMap<usize, String>,
     use_max_width: bool,
 }
 
@@ -106,6 +107,8 @@ impl<'a> QuadrantChartBuilder<'a> {
             font_family_css,
             text_obligation: text_obligation(session, TextMeasurementPhase::SvgBBox),
             svg_semantic_classes: BTreeMap::new(),
+            svg_path_paint: BTreeMap::new(),
+            svg_text_fill: BTreeMap::new(),
             use_max_width,
         })
     }
@@ -212,6 +215,8 @@ impl<'a> QuadrantChartBuilder<'a> {
                     diagram_type: self.metadata.diagram_type.clone(),
                     use_max_width: self.use_max_width,
                     semantic_classes: self.svg_semantic_classes,
+                    path_paint: self.svg_path_paint,
+                    text_fill: self.svg_text_fill,
                 }),
             },
         })
@@ -245,8 +250,14 @@ impl<'a> QuadrantChartBuilder<'a> {
     fn emit_quadrant(&mut self, index: usize, quadrant: &QuadrantChartQuadrantData) -> Result<()> {
         let semantic_id = format!("quadrantchart.quadrant.{index}");
         self.begin_group(&semantic_id)?;
-        let styles = PortableStyleResolver::new("quadrantchart");
-        let fill = styles.optional_color("quadrant fill", &quadrant.fill)?;
+        let fill = self.resolve_fill("quadrant fill", &quadrant.fill)?;
+        self.svg_path_paint.insert(
+            format!("{semantic_id}.shape"),
+            QuadrantPaintSpelling {
+                fill: Some(quadrant.fill.clone()),
+                ..Default::default()
+            },
+        );
         self.add_path(
             format!("{semantic_id}.shape"),
             polygon_path(&[
@@ -274,8 +285,7 @@ impl<'a> QuadrantChartBuilder<'a> {
     }
 
     fn emit_border(&mut self, index: usize, border: &QuadrantChartBorderLineData) -> Result<()> {
-        let color = PortableStyleResolver::new("quadrantchart")
-            .optional_color("border stroke", &border.stroke_fill)?;
+        let color = self.resolve_stroke("border stroke", &border.stroke_fill)?;
         self.add_path(
             format!("quadrantchart.border.{index}"),
             vec![
@@ -298,28 +308,19 @@ impl<'a> QuadrantChartBuilder<'a> {
         let semantic_id = format!("quadrantchart.point.{index}");
         self.begin_group(&semantic_id)?;
         let styles = PortableStyleResolver::new("quadrantchart");
-        let fill = if is_mermaid_missing_amount_hsl(&point.fill) {
-            let inherited = self
-                .metadata
-                .effective_config
-                .as_value()
-                .get("themeVariables")
-                .and_then(|theme| theme.get("textColor"))
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("#333");
-            styles.optional_color("inherited point fill", inherited)?
-        } else {
-            styles.optional_color("point fill", &point.fill)?
-        };
+        let fill = self.resolve_fill("point fill", &point.fill)?;
         let stroke_width = styles.length("point stroke-width", &point.stroke_width)?;
-        let stroke_value = if is_mermaid_missing_amount_hsl(&point.stroke_color) {
-            QUADRANT_BROWSER_POINT_STROKE
-        } else {
-            &point.stroke_color
-        };
-        let stroke = styles
-            .optional_color("point stroke", stroke_value)?
+        let stroke = self
+            .resolve_stroke("point stroke", &point.stroke_color)?
             .map(|color| stroke(color, stroke_width));
+        self.svg_path_paint.insert(
+            format!("{semantic_id}.shape"),
+            QuadrantPaintSpelling {
+                fill: Some(point.fill.clone()),
+                stroke: Some(point.stroke_color.clone()),
+                stroke_width: Some(point.stroke_width.clone()),
+            },
+        );
         self.add_path(
             format!("{semantic_id}.shape"),
             ellipse_path(point.x, point.y, point.radius, point.radius),
@@ -369,8 +370,8 @@ impl<'a> QuadrantChartBuilder<'a> {
     ) -> Result<()> {
         let resolved = self.output.resolve_mermaid_layout_text(&text.text)?;
         let parts = normalized_text_parts(&resolved);
-        let fill = PortableStyleResolver::new("quadrantchart")
-            .optional_color(fill_property, &text.fill)?
+        let fill = self
+            .resolve_fill(fill_property, &text.fill)?
             .unwrap_or(Color::rgba(0, 0, 0, 0));
         let anchor = match quadrant_text_anchor(&text.vertical_pos) {
             QuadrantTextAnchor::Start => TextAnchor::Start,
@@ -388,6 +389,8 @@ impl<'a> QuadrantChartBuilder<'a> {
         let font_family_css = self.font_family_css.clone();
         let font = self.font.clone();
         let obligation = self.text_obligation.clone();
+        self.svg_text_fill
+            .insert(self.output.command_count(), text.fill.clone());
         self.output.draw_host_text_iter(parts, |text_value| {
             let bounds = measure_text_bounds(
                 session,
@@ -419,6 +422,28 @@ impl<'a> QuadrantChartBuilder<'a> {
         })?;
         self.output.push_control(DrawingCommand::Restore)?;
         Ok(())
+    }
+
+    fn resolve_fill(&self, property: &str, value: &str) -> Result<Option<Color>> {
+        let value = if is_quadrant_inherited_paint(value) {
+            self.metadata
+                .effective_config
+                .as_value()
+                .get("themeVariables")
+                .and_then(|theme| theme.get("textColor"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("#333")
+        } else {
+            value
+        };
+        PortableStyleResolver::new("quadrantchart").optional_color(property, value)
+    }
+
+    fn resolve_stroke(&self, property: &str, value: &str) -> Result<Option<Color>> {
+        if is_quadrant_inherited_paint(value) {
+            return Ok(None);
+        }
+        PortableStyleResolver::new("quadrantchart").optional_color(property, value)
     }
 
     fn add_path(&mut self, id: String, segments: Vec<PathSegment>, style: PathStyle) -> Result<()> {

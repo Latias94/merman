@@ -1249,6 +1249,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie
             | RenderFamilyKind::Sankey
+            | RenderFamilyKind::QuadrantChart
     )
 }
 
@@ -2417,6 +2418,161 @@ mod tests {
                 .attribute("style")
                 .unwrap_or("")
                 .contains("background-color:")
+        );
+    }
+
+    #[test]
+    fn quadrant_candidate_retains_only_equivalent_paint_spelling() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "themeVariables": {
+                    "textColor": "#123456", "quadrant1TextFill": "ff0000",
+                    "quadrant2Fill": "#AbCdEf", "quadrant3Fill": "#1234"
+                }
+            })))
+            .parse_diagram_for_render_model_sync(
+                "quadrantChart\nquadrant-1 Plan\nA: [0.7, 0.8]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .expect("invalid presentation paint inherits the public root color");
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                &json!({"themeVariables": {"textColor": "red"}}),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let original = render(&document);
+        let xml = roxmltree::Document::parse(&original).unwrap();
+        let plan = xml
+            .descendants()
+            .find(|node| node.text() == Some("Plan") && node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(plan.attribute("fill"), Some("ff0000"));
+        assert!(original.contains("fill:#123456"));
+        assert!(
+            xml.descendants()
+                .any(|node| node.attribute("fill") == Some("#AbCdEf"))
+        );
+        let alpha = xml
+            .descendants()
+            .find(|node| node.attribute("fill") == Some("#1234"))
+            .unwrap();
+        assert_eq!(
+            alpha.attribute("fill-opacity"),
+            None,
+            "source alpha must not be multiplied twice"
+        );
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawText { run } = command
+                && run.text == "Plan"
+            {
+                assert_eq!(run.style.fill, Paint::solid(Color::rgba(18, 52, 86, 255)));
+                run.style.fill = Paint::solid(Color::rgba(255, 0, 0, 128));
+            }
+        }
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let plan = xml
+            .descendants()
+            .find(|node| node.text() == Some("Plan") && node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(plan.attribute("fill"), Some("#ff0000"));
+        assert_eq!(plan.attribute("fill-opacity"), Some("0.5019607843137255"));
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "quadrantchart.point.0.shape"
+            {
+                style.fill = None;
+                style.stroke = Some(merman_display_list::StrokeStyle {
+                    paint: Paint::solid(Color::rgba(120, 154, 188, 255)),
+                    width: 3.0,
+                    dash_array: vec![],
+                    dash_offset: 0.0,
+                    line_cap: merman_display_list::LineCap::Butt,
+                    line_join: merman_display_list::LineJoin::Miter,
+                    miter_limit: 4.0,
+                });
+            }
+        }
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let point = xml
+            .descendants()
+            .find(|node| node.has_tag_name("circle"))
+            .unwrap();
+        assert_eq!(point.attribute("fill"), Some("none"));
+        assert_eq!(point.attribute("stroke"), Some("#789abc"));
+        assert_eq!(
+            point.attribute("stroke-width"),
+            Some("3"),
+            "inert source width cannot override an added public stroke"
+        );
+        let stroke = document
+            .public
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "quadrantchart.point.0.shape" =>
+                {
+                    style.stroke.clone()
+                }
+                _ => None,
+            })
+            .unwrap();
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "quadrantchart.quadrant.0.shape"
+            {
+                style.stroke = Some(stroke.clone());
+            }
+        }
+        let path = document
+            .public
+            .resources
+            .iter_mut()
+            .find(|resource| resource.id().as_str() == "quadrantchart.quadrant.0.shape")
+            .unwrap()
+            .path_mut()
+            .unwrap();
+        use merman_display_list::{PathSegment, Point};
+        path.segments = vec![
+            PathSegment::MoveTo {
+                to: Point::new(1.0, 1.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(1.0, 1.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(1.0, 9.0),
+            },
+            PathSegment::LineTo {
+                to: Point::new(1.0, 9.0),
+            },
+            PathSegment::Close,
+        ];
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert!(
+            xml.descendants().any(
+                |node| node.has_tag_name("path") && node.attribute("stroke") == Some("#789abc")
+            ),
+            "a zero-width rect must not hide a newly stroked public path"
         );
     }
 

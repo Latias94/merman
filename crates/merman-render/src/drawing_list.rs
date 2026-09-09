@@ -440,6 +440,17 @@ pub(crate) struct QuadrantChartSvgBody {
     pub(crate) diagram_type: String,
     pub(crate) use_max_width: bool,
     pub(crate) semantic_classes: BTreeMap<String, String>,
+    /// Attribute spelling is reusable only when equivalent to the current public paint.
+    pub(crate) path_paint: BTreeMap<String, QuadrantPaintSpelling>,
+    pub(crate) text_fill: BTreeMap<usize, String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct QuadrantPaintSpelling {
+    pub(crate) fill: Option<String>,
+    pub(crate) stroke: Option<String>,
+    /// Inert without a public stroke; otherwise reusable only for the same public width.
+    pub(crate) stroke_width: Option<String>,
 }
 
 /// SVG-only metadata retained beside the public Radar document.

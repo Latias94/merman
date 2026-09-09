@@ -40,7 +40,7 @@ inventory row fails at test time.  The current inventory is:
 | Treemap | yes | legacy bridge |
 | Block | yes | legacy bridge |
 | ER | yes | legacy bridge |
-| QuadrantChart | yes | legacy bridge |
+| QuadrantChart | yes | canonical |
 | XYChart | yes | legacy bridge |
 | GitGraph | yes | legacy bridge |
 | TreeView | yes | legacy bridge |
@@ -1233,20 +1233,41 @@ color. The native SVG pipeline substitutes `inherit` for the source-backed inval
 tokens, preserving CSS and ancestor ownership rather than hard-coding black/none. A native
 `usvg` consumer regression verifies the resolved point color, in addition to attribute checks.
 
-The temporary admission run after `5bac6b725` selects 59 fixtures and observes 58 canonical
-outputs plus one explicit rejection: `upstream_quadrant_docs_config_and_theme_example` uses
-non-portable `ff0000` as a text color. Its report is
-`target/compare/quadrant_5bac_candidate_public_projection.md`. The DOM/root gate still fails;
-remaining differences include source color spelling/invalid paint tokens and absent inactive
-stroke parameters. No comparator normalization or admission rule was relaxed. Temporary runtime
-and inventory admission were removed after the comparison exited.
+The earlier candidate after `5bac6b725` failed DOM comparison and rejected the config-and-theme
+example's bare `ff0000`. That token is an invalid SVG presentation color, not red: the adapter now
+resolves its inherited root text color, just as it does missing-amount HSL. Dynamic colors such as
+`var(...)` and `currentColor` remain structured unsupported outcomes, not guessed inheritance.
 
-The separate browser candidate probe `target/compare/quadrant-candidate-browser.json` excludes
-that rejected fixture by name and compares 58 canonical outputs. Text content, font families,
-font sizes, baseline attributes, painted fill/stroke, and paint opacity agree. The 467 observed
-computed-style differences are 342 unused line fills and 125 stroke widths on circles with no
-stroke. This is presentation evidence only, not DOM admission or a geometric/pixel oracle.
-QuadrantChart remains on its explicit legacy SVG bridge until the remaining contract is closed.
-The 22 focused render/facade tests, strengthened native-consumer assertion, Clippy, formatting,
-and required full SVG structure gate pass. The full gate exercises the existing admitted matrix;
-it does not override the failed QuadrantChart candidate report.
+The SVG sidecar retains only equivalent paint and length spellings. Static hex/name colors must
+match the current public RGBA channels exactly; function colors use canonical public paint.
+Invalid fill tokens are retained only when the corresponding public commands agree on a solid
+inherited color. That root color is derived from those commands, never external configuration.
+Conflicting public edits use explicit paint. Source alpha is not applied twice. A source point
+stroke width is inert while the command has no stroke; adding or editing a public stroke requires
+equivalent width before its original unit spelling can be reused. Degenerate rectangles with
+public strokes remain paths rather than disappearing under SVG's zero-extent rectangle rule.
+
+The full `compare-quadrantchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+--diagnostic-browser-text-layout` gate now passes all 59 fixtures with **59 observed canonical
+routes and zero legacy bridges**. The report is `target/compare/quadrantchart_report.md`. A corpus
+regression executes every `.mmd` fixture and checks its actual serializer route. No comparator
+normalization, fixture exclusion, or browser-text receipt was added for this admission.
+
+The refreshed `target/compare/quadrant-candidate-browser.json` includes all 59 fixtures. Chromium
+finds identical primitive counts, text, font families/sizes, baselines, bounding boxes, matrices,
+painted fill/stroke, stroke widths, and paint opacity. The 180 computed-style differences recorded
+in `target/compare/quadrant-candidate-browser-differences.json` are exclusively unused `<line>`
+fills. This is computed-style/geometry evidence, not pixel identity or a guarantee about arbitrary
+host CSS. External CSS can still change source-shaped SVG through its inherited DOM contract;
+renderer-neutral consumers instead use resolved public paint.
+
+QuadrantChart is admitted to the canonical SVG cohort. Unsupported effects still use the explicitly
+reported migration bridge shared by the in-progress migration; this does not mark the overall
+bridge-deletion requirement complete.
+
+Verification includes the family corpus route test and SVG tests, public paint/width/degenerate-path
+edit regressions, the facade DrawingList test, and the `usvg` native-consumer smoke. Focused nextest,
+Clippy (`merman-render --lib`, warnings denied), formatting, and the repository's full
+`compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3
+--diagnostic-browser-text-layout` gate pass. No dependency, ABI, or generated binding surface changes
+are part of this admission.

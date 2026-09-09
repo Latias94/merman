@@ -877,7 +877,6 @@ fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
 }
 
 #[test]
-#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
     let svg = render_diagnostic_svg(
         "quadrantChart\n  accTitle: Quadrant parity\n  title Portfolio\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
@@ -921,6 +920,25 @@ fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
     assert!(document.descendants().any(|node| {
         node.attribute("data-merman-semantic-id") == Some("quadrantchart.point.0")
     }));
+}
+
+#[test]
+fn quadrantchart_corpus_uses_the_canonical_serializer_without_bridging() {
+    let directory =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/quadrantchart");
+    let mut fixtures = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect::<Vec<_>>();
+    fixtures.sort();
+    assert!(!fixtures.is_empty(), "the family corpus must be available");
+    for fixture in fixtures {
+        let source = std::fs::read_to_string(&fixture).unwrap();
+        let name = fixture.file_stem().unwrap().to_str().unwrap();
+        // The helper asserts the observed route; a legacy success cannot certify migration.
+        render_svg(&source, name);
+    }
 }
 
 #[test]

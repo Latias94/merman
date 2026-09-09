@@ -107,6 +107,7 @@ struct DocumentSvgEncoder<'a> {
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
     info_text_style: Option<&'a merman_display_list::TextStyle>,
     quadrant_font: Option<&'a merman_display_list::FontDescriptor>,
+    quadrant_inherited_fill: Option<Color>,
     venn_text_styles: Option<venn::TextStyles<'a>>,
     sankey_links: Option<sankey::LinkProjection>,
     gantt_text: Option<gantt::TextProjection<'a>>,
@@ -300,6 +301,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             state: GraphicsState::default(),
             quadrant_font: if matches!(document.svg.body, SvgStructureBody::QuadrantChart(_)) {
                 quadrantchart::shared_font(&document.public, session)?
+            } else {
+                None
+            },
+            quadrant_inherited_fill: if let SvgStructureBody::QuadrantChart(body) =
+                &document.svg.body
+            {
+                quadrantchart::shared_inherited_fill(&document.public, body, session)?
             } else {
                 None
             },
@@ -2359,7 +2367,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             let raw_id = path_id.as_str();
             if raw_id.starts_with("quadrantchart.quadrant.") && raw_id.ends_with(".shape") {
                 let path = self.path_resource(path_id)?;
-                if let Some(bounds) = rectangle_from_path(path) {
+                if let Some(bounds) = rectangle_from_path(path)
+                    && (style.stroke.is_none() || (bounds.width > 0.0 && bounds.height > 0.0))
+                {
                     return self.emit_rect(path_id, bounds, style);
                 }
             }
