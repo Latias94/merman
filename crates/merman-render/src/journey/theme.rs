@@ -21,6 +21,7 @@ const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
 #[derive(Debug)]
 pub(crate) struct JourneyTaskTheme {
+    task_count: usize,
     tasks: Box<[JourneyTaskTerminalExpectation]>,
     sections: Box<[JourneySectionTerminalExpectation]>,
     evidence: FamilyThemeEvidence,
@@ -433,6 +434,7 @@ impl JourneyTaskTheme {
         }
 
         Ok(Self {
+            task_count,
             tasks: task_expectations.into_boxed_slice(),
             sections: sections.into_boxed_slice(),
             evidence,
@@ -448,11 +450,9 @@ impl JourneyTaskTheme {
 
     pub(crate) fn baseline(tasks: &[JourneyTaskLayout]) -> Self {
         Self {
-            tasks: tasks
-                .iter()
-                .map(|_| JourneyTaskTerminalExpectation::baseline())
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            // Preserve the layout-size guard without allocating proof state for absent themes.
+            task_count: tasks.len(),
+            tasks: Box::default(),
             sections: Vec::new().into_boxed_slice(),
             evidence: FamilyThemeEvidence::default(),
             pending: BTreeMap::new(),
@@ -463,7 +463,7 @@ impl JourneyTaskTheme {
     }
 
     pub(crate) const fn task_count(&self) -> usize {
-        self.tasks.len()
+        self.task_count
     }
 
     pub(crate) fn terminal_radius_for_task(&self, task_index: usize) -> &str {
@@ -843,6 +843,30 @@ mod tests {
             face_cx: 0.0,
             face_cy: Some(0.0),
             mouth: JourneyMouthKind::Smile,
+        }
+    }
+
+    #[test]
+    fn unthemed_task_plan_retains_count_without_per_task_evidence_storage() {
+        for count in [0, 1, 4096] {
+            let tasks = vec![one_task(); count];
+            let plan = JourneyTaskTheme::resolve(
+                None,
+                &MermaidConfig::empty_object(),
+                &tasks,
+                &OperationWorkMeter::new(RenderResourcePolicy::default()),
+            )
+            .expect("unthemed task plan");
+            assert_eq!(plan.task_count(), count);
+            assert!(plan.tasks.is_empty(), "no theme means no task expectations");
+            assert!(plan.sections.is_empty());
+            assert!(plan.begin_terminal_receipt().is_none());
+            assert!(!plan.palette_surface_owned());
+            for index in 0..=count {
+                assert_eq!(plan.terminal_radius_for_task(index), "3");
+                assert!(plan.terminal_fill_css_for_task(index).is_none());
+                assert!(plan.terminal_stroke_for_task(index).is_none());
+            }
         }
     }
 
