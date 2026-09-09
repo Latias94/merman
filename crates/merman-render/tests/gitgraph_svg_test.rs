@@ -1044,6 +1044,181 @@ fn gitgraph_edge_label_background_fill_is_typed_and_reaches_commit_label_rects()
 }
 
 #[test]
+fn gitgraph_commit_background_accounts_for_each_winning_property() {
+    let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let font = |mut patch: ThemeStylePatch| {
+        patch.typography.font_stack =
+            Specified::Value(FontStack::single("UnsupportedCommitBackgroundFont").unwrap());
+        patch
+    };
+    let rule = |patch| {
+        ThemeRule::new(ThemeTarget::EdgeLabelBackground, patch)
+            .for_family(DiagramFamilyId::GIT_GRAPH)
+    };
+    let clear = || {
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = Specified::Clear;
+        rule(patch)
+    };
+    let ordinal = || rule(fill()).with_ordinal(OrdinalSelector::exact(1).unwrap());
+    for (case, rules, config, applied, not_applicable, residuals) in [
+        (
+            "font-only",
+            vec![rule(font(ThemeStylePatch::default()))],
+            json!({}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "stroke-only",
+            vec![rule(
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            )],
+            json!({}),
+            0,
+            0,
+            1,
+        ),
+        ("mixed", vec![rule(font(fill()))], json!({}), 0, 0, 1),
+        (
+            "config-owned-fill",
+            vec![rule(font(fill()))],
+            json!({"themeVariables": {"commitLabelBackground": "#abcdef"}}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "generated-fill",
+            vec![rule(font(fill()))],
+            json!({"theme": "neo"}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "later-fill",
+            vec![rule(font(fill())), rule(fill())],
+            json!({}),
+            1,
+            0,
+            1,
+        ),
+        (
+            "later-font",
+            vec![
+                rule(font(ThemeStylePatch::default())),
+                rule(font(ThemeStylePatch::default())),
+            ],
+            json!({}),
+            0,
+            1,
+            1,
+        ),
+        (
+            "other-variant",
+            vec![rule(font(fill())).with_variant(ThemeVariant::Active)],
+            json!({}),
+            0,
+            1,
+            0,
+        ),
+        ("ordinal", vec![ordinal()], json!({}), 0, 0, 1),
+        (
+            "shadowed-ordinal",
+            vec![ordinal(), rule(fill())],
+            json!({}),
+            1,
+            1,
+            0,
+        ),
+        ("clear", vec![rule(fill()), clear()], json!({}), 0, 1, 1),
+        (
+            "config-owned-clear",
+            vec![rule(fill()), clear()],
+            json!({"themeVariables": {"commitLabelBackground": "#abcdef"}}),
+            0,
+            2,
+            0,
+        ),
+        (
+            "hidden",
+            vec![rule(font(fill()))],
+            json!({"gitGraph": {"showCommitLabel": false}}),
+            0,
+            1,
+            0,
+        ),
+    ] {
+        let theme = gitgraph_edge_rules_theme(rules);
+        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            engine(),
+            &format!("git-background-{case}"),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .expect("unsupported background properties must preserve best-effort rendering");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid GitGraph SVG");
+        assert_eq!(
+            document
+                .descendants()
+                .any(|node| has_class(&node, "commit-label-bkg")),
+            case != "hidden",
+            "{case}"
+        );
+        if matches!(case, "mixed" | "later-fill" | "shadowed-ordinal") {
+            let css = gitgraph_stylesheet(rendered.svg());
+            let background =
+                gitgraph_css_rule(&css, &format!("#git-background-{case} .commit-label-bkg"));
+            assert_eq!(
+                css_property_winner(&background, "fill"),
+                Some("#123456"),
+                "{case}: best effort preserves the supported fill"
+            );
+        }
+        if case == "clear" {
+            let css = gitgraph_stylesheet(rendered.svg());
+            let background = gitgraph_css_rule(&css, "#git-background-clear .commit-label-bkg");
+            assert_ne!(
+                css_property_winner(&background, "fill"),
+                Some("#123456"),
+                "Clear must not revive the earlier assignment"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied, "{case}");
+        assert_eq!(evidence.not_applicable_count(), not_applicable, "{case}");
+        assert_eq!(evidence.theme_residual_count(), residuals, "{case}");
+        let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            engine(),
+            &format!("git-background-strict-{case}"),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if residuals == 0 {
+            strict.expect("inactive or fully supported rules have no unsupported obligation");
+        } else {
+            let error = match strict {
+                Ok(_) => {
+                    panic!("{case}: winning unsupported siblings must fail strict portability")
+                }
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::GIT_GRAPH, residuals)),
+                "{case}"
+            );
+        }
+    }
+}
+
+#[test]
 fn gitgraph_edge_label_background_is_not_applicable_without_visible_commit_labels() {
     let theme = gitgraph_edge_rules_theme([ThemeRule::new(
         ThemeTarget::EdgeLabelBackground,

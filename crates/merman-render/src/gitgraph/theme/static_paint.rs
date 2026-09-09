@@ -1,14 +1,16 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use merman_core::MermaidConfig;
 
 use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeTarget, ThemeVariant,
+    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
+    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeTarget,
+    ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -59,91 +61,96 @@ impl GitGraphStaticPaintPlan {
             None,
             work_meter,
         )?;
-        let winner_key =
-            style
-                .fill_resolution()
-                .winner()
-                .map(|origin| FamilyThemeMechanismKey::Rule {
-                    index: origin.rule_index(),
-                    target: origin.target(),
-                });
-        let mermaid_owns_commit_label_background = effective_config
+        let winners = style
+            .winner_rule_properties()
+            .map(|(property, origin)| (origin.rule_index(), property))
+            .collect::<BTreeSet<_>>();
+        let source_owns_fill = effective_config
             .get_str("theme")
-            .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
+            .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen)
+            || merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                COMMIT_LABEL_BACKGROUND_PATH,
+            );
         let has_visible_commit_label = layout
             .commits
             .iter()
             .any(|commit| crate::gitgraph::gitgraph_commit_label_is_visible(layout, commit));
-        let assignment = (has_visible_commit_label
-            && !mermaid_owns_commit_label_background
-            && !merman_core::__private::config_path_overrides_typed_default(
-                effective_config,
-                COMMIT_LABEL_BACKGROUND_PATH,
-            ))
-        .then(|| {
-            resolve_direct_static_fill(
-                theme,
-                &style,
-                &[ThemeTarget::EdgeLabelBackground],
-                DirectStaticSelectorDomain::Default,
-            )
-        })
-        .flatten()
-        .map(|paint| StaticPaintAssignment {
-            route_key: FamilyThemeMechanismKey::Rule {
-                index: paint.rule_index(),
-                target: ThemeTarget::EdgeLabelBackground,
-            },
-            paint,
-        });
+        let assignment = (has_visible_commit_label && !source_owns_fill)
+            .then(|| {
+                resolve_direct_static_fill(
+                    theme,
+                    &style,
+                    &[ThemeTarget::EdgeLabelBackground],
+                    DirectStaticSelectorDomain::Default,
+                )
+            })
+            .flatten()
+            .map(|paint| StaticPaintAssignment {
+                route_key: FamilyThemeMechanismKey::Rule {
+                    index: paint.rule_index(),
+                    target: ThemeTarget::EdgeLabelBackground,
+                },
+                paint,
+            });
 
+        // Facets share a rule key. Settle every winning property before recording a
+        // rule outcome so an owned fill cannot hide an unsupported sibling property.
+        let mut observations = BTreeMap::new();
         for route in theme.family_mechanism_routes().iter().copied() {
+            work_meter.charge(1)?;
             let FamilyThemeMechanism::RuleFacet {
                 rule_index,
                 target: ThemeTarget::EdgeLabelBackground,
                 facet,
-                ..
+                selector,
             } = route.mechanism()
             else {
                 continue;
             };
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::EdgeLabelBackground,
-            };
+            let key = theme.family_mechanism_key(route);
+            let entry = observations.entry(key).or_insert((false, None));
             if !has_visible_commit_label {
-                plan.evidence.mark_not_applicable(key);
                 continue;
             }
-            let route_won = winner_key.as_ref() == Some(&key);
-            if !route_won {
-                plan.evidence.mark_not_applicable(key);
+            let property = resolved_style_property_for_facet(facet);
+            // Commit backgrounds have no modeled ordinal identity. An unmatched ordinal
+            // is unverified unless a later static winner supersedes the same property.
+            let unproved_ordinal = matches!(
+                selector,
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: None | Some(ThemeVariant::Default),
+                    ..
+                }
+            ) && !winners.iter().any(|(winner, winner_property)| {
+                *winner_property == property && *winner > rule_index
+            });
+            if (!winners.contains(&(rule_index, property)) && !unproved_ordinal)
+                || (property == ResolvedStyleProperty::Fill && source_owns_fill)
+            {
                 continue;
             }
-
-            match route.disposition() {
-                FamilyThemeDisposition::TypedAdapter if assignment.is_some() => {
-                    plan.pending_key = Some(key);
-                }
-                FamilyThemeDisposition::TypedAdapter => plan.evidence.mark_not_applicable(key),
-                FamilyThemeDisposition::Unsupported => {
-                    plan.evidence
-                        .mark_residual(key, unsupported_residual_for_facet(facet));
-                }
-                FamilyThemeDisposition::LegacyCompatibility => {
-                    plan.evidence
-                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
-                }
+            if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                && property == ResolvedStyleProperty::Fill
+                && assignment
+                    .as_ref()
+                    .is_some_and(|assignment| assignment.paint.rule_index() == rule_index)
+            {
+                entry.0 = true;
+            } else {
+                entry.1.get_or_insert(unsupported_residual_for_facet(facet));
             }
         }
-
+        for (key, (fill, residual)) in observations {
+            if let Some(reason) = residual {
+                plan.evidence.mark_residual(key, reason);
+            } else if fill {
+                plan.pending_key = Some(key);
+            } else {
+                plan.evidence.mark_not_applicable(key);
+            }
+        }
         plan.assignment = assignment;
-        if plan.pending_key.is_none()
-            && let Some(assignment) = plan.assignment.as_ref()
-        {
-            plan.evidence
-                .mark_not_applicable(assignment.route_key.clone());
-        }
 
         Ok(plan)
     }
