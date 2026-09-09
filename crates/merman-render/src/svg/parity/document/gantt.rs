@@ -3,6 +3,84 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_gantt_task_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+    ) -> Result<bool> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(id) = semantic_id else {
+            return Ok(false);
+        };
+        if !id.starts_with("gantt.task.")
+            || !id.ends_with(".label")
+            || !matches!(self.groups.last(), Some(GroupKind::Semantic {
+                semantic_id, emitted: false, ..
+            }) if semantic_id == id)
+            || !body.dom_ids.contains_key(id)
+            || run.baseline != TextBaseline::Alphabetic
+            || run.direction != TextDirection::Auto
+            || run.language.is_some()
+            || run.style.font.resource.is_some()
+            || run.style.stroke.is_some()
+            || run.text.contains(['\n', '\r', '\t'])
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let Paint::Solid { color } = run.style.fill else {
+            return Ok(false);
+        };
+        if color.alpha != 255 {
+            return Ok(false);
+        }
+        let Some(class) = body.text_classes.get(id) else {
+            return Ok(false);
+        };
+        let font = self.font_families(&run.style.font)?;
+        self.output.push_str("<text")?;
+        self.write_gantt_dom_id(id)?;
+        write!(
+            self.output,
+            " font-size=\"{}\" x=\"{}\" y=\"{}\" class=\"{}\"",
+            fmt(run.style.font_size),
+            fmt(run.origin.x),
+            fmt(run.origin.y),
+            escaped_attr(class),
+        )?;
+        if self
+            .effective_config
+            .get("securityLevel")
+            .and_then(Value::as_str)
+            == Some("loose")
+        {
+            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))?;
+        }
+        // CSS is a projection of the resolved run, not a replay of source class/theme rules.
+        // Preserve the public string literally; the adapter already resolved source whitespace.
+        if run.text.starts_with(' ') || run.text.ends_with(' ') || run.text.contains("  ") {
+            // Native SVG consumers also need xml:space; CSS white-space alone is insufficient.
+            self.output.push_str(" xml:space=\"preserve\"")?;
+        }
+        write!(
+            self.output,
+            " style=\"font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;text-anchor:{};dominant-baseline:alphabetic;fill:{};fill-opacity:1;stroke:none;\"",
+            escaped_attr(&font),
+            run.style.font.weight,
+            font_style(run.style.font.style),
+            fmt(run.style.letter_spacing),
+            text_anchor(run.anchor),
+            color_css(color),
+        )?;
+        self.write_state_attrs()?;
+        self.output.push('>')?;
+        output::escape_xml(&mut self.output, &run.text)?;
+        self.output.push_str("</text>")?;
+        Ok(true)
+    }
+
     pub(super) fn emit_gantt_row(
         &mut self,
         path_id: &ResourceId,

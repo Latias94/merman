@@ -352,6 +352,13 @@ child elements, and edited metadata remains observable. Linked or debug-hidden s
 retain the generic projection. All 38 focused Gantt tests pass; this does not resolve the remaining
 paint attributes or admit the family.
 
+Task labels now project source-shaped text elements from the public resolved run, without replaying
+theme CSS. Inline styles retain public paint, font and anchor edits; IDs, links and ARIA metadata
+remain on the existing task scope. Significant spaces use `xml:space="preserve"` for both browser
+and native SVG consumers. Unsupported compact cases retain the generic text serializer. The 39
+focused Gantt tests pass, including literal text and public position/style edits; this scoped change
+does not refresh the full-family structural report or admit Gantt as canonical.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

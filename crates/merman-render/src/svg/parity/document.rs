@@ -3260,6 +3260,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(());
         }
+        if self.emit_gantt_task_text(run, semantic_id.as_deref())? {
+            return Ok(());
+        }
         if let Some(styles) = &self.packet_styles
             && let Some(class) =
                 super::packet::packet_text_class(semantic_id.as_deref(), text_index)

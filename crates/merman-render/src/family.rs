@@ -2416,9 +2416,19 @@ mod tests {
                 .descendants()
                 .find(|node| node.attribute("id") == Some("cascade-a-text"))
                 .unwrap();
-            assert_eq!(label.attribute("fill"), Some(expected));
+            assert!(
+                label
+                    .attribute("style")
+                    .unwrap()
+                    .contains(&format!("fill:{expected};"))
+            );
             if tags.contains("vert") {
-                assert_eq!(label.attribute("text-anchor"), Some("middle"));
+                assert!(
+                    label
+                        .attribute("style")
+                        .unwrap()
+                        .contains("text-anchor:middle;")
+                );
             }
         }
     }
@@ -3395,6 +3405,17 @@ mod tests {
                 node.attribute("class")
                     .is_some_and(|class| class.contains("clickable"))
             );
+            if node.has_tag_name("text") {
+                assert!(node.attribute("font-family").is_none());
+                assert!(node.attribute("data-merman-bounds").is_none());
+                assert!(node.attribute("text-anchor").is_none());
+                assert!(
+                    node.attribute("style")
+                        .unwrap()
+                        .contains("font-weight:700;")
+                );
+                assert_eq!(node.attribute("text-height"), Some("20"));
+            }
         }
         let other = svg
             .descendants()
@@ -3410,6 +3431,55 @@ mod tests {
                 .map(|node| node.tag_name().name())
                 .collect::<Vec<_>>(),
             ["a", "rect", "a", "text"]
+        );
+        let task_text = document
+            .public
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                merman_display_list::DrawingCommand::DrawText { run } if run.text == "Task" => {
+                    Some(run)
+                }
+                _ => None,
+            })
+            .unwrap();
+        task_text.text = "  Edited #; <&>  ".to_owned();
+        task_text.origin = merman_display_list::Point::new(123.0, 45.0);
+        task_text.style.font_size = 19.0;
+        task_text.style.font.weight = 500;
+        task_text.style.fill =
+            merman_display_list::Paint::solid(merman_display_list::Color::rgba(18, 52, 86, 255));
+        let edited = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions {
+                diagram_id: Some("compact".to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let label = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some("compact-a-text"))
+            .unwrap();
+        assert_eq!(label.text(), Some("  Edited #; <&>  "));
+        assert_eq!(
+            label.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+            Some("preserve")
+        );
+        assert_eq!(label.attribute("x"), Some("123"));
+        assert_eq!(label.attribute("y"), Some("45"));
+        assert_eq!(label.attribute("font-size"), Some("19"));
+        let style = label.attribute("style").unwrap();
+        assert!(style.contains("fill:#123456;"));
+        assert!(style.contains("font-weight:500;"));
+        assert_eq!(label.attribute("aria-label"), Some("Public <task> & label"));
+        assert_eq!(
+            label.parent().unwrap().attribute("href"),
+            Some("https://example.com/task")
         );
         for command in &mut document.public.commands {
             match command {
