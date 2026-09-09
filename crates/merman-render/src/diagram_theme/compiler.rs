@@ -108,6 +108,21 @@ impl DiagramThemeCompiler {
                 )
                 .expect("ER writer default paths satisfy the bounded core contract");
         }
+        if spec.styles().rules().iter().any(|rule| {
+            rule.target() == super::ThemeTarget::Relation
+                && rule
+                    .family()
+                    .is_none_or(|family| family == crate::DiagramFamilyId::REQUIREMENT)
+                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
+                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
+        }) {
+            parse_compatibility = parse_compatibility
+                .try_with_post_detection_default_paths(
+                    crate::DiagramFamilyId::REQUIREMENT.as_str(),
+                    &[crate::requirement::REQUIREMENT_RELATION_PAINT_PATH],
+                )
+                .expect("Requirement writer default paths satisfy the bounded core contract");
+        }
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),

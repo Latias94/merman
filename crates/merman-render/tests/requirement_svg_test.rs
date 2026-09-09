@@ -298,6 +298,175 @@ fn requirement_source() -> &'static str {
 "#
 }
 
+fn requirement_relation_theme(
+    patch: ThemeStylePatch,
+    variant: Option<ThemeVariant>,
+) -> DiagramTheme {
+    let mut rule =
+        ThemeRule::new(ThemeTarget::Relation, patch).for_family(DiagramFamilyId::REQUIREMENT);
+    if let Some(variant) = variant {
+        rule = rule.with_variant(variant);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Requirement relation paint")
+}
+
+#[test]
+fn requirement_relation_paint_is_portable_for_lines_and_referenced_markers() {
+    let source = format!(
+        "{}\nreq1 - contains -> elem1\n",
+        requirement_svg_label_source()
+    );
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, expected_css) in [
+            (CanvasPaint::solid("#2468ac").unwrap(), "#2468ac"),
+            (CanvasPaint::Transparent, "transparent"),
+        ] {
+            for patch in [
+                ThemeStylePatch::default().with_fill(paint.clone()),
+                ThemeStylePatch::default().with_stroke(paint.clone()),
+            ] {
+                let theme = requirement_relation_theme(patch, variant);
+                let rendered = render_requirement_with_theme(&source, &theme);
+                let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+                let css = requirement_stylesheet(rendered.svg());
+                assert!(
+                    css.contains(&format!(
+                        "#requirement-theme marker{{fill:{expected_css};stroke:{expected_css};}}"
+                    )),
+                    "{css}"
+                );
+                assert!(
+                    css.contains(&format!(
+                        "#requirement-theme .relationshipLine{{stroke:{expected_css};"
+                    )),
+                    "{css}"
+                );
+                let edges = document
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("path") && node.attribute("data-edge") == Some("true")
+                    })
+                    .collect::<Vec<_>>();
+                assert!(edges.len() >= 3, "ordinary, contains and self-loop paths");
+                for suffix in ["containsStart", "arrowEnd"] {
+                    let marker = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("marker")
+                                && node.attribute("id").is_some_and(|id| id.ends_with(suffix))
+                        })
+                        .expect("relation marker");
+                    let reference = format!("url(#{})", marker.attribute("id").unwrap());
+                    assert!(
+                        edges.iter().any(|node| {
+                            node.attribute("marker-start") == Some(reference.as_str())
+                                || node.attribute("marker-end") == Some(reference.as_str())
+                        }),
+                        "marker must be referenced: {suffix}"
+                    );
+                    if suffix == "containsStart" {
+                        assert_eq!(
+                            marker
+                                .descendants()
+                                .find(|node| node.has_tag_name("circle"))
+                                .unwrap()
+                                .attribute("fill"),
+                            Some("none")
+                        );
+                    }
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_relation_config_ownership_and_empty_domain_are_not_applicable() {
+    let theme = requirement_relation_theme(
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2468ac").unwrap()),
+        None,
+    );
+    for source in [requirement_source(), requirement_svg_label_source()] {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"relationColor": "#bada55"}
+        }));
+        let baseline = render_requirement_without_theme_and_engine(
+            source,
+            Engine::new().with_site_config(config.clone()),
+        );
+        let rendered = render_requirement_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(config),
+        );
+        assert_eq!(
+            baseline.svg(),
+            rendered.svg(),
+            "explicit relationColor must keep its output"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    let baseline = render_requirement_without_theme(requirement_source());
+    let rendered = render_requirement_with_theme(requirement_source(), &theme);
+    assert_eq!(
+        baseline.svg(),
+        rendered.svg(),
+        "unreferenced marker defs are not visible relations"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+}
+
+#[test]
+fn requirement_relation_stroke_blocks_fill_fallback_including_clear() {
+    use merman_render::diagram_theme::Specified;
+    for stroke in [
+        Specified::Clear,
+        Specified::Value(CanvasPaint::solid("#abcdef").unwrap()),
+    ] {
+        let mut patch =
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap());
+        patch.stroke.paint = stroke.clone();
+        let theme = requirement_relation_theme(patch, None);
+        let rendered = render_requirement_with_theme_requirement(
+            requirement_svg_label_source(),
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let css = requirement_stylesheet(rendered.svg());
+        assert!(
+            !css.contains("#2468ac"),
+            "stroke always suppresses fill fallback: {css}"
+        );
+        if matches!(stroke, Specified::Value(_)) {
+            assert!(css.contains("#requirement-theme .relationshipLine{stroke:#abcdef;"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(matches!(stroke, Specified::Value(_)))
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            usize::from(matches!(stroke, Specified::Clear))
+        );
+    }
+}
+
 fn requirement_svg_label_source() -> &'static str {
     r#"requirementDiagram
   requirement req1 {

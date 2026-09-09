@@ -17,10 +17,12 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 mod config;
+mod relation_paint;
 mod source_typography;
 mod theme;
 
 pub(crate) use config::RequirementConfigView;
+pub(crate) use relation_paint::{REQUIREMENT_RELATION_PAINT_PATH, RequirementRelationPaintPlan};
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use theme::{RequirementDividerEmission, RequirementPaintThemePlan};
 

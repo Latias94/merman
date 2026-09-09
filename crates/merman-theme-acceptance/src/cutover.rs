@@ -199,6 +199,19 @@ requirement req1 {
   verifymethod: analysis
 }
 "#;
+const REQUIREMENT_RELATION_SOURCE: &str = r#"requirementDiagram
+requirement req1 {
+  id: 1
+  text: Required behavior
+  risk: high
+  verifymethod: analysis
+}
+element impl {
+  type: simulation
+}
+req1 - contains -> impl
+impl - satisfies -> req1
+"#;
 const PIE_SLICE_SOURCE: &str = r#"pie
   "Alpha" : 3
   "Beta" : 2
@@ -388,7 +401,11 @@ impl CutoverWitnessProfile {
         {
             return &Self::TEXT_LOOKS;
         }
-        if route.family_id() == DiagramFamilyId::GANTT
+        if route.family_id() == DiagramFamilyId::REQUIREMENT
+            && route.target() == ThemeTarget::Relation
+        {
+            &Self::TEXT_LOOKS
+        } else if route.family_id() == DiagramFamilyId::GANTT
             && route.target() == ThemeTarget::Task
             && route.facet() == ThemeRouteCutoverFacet::Stroke
             && route.selector() == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Warning)
@@ -524,6 +541,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Requirement,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(REQUIREMENT_PAINT_SOURCE),
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Relation,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(REQUIREMENT_RELATION_SOURCE),
         (
             DiagramFamilyId::PIE,
             ThemeTarget::PieSlice,
@@ -1600,11 +1622,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_340_routes_and_434_artifact_witnesses() {
+    fn route_inventory_retains_348_routes_and_458_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 340);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 434);
+        assert_eq!(inventory.len(), 348);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 458);
     }
 
     #[test]

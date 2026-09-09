@@ -12,15 +12,18 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 23/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 10/33; 206 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 10/33; 198 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 58 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v62; 340 routes / 434 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 59 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v63; 348 routes / 458 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
+output files. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
+solid/transparent), with Classic, Neo and HandDrawn witnesses for relation paths and referenced
+markers. Explicit `relationColor` retains ownership; any specified stroke suppresses the fill
+fallback. Requirement Text.fill remains on the bridge. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
 Default Text.fill, and unqualified/Default Relation.fill. Classic witnesses cover the row fills,
 relation stroke channel, and visible text including the diagram title. Version 61 adds four ER
 Table.fill routes (Odd/Even, solid/transparent) with Classic witnesses. Family tests also cover Neo/HandDrawn and HTML/SVG labels. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn

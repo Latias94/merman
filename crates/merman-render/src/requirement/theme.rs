@@ -63,6 +63,7 @@ impl RequirementDividerEmission {
 /// Requirement box paint resolved once for semantic nodes and shared by SVG emission and evidence.
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
+    relation_paint: Option<super::RequirementRelationPaintPlan>,
     node_indices: BTreeMap<String, usize>,
     expectations: Option<Arc<[NodeExpectation]>>,
     inherited_font_stack: InheritedFontStackPlan,
@@ -90,6 +91,7 @@ impl RequirementPaintThemePlan {
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
+                relation_paint: None,
                 node_indices: BTreeMap::new(),
                 expectations: None,
                 inherited_font_stack,
@@ -186,6 +188,33 @@ impl RequirementPaintThemePlan {
         }
 
         let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let relation_paint = theme
+            .family_mechanism_routes()
+            .iter()
+            .any(|route| {
+                matches!(
+                    route.mechanism(),
+                    FamilyThemeMechanism::RuleFacet {
+                        target: ThemeTarget::Relation,
+                        ..
+                    } | FamilyThemeMechanism::OrdinalPalette {
+                        target: ThemeTarget::Relation
+                    } | FamilyThemeMechanism::EffectBinding {
+                        target: ThemeTarget::Relation,
+                        ..
+                    }
+                )
+            })
+            .then(|| {
+                super::RequirementRelationPaintPlan::resolve(
+                    theme,
+                    effective_config,
+                    model,
+                    &mut evidence,
+                    work_meter,
+                )
+            })
+            .transpose()?;
         let mut observations = BTreeMap::<usize, RequirementPaintRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             match route.mechanism() {
@@ -280,6 +309,7 @@ impl RequirementPaintThemePlan {
         }
 
         Ok(Self {
+            relation_paint,
             node_indices,
             expectations: Some(expectations.into()),
             inherited_font_stack,
@@ -296,6 +326,10 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn index_for_node_id(&self, node_id: &str) -> Option<usize> {
         self.node_indices.get(node_id).copied()
+    }
+
+    pub(crate) fn relation_paint(&self) -> Option<&super::RequirementRelationPaintPlan> {
+        self.relation_paint.as_ref()
     }
 
     pub(crate) fn typed_fill(
@@ -367,6 +401,9 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        if let Some(plan) = self.relation_paint.as_ref() {
+            plan.finish_evidence(&mut evidence);
+        }
         let Some(Some(receipt)) = self.terminal_receipt.get() else {
             self.inherited_font_stack
                 .mark_unsupported_typography_evidence(

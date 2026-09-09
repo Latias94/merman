@@ -11,19 +11,19 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 62;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 63;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    30, 158, 178, 66, 253, 80, 165, 65, 42, 123, 217, 162, 231, 154, 132, 193, 193, 121, 94, 231,
-    36, 107, 52, 174, 104, 31, 78, 25, 11, 79, 128, 3,
+    12, 99, 181, 119, 94, 118, 186, 233, 200, 139, 177, 30, 185, 197, 121, 89, 92, 5, 130, 10, 136,
+    242, 207, 185, 210, 131, 6, 17, 5, 43, 107, 169,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 46] = [
+); 47] = [
     (
         ThemeRouteCutoverProjection::EdgeLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -206,6 +206,10 @@ const PROJECTION_ACTIONS: [(
     ),
     (
         ThemeRouteCutoverProjection::ErTableEvenFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::RequirementRelationPaint,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
 ];
@@ -392,7 +396,67 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 340] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 348] = [
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
+    route_variant(
+        DiagramFamilyId::REQUIREMENT,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        &[ThemeRouteCutoverProjection::RequirementRelationPaint],
+    ),
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -3273,6 +3337,39 @@ mod tests {
     }
 
     #[test]
+    fn requirement_relation_authority_replaces_the_exact_static_paint_domain() {
+        let actual = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::REQUIREMENT
+                    && route.id.target() == ThemeTarget::Relation
+            })
+            .map(|route| {
+                assert_eq!(
+                    route.projections,
+                    [ThemeRouteCutoverProjection::RequirementRelationPaint]
+                );
+                (route.id.selector(), route.id.facet(), route.id.value())
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut expected = std::collections::BTreeSet::new();
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                for value in [
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ] {
+                    expected.insert((selector, facet, value));
+                }
+            }
+        }
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn er_route_authority_keeps_row_and_relation_projection_identity() {
         let routes = ACTIVE_ROUTES
             .iter()
@@ -3654,7 +3751,14 @@ mod tests {
                             == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(qualified.len(), 4);
+            assert_eq!(
+                qualified.len(),
+                if family == DiagramFamilyId::REQUIREMENT {
+                    8
+                } else {
+                    4
+                }
+            );
         }
 
         let er_relation_default = ACTIVE_ROUTES

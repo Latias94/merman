@@ -552,12 +552,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(&a11y_nodes);
 
-    let mut css_emission = requirement_css_with_typography(
-        diagram_id,
-        effective_config,
-        font_family_override,
-        paint_theme.font_size_override_css(),
-    );
+    let relation_paint = paint_theme.relation_paint();
+    let mut relation_receipt =
+        relation_paint.and_then(|plan| plan.begin_terminal_receipt(layout.edges.len()));
+    let mut css_emission = match relation_paint.and_then(|plan| plan.typed_color()) {
+        Some(color) => super::super::css::requirement_css_with_relation_paint(
+            diagram_id,
+            effective_config,
+            font_family_override,
+            paint_theme.font_size_override_css(),
+            Some(color),
+        ),
+        None => requirement_css_with_typography(
+            diagram_id,
+            effective_config,
+            font_family_override,
+            paint_theme.font_size_override_css(),
+        ),
+    };
     let color_css = requirement_color_css(
         diagram_id,
         look,
@@ -567,6 +579,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
     );
     insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_css(css_emission.typed_relation_color());
+    }
 
     let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
     if let Some(receipt) = paint_theme_receipt.as_mut() {
@@ -580,17 +596,25 @@ pub(crate) fn render_requirement_diagram_svg_model(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_containsStart" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"><g><circle cx="10" cy="10" r="9" fill="none"/><line x1="1" x2="19" y1="10" y2="10"/><line y1="1" y2="19" x1="10" x2="10"/></g></marker></defs>"#,
     );
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_marker(0);
+    }
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{diagram_id}_requirement-requirement_arrowEnd" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
     );
+    if let Some(receipt) = relation_receipt.as_mut() {
+        out.checkpoint()?;
+        receipt.record_marker(1);
+    }
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
 
     out.push_str(r#"<g class="edgePaths">"#);
-    for e in &layout.edges {
+    for (edge_index, e) in layout.edges.iter().enumerate() {
         let identity = edge_identity(e);
         let prepared_label = prepared_edges
             .get(&identity)
@@ -649,6 +673,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
         );
+        if let Some(receipt) = relation_receipt.as_mut() {
+            out.checkpoint()?;
+            receipt.record_path(edge_index);
+        }
     }
     out.push_str("</g>");
 
@@ -1153,6 +1181,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(receipt) = relation_receipt
+        && !relation_paint
+            .expect("relation receipt requires a plan")
+            .record_terminal(receipt)
+    {
+        return Err(Error::InvalidModel {
+            message: "incomplete Requirement relation paint terminal receipt".to_owned(),
+        });
+    }
     if !paint_theme.record_terminal(paint_theme_receipt) {
         return Err(Error::InvalidModel {
             message: "Requirement paint theme terminal evidence could not be sealed".to_string(),

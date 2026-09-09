@@ -375,11 +375,12 @@ pub enum ThemeRouteCutoverProjection {
     EdgeLabelFill = 43,
     ErTableOddFill = 44,
     ErTableEvenFill = 45,
+    RequirementRelationPaint = 46,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 46] = [
+    const ALL: [Self; 47] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -426,6 +427,7 @@ impl ThemeRouteCutoverProjection {
         Self::EdgeLabelFill,
         Self::ErTableOddFill,
         Self::ErTableEvenFill,
+        Self::RequirementRelationPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -475,6 +477,7 @@ impl ThemeRouteCutoverProjection {
             Self::GitGraphCommitLabelBackgroundFill => "commit-label-background.fill",
             Self::GanttTaskWarningStroke => "task.warning.stroke",
             Self::TimelineEventFill => "event.fill",
+            Self::RequirementRelationPaint => "relation.paint",
         }
     }
 
@@ -527,7 +530,8 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskWarningStroke
             | Self::TimelineEventFill
             | Self::ErTableOddFill
-            | Self::ErTableEvenFill => ThemeRouteCutoverProjectionAction::Replace,
+            | Self::ErTableEvenFill
+            | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -602,6 +606,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::RequirementFill);
     pub const REPLACE_REQUIREMENT_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::RequirementStroke);
+    pub const REPLACE_REQUIREMENT_RELATION_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::RequirementRelationPaint);
     pub const REPLACE_PIE_SLICE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::PieSliceStroke);
     pub const REPLACE_PIE_SLICE_FILL: Self =
@@ -756,7 +762,7 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill, GitGraph Edge fill, and ER Relation fill control native stroke colors.
+    /// Sequence Message fill, GitGraph Edge fill, and ER/Requirement Relation fill control native stroke colors.
     /// These routes
     /// are observed in the emitted stroke channel during raster admission, while their semantic
     /// facet remains `Fill` in the route identity and evidence.
@@ -771,8 +777,10 @@ impl ThemeRouteCutoverDescriptor {
                 && self.target() == ThemeTarget::Message)
                 || (self.family_id() == DiagramFamilyId::GIT_GRAPH
                     && self.target() == ThemeTarget::Edge)
-                || (self.family_id() == DiagramFamilyId::ER
-                    && self.target() == ThemeTarget::Relation))
+                || (matches!(
+                    self.family_id(),
+                    DiagramFamilyId::ER | DiagramFamilyId::REQUIREMENT
+                ) && self.target() == ThemeTarget::Relation))
         {
             ThemeRouteCutoverFacet::Stroke
         } else {
@@ -1489,6 +1497,47 @@ mod tests {
             ThemeRouteCutoverProjectionAction::Replace
         );
         assert_eq!(projections, vec![projection]);
+    }
+
+    #[test]
+    fn requirement_relation_paint_replaces_one_contribution_in_the_stroke_channel() {
+        let projection = ThemeRouteCutoverProjection::RequirementRelationPaint;
+        assert_eq!(projection.contribution_id(), "relation.paint");
+        assert_eq!(
+            projection.action(),
+            ThemeRouteCutoverProjectionAction::Replace
+        );
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                for value in [
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ] {
+                    let id = ThemeRouteCutoverId::new(
+                        DiagramFamilyId::REQUIREMENT,
+                        ThemeTarget::Relation,
+                        selector,
+                        facet,
+                        value,
+                    );
+                    let descriptor = ThemeRouteCutoverDescriptor::new(
+                        id,
+                        ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_RELATION_PAINT,
+                    );
+                    assert_eq!(
+                        descriptor.raster_paint_facet(),
+                        ThemeRouteCutoverFacet::Stroke
+                    );
+                    assert_eq!(
+                        descriptor.projections().iter().collect::<Vec<_>>(),
+                        [projection]
+                    );
+                }
+            }
+        }
     }
 
     #[test]

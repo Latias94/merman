@@ -817,16 +817,6 @@ fn compile_requirement_family(
             ("relationLabelColor", reader.text_fill(ThemeTarget::Text)),
         ],
     );
-    contributions.add_theme_variables(
-        "relation.paint",
-        [
-            (
-                "relationColor",
-                reader.stroke_or_fill(ThemeTarget::Relation),
-            ),
-            ("lineColor", reader.stroke_or_fill(ThemeTarget::Relation)),
-        ],
-    );
     contributions.finish_into(builder)
 }
 
@@ -2235,14 +2225,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 206);
+        assert_eq!(status.matrix_route_count(), 198);
         assert_eq!(status.matrix_family_count(), 10);
         assert_eq!(status.dispatched_family_count(), 10);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                89, 85, 200, 132, 213, 141, 59, 235, 206, 81, 214, 175, 255, 201, 213, 88, 214,
-                149, 78, 103, 227, 152, 101, 209, 164, 62, 30, 186, 83, 90, 216, 252
+                15, 233, 12, 4, 194, 121, 245, 110, 138, 243, 85, 124, 67, 36, 157, 111, 159, 156,
+                78, 248, 108, 237, 41, 168, 66, 195, 24, 221, 55, 8, 113, 119
             ]
         );
         assert_eq!(
@@ -4712,9 +4702,11 @@ gitGraph
             requirement
                 .effective_config
                 .get_str("themeVariables.relationColor"),
-            Some("#64748b")
+            requirement_baseline
+                .effective_config
+                .get_str("themeVariables.relationColor")
         );
-        assert!(fallback_contribution_count(&requirement) > 0);
+        assert_eq!(fallback_contribution_count(&requirement), 0);
         let requirement_bridge = bridge(&spec).compile_for_family(DiagramFamilyId::REQUIREMENT);
         assert!(
             !requirement_bridge
@@ -4727,7 +4719,7 @@ gitGraph
                 .contains("merman.legacy-family-theme.v1.requirement.requirement.paint")
         );
         assert!(
-            requirement_bridge
+            !requirement_bridge
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.requirement.relation.paint")
         );

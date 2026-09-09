@@ -595,6 +595,11 @@ fn legacy_bridge_projections(
             ThemeTarget::Requirement,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_STROKE),
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Relation,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_REQUIREMENT_RELATION_PAINT),
         (DiagramFamilyId::PIE, ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_PIE_SLICE_FILL)
         }
@@ -2154,7 +2159,7 @@ pub(super) fn classify_rule_facet(
         };
     }
     if family == DiagramFamilyId::REQUIREMENT
-        && target == ThemeTarget::Requirement
+        && matches!(target, ThemeTarget::Requirement | ThemeTarget::Relation)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -6062,6 +6067,34 @@ mod tests {
                 vec!["requirement.paint"],
             ),
             (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Relation,
+                Fill,
+                Transparent,
+                vec!["relation.paint"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Relation,
+                Fill,
+                Solid,
+                vec!["relation.paint"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Relation,
+                Stroke,
+                Transparent,
+                vec!["relation.paint"],
+            ),
+            (
+                DiagramFamilyId::REQUIREMENT,
+                ThemeTarget::Relation,
+                Stroke,
+                Solid,
+                vec!["relation.paint"],
+            ),
+            (
                 DiagramFamilyId::SANKEY,
                 ThemeTarget::Text,
                 Fill,
@@ -6576,7 +6609,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 170);
+        assert_eq!(qualified.len(), 174);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6606,7 +6639,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::REQUIREMENT)
                 .count(),
-            4
+            8
         );
         assert_eq!(
             qualified

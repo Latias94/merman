@@ -833,6 +833,7 @@ pub(super) struct RequirementCssEmission {
     pub(super) css: String,
     font_family: Box<str>,
     font_size: Box<str>,
+    typed_relation_color: Option<(usize, Box<str>)>,
 }
 
 impl RequirementCssEmission {
@@ -843,6 +844,12 @@ impl RequirementCssEmission {
     pub(super) fn font_size(&self) -> &str {
         &self.font_size
     }
+
+    pub(super) fn typed_relation_color(&self) -> Option<(usize, &str)> {
+        self.typed_relation_color
+            .as_ref()
+            .map(|(index, color)| (*index, color.as_ref()))
+    }
 }
 
 pub(super) fn requirement_css_with_typography<I>(
@@ -850,6 +857,25 @@ pub(super) fn requirement_css_with_typography<I>(
     effective_config: &serde_json::Value,
     resolved_font_family: Option<&str>,
     resolved_font_size: Option<&str>,
+) -> RequirementCssEmission
+where
+    I: SvgDiagramIdValue,
+{
+    requirement_css_with_relation_paint(
+        diagram_id,
+        effective_config,
+        resolved_font_family,
+        resolved_font_size,
+        None,
+    )
+}
+
+pub(super) fn requirement_css_with_relation_paint<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    resolved_font_family: Option<&str>,
+    resolved_font_size: Option<&str>,
+    typed_relation_color: Option<(usize, &str)>,
 ) -> RequirementCssEmission
 where
     I: SvgDiagramIdValue,
@@ -897,7 +923,9 @@ where
             .unwrap_or_else(|| default_value.to_string())
     };
 
-    let relation_color = option("relationColor", "#333333");
+    let relation_color = typed_relation_color
+        .map(|(_, color)| color.to_owned())
+        .unwrap_or_else(|| option("relationColor", "#333333"));
     let line_color = option("lineColor", "#333333");
     let font_size = resolved_font_size
         .map(str::to_owned)
@@ -973,6 +1001,8 @@ where
         css: out,
         font_family,
         font_size: font_size.into_boxed_str(),
+        typed_relation_color: typed_relation_color
+            .map(|(index, _)| (index, relation_color.into_boxed_str())),
     }
 }
 
