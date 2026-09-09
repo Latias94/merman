@@ -1495,6 +1495,57 @@ fn treemap_huge_source_font_finishes_height_fitting() {
 }
 
 #[test]
+fn treemap_huge_overwide_source_font_rejects_nonprogress_without_a_work_limit() {
+    struct WideTextHost(AtomicUsize);
+    impl HostTextMeasurer for WideTextHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::ComputedLength {
+                return Ok(None);
+            }
+            if request.style.font_size >= 1e19 {
+                // Bound the regression itself: a stalled fitter must fail this test, not hang.
+                assert!(
+                    self.0.fetch_add(1, Ordering::Relaxed) < 4,
+                    "font fitting stalled"
+                );
+            }
+            Ok(Some(HostTextMeasurement::Length(
+                request.style.font_size.min(1_000_000.0),
+            )))
+        }
+    }
+    let source = "treemap\nclassDef huge font-size:100000000000000000000px;\n\"Leaf\": 42:::huge\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.treemap-wide").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            Arc::new(WideTextHost(AtomicUsize::new(0))),
+            TextMeasurementPhase::ALL,
+        ))
+        .begin_session()
+        .unwrap();
+    let error = family::prepare(parsed, &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .err()
+        .expect("non-progressing font fitting must be rejected");
+    assert!(
+        matches!(error, merman_render::Error::InvalidModel { ref message }
+        if message.contains("font size cannot decrease")),
+        "{error:?}"
+    );
+}
+
+#[test]
 fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
     let tag = text_tag_by_text(&svg, "Accessories");

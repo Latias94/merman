@@ -45,9 +45,7 @@ fn treemap_exponential_parts(value: f64, significant_digits: usize) -> Option<(S
         return None;
     }
     let raw = format!("{:.*e}", significant_digits.saturating_sub(1), value.abs());
-    let Some((mantissa, exponent)) = raw.split_once('e') else {
-        return None;
-    };
+    let (mantissa, exponent) = raw.split_once('e')?;
     let digits = mantissa.replace('.', "");
     let exponent = exponent.parse::<i32>().ok()?;
     Some((digits, exponent))
@@ -121,8 +119,8 @@ fn treemap_format_fixed(value: f64, precision: usize, grouped: bool) -> String {
     let formatted = format!("{:.*}", precision.min(20), value);
     if grouped {
         treemap_group_decimal(&formatted)
-    } else if formatted.starts_with('-') {
-        format!("−{}", &formatted[1..])
+    } else if let Some(unsigned) = formatted.strip_prefix('-') {
+        format!("−{unsigned}")
     } else {
         formatted
     }
@@ -1161,7 +1159,16 @@ pub(crate) fn render_treemap_diagram_svg(
                 {
                     break;
                 }
-                label_font_size -= 1.0;
+                let next_font_size = label_font_size - 1.0;
+                if next_font_size >= label_font_size {
+                    // A host measurer need not be monotone, so do not replace its fitting
+                    // sequence with binary search or retry an unchanged floating-point size.
+                    return Err(crate::Error::InvalidModel {
+                        message: "Treemap label font size cannot decrease during width fitting"
+                            .to_owned(),
+                    });
+                }
+                label_font_size = next_font_size;
                 style.font_size = label_font_size;
                 expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
             }
