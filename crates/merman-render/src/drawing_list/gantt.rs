@@ -9,7 +9,7 @@ use super::{
 };
 use crate::config::config_font_family_css_raw;
 use crate::drawing_list::builder::DrawingListBuilder;
-use crate::drawing_list::flowchart::rounded_rect_path;
+use crate::drawing_list::flowchart::{elliptical_rounded_rect_path, rounded_rect_path};
 use crate::drawing_list::support::{
     PortableStyleResolver, navigation_security, portable_navigation_uri, stroke, text_obligation,
 };
@@ -543,12 +543,13 @@ impl<'a> GanttBuilder<'a> {
             }
             self.add_path(
                 bar_id,
-                rect_path(
-                    task.bar.x,
-                    task.bar.y,
+                elliptical_rounded_rect_path(
+                    task.bar.x + task.bar.width / 2.0,
+                    task.bar.y + task.bar.height / 2.0,
                     task.bar.width,
                     task.bar.height,
                     task.bar.rx,
+                    task.bar.ry,
                 ),
                 PathStyle {
                     fill_rule: FillRule::NonZero,

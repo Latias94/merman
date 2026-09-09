@@ -2001,11 +2001,24 @@ pub(crate) fn rounded_rect_path(
     radius: f64,
 ) -> Vec<PathSegment> {
     let r = radius.min(width / 2.0).min(height / 2.0).max(0.0);
+    elliptical_rounded_rect_path(x, y, width, height, r, r)
+}
+
+pub(crate) fn elliptical_rounded_rect_path(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    radius_x: f64,
+    radius_y: f64,
+) -> Vec<PathSegment> {
+    let rx = radius_x.min(width / 2.0).max(0.0);
+    let ry = radius_y.min(height / 2.0).max(0.0);
     let left = x - width / 2.0;
     let right = x + width / 2.0;
     let top = y - height / 2.0;
     let bottom = y + height / 2.0;
-    if r == 0.0 {
+    if rx == 0.0 || ry == 0.0 {
         return polygon_path(&[
             Point::new(left, top),
             Point::new(right, top),
@@ -2015,51 +2028,51 @@ pub(crate) fn rounded_rect_path(
     }
     vec![
         PathSegment::MoveTo {
-            to: Point::new(left + r, top),
+            to: Point::new(left + rx, top),
         },
         PathSegment::LineTo {
-            to: Point::new(right - r, top),
+            to: Point::new(right - rx, top),
         },
         PathSegment::ArcTo {
-            radius_x: r,
-            radius_y: r,
+            radius_x: rx,
+            radius_y: ry,
             x_axis_rotation_degrees: 0.0,
             large_arc: false,
             sweep_clockwise: true,
-            to: Point::new(right, top + r),
+            to: Point::new(right, top + ry),
         },
         PathSegment::LineTo {
-            to: Point::new(right, bottom - r),
+            to: Point::new(right, bottom - ry),
         },
         PathSegment::ArcTo {
-            radius_x: r,
-            radius_y: r,
+            radius_x: rx,
+            radius_y: ry,
             x_axis_rotation_degrees: 0.0,
             large_arc: false,
             sweep_clockwise: true,
-            to: Point::new(right - r, bottom),
+            to: Point::new(right - rx, bottom),
         },
         PathSegment::LineTo {
-            to: Point::new(left + r, bottom),
+            to: Point::new(left + rx, bottom),
         },
         PathSegment::ArcTo {
-            radius_x: r,
-            radius_y: r,
+            radius_x: rx,
+            radius_y: ry,
             x_axis_rotation_degrees: 0.0,
             large_arc: false,
             sweep_clockwise: true,
-            to: Point::new(left, bottom - r),
+            to: Point::new(left, bottom - ry),
         },
         PathSegment::LineTo {
-            to: Point::new(left, top + r),
+            to: Point::new(left, top + ry),
         },
         PathSegment::ArcTo {
-            radius_x: r,
-            radius_y: r,
+            radius_x: rx,
+            radius_y: ry,
             x_axis_rotation_degrees: 0.0,
             large_arc: false,
             sweep_clockwise: true,
-            to: Point::new(left + r, top),
+            to: Point::new(left + rx, top),
         },
         PathSegment::Close,
     ]

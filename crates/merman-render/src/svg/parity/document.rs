@@ -2393,11 +2393,8 @@ impl<'a> DocumentSvgEncoder<'a> {
                 || raw_id.starts_with("gantt.row.")
                 || raw_id.starts_with("gantt.task.") && raw_id.ends_with(".bar")
             {
-                if let Some((bounds, radius)) = rounded_rectangle_from_path(path) {
-                    if radius > 0.0 {
-                        return self.emit_rounded_rect(path_id, bounds, radius, style);
-                    }
-                    return self.emit_rect(path_id, bounds, style);
+                if let Some((bounds, rx, ry)) = elliptical_rounded_rectangle_from_path(path) {
+                    return self.emit_elliptical_rounded_rect(path_id, bounds, rx, ry, style);
                 }
                 if let Some(bounds) = rectangle_from_path(path) {
                     return self.emit_rect(path_id, bounds, style);
@@ -2903,6 +2900,17 @@ impl<'a> DocumentSvgEncoder<'a> {
         radius: f64,
         style: &PathStyle,
     ) -> Result<()> {
+        self.emit_elliptical_rounded_rect(path_id, bounds, radius, radius, style)
+    }
+
+    fn emit_elliptical_rounded_rect(
+        &mut self,
+        path_id: &ResourceId,
+        bounds: Rect,
+        radius_x: f64,
+        radius_y: f64,
+        style: &PathStyle,
+    ) -> Result<()> {
         self.output.push_str("<rect x=\"")?;
         write!(
             self.output,
@@ -2911,8 +2919,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             fmt(bounds.y),
             fmt(bounds.width),
             fmt(bounds.height),
-            fmt(radius),
-            fmt(radius),
+            fmt(radius_x),
+            fmt(radius_y),
         )?;
         self.write_gantt_dom_id(path_id.as_str())?;
         self.write_journey_dom_id(path_id.as_str())?;
@@ -2923,7 +2931,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push('"')?;
         }
         self.write_zenuml_path_attrs(path_id.as_str())?;
-        let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius);
+        let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius_x);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
         self.write_fill_stroke_style(style)?;
@@ -4628,6 +4636,11 @@ fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
 }
 
 fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {
+    let (bounds, rx, ry) = elliptical_rounded_rectangle_from_path(path)?;
+    ((rx - ry).abs() <= 1e-9).then_some((bounds, rx))
+}
+
+fn elliptical_rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64, f64)> {
     let [
         PathSegment::MoveTo { to: p0 },
         PathSegment::LineTo { to: p1 },
@@ -4673,16 +4686,18 @@ fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {
     };
     let epsilon = 1e-9;
     let same = |left: f64, right: f64| (left - right).abs() <= epsilon;
-    let radius = *r1x;
-    if !radius.is_finite()
-        || radius <= 0.0
-        || !same(*r1x, *r1y)
+    let rx = *r1x;
+    let ry = *r1y;
+    if !rx.is_finite()
+        || !ry.is_finite()
+        || rx <= 0.0
+        || ry <= 0.0
         || !same(*r1x, *r2x)
-        || !same(*r1x, *r2y)
+        || !same(*r1y, *r2y)
         || !same(*r1x, *r3x)
-        || !same(*r1x, *r3y)
+        || !same(*r1y, *r3y)
         || !same(*r1x, *r4x)
-        || !same(*r1x, *r4y)
+        || !same(*r1y, *r4y)
         || [*rot1, *rot2, *rot3, *rot4]
             .into_iter()
             .any(|value| value.abs() > epsilon)
@@ -4702,31 +4717,33 @@ fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {
     if [left, right, top, bottom]
         .into_iter()
         .any(|value| !value.is_finite())
-        || !same(p0.x, left + radius)
-        || !same(p1.x, right - radius)
+        || !same(p0.x, left + rx)
+        || !same(p1.x, right - rx)
         || !same(p1.y, top)
         || !same(p2.x, right)
-        || !same(p2.y, top + radius)
+        || !same(p2.y, top + ry)
         || !same(p3.x, right)
-        || !same(p3.y, bottom - radius)
-        || !same(p4.x, right - radius)
+        || !same(p3.y, bottom - ry)
+        || !same(p4.x, right - rx)
         || !same(p4.y, bottom)
-        || !same(p5.x, left + radius)
+        || !same(p5.x, left + rx)
         || !same(p6.x, left)
-        || !same(p6.y, bottom - radius)
+        || !same(p6.y, bottom - ry)
         || !same(p7.x, left)
-        || !same(p7.y, top + radius)
-        || !same(p8.x, left + radius)
+        || !same(p7.y, top + ry)
+        || !same(p8.x, left + rx)
         || !same(p8.y, top)
     {
         return None;
     }
     let bounds = Rect::new(left, top, right - left, bottom - top);
+    // Subtracting absolute endpoints can round a saturated diameter down by a few ulps.
+    // Use the same tolerance as the corner-coordinate checks, not a stricter second gate.
     (bounds.width > 0.0
         && bounds.height > 0.0
-        && radius <= bounds.width / 2.0
-        && radius <= bounds.height / 2.0)
-        .then_some((bounds, radius))
+        && (rx <= bounds.width / 2.0 || same(rx, bounds.width / 2.0))
+        && (ry <= bounds.height / 2.0 || same(ry, bounds.height / 2.0)))
+    .then_some((bounds, rx, ry))
 }
 
 fn line_from_path(path: &PathResource) -> Option<(Point, Point)> {

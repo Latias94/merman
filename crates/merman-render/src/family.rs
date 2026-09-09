@@ -2007,6 +2007,108 @@ mod tests {
     }
 
     #[test]
+    fn gantt_rectangles_clamp_horizontal_and_vertical_corner_radii_independently() {
+        use merman_display_list::{DrawingResource, PathSegment};
+        for height in [20.0, 4.0] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "gantt": { "useWidth": 800, "barHeight": height }
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Work\nShort :s, 2026-01-01, 1d\nHorizon :h, 2026-01-01, 200d\nMarker :vert, v, 2026-01-02, 1d\n",
+                    ParseOptions::strict(),
+                ).unwrap().unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let BuiltinFamilyArtifact::Gantt(pair) = &artifact.family else {
+                panic!("Gantt")
+            };
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let render = |document: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions::default(),
+                    &SvgDebugOptions::default(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            for (index, task) in pair.layout().tasks.iter().enumerate() {
+                let rx = task.bar.rx.min(task.bar.width / 2.0);
+                let ry = task.bar.ry.min(task.bar.height / 2.0);
+                assert!(rx > 0.0 && ry > 0.0);
+                let id = format!("gantt.task.{index}.bar");
+                let path = document
+                    .public
+                    .resources
+                    .iter()
+                    .find_map(|resource| match resource {
+                        DrawingResource::Path(path) if path.id.as_str() == id => Some(path),
+                        _ => None,
+                    })
+                    .unwrap();
+                let arcs = path
+                    .segments
+                    .iter()
+                    .filter_map(|segment| match segment {
+                        PathSegment::ArcTo {
+                            radius_x, radius_y, ..
+                        } => Some((*radius_x, *radius_y)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(arcs, vec![(rx, ry); 4], "height={height}, task={}", task.id);
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let rect = xml
+                    .descendants()
+                    .find(|node| node.attribute("data-merman-resource") == Some(id.as_str()))
+                    .unwrap();
+                assert!(
+                    rect.has_tag_name("rect"),
+                    "height={height}, task={}, path={:?}",
+                    task.id,
+                    path.segments
+                );
+                assert!((rect.attribute("rx").unwrap().parse::<f64>().unwrap() - rx).abs() < 0.001);
+                assert!((rect.attribute("ry").unwrap().parse::<f64>().unwrap() - ry).abs() < 0.001);
+            }
+            let path = document
+                .public
+                .resources
+                .iter_mut()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path) if path.id.as_str() == "gantt.task.0.bar" => {
+                        Some(path)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let PathSegment::ArcTo { radius_y, .. } = &mut path.segments[2] else {
+                panic!("corner")
+            };
+            *radius_y += 0.25;
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let path = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some("gantt.task.0.bar"))
+                .unwrap();
+            assert!(
+                path.has_tag_name("path"),
+                "an independently edited corner must not be replaced with a rectangle"
+            );
+        }
+    }
+
+    #[test]
     fn gantt_resolves_section_and_task_label_cascade_before_serialization() {
         use merman_display_list::{Color, DrawingCommand, Paint, TextAnchor};
         // Source CSS combines specificity, importance and declaration order. In particular,

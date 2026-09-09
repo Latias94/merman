@@ -262,6 +262,26 @@ regression checks public text paint, weight and anchor, distinct section fills, 
 SVG output. The active-clickable case failed before the fix; this remains focused evidence, not
 full-family canonical admission.
 
+The full candidate comparison at `51ff7fda0` was refreshed with temporary Gantt canonical
+route/coverage admission, which was removed afterward. It selected 157 fixtures: 150 canonical
+renders all still had structure differences, two unsupported effects failed the route check
+(`today_marker_custom_style`'s `stoke` property and the documented `themeCSS` fixture), and five
+existing baseline skips remained. The report is
+`target/compare/gantt_51ff7fda0_candidate_structure.md`. This snapshot does not include the corner
+fix below. Remaining differences include explicit paint/semantic attributes versus inherited
+source defaults, axis/title/today structure, a literal `#;` text rewrite during SVG escaping, and
+six text-measurement threshold crossings that switch labels between inside and outside placement.
+The last category is not addressed by forcing label positions or changing comparator rules.
+
+Narrow task bars and vertical markers now clamp horizontal and vertical corner radii independently,
+as SVG rectangles do. For example, a three-unit-wide bar keeps radii `(1.5, 3)`, not `(1.5, 1.5)`.
+The public arc resources own both radii; the SVG serializer recognizes the same elliptical corners
+and emits a rectangle only when all four corners agree. An independently edited corner remains a
+path. Existing circular-radius callers retain their prior geometry through the shared primitive.
+Regression coverage exercises narrow bars, tall vertical markers and a short bar height, including
+the saturated-radius floating-point boundary; all 88 focused family, document, Gantt and effect
+tests pass. Gantt remains outside canonical admission.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
