@@ -6053,6 +6053,20 @@ mod tests {
                 vec!["slice.stroke"],
             ),
             (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
+            (
                 DiagramFamilyId::RAILROAD,
                 ThemeTarget::Title,
                 Fill,
