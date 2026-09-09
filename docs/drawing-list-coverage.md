@@ -69,6 +69,13 @@ exposed a missing closing parenthesis in the icon translation, now covered by tr
 Style projection, source icon structure, and registry-icon support remain unfinished.
 Historical legacy parity reports are not canonical admission evidence.
 
+The `ec817b096` candidate derives shared text CSS exclusively from identical public text styles;
+heterogeneous siblings retain explicit attributes. Focused mutation tests cover that fallback,
+and icon viewports now follow public scale edits. The full-family report
+`target/compare/treeView_ec817b096_text_css_parity_root.md` still records 12 canonical DOM
+mismatches and 5 registry-icon bridges, so TreeView remains unadmitted. Path presentation and
+icon representation still require convergence; moving text styling into CSS is not admission.
+
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
 root geometry, style, DOM/a11y obligations, and effect disposition remain source-backed.  ZenUML
