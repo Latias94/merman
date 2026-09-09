@@ -43,10 +43,14 @@ inventory row fails at test time.  The current inventory is:
 | QuadrantChart | yes | legacy bridge |
 | XYChart | yes | legacy bridge |
 | GitGraph | yes | legacy bridge |
-| TreeView | yes | legacy bridge |
+| TreeView | yes | canonical |
 | Ishikawa | yes | legacy bridge |
 | EventModeling | yes | legacy bridge |
 | Venn | yes | legacy bridge |
+
+### TreeView admission, September 9, 2026
+
+TreeView is now admitted to the canonical SVG route. The complete pinned family report covers 17/17 fixtures in structure and parity-root modes; the route and coverage matrix are checked in together.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
