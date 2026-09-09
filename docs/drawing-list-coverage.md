@@ -887,3 +887,10 @@ stroke-opacity and opacity against the pinned SVGs (`gantt_aacc5c9bf_today_brows
 This is not full-family admission: static navigation wrappers remain reported, alongside empty
 source marker DOM, title whitespace, and text/geometry differences. The comparison does not
 check root viewports. Temporary canonical admission was removed after the command completed.
+
+The subsequent title fix resolves source entities and SVG normal whitespace before measuring the
+Gantt title. Its default label name is copied from the final public run without a second entity
+pass; authored document accessibility remains independent. Tests cover repeated/encoded spaces,
+non-breaking spaces, an empty text command, measured bounds and explicit `accTitle`. All 51 focused
+Gantt/metadata tests pass. This fix has not yet been included in another full-family comparison;
+the 121/29 report above remains the latest full structure evidence.

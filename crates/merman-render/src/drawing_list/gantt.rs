@@ -807,15 +807,20 @@ impl<'a> GanttBuilder<'a> {
             baseline: TextBaseline::Alphabetic,
             italic: false,
         };
-        let resolved = self.document.resolve_mermaid_text(title)?;
-        let bounds = self.measure_text_bounds(resolved.as_ref(), &spec)?;
-        self.emit_text_in_bounds("gantt.title", resolved.as_ref(), spec, bounds)?;
+        // Source titleText is an ordinary SVG text node: collapse its source whitespace before
+        // measurement. Public run edits remain literal and are never normalized by the encoder.
+        let resolved = self.document.resolve_mermaid_layout_text(title)?;
+        let text = self.document.normalize_normal_text(&resolved)?;
+        let bounds = self.measure_text_bounds(&text, &spec)?;
+        let text_start = self.document.command_count();
+        self.emit_text_in_bounds("gantt.title", &text, spec, bounds)?;
+        let title_name = self.document.resolved_text_name_since(text_start)?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_mermaid_semantic(SemanticAnnotation {
+        self.document.push_semantic(SemanticAnnotation {
             id: "gantt.title".to_string(),
             role: SemanticRole::Label,
-            title: Some(title.to_string()),
+            title: Some(title_name),
             description: None,
             link: None,
         })?;
@@ -1383,6 +1388,63 @@ mod tests {
                 )
                 .unwrap()
             );
+        }
+    }
+
+    #[test]
+    fn titles_collapse_source_whitespace_before_measurement_and_default_naming() {
+        for (source_title, expected) in [
+            ("   Alpha     Beta  ", "Alpha Beta"),
+            ("Alpha #32; Beta", "Alpha Beta"),
+            ("Alpha\u{a0}Beta", "Alpha\u{a0}Beta"),
+            ("#32;#32;", ""),
+        ] {
+            for accessibility in ["", "accTitle: Independent name\n"] {
+                let source = format!(
+                    "gantt\ntitle {source_title}\n{accessibility}dateFormat YYYY-MM-DD\ntodayMarker off\nTask :a, 2026-01-01, 1d\n"
+                );
+                let rendered = render_task_fixture(&source, json!({}));
+                let document = rendered.document();
+                let title_start = document.commands.iter().position(|command| matches!(command,
+                    DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "gantt.title"
+                )).unwrap();
+                let DrawingCommand::DrawText { run } = &document.commands[title_start + 1] else {
+                    panic!("even an empty source title retains its text command")
+                };
+                assert_eq!(run.text, expected);
+                let spec = TextEmitSpec {
+                    origin: run.origin,
+                    font_size: run.style.font_size,
+                    weight: 400,
+                    color: Color::rgba(0, 0, 0, 255),
+                    anchor: run.anchor,
+                    baseline: run.baseline,
+                    italic: false,
+                };
+                assert_eq!(
+                    run.bounds,
+                    measure_text_bounds(
+                        rendered.session(),
+                        &run.style.font.families.join(", "),
+                        expected,
+                        &spec,
+                    )
+                    .unwrap()
+                );
+                let name = |id| {
+                    document
+                        .semantics
+                        .iter()
+                        .find(|s| s.id == id)
+                        .unwrap()
+                        .title
+                        .as_deref()
+                };
+                assert_eq!(name("gantt.title"), Some(expected));
+                if !accessibility.is_empty() {
+                    assert_eq!(name("gantt.document"), Some("Independent name"));
+                }
+            }
         }
     }
 
