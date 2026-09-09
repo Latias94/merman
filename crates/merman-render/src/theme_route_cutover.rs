@@ -658,6 +658,10 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::GanttTaskWarningStroke);
     pub const REPLACE_TIMELINE_EVENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::TimelineEventFill);
+    pub const REPLACE_ER_TABLE_FILL: Self = Self(
+        ThemeRouteCutoverProjection::ErTableOddFill.bit()
+            | ThemeRouteCutoverProjection::ErTableEvenFill.bit(),
+    );
     pub const REPLACE_ER_TABLE_ODD_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::ErTableOddFill);
     pub const REPLACE_ER_TABLE_EVEN_FILL: Self =
@@ -752,7 +756,8 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill and GitGraph Edge fill control native stroke colors. These routes
+    /// Sequence Message fill, GitGraph Edge fill, and ER Relation fill control native stroke colors.
+    /// These routes
     /// are observed in the emitted stroke channel during raster admission, while their semantic
     /// facet remains `Fill` in the route identity and evidence.
     pub fn raster_paint_facet(self) -> ThemeRouteCutoverFacet {
@@ -765,7 +770,9 @@ impl ThemeRouteCutoverDescriptor {
             && ((self.family_id() == DiagramFamilyId::SEQUENCE
                 && self.target() == ThemeTarget::Message)
                 || (self.family_id() == DiagramFamilyId::GIT_GRAPH
-                    && self.target() == ThemeTarget::Edge))
+                    && self.target() == ThemeTarget::Edge)
+                || (self.family_id() == DiagramFamilyId::ER
+                    && self.target() == ThemeTarget::Relation))
         {
             ThemeRouteCutoverFacet::Stroke
         } else {
@@ -1147,6 +1154,35 @@ mod tests {
     }
 
     #[test]
+    fn er_relation_fill_is_observed_in_the_relation_stroke_channel() {
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Solid,
+                ThemeRouteCutoverValue::Transparent,
+            ] {
+                let descriptor = ThemeRouteCutoverDescriptor::new(
+                    ThemeRouteCutoverId::new(
+                        DiagramFamilyId::ER,
+                        ThemeTarget::Relation,
+                        selector,
+                        ThemeRouteCutoverFacet::Fill,
+                        value,
+                    ),
+                    ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE,
+                );
+                assert_eq!(descriptor.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    descriptor.raster_paint_facet(),
+                    ThemeRouteCutoverFacet::Stroke
+                );
+            }
+        }
+    }
+
+    #[test]
     fn tree_view_marker_paint_is_observed_in_the_native_fill_channel() {
         for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
             let descriptor = ThemeRouteCutoverDescriptor::new(
@@ -1298,6 +1334,23 @@ mod tests {
                     ThemeRouteCutoverProjectionAction::RetireFallback
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn er_unqualified_table_fill_replaces_both_row_projections() {
+        assert_eq!(
+            ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_FILL
+                .iter()
+                .map(|projection| (projection.contribution_id(), projection.action()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("table.odd.fill", ThemeRouteCutoverProjectionAction::Replace),
+                (
+                    "table.even.fill",
+                    ThemeRouteCutoverProjectionAction::Replace
+                ),
+            ],
         );
     }
 

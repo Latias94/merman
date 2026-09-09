@@ -477,14 +477,27 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     markdown: &str,
     include_style: bool,
 ) {
+    write_svg_text_markdown_from_create_text_source_with_style(
+        out,
+        markdown,
+        include_style.then_some(""),
+    );
+}
+
+pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    style: Option<&str>,
+) {
     let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(
+    write_svg_text_markdown_lines_with_style(
         out,
         &lines,
-        include_style,
+        style,
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
+        None,
     );
 }
 

@@ -11,17 +11,19 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 22/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 11/33; 214 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 23/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 10/33; 206 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 57 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v61; 332 routes / 426 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 58 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v62; 340 routes / 434 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 61 adds four ER Table.fill routes (Odd/Even, solid/transparent) with Classic
-witnesses. Family tests also cover Neo/HandDrawn and HTML/SVG labels. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
+output files. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
+Default Text.fill, and unqualified/Default Relation.fill. Classic witnesses cover the row fills,
+relation stroke channel, and visible text including the diagram title. Version 61 adds four ER
+Table.fill routes (Odd/Even, solid/transparent) with Classic witnesses. Family tests also cover Neo/HandDrawn and HTML/SVG labels. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
 witnesses covering tag outlines. Version 59 added four GitGraph Node.fill routes with Classic, Neo, and HandDrawn
 witnesses covering state glyphs and tag backgrounds. Version 58 added four GitGraph Edge.fill routes with Classic, Neo, and HandDrawn
 witnesses for branch-line stroke. Version 57 added eight GitGraph NodeLabel.fill/EdgeLabel.fill routes with Classic,
@@ -38,7 +40,14 @@ differ from the live bridge inventory and must not be added together to calculat
 ER Table.fill now has separate direct Odd and Even row consumers. Explicit `rowOdd` and
 `rowEven` configuration owners suppress only their matching row route. Entity source fill owns
 the even row path; odd row fill remains independent. Missing matching rows are NotApplicable.
-Unqualified Table.fill retains both compatibility projections. ER still requires its bridge.
+Unqualified Table.fill directly consumes both row variants and retains both historical replacement
+obligations. Unqualified/Default Relation.fill follows stroke-first fallback and uses the native
+stroke channel. Unqualified/Default Text.fill covers visible labels, the diagram title, and SVG
+subgraph labels when their color falls back from `titleColor` to `textColor`. Explicit configuration
+and source styles retain ownership of each consumer. HTML labels consume `nodeTextColor`; SVG
+labels and the diagram title consume `textColor`. Ownership is captured before theme-default
+projection, so derived colors cannot become explicit owners. Title.fill remains Unsupported.
+ER no longer requires its family bridge.
 
 ## Family Boundaries
 
@@ -61,7 +70,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Gantt | Typed | Unsupported | None |
 | Kanban | Typed | Typed | None |
 | Requirement | Typed | Typed | Required |
-| ER | Typed | Typed | Required |
+| ER | Typed | Typed | None |
 | Pie | Typed | Unsupported | None |
 | XY Chart | Typed | Unsupported | Required |
 | Radar | Typed | Typed | Required |

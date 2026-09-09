@@ -155,74 +155,6 @@ fn style_decls_with_important(decls: &[ErStyleDeclaration]) -> String {
     style_decls_with_important_join(decls, "; ")
 }
 
-// The ER parser also accepts source declarations represented as raw strings for
-// subgraph compatibility styling. Keep that formatting path separate from the
-// prepared declaration path used by the typed theme receipts.
-fn compile_er_subgraph_styles(
-    subgraph: &crate::er::ErSubgraph,
-    classes: &indexmap::IndexMap<String, crate::er::ErClassDef>,
-) -> (Vec<String>, Vec<String>) {
-    let mut compiled_box = Vec::new();
-    let mut compiled_text = Vec::new();
-    let mut seen_classes = std::collections::HashSet::new();
-    for class_name in &subgraph.classes {
-        if !seen_classes.insert(class_name.as_str()) {
-            continue;
-        }
-        let Some(def) = classes.get(class_name) else {
-            continue;
-        };
-        compiled_box.extend(def.styles.iter().map(|style| style.trim().to_string()));
-        compiled_text.extend(def.text_styles.iter().map(|style| style.trim().to_string()));
-    }
-
-    let mut rect_map = std::collections::BTreeMap::new();
-    let mut text_map = std::collections::BTreeMap::new();
-    for style in compiled_box.iter().chain(subgraph.css_styles.iter()) {
-        let Some((key, value)) = parse_style_decl(style) else {
-            continue;
-        };
-        if is_rect_style_key(key) {
-            rect_map.insert(key.to_string(), value.to_string());
-        }
-        if key == "color" {
-            text_map.insert("color".to_string(), value.to_string());
-        }
-    }
-    for style in compiled_text.iter().chain(subgraph.css_styles.iter()) {
-        let Some((key, value)) = parse_style_decl(style) else {
-            continue;
-        };
-        if is_text_style_key(key) {
-            text_map.insert(key.to_string(), value.to_string());
-        }
-    }
-
-    let rect_decls = [
-        "fill",
-        "stroke",
-        "stroke-width",
-        "stroke-dasharray",
-        "opacity",
-        "fill-opacity",
-        "stroke-opacity",
-    ]
-    .into_iter()
-    .filter_map(|key| rect_map.get(key).map(|value| format!("{key}:{value}")))
-    .collect();
-    let text_decls = [
-        "color",
-        "font-family",
-        "font-size",
-        "font-weight",
-        "opacity",
-    ]
-    .into_iter()
-    .filter_map(|key| text_map.get(key).map(|value| format!("{key}:{value}")))
-    .collect();
-    (rect_decls, text_decls)
-}
-
 fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
     if subgraph.label_type == "string" || subgraph.label_type == "text" {
         escape_xml(&subgraph.title)
@@ -274,6 +206,8 @@ struct ErSubgraphRenderContext<'a> {
     use_html_labels: bool,
     translate_x: f64,
     translate_y: f64,
+    theme: &'a crate::er::ErEntityThemePlan,
+    record_text: bool,
 }
 
 fn render_er_subgraph_cluster(
@@ -281,14 +215,17 @@ fn render_er_subgraph_cluster(
     cluster: &crate::model::LayoutCluster,
     subgraph: &crate::er::ErSubgraph,
     context: ErSubgraphRenderContext<'_>,
+    receipt: &mut crate::er::ErEntityThemeReceipt,
 ) {
-    let (rect_styles, text_styles) = compile_er_subgraph_styles(subgraph, context.classes);
+    let source_style = crate::er::compile_er_subgraph_source_style(subgraph, context.classes);
+    let rect_styles = source_style.rect_declarations();
+    let text_styles = source_style.text_declarations();
     let rect_style_attr = if rect_styles.is_empty() {
         "style=\"\"".to_string()
     } else {
         format!(
             r#"style="{}""#,
-            escape_xml(&string_style_decls_with_important(&rect_styles))
+            escape_xml(&style_decls_with_important(rect_styles))
         )
     };
     let text_style_attr = if text_styles.is_empty() {
@@ -296,7 +233,7 @@ fn render_er_subgraph_cluster(
     } else {
         format!(
             r#"style="{}""#,
-            escape_xml(&string_style_decls_with_important(&text_styles))
+            escape_xml(&style_decls_with_important(text_styles))
         )
     };
     let class_attr = if subgraph.classes.is_empty() {
@@ -342,13 +279,37 @@ fn render_er_subgraph_cluster(
     } else {
         let _ = write!(out, "<g {}>", text_style_attr);
         write_er_svg_label_background(out);
-        if subgraph.label_type == "string" || subgraph.label_type == "text" {
-            write_er_svg_plain_label(out, &subgraph.title);
+        let typed_paint = if context.record_text {
+            context.theme.typed_subgraph_label(&subgraph.id)
         } else {
-            crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+            None
+        };
+        let typed_style = typed_text_terminal_style(typed_paint);
+        let terminal_style = source_style
+            .text_value("color")
+            .map(|color| format!("fill:{color} !important"))
+            .unwrap_or_else(|| typed_style.clone());
+        if subgraph.label_type == "string" || subgraph.label_type == "text" {
+            let lines =
+                crate::flowchart::flowchart_non_markdown_svg_source_word_lines(&subgraph.title);
+            crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
+                out,
+                &lines,
+                &terminal_style,
+                false,
+            );
+        } else {
+            crate::svg::parity::label::write_svg_text_markdown_from_create_text_source_with_style(
                 out,
                 &subgraph.title,
-                true,
+                Some(&terminal_style),
+            );
+        }
+        if context.record_text {
+            receipt.record_subgraph_label(
+                &subgraph.id,
+                &typed_style,
+                &crate::er::subgraph_svg_text_facts(subgraph, &source_style),
             );
         }
         out.push_str("</g>");
@@ -357,33 +318,19 @@ fn render_er_subgraph_cluster(
     out.push('\n');
 }
 
-fn string_style_decls_with_important_join(decls: &[String], join: &str) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for d in decls {
-        let Some((k, v)) = parse_style_decl(d) else {
-            continue;
-        };
-        out.push(format!("{k}:{v} !important"));
-    }
-    out.join(join)
-}
-
 fn render_er_subgraph_clusters(
     out: &mut impl SvgOutput,
     clusters: &[crate::model::LayoutCluster],
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     context: ErSubgraphRenderContext<'_>,
+    receipt: &mut crate::er::ErEntityThemeReceipt,
 ) {
     for cluster in clusters {
         let Some(subgraph) = model.subgraphs.iter().find(|item| item.id == cluster.id) else {
             continue;
         };
-        render_er_subgraph_cluster(out, cluster, subgraph, context);
+        render_er_subgraph_cluster(out, cluster, subgraph, context, receipt);
     }
-}
-
-fn string_style_decls_with_important(decls: &[String]) -> String {
-    string_style_decls_with_important_join(decls, "; ")
 }
 
 fn typed_text_terminal_style(typed_paint: Option<(usize, &str)>) -> String {
@@ -1011,6 +958,8 @@ pub(crate) fn render_er_diagram_svg_model(
         use_html_labels: matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike),
         translate_x,
         translate_y,
+        theme: entity_theme,
+        record_text: entity_theme.records_subgraph_labels(),
     };
 
     // Mermaid 11.17 renders both providers through the common layout painter. The provider only
@@ -1022,7 +971,13 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str(r#"<g class="clusters"/>"#);
         } else {
             out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            render_er_subgraph_clusters(
+                &mut out,
+                &layout.clusters,
+                model,
+                subgraph_context,
+                &mut entity_theme_receipt,
+            );
             out.push_str("</g>");
         }
     }
@@ -1124,7 +1079,13 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str(r#"<g class="clusters"/>"#);
         } else {
             out.push_str(r#"<g class="clusters">"#);
-            render_er_subgraph_clusters(&mut out, &layout.clusters, model, subgraph_context);
+            render_er_subgraph_clusters(
+                &mut out,
+                &layout.clusters,
+                model,
+                subgraph_context,
+                &mut entity_theme_receipt,
+            );
             out.push_str("</g>");
         }
     }
@@ -2261,16 +2222,24 @@ pub(crate) fn render_er_diagram_svg_model(
             .view_box()
             .map(|view_box| view_box.min_x + view_box.width / 2.0)
             .unwrap_or(root_width_for_title / 2.0);
+        let title_style = typed_text_terminal_style(entity_theme.typed_diagram_title());
+        let title_style_attr = if title_style.is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_attr(&title_style))
+        };
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{}" y="{}" class="erDiagramTitleText">{}"#,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="erDiagramTitleText"{}>{}"#,
             fmt(diagram_title_x.unwrap_or(fallback_title_x)),
             fmt(-insert_title_top_margin),
+            title_style_attr,
             escape_xml(title)
         );
         out.push_str("</text>\n");
         out.checkpoint()?;
         entity_theme_receipt.record_diagram_title_emission("erDiagramTitleText", title);
+        entity_theme_receipt.record_diagram_title_paint(title, &title_style);
     }
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config)?;

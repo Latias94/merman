@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 61;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 62;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    160, 45, 130, 61, 168, 182, 14, 105, 35, 227, 211, 64, 134, 102, 237, 242, 5, 236, 147, 229,
-    65, 88, 177, 234, 69, 175, 226, 184, 205, 89, 58, 224,
+    30, 158, 178, 66, 253, 80, 165, 65, 42, 123, 217, 162, 231, 154, 132, 193, 193, 121, 94, 231,
+    36, 107, 52, 174, 104, 31, 78, 25, 11, 79, 128, 3,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -370,6 +370,10 @@ const TREE_VIEW_MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
 const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
+const ER_TABLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::ErTableOddFill,
+    ThemeRouteCutoverProjection::ErTableEvenFill,
+];
 const ER_TABLE_ODD_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::ErTableOddFill];
 const ER_TABLE_EVEN_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -388,7 +392,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 332] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 340] = [
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -1912,6 +1916,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 332] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         NODE_LABEL_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Relation,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ER_TABLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ER_TABLE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::ER,
@@ -3209,6 +3273,79 @@ mod tests {
     }
 
     #[test]
+    fn er_route_authority_keeps_row_and_relation_projection_identity() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| route.id.family_id() == DiagramFamilyId::ER)
+            .map(|route| {
+                (
+                    route.id.target(),
+                    route.id.selector(),
+                    route.id.facet(),
+                    route.id.value(),
+                    route.projections.to_vec(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let mut expected = BTreeSet::new();
+        for value in [
+            ThemeRouteCutoverValue::Transparent,
+            ThemeRouteCutoverValue::Solid,
+        ] {
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+            ] {
+                expected.insert((
+                    ThemeTarget::Text,
+                    selector,
+                    ThemeRouteCutoverFacet::Fill,
+                    value,
+                    vec![ThemeRouteCutoverProjection::TextFill],
+                ));
+                for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                    expected.insert((
+                        ThemeTarget::Relation,
+                        selector,
+                        facet,
+                        value,
+                        vec![ThemeRouteCutoverProjection::EdgeStroke],
+                    ));
+                }
+            }
+            expected.insert((
+                ThemeTarget::Table,
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverFacet::Fill,
+                value,
+                vec![
+                    ThemeRouteCutoverProjection::ErTableOddFill,
+                    ThemeRouteCutoverProjection::ErTableEvenFill,
+                ],
+            ));
+            for (variant, projection) in [
+                (
+                    ThemeVariant::Odd,
+                    ThemeRouteCutoverProjection::ErTableOddFill,
+                ),
+                (
+                    ThemeVariant::Even,
+                    ThemeRouteCutoverProjection::ErTableEvenFill,
+                ),
+            ] {
+                expected.insert((
+                    ThemeTarget::Table,
+                    ThemeRouteCutoverSelector::StaticVariant(variant),
+                    ThemeRouteCutoverFacet::Fill,
+                    value,
+                    vec![projection],
+                ));
+            }
+        }
+        assert_eq!(routes, expected);
+    }
+
+    #[test]
     fn manifest_keeps_variant_authority_bounded_and_projection_local() {
         let sequence_default = ACTIVE_ROUTES
             .iter()
@@ -3529,10 +3666,12 @@ mod tests {
                         == ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
             })
             .collect::<Vec<_>>();
-        assert_eq!(er_relation_default.len(), 2);
+        assert_eq!(er_relation_default.len(), 4);
         assert!(er_relation_default.iter().all(|route| {
-            route.id.facet() == ThemeRouteCutoverFacet::Stroke
-                && route.projections == EDGE_STROKE_ONLY_PROJECTIONS
+            matches!(
+                route.id.facet(),
+                ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke
+            ) && route.projections == EDGE_STROKE_ONLY_PROJECTIONS
         }));
 
         let pie_slice_default = ACTIVE_ROUTES

@@ -196,9 +196,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Requirement => {
             compile_requirement_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Er => {
-            compile_er_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::Chart => {
             compile_chart_family(&mut builder, &reader)?;
         }
@@ -220,7 +217,6 @@ enum LegacyFamilyDispatch {
     Node,
     Sequence,
     Requirement,
-    Er,
     Chart,
     Timeline,
     NoLegacy,
@@ -515,12 +511,12 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
-        DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             LegacyFamilyDispatch::Chart
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::STATE
+        | DiagramFamilyId::ER
         | DiagramFamilyId::GIT_GRAPH
         | DiagramFamilyId::C4
         | DiagramFamilyId::TREEMAP
@@ -830,38 +826,6 @@ fn compile_requirement_family(
             ),
             ("lineColor", reader.stroke_or_fill(ThemeTarget::Relation)),
         ],
-    );
-    contributions.finish_into(builder)
-}
-
-fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    let text_fill = reader.text_fill(ThemeTarget::Text);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TextFill.contribution_id(),
-        [
-            ("textColor", text_fill.clone()),
-            ("nodeTextColor", text_fill),
-        ],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("lineColor", reader.stroke_or_fill(ThemeTarget::Relation))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ErTableOddFill.contribution_id(),
-        [(
-            "rowOdd",
-            reader.fill_variant(ThemeTarget::Table, ThemeVariant::Odd),
-        )],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ErTableEvenFill.contribution_id(),
-        [(
-            "rowEven",
-            reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
-        )],
     );
     contributions.finish_into(builder)
 }
@@ -2179,135 +2143,6 @@ gitGraph
     }
 
     #[test]
-    fn direct_er_entity_paint_has_no_legacy_projection() {
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Entity,
-                    ThemeStylePatch::default()
-                        .with_fill(solid("#f8fafc"))
-                        .with_stroke(solid("#334155")),
-                )
-                .for_family(DiagramFamilyId::ER),
-            ),
-        );
-        let bridge = bridge(&spec);
-        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
-
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.er.entity.paint")
-        );
-    }
-
-    #[test]
-    fn direct_er_relation_stroke_has_no_legacy_projection() {
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Relation,
-                    ThemeStylePatch::default().with_stroke(solid("#334155")),
-                )
-                .for_family(DiagramFamilyId::ER),
-            ),
-        );
-        let bridge = bridge(&spec);
-        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
-
-        assert!(artifact.overlay.is_empty());
-        assert!(artifact.contribution_ids.is_empty());
-        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
-    }
-
-    #[test]
-    fn direct_er_default_relation_stroke_has_no_legacy_projection() {
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
-                    ThemeTarget::Relation,
-                    ThemeStylePatch::default().with_stroke(solid("#334155")),
-                )
-                .with_variant(ThemeVariant::Default)
-                .for_family(DiagramFamilyId::ER),
-            ),
-        );
-        let bridge = bridge(&spec);
-        let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
-
-        assert!(artifact.overlay.is_empty());
-        assert!(artifact.contribution_ids.is_empty());
-        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.er.edge.stroke"));
-    }
-
-    #[test]
-    fn unsupported_er_title_fill_has_no_legacy_projection() {
-        const CONTRIBUTION_ID: &str = "merman.legacy-family-theme.v1.er.title.fill";
-
-        for variant in [None, Some(ThemeVariant::Default)] {
-            let mut rule = ThemeRule::new(
-                ThemeTarget::Title,
-                ThemeStylePatch::default().with_fill(solid("#334155")),
-            )
-            .for_family(DiagramFamilyId::ER);
-            if let Some(variant) = variant {
-                rule = rule.with_variant(variant);
-            }
-            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
-            let bridge = bridge(&spec);
-            let artifact = bridge.compile_for_family(DiagramFamilyId::ER);
-
-            assert!(artifact.overlay.is_empty(), "variant={variant:?}");
-            assert!(artifact.contribution_ids.is_empty(), "variant={variant:?}");
-            assert!(
-                !bridge.owns_contribution_id(CONTRIBUTION_ID),
-                "variant={variant:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn er_base_typography_is_property_local() {
-        const SOURCE: &str = "erDiagram\n  CUSTOMER {\n    string id PK\n  }\n";
-
-        let font_stack =
-            super::super::FontStack::new(["ER Typed", "sans-serif"]).expect("valid ER font stack");
-        let direct_spec =
-            DiagramThemeSpec::new().with_typography(TypographySpec::default().with_family_style(
-                DiagramFamilyId::ER,
-                TextStyle::default().with_font_stack(font_stack.clone()),
-            ));
-        let direct_bridge = bridge(&direct_spec).compile_for_family(DiagramFamilyId::ER);
-        assert!(direct_bridge.overlay.is_empty());
-        assert!(direct_bridge.contribution_ids.is_empty());
-
-        let mixed_typography = TextStyle::default()
-            .with_font_stack(font_stack)
-            .with_font_size_px(24.0)
-            .expect("valid mixed ER typography");
-        let mixed_spec = DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::ER, mixed_typography),
-        );
-        let mixed_bridge = bridge(&mixed_spec).compile_for_family(DiagramFamilyId::ER);
-        assert!(mixed_bridge.contribution_ids.is_empty());
-
-        let baseline = parse(&DiagramThemeSpec::default(), SOURCE);
-        let mixed = parse(&mixed_spec, SOURCE);
-        assert_eq!(fallback_contribution_count(&mixed), 0);
-        for path in [
-            "fontFamily",
-            "themeVariables.fontFamily",
-            "themeVariables.fontSize",
-        ] {
-            assert_eq!(
-                mixed.effective_config.get_str(path),
-                baseline.effective_config.get_str(path),
-                "typed ER typography must not write legacy `{path}`"
-            );
-        }
-    }
-
-    #[test]
     fn treemap_typed_font_stack_and_unsupported_font_size_are_not_projected_into_legacy_config() {
         const SOURCE: &str = "treemap\n\"Root\"\n  \"Leaf\": 1\n";
 
@@ -2365,6 +2200,7 @@ gitGraph
             actual,
             BTreeSet::from([
                 DiagramFamilyId::STATE,
+                DiagramFamilyId::ER,
                 DiagramFamilyId::GIT_GRAPH,
                 DiagramFamilyId::C4,
                 DiagramFamilyId::PACKET,
@@ -2393,27 +2229,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            119, 27, 234, 146, 148, 96, 38, 254, 94, 205, 65, 124, 152, 42, 232, 20, 84, 251, 179,
-            97, 34, 113, 121, 124, 148, 89, 241, 20, 201, 122, 143, 238,
+            100, 240, 238, 42, 118, 143, 18, 137, 24, 67, 197, 66, 211, 226, 3, 115, 33, 204, 203,
+            28, 42, 250, 164, 153, 176, 12, 239, 98, 39, 175, 203, 145,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 214);
-        assert_eq!(status.matrix_family_count(), 11);
-        assert_eq!(status.dispatched_family_count(), 11);
+        assert_eq!(status.matrix_route_count(), 206);
+        assert_eq!(status.matrix_family_count(), 10);
+        assert_eq!(status.dispatched_family_count(), 10);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                117, 134, 23, 95, 146, 125, 61, 71, 160, 18, 18, 137, 235, 114, 48, 45, 196, 34,
-                88, 87, 59, 37, 144, 5, 214, 137, 228, 185, 178, 160, 117, 99
+                89, 85, 200, 132, 213, 141, 59, 235, 206, 81, 214, 175, 255, 201, 213, 88, 214,
+                149, 78, 103, 227, 152, 101, 209, 164, 62, 30, 186, 83, 90, 216, 252
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                155, 101, 159, 135, 15, 217, 60, 122, 93, 212, 77, 155, 157, 202, 95, 218, 183, 31,
-                207, 230, 32, 53, 128, 48, 205, 123, 138, 115, 195, 2, 151, 32
+                40, 57, 158, 73, 73, 152, 15, 78, 240, 220, 196, 42, 209, 254, 126, 197, 89, 18,
+                48, 252, 1, 105, 0, 238, 214, 132, 137, 144, 29, 231, 12, 43
             ]
         );
         assert_eq!(

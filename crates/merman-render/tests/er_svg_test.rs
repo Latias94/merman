@@ -2037,16 +2037,15 @@ fn er_table_source_fill_owns_only_even_row_paths() {
 }
 
 #[test]
-fn er_table_unqualified_fill_keeps_both_compatibility_projections() {
+fn er_table_unqualified_fill_reaches_both_row_writers() {
     let theme = er_relation_rules_theme([ThemeRule::new(
         ThemeTarget::Table,
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
     )]);
-    let rendered = try_prepare_er_family_with_theme_and_engine_requirement(
+    let rendered = try_prepare_er_family_with_theme_and_engine(
         "erDiagram\n CUSTOMER {\n string id\n string name\n }\n",
         &theme,
         Engine::new(),
-        ThemePortabilityRequirement::BestEffort,
     )
     .unwrap()
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -2054,13 +2053,12 @@ fn er_table_unqualified_fill_keeps_both_compatibility_projections() {
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     for odd in [true, false] {
         let path = er_row_path(&document, odd);
-        assert_eq!(path.attribute("fill"), Some("#abcdef"));
-        assert_eq!(path.attribute("style"), None);
+        assert_eq!(path.attribute("style"), Some("fill:#abcdef"));
     }
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -2484,10 +2482,6 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
         ThemeStylePatch::default()
             .with_stroke(CanvasPaint::solid("#123456").expect("valid ER relation stroke"))
     };
-    let fill = || {
-        ThemeStylePatch::default()
-            .with_fill(CanvasPaint::solid("#654321").expect("valid ER relation fill"))
-    };
     let unsupported_cases = [
         ThemeRule::new(ThemeTarget::Relation, solid())
             .with_ordinal(OrdinalSelector::exact(1).expect("valid ER relation ordinal")),
@@ -2501,7 +2495,6 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             ThemeStylePatch::default().with_stroke(CanvasPaint::Pattern(pattern)),
         ),
     ];
-    let legacy_cases = [ThemeRule::new(ThemeTarget::Relation, fill())];
 
     for rule in unsupported_cases {
         let theme = er_relation_rules_theme([rule]);
@@ -2521,28 +2514,6 @@ fn er_relation_theme_rejects_unowned_facets_and_non_static_stroke_routes() {
             error.unverified_family_theme(),
             Some((merman_render::DiagramFamilyId::ER, 1))
         );
-    }
-
-    for rule in legacy_cases {
-        let theme = er_relation_rules_theme([rule]);
-        let error = match try_prepare_er_family_with_theme_and_engine(
-            "erDiagram\n  A ||--o{ B : owns\n",
-            &theme,
-            Engine::new(),
-        ) {
-            Ok(_) => panic!("legacy ER theme routes must remain strict compatibility residuals"),
-            Err(error) => error,
-        };
-        match error {
-            merman_render::Error::LegacyFamilyThemeCompatibility {
-                family_id,
-                residual_count,
-            } => {
-                assert_eq!(family_id, merman_render::DiagramFamilyId::ER);
-                assert_eq!(residual_count, 1);
-            }
-            other => panic!("expected ER legacy compatibility residual, got {other}"),
-        }
     }
 }
 
@@ -2650,4 +2621,265 @@ fn er_shadowed_unsupported_relation_selector_is_not_applicable() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn er_relation_fill_fallback_reaches_visible_paths_and_referenced_markers() {
+    for look in ["classic", "neo", "handDrawn"] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Relation,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = er_relation_rules_theme([rule]);
+                let rendered = prepare_er_family_with_theme_and_engine(
+                    "erDiagram\n A ||--o{ B : owns\n A ||--o{ A : refers\n",
+                    &theme,
+                    Engine::new()
+                        .with_site_config(MermaidConfig::from_value(json!({"look": look}))),
+                )
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let paths = relationship_path_tags(rendered.svg());
+                assert_eq!(paths.len(), 2);
+                for path in &paths {
+                    assert!(path.contains(&format!("stroke:{css}")), "{look}: {path}");
+                }
+                let ids = referenced_marker_ids(&paths);
+                assert!(!ids.is_empty());
+                for id in ids {
+                    let marker = document
+                        .descendants()
+                        .find(|node| node.attribute("id") == Some(id.as_str()))
+                        .unwrap();
+                    assert!(marker.has_tag_name("marker"));
+                    assert!(
+                        marker
+                            .attribute("style")
+                            .unwrap()
+                            .contains(&format!("stroke:{css} !important"))
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn er_relation_stroke_shadows_fill_independently_of_rule_order() {
+    for reverse in [false, true] {
+        for stroke_paint in [
+            Specified::Value(CanvasPaint::solid("#abcdef").unwrap()),
+            Specified::Clear,
+            Specified::Value(CanvasPaint::Pattern(
+                PatternSpec::new(
+                    PatternKind::Grid,
+                    8.0,
+                    8.0,
+                    ThemeColorValue::parse("#abcdef").unwrap(),
+                )
+                .unwrap(),
+            )),
+        ] {
+            let unsupported = !matches!(stroke_paint, Specified::Value(CanvasPaint::Solid(_)));
+            let mut stroke = ThemeStylePatch::default();
+            stroke.stroke.paint = stroke_paint;
+            let mut rules = vec![
+                ThemeRule::new(
+                    ThemeTarget::Relation,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+                ThemeRule::new(ThemeTarget::Relation, stroke),
+            ];
+            if reverse {
+                rules.reverse();
+            }
+            let theme = er_relation_rules_theme(rules);
+            let rendered = try_prepare_er_family_with_theme_and_engine_requirement(
+                "erDiagram\n A ||--o{ B : owns\n",
+                &theme,
+                Engine::new(),
+                if unsupported {
+                    ThemePortabilityRequirement::BestEffort
+                } else {
+                    ThemePortabilityRequirement::RequirePortable
+                },
+            )
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let paths = relationship_path_tags(rendered.svg());
+            assert_eq!(paths.len(), 1);
+            assert!(!paths[0].contains("#123456"));
+            if !unsupported {
+                assert!(paths[0].contains("stroke:#abcdef"));
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(!unsupported));
+            assert_eq!(evidence.theme_residual_count(), usize::from(unsupported));
+        }
+    }
+}
+
+#[test]
+fn er_text_fill_tracks_the_visible_title_and_its_own_configuration() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for config in [
+            json!({}),
+            json!({"themeVariables": {"nodeTextColor": "#fedcba"}}),
+            json!({"themeVariables": {"textColor": "#fedcba"}}),
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = er_relation_rules_theme([rule]);
+            let owned = config.pointer("/themeVariables/textColor").is_some();
+            let rendered = prepare_er_family_with_theme_and_engine(
+                "---\ntitle: ER overview\n---\nerDiagram\n",
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let title = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("erDiagramTitleText"))
+                .unwrap();
+            assert_eq!(title.text(), Some("ER overview"));
+            assert_eq!(
+                title.attribute("style"),
+                (!owned).then_some("color:#123456;fill:#123456")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), usize::from(!owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn er_text_fill_ownership_follows_each_html_or_svg_consumer() {
+    let source = "erDiagram\n CUSTOMER {\n string id\n }\n CUSTOMER ||--o{ ORDER : owns\n";
+    for html in [false, true] {
+        for key in ["textColor", "nodeTextColor"] {
+            for from_source in [false, true] {
+                let theme = er_relation_rules_theme([ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                )
+                .with_variant(ThemeVariant::Default)]);
+                let config = json!({"theme": "base", "htmlLabels": html, "themeVariables": {key: "#fedcba"}});
+                let (text, engine) = if from_source {
+                    (
+                        format!("---\nconfig: {config}\n---\n{source}"),
+                        Engine::new()
+                            .with_site_config(MermaidConfig::from_value(json!({"secure": []}))),
+                    )
+                } else {
+                    (
+                        source.to_owned(),
+                        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    )
+                };
+                let rendered = prepare_er_family_with_theme_and_engine(&text, &theme, engine)
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                assert_eq!(
+                    rendered
+                        .metadata()
+                        .effective_config
+                        .get_str(&format!("themeVariables.{key}")),
+                    Some("#fedcba"),
+                    "{key}/source={from_source}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let applied = (html && key == "textColor") || (!html && key == "nodeTextColor");
+                for label in ["CUSTOMER", "ORDER", "string", "id", "owns"] {
+                    let terminal = document
+                        .descendants()
+                        .find(|node| node.is_text() && node.text() == Some(label))
+                        .unwrap_or_else(|| panic!("missing visible {label}"));
+                    assert_eq!(
+                        terminal.ancestors().any(|node| node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill:#123456"))),
+                        applied,
+                        "html={html}/{key}/source={from_source}/{label}"
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.applied_count(), usize::from(applied));
+                assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn er_derived_theme_colors_do_not_claim_raw_paint_defaults() {
+    let theme = er_relation_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .with_variant(ThemeVariant::Default),
+        ThemeRule::new(
+            ThemeTarget::Relation,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#654321").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Table,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        ),
+    ]);
+    let rendered = prepare_er_family_with_theme_and_engine(
+        "---\ntitle: Raw owners\n---\nerDiagram\n A {\n string id\n string name\n }\n A ||--o{ B : owns\n", &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": "base", "themeVariables": {"primaryColor": "#fedcba"}}))),
+    ).render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default()).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        er_row_path(&document, true).attribute("style"),
+        Some("fill:#abcdef")
+    );
+    assert_eq!(
+        er_row_path(&document, false).attribute("style"),
+        Some("fill:#abcdef")
+    );
+    let paths = relationship_path_tags(rendered.svg());
+    assert_eq!(paths.len(), 1);
+    assert!(paths[0].contains("stroke:#654321"));
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("erDiagramTitleText"))
+        .unwrap();
+    assert_eq!(title.attribute("style"), Some("color:#123456;fill:#123456"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 3);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }

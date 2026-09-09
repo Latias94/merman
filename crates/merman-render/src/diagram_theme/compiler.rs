@@ -91,6 +91,23 @@ impl DiagramThemeCompiler {
                 )
                 .expect("GitGraph writer default paths satisfy the bounded core contract");
         }
+        if spec.styles().rules().iter().any(|rule| {
+            matches!(
+                rule.target(),
+                super::ThemeTarget::Text | super::ThemeTarget::Relation | super::ThemeTarget::Table
+            ) && rule
+                .family()
+                .is_none_or(|family| family == crate::DiagramFamilyId::ER)
+                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
+                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
+        }) {
+            parse_compatibility = parse_compatibility
+                .try_with_post_detection_default_paths(
+                    crate::DiagramFamilyId::ER.as_str(),
+                    &crate::er::ER_PAINT_DEFAULT_PATHS,
+                )
+                .expect("ER writer default paths satisfy the bounded core contract");
+        }
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),

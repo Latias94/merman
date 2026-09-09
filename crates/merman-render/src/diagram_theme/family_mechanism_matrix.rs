@@ -458,9 +458,11 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::EdgeLabel, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_LABEL_FILL)
         }
-        (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
-            Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
-        }
+        (
+            DiagramFamilyId::ER,
+            ThemeTarget::Relation,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
         (DiagramFamilyId::ER, ThemeTarget::Table, ThemeRouteCutoverFacet::Fill) => match selector {
             ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Odd) => {
                 Some(ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_ODD_FILL)
@@ -468,8 +470,10 @@ fn legacy_bridge_projections(
             ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Even) => {
                 Some(ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_EVEN_FILL)
             }
-            ThemeRouteCutoverSelector::StaticUnqualified
-            | ThemeRouteCutoverSelector::StaticVariant(_) => None,
+            ThemeRouteCutoverSelector::StaticUnqualified => {
+                Some(ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_FILL)
+            }
+            ThemeRouteCutoverSelector::StaticVariant(_) => None,
         },
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
@@ -2192,7 +2196,7 @@ pub(super) fn classify_rule_facet(
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
-                variant: Some(ThemeVariant::Odd | ThemeVariant::Even)
+                variant: None | Some(ThemeVariant::Odd | ThemeVariant::Even)
             }
         )
         && matches!(
@@ -2214,7 +2218,9 @@ pub(super) fn classify_rule_facet(
         )
         && matches!(
             facet,
-            FamilyThemeRuleFacet::Stroke(
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -2226,7 +2232,9 @@ pub(super) fn classify_rule_facet(
             (target, selector, facet),
             (
                 ThemeTarget::Text,
-                FamilyThemeSelectorShape::Static { variant: None },
+                FamilyThemeSelectorShape::Static {
+                    variant: None | Some(ThemeVariant::Default)
+                },
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
@@ -3319,7 +3327,7 @@ mod tests {
                     },
                     FamilyThemeRuleFacet::Fill(paint_kind),
                 ),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
 
             assert_eq!(
@@ -3340,7 +3348,7 @@ mod tests {
                     },
                     FamilyThemeRuleFacet::Fill(paint_kind),
                 ),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
 
             assert_eq!(
@@ -3350,7 +3358,7 @@ mod tests {
                     FamilyThemeSelectorShape::Static { variant: None },
                     FamilyThemeRuleFacet::Fill(paint_kind),
                 ),
-                FamilyThemeDisposition::LegacyCompatibility
+                FamilyThemeDisposition::TypedAdapter
             );
             for variant in [ThemeVariant::Odd, ThemeVariant::Even] {
                 assert_eq!(
@@ -5475,6 +5483,34 @@ mod tests {
             ),
             (
                 DiagramFamilyId::ER,
+                ThemeTarget::Table,
+                Fill,
+                Transparent,
+                vec!["table.odd.fill", "table.even.fill"],
+            ),
+            (
+                DiagramFamilyId::ER,
+                ThemeTarget::Table,
+                Fill,
+                Solid,
+                vec!["table.odd.fill", "table.even.fill"],
+            ),
+            (
+                DiagramFamilyId::ER,
+                ThemeTarget::Relation,
+                Fill,
+                Transparent,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::ER,
+                ThemeTarget::Relation,
+                Fill,
+                Solid,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::ER,
                 ThemeTarget::Relation,
                 Stroke,
                 Transparent,
@@ -6540,7 +6576,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 166);
+        assert_eq!(qualified.len(), 170);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6619,7 +6655,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::ER)
                 .count(),
-            6
+            10
         );
         assert_eq!(
             qualified
@@ -6812,8 +6848,13 @@ mod tests {
             } else if route.family_id() == DiagramFamilyId::ER {
                 let expected = match (route.target(), route.facet(), route.selector()) {
                     (
+                        ThemeTarget::Text,
+                        ThemeRouteCutoverFacet::Fill,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                    ) => ThemeRouteCutoverProjection::TextFill,
+                    (
                         ThemeTarget::Relation,
-                        ThemeRouteCutoverFacet::Stroke,
+                        ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
                         ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
                     ) => ThemeRouteCutoverProjection::EdgeStroke,
                     (

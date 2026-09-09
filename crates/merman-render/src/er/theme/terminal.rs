@@ -31,6 +31,8 @@ pub(super) enum ErTextTerminalId {
         role: ErAttributeTextRole,
     },
     RelationLabel(usize),
+    DiagramTitle,
+    SubgraphLabel(Box<str>),
 }
 
 impl ErTextTerminalId {
@@ -54,10 +56,14 @@ impl ErTextTerminalId {
         matches!(self, Self::RelationLabel(_))
     }
 
+    pub(super) const fn is_subgraph_label(&self) -> bool {
+        matches!(self, Self::SubgraphLabel(_))
+    }
+
     pub(super) fn entity_id(&self) -> Option<&str> {
         match self {
             Self::EntityName(entity_id) | Self::Attribute { entity_id, .. } => Some(entity_id),
-            Self::RelationLabel(_) => None,
+            Self::RelationLabel(_) | Self::DiagramTitle | Self::SubgraphLabel(_) => None,
         }
     }
 }
@@ -464,6 +470,31 @@ impl ErEntityThemeReceipt {
         );
     }
 
+    pub(crate) fn record_subgraph_label(
+        &mut self,
+        id: &str,
+        actual_style: &str,
+        facts: &VisibleTextStyleFacts,
+    ) {
+        if facts.has_visible_runs() {
+            self.record_text_terminal(
+                ErTextTerminalId::SubgraphLabel(id.into()),
+                actual_style,
+                facts,
+            );
+        }
+    }
+
+    pub(crate) fn record_diagram_title_paint(&mut self, title: &str, actual_style: &str) {
+        if self.records_text_terminals {
+            self.record_text_terminal(
+                ErTextTerminalId::DiagramTitle,
+                actual_style,
+                &VisibleTextStyleFacts::plain_text(title),
+            );
+        }
+    }
+
     fn record_text_terminal(
         &mut self,
         id: ErTextTerminalId,
@@ -645,18 +676,26 @@ impl ErEntityThemeReceipt {
         };
         self.proves_complete()
             && self.typography_emitted_font_family.as_deref() == Some(expected)
-            && self.text_terminals.values().all(|entry| {
-                entry.expectation.inherited_font_family_run_count
-                    == entry.expectation.visible_run_count
-                    && entry.expectation.unverified_font_family_run_count == 0
-            })
-            && (self.typography_title.is_some()
-                || self.text_terminals.values().any(|entry| {
-                    entry.expectation.visible_run_count > 0
-                        && entry.expectation.inherited_font_family_run_count
-                            == entry.expectation.visible_run_count
+            && self
+                .text_terminals
+                .iter()
+                .filter(|(id, _)| !id.is_subgraph_label())
+                .all(|(_, entry)| {
+                    entry.expectation.inherited_font_family_run_count
+                        == entry.expectation.visible_run_count
                         && entry.expectation.unverified_font_family_run_count == 0
-                }))
+                })
+            && (self.typography_title.is_some()
+                || self
+                    .text_terminals
+                    .iter()
+                    .filter(|(id, _)| !id.is_subgraph_label())
+                    .any(|(_, entry)| {
+                        entry.expectation.visible_run_count > 0
+                            && entry.expectation.inherited_font_family_run_count
+                                == entry.expectation.visible_run_count
+                            && entry.expectation.unverified_font_family_run_count == 0
+                    }))
     }
 
     pub(super) fn proves_font_size(&self) -> bool {
@@ -671,7 +710,7 @@ impl ErEntityThemeReceipt {
             && self
                 .text_terminals
                 .iter()
-                .filter(|(id, _)| !id.is_relation_label())
+                .filter(|(id, _)| !id.is_relation_label() && !id.is_subgraph_label())
                 .all(|(_, entry)| {
                     entry.expectation.inherited_font_size_run_count
                         == entry.expectation.visible_run_count
@@ -680,6 +719,7 @@ impl ErEntityThemeReceipt {
             && (self.typography_title.is_some()
                 || self.text_terminals.iter().any(|(id, entry)| {
                     !id.is_relation_label()
+                        && !id.is_subgraph_label()
                         && entry.expectation.visible_run_count > 0
                         && entry.expectation.inherited_font_size_run_count
                             == entry.expectation.visible_run_count

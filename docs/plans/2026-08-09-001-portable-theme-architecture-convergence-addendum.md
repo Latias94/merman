@@ -75,7 +75,11 @@ record. The current source and generated contract are authoritative for these su
 - KTD17 v61 replaces ER Table Odd/Even solid/transparent fill through independent
   `table.odd.fill` and `table.even.fill` projection identities. Configuration ownership is
   row-local; entity source fill owns even row paths. Empty matching row sets are NotApplicable.
-  Unqualified Table.fill still projects both row colors through the compatibility bridge.
+  KTD17 v62 adds unqualified Table.fill with both row projection obligations, Default Text.fill,
+  and unqualified/Default Relation.fill through the native stroke channel. Relation stroke-first
+  fallback and per-property configuration/source ownership remain intact. Text.fill now accounts
+  for the actual diagram title as well as labels; Title.fill remains Unsupported. ER has no
+  remaining executable legacy route and its family bridge dispatch/compiler are removed.
   KTD23 is unchanged because these are typed replacements, not unsupported retirements.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.

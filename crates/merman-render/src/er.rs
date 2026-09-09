@@ -20,7 +20,9 @@ use config::{ErLayoutAlgorithm, ErLayoutSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
-    ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan, ErRelationTerminalExpectation,
+    ER_PAINT_DEFAULT_PATHS, ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan,
+    ErEntityThemeReceipt, ErRelationTerminalExpectation, compile_er_subgraph_source_style,
+    subgraph_svg_text_facts,
 };
 
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;

@@ -154,10 +154,31 @@ pub(crate) fn compile_er_entity_source_style(
     entity: &merman_core::diagrams::er::ErEntityRenderModel,
     classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
 ) -> ErEntitySourceStyle {
+    compile_er_source_style(
+        entity.css_classes.split_whitespace(),
+        &entity.css_styles,
+        classes,
+    )
+}
+
+pub(crate) fn compile_er_subgraph_source_style(
+    subgraph: &merman_core::diagrams::er::ErSubgraphRenderModel,
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+) -> ErEntitySourceStyle {
+    compile_er_source_style(
+        subgraph.classes.iter().map(String::as_str),
+        &subgraph.css_styles,
+        classes,
+    )
+}
+
+fn compile_er_source_style<'a>(
+    class_names: impl Iterator<Item = &'a str>,
+    source_styles: &[String],
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+) -> ErEntitySourceStyle {
     let mut seen_classes = BTreeSet::<&str>::new();
-    let class_defs = entity
-        .css_classes
-        .split_whitespace()
+    let class_defs = class_names
         .filter(|class_name| seen_classes.insert(*class_name))
         .filter_map(|class_name| classes.get(class_name))
         .collect::<Vec<_>>();
@@ -179,7 +200,7 @@ pub(crate) fn compile_er_entity_source_style(
         };
         insert_er_text_declaration(&mut text_map, declaration);
     }
-    for raw in &entity.css_styles {
+    for raw in source_styles {
         let Some(declaration) = ErStyleDeclaration::parse(raw) else {
             continue;
         };
@@ -294,6 +315,14 @@ pub(crate) struct ErEntityThemePlan {
     terminal_receipt: OnceLock<ErEntityThemeReceipt>,
 }
 
+pub(crate) const ER_PAINT_DEFAULT_PATHS: [&str; 5] = [
+    "themeVariables.textColor",
+    "themeVariables.nodeTextColor",
+    "themeVariables.lineColor",
+    "themeVariables.rowOdd",
+    "themeVariables.rowEven",
+];
+
 impl ErEntityThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
@@ -358,17 +387,52 @@ impl ErEntityThemePlan {
         } else {
             BTreeMap::new()
         };
+        if needs_text_terminal_evidence
+            && let Some(title) = diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        {
+            insert_text_terminal(
+                &mut text_terminals,
+                ErTextTerminalId::DiagramTitle,
+                &crate::text::VisibleTextStyleFacts::plain_text(title),
+            );
+        }
         let table_rows = collect_table_row_terminals(model);
 
         let mermaid_owns_fill = mermaid_owns_entity_fill(effective_config);
         let mermaid_owns_stroke = mermaid_owns_entity_stroke(effective_config);
-        let mermaid_owns_entity_text = mermaid_owns_entity_text_fill(effective_config);
+        let entity_html_labels = super::ErConfigView::new(effective_config.as_value())
+            .entity_html_label_wrap_mode()
+            == crate::text::WrapMode::HtmlLike;
+        let svg_subgraph_labels = !entity_html_labels;
+        let mermaid_owns_entity_text = mermaid_owns_text_fill(effective_config, entity_html_labels);
         let mermaid_owns_relation_text =
-            mermaid_owns_relation_text_fill(effective_config, relationship_html_labels);
+            mermaid_owns_text_fill(effective_config, relationship_html_labels);
         let relation_stroke_source_owned = mermaid_owns_relation_stroke(effective_config);
+        let mut visible_subgraph_styles = BTreeMap::<String, ErEntitySourceStyle>::new();
+        if svg_subgraph_labels && needs_text_terminal_evidence {
+            let subgraphs = model
+                .subgraphs
+                .iter()
+                .map(|subgraph| (subgraph.id.as_str(), subgraph))
+                .collect::<BTreeMap<_, _>>();
+            for cluster in &layout.clusters {
+                let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
+                    continue;
+                };
+                visible_subgraph_styles.insert(
+                    subgraph.id.clone(),
+                    compile_er_subgraph_source_style(subgraph, &model.classes),
+                );
+            }
+        }
         let source_owns_font_family = entity_source_styles
             .iter()
-            .any(|style| style.text_value("font-family").is_some());
+            .any(|style| style.text_value("font-family").is_some())
+            || visible_subgraph_styles
+                .values()
+                .any(|style| style.text_value("font-family").is_some());
         let source_owns_font_size = text_terminals.keys().any(|terminal_id| {
             !terminal_id.is_relation_label()
                 && text_terminal_font_size_source_owned(
@@ -376,7 +440,9 @@ impl ErEntityThemePlan {
                     &entity_indices,
                     &entity_source_styles,
                 )
-        });
+        }) || visible_subgraph_styles
+            .values()
+            .any(ErEntitySourceStyle::owns_text_font_size);
         let diagram_title = diagram_title
             .map(str::trim)
             .filter(|title| !title.is_empty());
@@ -468,6 +534,44 @@ impl ErEntityThemePlan {
             }
         }
 
+        if svg_subgraph_labels && needs_text_terminal_evidence {
+            work_meter.charge(model.subgraphs.len())?;
+            let subgraphs: BTreeMap<_, _> = model
+                .subgraphs
+                .iter()
+                .map(|subgraph| (subgraph.id.as_str(), subgraph))
+                .collect();
+            for cluster in &layout.clusters {
+                let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
+                    continue;
+                };
+                work_meter.charge(1usize.saturating_add(subgraph.title.len()))?;
+                for raw in &subgraph.css_styles {
+                    work_meter.charge(1usize.saturating_add(raw.len()))?;
+                }
+                let mut seen_classes = BTreeSet::new();
+                for class in &subgraph.classes {
+                    work_meter.charge(1usize.saturating_add(class.len()))?;
+                    if !seen_classes.insert(class.as_str()) {
+                        continue;
+                    }
+                    if let Some(class) = model.classes.get(class) {
+                        for raw in class.styles.iter().chain(&class.text_styles) {
+                            work_meter.charge(1usize.saturating_add(raw.len()))?;
+                        }
+                    }
+                }
+                let source_style = visible_subgraph_styles
+                    .get(&subgraph.id)
+                    .expect("visible ER subgraph styles are indexed with layout clusters");
+                let facts = subgraph_svg_text_facts(subgraph, source_style);
+                insert_text_terminal(
+                    &mut text_terminals,
+                    ErTextTerminalId::SubgraphLabel(subgraph.id.clone().into()),
+                    &facts,
+                );
+            }
+        }
         for (text_index, (terminal_id, terminal)) in text_terminals.iter_mut().enumerate() {
             let text_style = theme.text_style_with_work_meter(
                 ThemeTarget::Text,
@@ -483,10 +587,23 @@ impl ErEntityThemePlan {
             {
                 continue;
             }
-            let mermaid_owns_text = if terminal_id.is_relation_label() {
-                mermaid_owns_relation_text
-            } else {
-                mermaid_owns_entity_text
+            let mermaid_owns_text = match terminal_id {
+                ErTextTerminalId::DiagramTitle => {
+                    mermaid_owns_default_path(effective_config, "themeVariables.textColor")
+                }
+                ErTextTerminalId::SubgraphLabel(id) => {
+                    visible_subgraph_styles
+                        .get(id.as_ref())
+                        .is_some_and(ErEntitySourceStyle::owns_text_color)
+                        || effective_config
+                            .get_str("themeVariables.titleColor")
+                            .is_some()
+                        || mermaid_owns_default_path(effective_config, "themeVariables.textColor")
+                }
+                ErTextTerminalId::RelationLabel(_) => mermaid_owns_relation_text,
+                ErTextTerminalId::EntityName(_) | ErTextTerminalId::Attribute { .. } => {
+                    mermaid_owns_entity_text
+                }
             };
             if let Some(expected) = typed_fill_expectation(theme, &text_style, mermaid_owns_text) {
                 expected_capabilities.insert(
@@ -542,21 +659,35 @@ impl ErEntityThemePlan {
                 Some(relationship_index + 1),
                 work_meter,
             )?;
-            for (property, origin) in relation_style.winner_rule_properties() {
-                winner_properties.insert((origin.rule_index(), ThemeTarget::Relation, property));
-            }
-            let expected = typed_relation_stroke_expectation(
-                theme,
-                &relation_style,
-                relation_stroke_source_owned,
+            // Relation.fill is the historical fallback for lineColor. A specified
+            // stroke (including Clear or unsupported paint) always owns that lane.
+            let fill_fallback = matches!(
+                relation_style.stroke_resolution().specified(),
+                Specified::Unspecified
             );
+            for (property, origin) in relation_style.winner_rule_properties() {
+                if property != ResolvedStyleProperty::Fill || fill_fallback {
+                    winner_properties.insert((
+                        origin.rule_index(),
+                        ThemeTarget::Relation,
+                        property,
+                    ));
+                }
+            }
+            let (property, expected) = if fill_fallback {
+                (
+                    ResolvedStyleProperty::Fill,
+                    typed_fill_expectation(theme, &relation_style, relation_stroke_source_owned),
+                )
+            } else {
+                (
+                    ResolvedStyleProperty::Stroke,
+                    typed_stroke_expectation(theme, &relation_style, relation_stroke_source_owned),
+                )
+            };
             if let Some(expected) = &expected {
                 expected_capabilities.insert(
-                    (
-                        expected.rule_index,
-                        ThemeTarget::Relation,
-                        ResolvedStyleProperty::Stroke,
-                    ),
+                    (expected.rule_index, ThemeTarget::Relation, property),
                     paint_capability_from_css(&expected.css),
                 );
             }
@@ -767,6 +898,20 @@ impl ErEntityThemePlan {
         self.typed_text_terminal(&ErTextTerminalId::attribute(entity_id, row_index, role))
     }
 
+    pub(crate) fn typed_subgraph_label(&self, id: &str) -> Option<(usize, &str)> {
+        self.typed_text_terminal(&ErTextTerminalId::SubgraphLabel(id.into()))
+    }
+
+    pub(crate) fn records_subgraph_labels(&self) -> bool {
+        self.text_terminals
+            .keys()
+            .any(|id| matches!(id, ErTextTerminalId::SubgraphLabel(_)))
+    }
+
+    pub(crate) fn typed_diagram_title(&self) -> Option<(usize, &str)> {
+        self.typed_text_terminal(&ErTextTerminalId::DiagramTitle)
+    }
+
     pub(crate) fn typed_relation_label(&self, relationship_index: usize) -> Option<(usize, &str)> {
         self.typed_text_terminal(&ErTextTerminalId::relation_label(relationship_index))
     }
@@ -971,37 +1116,19 @@ fn typed_stroke_expectation(
     })
 }
 
-fn typed_relation_stroke_expectation(
-    theme: &ResolvedDiagramTheme,
-    style: &ResolvedThemeStyle,
-    mermaid_owns: bool,
-) -> Option<ExpectedPaint> {
-    if mermaid_owns {
-        return None;
-    }
-    let origin = style.stroke_resolution().winner()?;
-    let facet = FamilyThemeRuleFacet::stroke(style.stroke_resolution().specified())?;
-    if origin.target() != ThemeTarget::Relation
-        || !matches!(origin.variant(), None | Some(ThemeVariant::Default))
-        || origin.ordinal().is_some()
-        || theme.rule_facet_disposition(origin.rule_index(), facet)
-            != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-    let css = match style.stroke_resolution().specified() {
-        Specified::Value(crate::diagram_theme::CanvasPaint::Transparent) => "transparent".into(),
-        Specified::Value(crate::diagram_theme::CanvasPaint::Solid(color)) => color.as_css(),
-        Specified::Unspecified
-        | Specified::Clear
-        | Specified::Value(crate::diagram_theme::CanvasPaint::LinearGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::RadialGradient(_))
-        | Specified::Value(crate::diagram_theme::CanvasPaint::Pattern(_)) => return None,
+pub(crate) fn subgraph_svg_text_facts(
+    subgraph: &merman_core::diagrams::er::ErSubgraphRenderModel,
+    source_style: &ErEntitySourceStyle,
+) -> crate::text::VisibleTextStyleFacts {
+    let facts = if matches!(subgraph.label_type.as_str(), "string" | "text") {
+        crate::text::VisibleTextStyleFacts::plain_text(&subgraph.title)
+    } else {
+        crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(&subgraph.title)
     };
-    Some(ExpectedPaint {
-        rule_index: origin.rule_index(),
-        css,
-    })
+    facts.with_unmeasured_typography(
+        source_style.text_value("font-family").is_some(),
+        source_style.owns_text_font_size(),
+    )
 }
 
 fn collect_text_terminals(
@@ -1154,29 +1281,22 @@ fn mermaid_owns_entity_stroke(config: &merman_core::MermaidConfig) -> bool {
         )
 }
 
+fn mermaid_owns_default_path(config: &merman_core::MermaidConfig, path: &str) -> bool {
+    // Preserve the pre-projection ownership decision; calculated theme colors are not raw owners.
+    merman_core::__private::config_post_detection_default_blocked(config, path) != Some(false)
+}
+
 fn mermaid_owns_relation_stroke(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.lineColor")
+    mermaid_owns_default_path(config, "themeVariables.lineColor")
 }
 
-fn mermaid_owns_entity_text_fill(config: &merman_core::MermaidConfig) -> bool {
-    merman_core::__private::config_path_overrides_typed_default(config, "themeVariables.textColor")
-        || merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.nodeTextColor",
-        )
-}
-
-fn mermaid_owns_relation_text_fill(
-    config: &merman_core::MermaidConfig,
-    relationship_html_labels: bool,
-) -> bool {
-    if relationship_html_labels {
-        mermaid_owns_entity_text_fill(config)
+fn mermaid_owns_text_fill(config: &merman_core::MermaidConfig, html_labels: bool) -> bool {
+    let node_text_owned = mermaid_owns_default_path(config, "themeVariables.nodeTextColor");
+    if html_labels && (!node_text_owned || config.get_str("themeVariables.nodeTextColor").is_some())
+    {
+        node_text_owned
     } else {
-        merman_core::__private::config_path_overrides_typed_default(
-            config,
-            "themeVariables.textColor",
-        )
+        mermaid_owns_default_path(config, "themeVariables.textColor")
     }
 }
 
@@ -1186,7 +1306,7 @@ fn mermaid_owns_table_fill(config: &merman_core::MermaidConfig, variant: ThemeVa
         ThemeVariant::Even => "themeVariables.rowEven",
         _ => return false,
     };
-    merman_core::__private::config_path_overrides_typed_default(config, path)
+    mermaid_owns_default_path(config, path)
 }
 
 #[derive(Debug, Default)]

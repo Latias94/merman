@@ -197,7 +197,7 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(true)
     }
 
-    fn entity_html_label_wrap_mode(&self) -> WrapMode {
+    pub(crate) fn entity_html_label_wrap_mode(&self) -> WrapMode {
         // Mermaid's ER box painter reads the root config directly. This deliberately does
         // not use `getEffectiveHtmlLabels`: `flowchart.htmlLabels` controls relationship
         // labels, but does not override ER entity, attribute, or subgraph labels.
