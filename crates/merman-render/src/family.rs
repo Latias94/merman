@@ -2488,22 +2488,21 @@ mod tests {
                 "{property}"
             );
         }
-        assert_eq!(group.attribute("fill-opacity"), Some("0.5019607843137255"));
+        assert_eq!(group.attribute("fill-opacity"), None);
         let children: Vec<_> = group.children().filter(|node| node.is_element()).collect();
         assert_eq!(children.len(), 2);
-        for property in [
-            "fill",
-            "stroke",
-            "stroke-width",
-            "stroke-linecap",
-            "fill-opacity",
-        ] {
+        for property in ["fill", "stroke", "stroke-width", "stroke-linecap"] {
             assert_eq!(
                 children[0].attribute(property),
                 None,
                 "inherited {property}"
             );
         }
+        assert_eq!(
+            children[0].attribute("fill-opacity"),
+            Some("0.5019607843137255"),
+            "combined paint alpha remains local"
+        );
         assert_eq!(
             children[1].attribute("fill"),
             Some("#123456"),
@@ -2553,6 +2552,65 @@ mod tests {
             .find(|node| node.attribute("id") == Some(ids[1]))
             .unwrap();
         assert_eq!(group.attribute("fill"), Some("#ff0000"));
+    }
+
+    #[test]
+    fn tree_view_registered_groups_do_not_promote_combined_paint_alpha() {
+        let pack = serde_json::json!({"prefix":"test","width":24,"height":24,"icons":{"alpha":{"body":r##"<g fill-opacity="0.5" style="stroke-opacity:0.25"><path fill="#ff000080" stroke="#0000ff80" d="M0 0H4V4Z"/><path fill="#ff000080" stroke="#0000ff80" d="M5 0H9V4Z"/></g>"##}}});
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            &serde_json::to_vec(&pack).unwrap(),
+        )])
+        .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(test:alpha)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_icon_registry(registry)
+            .begin_session()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let paths: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#ff0000"))
+            .collect();
+        assert_eq!(paths.len(), 2);
+        for path in paths {
+            assert_eq!(path.attribute("fill-opacity"), Some("0.25098039215686274"));
+            assert_eq!(
+                path.attribute("stroke-opacity"),
+                Some("0.12549019607843137")
+            );
+            let group = path.parent().unwrap();
+            assert_eq!(group.attribute("fill-opacity"), None);
+            assert_eq!(group.attribute("stroke-opacity"), None);
+            assert!(
+                !group
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains("opacity")
+            );
+        }
     }
 
     #[test]

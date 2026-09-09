@@ -126,14 +126,23 @@ asset candidate parity.
 
 Direct-child group paint promotion is now conservative and public-state based. A group is promoted
 only when its complete direct path set has one current `PathStyle`, no resource paint, no nested
-scope promotion, and no non-path command. The source group retains only fixed presentation/inline
-property placement; values are emitted from the shared public style. Leaves omit only properties
+scope promotion, and no non-path drawing, clip, layer, or semantic scope. The source group retains
+only fixed presentation/inline property placement; values are emitted from the shared public style.
+Leaves omit only properties
 actually supplied by that group and not explicitly declared on the leaf. An edited leaf disables
 promotion, while matching edits can promote the new public paint. A Chromium receipt
-`target/compare/asset-group-paint-browser-result.json` covers default rendering, host CSS overrides,
-and group CSS overrides. Group opacity remains unsupported and is not distributed across leaves.
+`target/compare/asset-group-paint-browser-result.json` records the earlier default-rendering,
+host-CSS, and group-CSS probe. It is not complete group CSS parity evidence: public color alpha
+already combines source paint alpha and fill/stroke opacity. These factors cannot be uniquely
+recovered, so fill/stroke opacity promotion has been withdrawn and the combined alpha stays on
+each leaf. In particular, overriding inherited opacity on a translucent source paint remains an
+explicit registered-asset parity gap; it is not an RGBA8 rounding residual. The source opacity
+values are not retained as a second visual model. Group opacity remains unsupported and is not
+distributed across leaves.
 The follow-up adds one family-level shared-paint regression alongside the existing 80 TreeView/icon
 tests; all focused tests, Clippy, formatting, and the full SVG structure gate pass.
+An additional regression covers translucent fill and stroke with inherited presentation and
+inline opacity, ensuring their combined public alpha is never reconstructed as group opacity.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

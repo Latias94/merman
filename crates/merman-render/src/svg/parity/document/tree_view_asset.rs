@@ -117,13 +117,14 @@ pub(super) fn scope_projections<'a>(
         if !candidate.uniform {
             continue;
         }
-        let mut inherited = candidate.inherited;
-        if style.fill.is_none() {
-            inherited = inherited.without(AssetStyleProperties::of(&[Property::FillOpacity]));
-        }
+        // Public paint alpha combines color alpha and paint opacity. Their original factors
+        // cannot be recovered, so never project the combined value as an inherited opacity.
+        let mut inherited = candidate.inherited.without(AssetStyleProperties::of(&[
+            Property::FillOpacity,
+            Property::StrokeOpacity,
+        ]));
         if style.stroke.is_none() {
             inherited = inherited.without(AssetStyleProperties::of(&[
-                Property::StrokeOpacity,
                 Property::StrokeWidth,
                 Property::StrokeLineCap,
                 Property::StrokeLineJoin,
@@ -314,7 +315,7 @@ impl DocumentSvgEncoder<'_> {
             self.write_asset_inline_properties(style, placement.inline, None)?;
         }
         self.output.push('>')?;
-        // Only the current public matrix moves onto the group. Paint/opacity stay on leaves.
+        // Group presentation does not change public graphics state; only reset the local matrix.
         self.state.transform = Transform::IDENTITY;
         self.groups.push(GroupKind::Asset);
         Ok(Some(count + 1))
