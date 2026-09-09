@@ -730,11 +730,14 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
         (
             "presentation-theme-sankey",
             "sankey\nSource,Target,10\nTarget,Done,2",
+            &["#e5e7eb", "#0f172a"],
+            &["class=\"node-labels\""],
+        ),
+        (
+            "presentation-theme-sankey-outlined",
+            "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\nSource,Target,10\nTarget,Done,2",
             &["#e5e7eb", "#111827"],
-            &[
-                ".sankey-label-bg{stroke:#111827;stroke-width:4px;",
-                ".sankey-label-fg{fill:#e5e7eb;}",
-            ],
+            &["class=\"sankey-label-bg\"", "class=\"sankey-label-fg\""],
         ),
         (
             "presentation-theme-radar",
@@ -799,6 +802,58 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
         let svg = render_with_editor_dark_theme(name, source);
         assert_contains_all(name, &svg, expected);
         assert_current_dom_consumes(name, &svg, dom_expected);
+        if matches!(
+            *name,
+            "presentation-theme-sankey" | "presentation-theme-sankey-outlined"
+        ) {
+            let document = roxmltree::Document::parse(&svg).expect("Sankey SVG is XML");
+            let labels = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("node-labels"))
+                .expect("Sankey label collection");
+            let scoped_rule = format!("#{name} .node-labels{{");
+            let inherited_label_css = document
+                .descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .filter_map(|node| node.text())
+                .find_map(|css| {
+                    css.split_once(&scoped_rule)
+                        .and_then(|(_, rest)| rest.split_once('}').map(|(rule, _)| rule))
+                })
+                .expect("resolved label paint belongs to the actual label collection");
+            assert!(
+                inherited_label_css
+                    .split(';')
+                    .any(|declaration| declaration.trim() == "fill:#e5e7eb"),
+                "{name}: {inherited_label_css}"
+            );
+            let texts: Vec<_> = labels
+                .children()
+                .filter(|node| node.has_tag_name("text"))
+                .collect();
+            let outlined = name.ends_with("-outlined");
+            assert_eq!(texts.len(), if outlined { 6 } else { 3 }, "{name}");
+            for (index, text) in texts.iter().enumerate() {
+                if outlined && index < 3 {
+                    assert_eq!(text.attribute("class"), Some("sankey-label-bg"));
+                    assert_eq!(
+                        svg_presentation_property(*text, "stroke").as_deref(),
+                        Some("#111827")
+                    );
+                    assert_eq!(
+                        svg_presentation_property(*text, "stroke-width").as_deref(),
+                        Some("4")
+                    );
+                    assert_eq!(text.attribute("paint-order"), Some("stroke fill"));
+                } else {
+                    assert_eq!(
+                        text.attribute("class"),
+                        outlined.then_some("sankey-label-fg")
+                    );
+                    assert!(svg_presentation_property(*text, "stroke-width").is_none());
+                }
+            }
+        }
         if *name == "presentation-theme-c4" {
             assert_c4_shapes_consume_presentation_theme(name, &svg);
         }
