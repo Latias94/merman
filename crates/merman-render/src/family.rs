@@ -1249,6 +1249,7 @@ fn canonical_svg_family_enabled(family: RenderFamilyKind) -> bool {
             | RenderFamilyKind::Packet
             | RenderFamilyKind::Pie
             | RenderFamilyKind::Sankey
+            | RenderFamilyKind::TreeView
     )
 }
 
