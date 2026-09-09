@@ -16,7 +16,7 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
 | Public support claims | Revision 60 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v63; 348 routes / 458 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| KTD17 scalar cutover | v64; 350 routes / 460 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
@@ -51,6 +51,9 @@ and source styles retain ownership of each consumer. HTML labels consume `nodeTe
 labels and the diagram title consume `textColor`. Ownership is captured before theme-default
 projection, so derived colors cannot become explicit owners. Title.fill remains Unsupported.
 ER no longer requires its family bridge.
+
+Radar static-unqualified `Title.fill` now has a direct typed writer and KTD17 SVG/PNG
+authorization for solid and transparent values. Explicit `Default` remains a separate route.
 
 ## Family Boundaries
 

@@ -37,8 +37,8 @@ where
 
     let _ = write!(
         out,
-        r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        diagram_id, font_size_css, title_fill_css
+        r#"#{} .radarTitle{{font-size:{};color:{};fill:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
+        diagram_id, font_size_css, title_fill_css, title_fill_css
     );
     out.checkpoint()?;
     let _ = write!(

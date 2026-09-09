@@ -186,6 +186,11 @@ const TREEMAP_TEXT_SOURCE: &str = r#"treemap
 const RAILROAD_TITLE_SOURCE: &str = r#"railroad-beta
 expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
+const RADAR_TITLE_SOURCE: &str = r#"radar-beta
+title Cutover radar title
+axis A,B,C
+curve Current{3,4,2}
+"#;
 // Links are painted after labels in Mermaid's Sankey renderer. Keep this witness's links
 // transparent so the route-local PNG proof observes the intended text terminal rather than a
 // later, opaque link stroke covering the glyphs.
@@ -532,6 +537,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(RAILROAD_TITLE_SOURCE)
+        }
+        (DiagramFamilyId::RADAR, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(RADAR_TITLE_SOURCE)
         }
         (DiagramFamilyId::SANKEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(SANKEY_TEXT_SOURCE)
@@ -1622,11 +1630,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_348_routes_and_458_artifact_witnesses() {
+    fn route_inventory_retains_350_routes_and_460_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 348);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 458);
+        assert_eq!(inventory.len(), 350);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 460);
     }
 
     #[test]

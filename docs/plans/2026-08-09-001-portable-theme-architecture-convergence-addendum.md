@@ -37,6 +37,10 @@ record. The current source and generated contract are authoritative for these su
   Gantt `Task[Warning].stroke` and Timeline unqualified/Default `TimelineEvent.fill` are now
   authorized typed routes. Earlier statements excluding them are superseded; ordinal palette,
   typography, and unmodeled values are not implicitly authorized by these scalar migrations.
+- KTD17 v64 also authorizes Radar static-unqualified `Title.fill` for solid and transparent
+  values. The Radar writer emits the typed value through both CSS `color` and `fill`, allowing
+  the native SVG/PNG route proof to observe the same title terminal. Explicit `Default` remains
+  a separate route and is not implicitly authorized.
 - Treemap Text.fill is typed for static unqualified/Default solid and transparent paint. Label
   and value configuration owners remain independent; no participating visible text terminal is
   `NotApplicable`. Its old Text projection no longer requires a family bridge.
