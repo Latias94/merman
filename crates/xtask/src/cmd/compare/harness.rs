@@ -324,6 +324,8 @@ impl RenderOperationContract {
 pub(crate) struct ObservedRenderOperations {
     expected: RenderOperationContract,
     observed: bool,
+    canonical_svg_outputs: usize,
+    legacy_svg_outputs: usize,
 }
 
 #[derive(Debug)]
@@ -353,6 +355,8 @@ impl ObservedRenderOperations {
         Ok(Self {
             expected: RenderOperationContract::from_environment(environment)?,
             observed: false,
+            canonical_svg_outputs: 0,
+            legacy_svg_outputs: 0,
         })
     }
 
@@ -382,11 +386,26 @@ impl ObservedRenderOperations {
         fixture: &str,
         output: &merman::SvgOutput,
     ) -> Result<ObservedRenderEvidence, String> {
+        // Report every observed output, including a bridge rejected by the admission gate.
+        // A successful legacy DOM comparison is not canonical migration evidence.
+        match output.serialization_route() {
+            merman::svg::SvgSerializationRoute::CanonicalDocument => {
+                self.canonical_svg_outputs += 1
+            }
+            merman::svg::SvgSerializationRoute::LegacyBridge => self.legacy_svg_outputs += 1,
+            // The route contract below rejects unknown future variants.
+            _ => {}
+        }
         validate_svg_serialization_route(diagram, fixture, output)?;
         self.observe(fixture, output.evidence())
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
+        let _ = writeln!(
+            report,
+            "- SVG serialization routes (observed outputs, including rejected routes): canonical-document=`{}` legacy-bridge=`{}`",
+            self.canonical_svg_outputs, self.legacy_svg_outputs,
+        );
         if !self.observed {
             let _ = writeln!(report, "- Render operation: `not-observed`");
             return;
@@ -2886,6 +2905,35 @@ mod tests {
         assert_eq!(output.family_kind(), merman::svg::RenderFamilyKind::Error);
         validate_svg_serialization_route("packet", "invalid-packet", &output)
             .expect("route evidence should follow the rendered Error family");
+    }
+
+    #[test]
+    fn svg_report_distinguishes_canonical_and_legacy_outputs() {
+        let environment = merman::SvgEnvironment::deterministic();
+        let mut operations = ObservedRenderOperations::from_environment(&environment).unwrap();
+        let canonical = render_info_for_evidence("canonical-info");
+        operations
+            .observe_svg("info", "canonical-info", &canonical)
+            .unwrap();
+        let legacy = render_source_svg(
+            &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
+            "sequenceDiagram\nA->>B: Hello\n",
+            svg_request(
+                environment,
+                super::super::svg_compare_layout_opts(),
+                Some("legacy-sequence".into()),
+            ),
+        )
+        .unwrap();
+        operations
+            .observe_svg("sequence", "legacy-sequence", &legacy)
+            .unwrap();
+        let mut report = String::new();
+        operations.write_report(&mut report);
+        assert!(
+            report.contains("canonical-document=`1` legacy-bridge=`1`"),
+            "{report}"
+        );
     }
 
     #[test]
