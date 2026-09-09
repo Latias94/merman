@@ -2975,7 +2975,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        if !self.write_gantt_path_presentation(path_id, style, false)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)?
+            && !self.write_journey_background_presentation(path_id, style)?
+        {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }
@@ -3028,7 +3030,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius_x);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
-        if !self.write_gantt_path_presentation(path_id, style, false)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)?
+            && !self.write_journey_background_presentation(path_id, style)?
+        {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }

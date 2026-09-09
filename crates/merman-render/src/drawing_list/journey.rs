@@ -128,15 +128,31 @@ impl<'a> JourneyBuilder<'a> {
         } else {
             settings.title_font_family.clone()
         };
-        let title_font_size =
-            crate::mermaid_style::parse_css_font_size_px(&settings.title_font_size, task_font_size)
-                .ok_or_else(|| {
-                    unavailable(format!(
-                        "Journey titleFontSize `{}` is not a portable CSS font size",
-                        settings.title_font_size
-                    ))
-                })?;
         let legend_font_size = config_theme_font_size_css_or_root_number_px(config, 16.0).max(1.0);
+        // Titles are root SVG children, not task labels. CSS rem instead references the
+        // host document root; the headless profile uses its deterministic 16px initial size.
+        let title_size_basis = if settings
+            .title_font_size
+            .trim()
+            .trim_end_matches(';')
+            .trim()
+            .to_ascii_lowercase()
+            .ends_with("rem")
+        {
+            16.0
+        } else {
+            legend_font_size
+        };
+        let title_font_size = crate::mermaid_style::parse_css_font_size_px(
+            &settings.title_font_size,
+            title_size_basis,
+        )
+        .ok_or_else(|| {
+            unavailable(format!(
+                "Journey titleFontSize `{}` is not a portable CSS font size",
+                settings.title_font_size
+            ))
+        })?;
 
         let actor_color_overrides = theme
             .actor_colors

@@ -87,6 +87,12 @@ The obligation on each text command is authoritative:
 - `RasterFallback` means the fallback record, bounds, pixels, scale, format, and source identity
   are part of the result.
 
+Journey titles resolve parent-relative `em`, `%`, and `ex` against the configured root SVG font
+size, independently of task-label font size. The deterministic text profile approximates `ex` as
+half an em and resolves `rem` against a 16px host-document baseline; it does not read ambient
+browser CSS or claim exact font x-height metrics. Both public text and SVG carry the resulting px
+size. Hosts should consume that value rather than evaluate the authored CSS unit again.
+
 Rich HTML/Markdown labels that cannot be represented as one honest run remain structured failures
 or explicit raster subtrees. They are never reduced to plain text merely to make a host renderer
 continue.

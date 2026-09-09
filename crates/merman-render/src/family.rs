@@ -6807,6 +6807,162 @@ gantt
     }
 
     #[test]
+    fn journey_title_relative_font_size_uses_root_not_task_style() {
+        use merman_display_list::DrawingCommand;
+        for (root, task, unit, expected) in [
+            (24, 14, "4ex", 48.0),
+            (24, 40, "2em", 48.0),
+            (24, 9, "150%", 36.0),
+            (12, 40, "2em", 24.0),
+            (24, 9, "2rem", 32.0),
+            (48, 40, "2rem", 32.0),
+            (24, 40, "18px", 18.0),
+        ] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "fontSize": 10, "themeVariables": {"fontSize": format!("{root}px")},
+                    "journey": {"taskFontSize": task, "titleFontSize": unit},
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "journey\ntitle Heading\nsection Work\nRead: 5: Alice\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let run = document
+                .public
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == "Heading" => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                run.style.font_size, expected,
+                "root={root}, task={task}, unit={unit}"
+            );
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                &json!({"fontSize":99}),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let text = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Heading"))
+                .unwrap();
+            assert_eq!(
+                text.attribute("font-size").unwrap().parse::<f64>().unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn journey_background_css_retains_public_alpha_and_absent_paints() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "journey\nsection Work\nRead: 5: Alice\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command {
+                match path.as_str() {
+                    "journey.section.0.background" => {
+                        style.fill = Some(Paint::solid(Color::rgba(18, 52, 86, 128)));
+                        style.stroke = None;
+                    }
+                    "journey.task.0.background" => {
+                        style.fill = None;
+                        let stroke = style.stroke.as_mut().unwrap();
+                        stroke.paint = Paint::solid(Color::rgba(12, 34, 56, 64));
+                        stroke.width = 3.0;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &drawing_list_svg_diagnostics(),
+            &json!({"themeVariables":{"fillType0":"red"}}),
+            &artifact.session,
+        )
+        .unwrap();
+        let native = crate::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(&svg, &artifact.session)
+            .unwrap();
+        for output in [svg.as_str(), native.as_str()] {
+            let xml = roxmltree::Document::parse(output).unwrap();
+            for (id, fill, stroke, fill_alpha, stroke_alpha) in [
+                (
+                    "journey.section.0.background",
+                    "#123456",
+                    "none",
+                    128.0 / 255.0,
+                    1.0,
+                ),
+                (
+                    "journey.task.0.background",
+                    "none",
+                    "#0c2238",
+                    1.0,
+                    64.0 / 255.0,
+                ),
+            ] {
+                let node = xml
+                    .descendants()
+                    .find(|node| node.attribute("data-merman-resource") == Some(id))
+                    .unwrap();
+                assert!(node.has_tag_name("rect"));
+                assert_eq!(node.attribute("rx"), Some("3"));
+                assert_eq!(node.attribute("ry"), Some("3"));
+                assert!(node.attribute("stroke-width").is_none());
+                let css = node
+                    .attribute("style")
+                    .unwrap()
+                    .split(';')
+                    .filter_map(|item| item.split_once(':'))
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                assert_eq!(css["fill"], fill);
+                assert_eq!(css["stroke"], stroke);
+                assert_eq!(css["fill-opacity"].parse::<f64>().unwrap(), fill_alpha);
+                assert_eq!(css["stroke-opacity"].parse::<f64>().unwrap(), stroke_alpha);
+                assert_eq!(css["opacity"], "1");
+                if stroke != "none" {
+                    assert_eq!(css["stroke-width"], "3");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn journey_document_owns_visible_label_and_background_colors() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 

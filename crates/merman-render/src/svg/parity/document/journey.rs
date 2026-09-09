@@ -3,6 +3,31 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_journey_background_presentation(
+        &mut self,
+        path: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Journey(_))
+            || !path.as_str().ends_with(".background")
+            || !(path.as_str().starts_with("journey.task.")
+                || path.as_str().starts_with("journey.section."))
+        {
+            return Ok(false);
+        }
+        // Source rectangles expose fill/stroke, with the remaining presentation inherited
+        // from CSS. Both representations here come from the resolved public style, never
+        // the old layout fill that the source stylesheet overwrote.
+        if let Some(fill) = &style.fill {
+            self.write_paint("fill", fill)?;
+        }
+        if let Some(stroke) = &style.stroke {
+            self.write_paint("stroke", &stroke.paint)?;
+        }
+        self.write_journey_primitive_css(style)?;
+        Ok(true)
+    }
+
     /// Circle geometry is already verified by the primitive emitter. Keep source identity
     /// attributes while the complete public style owns the effective CSS presentation.
     pub(super) fn write_journey_circle_presentation(

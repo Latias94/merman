@@ -1026,7 +1026,7 @@ browser checks below do not substitute for that gate.
   compensation. Edited/non-rectangular clips or graphics state keep the ordinary projection.
 - Legends retain `text > tspan`. The source container's fixed `x=40` is inert because the tspan
   explicitly receives the public x coordinate; y, font, paint, language, and state remain public.
-- Task/activity lines, faces, eyes, actors, and mouth primitives use inline presentation derived
+- Section/task backgrounds, task/activity lines, faces, eyes, actors, and mouth primitives use inline presentation derived
   from public paint. Resource references and paint alpha remain separate from object opacity.
   Opacity/blend share one CSS block, and each public transform applies once. The encoder never
   reads the original theme or layout paint.
@@ -1036,6 +1036,11 @@ browser checks below do not substitute for that gate.
   non-finite rebasing retain the ordinary absolute path. Rebasing a gradient/pattern without also
   transforming its user-space coordinates would change its appearance, so it is not admitted.
 
+- Title `em`, `%`, and `ex` units inherit the root SVG font size, with theme font size taking
+  precedence over the numeric top-level setting; they never inherit the separate task font size.
+  The deterministic profile uses half-em for font-dependent `ex` and a 16px host-root baseline
+  for `rem`. Public runs contain resolved px, so SVG does not reintroduce CSS unit evaluation.
+
 ### Focused verification
 
 The render tests cover independent viewport and semantic edits; marker/circle equivalence;
@@ -1043,8 +1048,14 @@ shared definitions; source/readable/native text and clip mutation/removal; legen
 styles; resource paint and translucent stroke with custom dash/cap/join, opacity, blend and
 transform; and mouth path equivalence through an independent SVG path parser. The mouth regression
 also changes arc flags, radius, and endpoints, then verifies generic output under a public transform
-and a user-space gradient. All 25 focused Journey render tests pass.
+and a user-space gradient. Background coverage checks absent paints and alpha through source/native
+SVG, and title coverage varies root/task sizes independently across px/em/%/ex/rem.
 The finalized native pipeline normalizes source `1px` widths to the equivalent numeric `1`.
+
+The background/title follow-up passes 27 focused render tests and 6 facade/exact-budget tests.
+Background rectangles retain source class/geometry/fill/stroke attributes with complete current
+public CSS; absent paints, alpha and stroke width are verified through the native pipeline.
+The serializer does not reconstruct the layout fill that source theme CSS overwrote.
 
 ### Browser evidence
 
@@ -1062,6 +1073,11 @@ The finalized native pipeline normalizes source `1px` widths to the equivalent n
   opacity/blend, CTM and screen CTM exactly. Face, eye, task-line and actor colors match pinned SVG.
   Source lines inherit a fill while canonical lines have `none`; a line does not paint its fill.
 
+- `target/compare/journey-title-font-browser-probe.json` identifies the title inheritance error:
+  the stress fixture has a 24px root and pinned `4ex` computes to 50.2031px, while the old candidate
+  incorrectly used 14px task font size and emitted 28px. The repaired deterministic value is 48px.
+  Controlled browser experiments confirm `em/%/ex` follow SVG root size whereas `2rem` stays 32px
+  for a 16px HTML root. Exact x-height remains a recorded measurement residual.
 - `target/compare/journey-mouth-browser-probe.json` covers 3 fixtures and 22 mouths, including all
   three expressions. New primitive types, lengths, and 33 screen-space samples per path match
   pinned SVG exactly; all pre/post paint and compositing properties are unchanged. Two old/new
@@ -1070,13 +1086,19 @@ The finalized native pipeline normalizes source `1px` widths to the equivalent n
   arithmetic convergence, not a claim of zero pre/post numeric difference. Solid-paint sampling
   does not replace the resource-paint regression that keeps gradients in absolute coordinates.
 
+- `target/compare/journey-background-browser-probe.json` covers 3 fixtures and 26 rectangles.
+  Paint/stroke/alpha/state, CTMs, and local/screen bounds are unchanged by the CSS projection.
+  The repaired default title is 32px (pinned 33.4688px) and stress title is 48px (pinned 50.2031px),
+  both previously 28px. Font families are unchanged; the remaining difference is the documented
+  deterministic `ex` approximation, not task-font inheritance.
+
 ### Full-family gate and remaining work
 
-The latest full reports are `target/compare/journey_281a1951f_mouth_structure.md` and
-`target/compare/journey_281a1951f_mouth_parity_root.md`: 26 selected, 25 canonical outputs,
+The latest full reports are `target/compare/journey_5e2265766_background_title_structure.md` and
+`target/compare/journey_5e2265766_background_title_parity_root.md`: 26 selected, 25 canonical outputs,
 no skips, **0/25 passes** in both modes. The `size: 2rem` title-font fixture retains the explicit
 non-finite face rejection. The reports still expose background attributes, added public clips,
 text shells, and color/font spellings. They are failure evidence, not admission.
 Temporary runtime and fixture admission were removed after the processes exited. No comparator
-normalization was relaxed. The reports predate the resource-paint guard added in the same change;
-their pure-solid mouth fixtures are unaffected by that guard.
+normalization was relaxed. These reports include the background presentation and title-inheritance
+repairs. They do not establish exact x-height/font rendering or approve the remaining DOM residuals.
