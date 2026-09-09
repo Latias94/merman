@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Index only uniquely occurring, single-run task labels. Edited scopes stay generic.
+/// Index uniquely occurring, single-run task labels and the title. Edited scopes stay generic.
 pub(super) struct TextProjection<'a> {
     labels: BTreeMap<&'a str, Option<&'a TextRun>>,
 }
@@ -15,7 +15,9 @@ impl<'a> TextProjection<'a> {
             let DrawingCommand::BeginSemanticGroup { semantic_id } = command else {
                 continue;
             };
-            if !semantic_id.starts_with("gantt.task.") || !semantic_id.ends_with(".label") {
+            if semantic_id != "gantt.title"
+                && !(semantic_id.starts_with("gantt.task.") && semantic_id.ends_with(".label"))
+            {
                 continue;
             }
             let run = match document.commands.get(index + 1..) {
@@ -36,6 +38,15 @@ impl<'a> TextProjection<'a> {
                 .or_insert(run);
         }
         Ok(Self { labels })
+    }
+
+    fn title_font_size(&self) -> Option<f64> {
+        self.labels
+            .get("gantt.title")
+            .copied()
+            .flatten()
+            .filter(|run| gantt_plain_text_color(run).is_some())
+            .map(|run| run.style.font_size)
     }
 }
 
@@ -281,22 +292,13 @@ impl DocumentSvgEncoder<'_> {
                 semantic_id, emitted: false, ..
             }) if semantic_id == id)
             || task && !body.dom_ids.contains_key(id)
-            || run.baseline != TextBaseline::Alphabetic
-            || run.direction != TextDirection::Auto
-            || run.language.is_some()
-            || run.style.font.resource.is_some()
-            || run.style.stroke.is_some()
-            || run.text.contains(['\n', '\r', '\t'])
             || self.state.blend_mode != BlendMode::Normal
         {
             return Ok(false);
         }
-        let Paint::Solid { color } = run.style.fill else {
+        let Some(color) = gantt_plain_text_color(run) else {
             return Ok(false);
         };
-        if color.alpha != 255 {
-            return Ok(false);
-        }
         let Some(class) = body.text_classes.get(id) else {
             return Ok(false);
         };
@@ -328,7 +330,13 @@ impl DocumentSvgEncoder<'_> {
             text_anchor(run.anchor),
             color_css(color),
         )?;
-        if title {
+        if title
+            && self
+                .gantt_text
+                .as_ref()
+                .and_then(TextProjection::title_font_size)
+                .is_none()
+        {
             write!(self.output, "font-size:{}px;", fmt(run.style.font_size))?;
         }
         self.output.push('"')?;
@@ -802,11 +810,9 @@ impl DocumentSvgEncoder<'_> {
         if !self.gantt_tick_layer_at(index) {
             return Ok(false);
         }
-        write!(
-            self.output,
-            "<g class=\"tick\" opacity=\"{}\"",
-            fmt(opacity)
-        )?;
+        // D3 retains its entry opacity attribute at 1; the source stylesheet supplies the
+        // effective group opacity. Project that override from the public layer, exactly once.
+        self.output.push_str("<g class=\"tick\" opacity=\"1\"")?;
         if let Some(DrawingCommand::BeginSemanticGroup { semantic_id }) =
             self.document.commands.get(index)
             && let Some(name) = self
@@ -826,8 +832,11 @@ impl DocumentSvgEncoder<'_> {
             }
         }
         self.write_gantt_group_transform()?;
-        write_blend_style(&mut self.output, blend)?;
-        self.output.push('>')?;
+        write!(self.output, " style=\"opacity:{};", fmt(opacity))?;
+        if let Some(blend) = blend_css(blend) {
+            write!(self.output, "mix-blend-mode:{blend};")?;
+        }
+        self.output.push_str("\">")?;
         self.groups.push(GroupKind::Layer {
             projected_transform: self.state.transform,
         });
@@ -1028,8 +1037,39 @@ impl DocumentSvgEncoder<'_> {
             write!(self.output, "#{id} .doneCrit{index}")?;
         }
         self.output
-            .push_str("{cursor:pointer;shape-rendering:crispEdges;}</style><g/>")?;
+            .push_str("{cursor:pointer;shape-rendering:crispEdges;}")?;
+        if let Some(font_size) = self
+            .gantt_text
+            .as_ref()
+            .and_then(TextProjection::title_font_size)
+        {
+            // Source titleText inherits its size from a class rule. The unique public run is
+            // the only value source; duplicate/edited multi-run scopes use inline fallback.
+            write!(
+                self.output,
+                "#{id} .titleText{{font-size:{}px;}}",
+                fmt(font_size)
+            )?;
+        }
+        self.output.push_str("</style><g/>")?;
         Ok(())
+    }
+}
+
+fn gantt_plain_text_color(run: &TextRun) -> Option<Color> {
+    if !matches!(run.obligation, TextObligation::HostText { .. })
+        || run.baseline != TextBaseline::Alphabetic
+        || run.direction != TextDirection::Auto
+        || run.language.is_some()
+        || run.style.font.resource.is_some()
+        || run.style.stroke.is_some()
+        || run.text.contains(['\n', '\r', '\t'])
+    {
+        return None;
+    }
+    match run.style.fill {
+        Paint::Solid { color } if color.alpha == 255 => Some(color),
+        _ => None,
     }
 }
 

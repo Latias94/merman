@@ -4197,11 +4197,13 @@ mod tests {
             assert_eq!(title.text().unwrap_or_default(), diagram_title);
             assert!(title.attribute("font-size").is_none());
             assert!(title.attribute("data-merman-bounds").is_none());
+            assert!(!title.attribute("style").unwrap().contains("font-size:"));
             assert!(
-                title
-                    .attribute("style")
-                    .unwrap()
-                    .contains("font-size:18px;")
+                svg.descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+                    .contains("#schedule .titleText{font-size:18px;}")
             );
             assert!(!svg.descendants().any(|node| {
                 node.has_tag_name("rect")
@@ -4261,11 +4263,13 @@ mod tests {
             assert_eq!(title.text(), Some("  Changed <title>  "));
             assert_eq!(title.attribute("x"), Some("37"));
             assert_eq!(title.attribute("y"), Some("19"));
+            assert!(!title.attribute("style").unwrap().contains("font-size:"));
             assert!(
-                title
-                    .attribute("style")
-                    .unwrap()
-                    .contains("font-size:23px;")
+                xml.descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+                    .contains("#schedule .titleText{font-size:23px;}")
             );
             assert!(title.attribute("style").unwrap().contains("fill:#123456;"));
             assert_eq!(
@@ -4297,6 +4301,13 @@ mod tests {
                 Some("preserve")
             );
             assert_eq!(title.attribute("fill"), Some("#123456"));
+            assert_eq!(title.attribute("font-size"), Some("23"));
+            assert!(
+                !xml.descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .any(|css| css.contains(".titleText{"))
+            );
             assert_eq!(
                 title
                     .attribute("fill-opacity")
@@ -4305,6 +4316,49 @@ mod tests {
                     .unwrap(),
                 128.0 / 255.0
             );
+            // A second public title run must not inherit a class rule extracted from the first.
+            let title_index = document
+                .public
+                .commands
+                .iter()
+                .position(|command| {
+                    matches!(command,
+                        DrawingCommand::DrawText { run } if run.text == "  Changed <title>  "
+                    )
+                })
+                .unwrap();
+            let DrawingCommand::DrawText { run } = &mut document.public.commands[title_index]
+            else {
+                unreachable!()
+            };
+            run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 255));
+            let mut extra = document.public.commands[title_index].clone();
+            let DrawingCommand::DrawText { run } = &mut extra else {
+                unreachable!()
+            };
+            run.text = "Second title run".to_owned();
+            run.style.font_size = 31.0;
+            document.public.commands.insert(title_index + 1, extra);
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            assert!(
+                !xml.descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .any(|css| css.contains(".titleText{"))
+            );
+            for (text, size) in [("  Changed <title>  ", "23"), ("Second title run", "31")] {
+                let node = xml
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                    .unwrap();
+                assert_eq!(node.attribute("font-size"), None);
+                assert!(
+                    node.attribute("style")
+                        .unwrap()
+                        .contains(&format!("font-size:{size}px;"))
+                );
+            }
         }
     }
 
@@ -4921,7 +4975,8 @@ gantt
             let grid = layer.parent().unwrap();
             assert_eq!(grid.attribute("class"), Some("grid"));
             assert!(grid.attribute("transform").is_some());
-            assert_eq!(layer.attribute("opacity"), Some("0.8"));
+            assert_eq!(layer.attribute("opacity"), Some("1"));
+            assert_eq!(layer.attribute("style"), Some("opacity:0.8;"));
             assert!(layer.children().any(|node| node.has_tag_name("line")));
             assert!(layer.children().any(|node| node.has_tag_name("text")));
             assert!(
@@ -5092,8 +5147,11 @@ gantt
             .descendants()
             .filter(|node| node.attribute("class") == Some("tick"))
         {
-            assert_eq!(layer.attribute("opacity"), Some("0.35"));
-            assert_eq!(layer.attribute("style"), Some("mix-blend-mode: multiply;"));
+            assert_eq!(layer.attribute("opacity"), Some("1"));
+            assert_eq!(
+                layer.attribute("style"),
+                Some("opacity:0.35;mix-blend-mode:multiply;")
+            );
         }
         for text in xml.descendants().filter(|node| node.has_tag_name("text")) {
             assert_eq!(text.attribute("fill"), Some("#123456"));
