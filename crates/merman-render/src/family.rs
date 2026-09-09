@@ -3071,6 +3071,20 @@ mod tests {
                 false,
                 false,
             ),
+            (
+                "#quot;<br/>#amp;",
+                vec!["\"", "&"],
+                vec![-0.5, 0.5],
+                false,
+                false,
+            ),
+            (
+                "A\u{a0}B<br/>C",
+                vec!["A\u{a0}B", "C"],
+                vec![-0.5, 0.5],
+                false,
+                false,
+            ),
             ("A<br/> B", vec!["A", " B"], vec![-0.5, 0.5], true, true),
             ("A <br/> B", vec!["A ", "B"], vec![-0.5, 0.5], true, false),
             (
@@ -3182,6 +3196,38 @@ mod tests {
                     assert_eq!(run.bounds.height, 0.0);
                 }
             }
+            assert_eq!(text.attribute("aria-label"), None);
+            let semantic_index = document
+                .public
+                .semantics
+                .iter()
+                .position(|entry| entry.id == "gantt.section.0")
+                .unwrap();
+            assert_eq!(
+                document.public.semantics[semantic_index].title.as_deref(),
+                Some(expected.join("\n").as_str())
+            );
+            let original_name = document.public.semantics[semantic_index].title.clone();
+            let independent_name = "Custom &amp; <br> name";
+            document.public.semantics[semantic_index].title = Some(independent_name.into());
+            let named = render(&document);
+            let xml = roxmltree::Document::parse(&named).unwrap();
+            let named_text = xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("sectionTitle sectionTitle0")
+                })
+                .unwrap();
+            assert_eq!(named_text.attribute("aria-label"), Some(independent_name));
+            assert_eq!(
+                named_text
+                    .children()
+                    .filter(|node| node.has_tag_name("tspan"))
+                    .count(),
+                expected.len()
+            );
+            document.public.semantics[semantic_index].title = original_name;
             // A moved line no longer has source line spacing. Keep its explicit public position.
             let DrawingCommand::DrawText { run } = &mut document.public.commands[start + 2] else {
                 panic!("second line")
@@ -3448,6 +3494,7 @@ mod tests {
             "gantt.rows",
             "gantt.tasks",
             "gantt.sections",
+            "gantt.section.0",
             "gantt.axis.bottom",
             "gantt.axis.top",
             "gantt.axis.bottom.tick.0",
@@ -3500,6 +3547,7 @@ mod tests {
         for id in [
             "gantt.document",
             "gantt.title",
+            "gantt.section.0",
             "gantt.axis.bottom",
             "gantt.axis.top",
             "gantt.axis.bottom.tick.0",
@@ -3527,6 +3575,56 @@ mod tests {
                     || node.has_tag_name("title")
                         && node.text() == Some("Distinct accessible name")),
                 "missing independent name for {id}"
+            );
+        }
+        let rendered = crate::svg::render_document_svg(
+            &baseline,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&rendered).unwrap();
+        let ticks: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("tick"))
+            .collect();
+        assert!(!ticks.is_empty());
+        assert!(
+            ticks
+                .iter()
+                .all(|node| node.attribute("aria-label").is_none()
+                    && node.attribute("role").is_none())
+        );
+        for id in ["gantt.section.0", "gantt.axis.bottom.tick.0"] {
+            let mut document = baseline.clone();
+            document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap()
+                .role = merman_display_list::SemanticRole::Node;
+            let rendered = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&rendered).unwrap();
+            let group = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
+                .unwrap();
+            assert!(
+                group
+                    .attribute("class")
+                    .unwrap()
+                    .split_whitespace()
+                    .any(|class| class == "semantic-node")
             );
         }
     }
@@ -8327,24 +8425,24 @@ linkStyle 0 font-size:12px,font-style:italic
 
     #[test]
     fn resolved_source_metadata_replays_with_exact_reported_work_budget() {
-        for label in [
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ #quot;",
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ literal",
+        for source in [
+            "packet\naccTitle: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ #quot;\n0-7: \"Byte\"\n",
+            "packet\naccTitle: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ literal\n0-7: \"Byte\"\n",
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection #quot;<br/> Alpha  Beta\nTask :a, 2026-01-01, 1d\n",
         ] {
-            let source = format!("packet\naccTitle: {label}\n0-7: \"Byte\"\n");
             let render = |artifact: FamilyRenderArtifact| {
                 artifact.render_drawing_list(
                     DrawingListPolicy::VectorOnly,
                     DrawingListLimits::default(),
                 )
             };
-            let unbounded = render(prepare_with_unbounded_layout_work(&source).unwrap()).unwrap();
+            let unbounded = render(prepare_with_unbounded_layout_work(source).unwrap()).unwrap();
             let exact = unbounded.session.report().layout_work_units();
-            let bounded = render(prepare_with_layout_work_limit(&source, exact).unwrap())
+            let bounded = render(prepare_with_layout_work_limit(source, exact).unwrap())
                 .expect("reported work must admit a replay of the same source");
             assert_eq!(bounded.session.report().layout_work_units(), exact);
             assert_eq!(bounded.json, unbounded.json);
-            assert!(render(prepare_with_layout_work_limit(&source, exact - 1).unwrap()).is_err());
+            assert!(render(prepare_with_layout_work_limit(source, exact - 1).unwrap()).is_err());
         }
     }
 

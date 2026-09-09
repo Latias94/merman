@@ -682,6 +682,7 @@ impl<'a> GanttBuilder<'a> {
                 self.layout.section_font_size,
                 section.lines.len(),
             );
+            let text_start = self.document.command_count();
             for (line_index, line) in section.lines.iter().enumerate() {
                 let resolved = self.document.resolve_mermaid_layout_text(line)?;
                 let line = resolved.as_ref();
@@ -706,12 +707,13 @@ impl<'a> GanttBuilder<'a> {
                     Ok(spec.into_run(text, bounds, font, obligation))
                 })?;
             }
+            let name = self.document.resolved_text_name_since(text_start)?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_mermaid_semantic(SemanticAnnotation {
+            self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
-                title: Some(section.section.clone()),
+                title: Some(name),
                 description: None,
                 link: None,
             })?;

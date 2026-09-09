@@ -500,7 +500,8 @@ impl DocumentSvgEncoder<'_> {
         };
         if !semantic_id.starts_with("gantt.section.")
             || !self.semantics.get(semantic_id).is_some_and(|semantic| {
-                semantic.link.is_none()
+                semantic.role == SemanticRole::Label
+                    && semantic.link.is_none()
                     && semantic.description.is_none()
                     && self.debug_visibility(semantic.role)
             })
@@ -573,6 +574,27 @@ impl DocumentSvgEncoder<'_> {
         }
         let font = self.font_families(&first.style.font)?;
         self.output.push_str("<text")?;
+        if let Some(name) = self
+            .semantics
+            .get(semantic_id)
+            .and_then(|s| s.title.as_deref())
+        {
+            let visible_name = commands.iter().enumerate().flat_map(|(index, command)| {
+                let text = match command {
+                    DrawingCommand::DrawText { run } => run.text.as_str(),
+                    _ => "",
+                };
+                (index != 0)
+                    .then_some(b'\n')
+                    .into_iter()
+                    .chain(text.bytes())
+            });
+            if !name.bytes().eq(visible_name) {
+                // Native text names itself only when it expresses the public semantic name.
+                // An independently edited name must not disappear during tspan compaction.
+                write!(self.output, " aria-label=\"{}\"", escaped_attr(name))?;
+            }
+        }
         // Ordinary source labels rely on SVG's default whitespace behavior. Retain a
         // preservation attribute only when the resolved public runs need it, including
         // leading/trailing spaces that remain addressable across source tspans.
@@ -649,7 +671,8 @@ impl DocumentSvgEncoder<'_> {
         semantic_id.starts_with("gantt.axis.")
             && semantic_id.contains(".tick.")
             && self.semantics.get(semantic_id).is_some_and(|semantic| {
-                semantic.link.is_none()
+                semantic.role == SemanticRole::Label
+                    && semantic.link.is_none()
                     && semantic.description.is_none()
                     && self.debug_visibility(semantic.role)
             })
@@ -678,11 +701,16 @@ impl DocumentSvgEncoder<'_> {
                 .get(semantic_id)
                 .and_then(|s| s.title.as_deref())
         {
-            write!(
-                self.output,
-                " role=\"group\" aria-label=\"{}\"",
-                escaped_attr(name)
-            )?;
+            let same_visible_name = matches!(self.document.commands.get(index + 3),
+                Some(DrawingCommand::DrawText { run })
+                if name == run.text);
+            if !same_visible_name {
+                write!(
+                    self.output,
+                    " role=\"group\" aria-label=\"{}\"",
+                    escaped_attr(name)
+                )?;
+            }
         }
         self.write_gantt_group_transform()?;
         write_blend_style(&mut self.output, blend)?;

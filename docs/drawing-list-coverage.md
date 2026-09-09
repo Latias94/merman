@@ -447,6 +447,16 @@ Temporary admission was removed. Chromium's two milestone CTMs differ from the p
 at most `9.71e-6`, with identical transform origins. This scoped numeric evidence does not change
 comparison tolerances or admit Gantt; full-family structure and semantic projection remain open.
 
+Section accessible names now come from the final public text runs, separated by newlines, rather
+than source labels containing HTML break syntax. The bounded builder charges metadata copying
+before allocation and does not decode the resolved name a second time. Compact section SVG omits
+an extra name only when the current public runs reproduce it exactly; independent literal names
+remain `aria-label`, and edited roles, links or descriptions retain the general semantic projection.
+Tick groups likewise rely on their visible text only for an identical default name. Regressions
+cover empty lines, XML whitespace, NBSP, entities, independent literal names, changed roles, and
+exact reported-work replay. This addresses section/tick semantics, not the remaining task, axis or
+today projection differences, and does not refresh full-family comparison or admit Gantt.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
