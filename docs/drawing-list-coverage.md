@@ -205,6 +205,15 @@ integration contract explicitly defines layer bounds in the user space active at
 This resolves the redundant tick wrapper but not the remaining inherited-style/text-shell
 differences from the full candidate report; Gantt is still not admitted.
 
+The Gantt candidate now also retains D3's axis container defaults (`fill="none"`, 10px
+`sans-serif`, middle anchoring), compact tick line spelling, and bottom/top label `dy` behavior
+without reapplying external theme CSS. Compact projection is deliberately exact: a changed tick
+line start/end or a changed label origin, size, anchor, opacity, blend, or font shape falls back
+to the generic command serializer, preserving the edited public command instead of silently
+normalizing it back to a source-shaped axis. The focused candidate test covers both the unchanged
+source shell and edited line/text colors, opacity, geometry, and paint; this is not complete
+family admission evidence.
+
 Source inspection during this projection found a pre-existing nondefault-padding error in both
 render paths: Mermaid's `makeGrid` places the bottom axis at `height - 50`, not
 `height - topPadding`. The layout type now owns that fixed-inset calculation for both emitters.

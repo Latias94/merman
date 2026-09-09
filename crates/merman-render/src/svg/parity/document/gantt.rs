@@ -313,6 +313,58 @@ impl DocumentSvgEncoder<'_> {
         Ok(true)
     }
 
+    pub(super) fn emit_gantt_tick_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+    ) -> Result<bool> {
+        let Some(semantic_id) = semantic_id else {
+            return Ok(false);
+        };
+        if !semantic_id.contains(".tick.")
+            || run.baseline != TextBaseline::Alphabetic
+            || run.direction != TextDirection::Auto
+            || run.language.is_some()
+            || run.style.stroke.is_some()
+            || run.style.font.resource.is_some()
+            || run.style.font.weight != 400
+            || run.style.font.style != FontStyle::Normal
+            || run.style.letter_spacing != 0.0
+            || run.style.font_size != 10.0
+            || !matches!(&run.style.fill, Paint::Solid { color } if color.alpha == 255)
+            || run.anchor != TextAnchor::Middle
+            || run.origin.x != 0.0
+            || !matches!(run.origin.y, -3.0 | 13.0)
+            || self.state.transform != Transform::IDENTITY
+            || self.state.opacity != 1.0
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let font = self.font_families(&run.style.font)?;
+        write!(
+            self.output,
+            "<text fill=\"{}\" y=\"{}\" dy=\"{}em\" stroke=\"none\" font-size=\"{}\" font-family=\"{}\" style=\"text-anchor: {};\"",
+            color_css(match &run.style.fill {
+                Paint::Solid { color } => *color,
+                _ => return Ok(false),
+            }),
+            fmt(if run.origin.y >= 0.0 {
+                run.origin.y - run.style.font_size
+            } else {
+                run.origin.y
+            }),
+            if run.origin.y >= 0.0 { "1" } else { "0" },
+            fmt(run.style.font_size),
+            escaped_attr(font.as_str()),
+            text_anchor(run.anchor),
+        )?;
+        self.output.push('>')?;
+        output::escape_xml(&mut self.output, run.text.as_str())?;
+        self.output.push_str("</text>")?;
+        Ok(true)
+    }
+
     fn write_gantt_group_transform(&mut self) -> Result<()> {
         let transform = self.state.transform;
         if transform.a == 1.0 && transform.b == 0.0 && transform.c == 0.0 && transform.d == 1.0 {
@@ -356,7 +408,9 @@ impl DocumentSvgEncoder<'_> {
         // These public scopes define paint order; Mermaid exposes only the collection wrappers.
         // The visible title and accessibility references already have their own SVG anchors.
         let projected_transform = if axis {
-            self.output.push_str("<g class=\"grid\"")?;
+            self.output.push_str(
+                "<g class=\"grid\" fill=\"none\" font-size=\"10\" font-family=\"sans-serif\" text-anchor=\"middle\"",
+            )?;
             self.write_gantt_group_transform()?;
             self.output.push('>')?;
             let transform = self.state.transform;

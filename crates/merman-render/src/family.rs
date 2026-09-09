@@ -2866,6 +2866,155 @@ mod tests {
     }
 
     #[test]
+    fn gantt_axes_project_source_dom_and_public_paint_edits() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, Point};
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "gantt": { "topAxis": true },
+                "themeVariables": { "textColor": "#123456", "fontFamily": "Courier" }
+            })))
+            .parse_diagram_for_render_model_sync(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Core\nTask :a, 2026-01-01, 2d\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let axes = xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("grid"))
+            .collect::<Vec<_>>();
+        assert_eq!(axes.len(), 2);
+        for (index, axis) in axes.iter().enumerate() {
+            assert_eq!(axis.attribute("fill"), Some("none"));
+            assert_eq!(axis.attribute("font-family"), Some("sans-serif"));
+            assert_eq!(axis.attribute("font-size"), Some("10"));
+            assert_eq!(axis.attribute("text-anchor"), Some("middle"));
+            let domain = axis
+                .children()
+                .find(|node| node.attribute("class") == Some("domain"))
+                .unwrap();
+            assert_eq!(domain.attribute("stroke"), Some("#000000"));
+            assert!(domain.attribute("d").is_some());
+            assert_eq!(domain.attribute("class"), Some("domain"));
+            let tick = axis
+                .children()
+                .find(|node| node.attribute("class") == Some("tick"))
+                .unwrap();
+            let line = tick
+                .children()
+                .find(|node| node.has_tag_name("line"))
+                .unwrap();
+            assert_eq!(line.attribute("stroke"), Some("#000000"));
+            assert!(line.attribute("x1").is_none());
+            let text = tick
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert_eq!(
+                text.attribute("dy"),
+                Some(if index == 0 { "1em" } else { "0em" })
+            );
+            assert_eq!(
+                text.attribute("y"),
+                Some(if index == 0 { "3" } else { "-3" })
+            );
+            assert_eq!(text.attribute("stroke"), Some("none"));
+            assert_eq!(text.attribute("fill"), Some("#000000"));
+            assert_eq!(text.attribute("font-family"), Some("Courier"));
+            assert!(text.attribute("data-merman-bounds").is_none());
+        }
+        let tick = document.public.commands.iter().position(|command| matches!(command,
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "gantt.axis.bottom.tick.0"
+        )).unwrap();
+        let DrawingCommand::DrawPath { path, style } = &mut document.public.commands[tick + 2]
+        else {
+            panic!("tick line")
+        };
+        let path_id = path.clone();
+        let stroke = style.stroke.as_mut().unwrap();
+        stroke.paint = Paint::solid(Color::rgba(18, 52, 86, 128));
+        stroke.width = 2.25;
+        stroke.dash_array = vec![2.0, 3.0];
+        stroke.line_cap = merman_display_list::LineCap::Round;
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id == path_id
+            {
+                path.segments = vec![
+                    merman_display_list::PathSegment::MoveTo {
+                        to: Point::new(3.0, 5.0),
+                    },
+                    merman_display_list::PathSegment::LineTo {
+                        to: Point::new(7.0, 11.0),
+                    },
+                ];
+            }
+        }
+        let DrawingCommand::DrawText { run } = &mut document.public.commands[tick + 3] else {
+            panic!("tick text")
+        };
+        run.origin = Point::new(4.0, 43.0);
+        run.style.font_size = 20.0;
+        run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+        run.anchor = merman_display_list::TextAnchor::End;
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let tick = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("tick"))
+            .unwrap();
+        let line = tick
+            .children()
+            .find(|node| node.has_tag_name("line"))
+            .unwrap();
+        for (key, value) in [("x1", "3"), ("y1", "5"), ("x2", "7"), ("y2", "11")] {
+            assert_eq!(line.attribute(key), Some(value));
+        }
+        assert_eq!(line.attribute("stroke"), Some("#123456"));
+        assert_eq!(
+            line.attribute("stroke-opacity")
+                .map(|value| value.parse::<f64>().unwrap()),
+            Some(128.0 / 255.0)
+        );
+        assert_eq!(line.attribute("stroke-width"), Some("2.25"));
+        assert_eq!(line.attribute("stroke-linecap"), Some("round"));
+        assert_eq!(line.attribute("stroke-dasharray"), Some("2,3"));
+        let text = tick
+            .children()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(text.attribute("x"), Some("4"));
+        assert_eq!(text.attribute("y"), Some("43"));
+        assert_eq!(text.attribute("font-size"), Some("20"));
+        assert_eq!(text.attribute("text-anchor"), Some("end"));
+        assert_eq!(text.attribute("fill"), Some("#123456"));
+        assert_eq!(
+            text.attribute("fill-opacity")
+                .map(|value| value.parse::<f64>().unwrap()),
+            Some(128.0 / 255.0)
+        );
+    }
+
+    #[test]
     fn gantt_candidate_split_task_scopes_keep_links_and_unique_ids() {
         let parsed = Engine::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
@@ -2908,6 +3057,7 @@ mod tests {
             &SvgDebugOptions::default(),
             &json!({
                 "securityLevel": "loose",
+                "themeCSS": "text { fill: red !important; }",
                 "theme": "dark",
                 "themeVariables": {
                     "fontFamily": "Courier",

@@ -54,6 +54,7 @@ pub(crate) fn render_document_svg(
             | SvgStructureBody::Cynefin(_)
             | SvgStructureBody::Sankey(_)
             | SvgStructureBody::Journey(_)
+            | SvgStructureBody::Gantt(_)
             | SvgStructureBody::Venn(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
@@ -2403,6 +2404,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             if (raw_id == "gantt.today.line" || raw_id.contains(".tick."))
                 && let Some((start, end)) = line_from_path(path)
             {
+                if raw_id.contains(".tick.") && start == Point::new(0.0, 0.0) && end.x == 0.0 {
+                    return self.emit_gantt_tick_line(path_id, end.y, style);
+                }
                 return self.emit_line(path_id, start, end, style);
             }
         }
@@ -3071,6 +3075,27 @@ impl<'a> DocumentSvgEncoder<'a> {
         Ok(())
     }
 
+    fn emit_gantt_tick_line(
+        &mut self,
+        path_id: &ResourceId,
+        y2: f64,
+        style: &PathStyle,
+    ) -> Result<()> {
+        write!(self.output, "<line y2=\"{}\"", fmt(y2))?;
+        self.write_gantt_dom_id(path_id.as_str())?;
+        if let Some(class) = self.path_class(path_id) {
+            self.output.push_str(" class=\"")?;
+            self.output.push_str(class.as_ref())?;
+            self.output.push('"')?;
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs()?;
+        self.output.push_str(" data-merman-resource=\"")?;
+        output::escape_attr(&mut self.output, path_id.as_str())?;
+        self.output.push_str("\"/>")?;
+        Ok(())
+    }
+
     fn is_wardley_marker_path(&self, raw_id: &str) -> bool {
         if !matches!(self.svg_body, SvgStructureBody::Wardley(_)) {
             return false;
@@ -3222,6 +3247,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         }
         if self.emit_compact_pie_text(run, semantic_id.as_deref(), text_index)? {
+            return Ok(());
+        }
+        if matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            && self.emit_gantt_tick_text(run, semantic_id.as_deref())?
+        {
             return Ok(());
         }
         if let Some(styles) = &self.packet_styles

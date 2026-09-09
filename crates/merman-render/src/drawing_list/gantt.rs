@@ -384,7 +384,9 @@ impl<'a> GanttBuilder<'a> {
                 origin: Point::new(0.0, text_y),
                 font_size: 10.0,
                 weight: 400,
-                color: self.text_fill,
+                // Mermaid assigns axis labels `fill="#000"` after D3 builds the axis;
+                // this is independent of the surrounding Gantt text theme.
+                color: AXIS_CURRENT_COLOR,
                 anchor: TextAnchor::Middle,
                 baseline: TextBaseline::Alphabetic,
                 italic: false,
