@@ -862,14 +862,6 @@ impl FamilyStyleReader {
         self.fill_resolution(target).into_value()
     }
 
-    fn fill_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> Option<String> {
-        self.paint_resolution(
-            self.style_variant(target, variant).fill_resolution(),
-            FamilyThemeRuleFacet::fill,
-        )
-        .into_value()
-    }
-
     fn stroke(&self, target: ThemeTarget) -> Option<String> {
         self.stroke_resolution(target).into_value()
     }
