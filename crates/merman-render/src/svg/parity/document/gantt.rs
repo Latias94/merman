@@ -3,6 +3,46 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_gantt_row(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            || !path_id.as_str().starts_with("gantt.row.")
+            || style.stroke.is_some()
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let Some(Paint::Solid { color }) = style.fill else {
+            return Ok(false);
+        };
+        let Some(bounds) = rectangle_from_path(self.path_resource(path_id)?) else {
+            return Ok(false);
+        };
+        let Some(class) = self.path_class(path_id) else {
+            return Ok(false);
+        };
+        // Source rows are classed rectangles. Resolve their CSS from the public command rather
+        // than replaying the theme, keeping fill alpha separate from object opacity.
+        write!(
+            self.output,
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" class=\"{}\" style=\"fill:{};fill-opacity:{};stroke:none;opacity:{};\"",
+            fmt(bounds.x),
+            fmt(bounds.y),
+            fmt(bounds.width),
+            fmt(bounds.height),
+            escaped_attr(class.as_ref()),
+            color_css(color),
+            fmt(f64::from(color.alpha) / 255.0),
+            fmt(self.state.opacity),
+        )?;
+        self.write_transform_and_blend()?;
+        self.output.push_str("/>")?;
+        Ok(true)
+    }
+
     /// Project D3's axis primitives only when the public stroke has SVG's simple defaults.
     /// The inline color resolves currentColor from the document, never from ambient host CSS.
     pub(super) fn emit_gantt_axis_path(

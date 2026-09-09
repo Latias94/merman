@@ -2743,6 +2743,137 @@ mod tests {
     }
 
     #[test]
+    fn gantt_rows_project_source_rectangles_and_preserve_public_paint_edits() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Core\nTask :a, 2026-01-01, 2d\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let row = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("section section0"))
+            .unwrap();
+        assert_eq!(row.tag_name().name(), "rect");
+        assert_eq!(row.attribute("x"), Some("0"));
+        assert_eq!(row.attribute("y"), Some("48"));
+        assert_eq!(row.attribute("height"), Some("24"));
+        assert!(row.attribute("data-merman-resource").is_none());
+        assert!(row.attribute("fill").is_none());
+        assert!(row.attribute("opacity").is_none());
+        assert!(
+            row.attribute("style")
+                .unwrap()
+                .contains("stroke:none;opacity:0.2;")
+        );
+
+        let index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == "gantt.row.0"
+                )
+            })
+            .unwrap();
+        let DrawingCommand::SetOpacity { opacity } = &mut document.public.commands[index - 1]
+        else {
+            panic!("row opacity")
+        };
+        *opacity = 0.4;
+        let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[index] else {
+            panic!("row path")
+        };
+        style.fill = Some(Paint::solid(Color::rgba(17, 34, 51, 128)));
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == "gantt.row.0"
+            {
+                for segment in &mut path.segments {
+                    match segment {
+                        PathSegment::MoveTo { to } | PathSegment::LineTo { to } => {
+                            to.x += 7.0;
+                            to.y += 9.0;
+                        }
+                        PathSegment::Close => {}
+                        _ => panic!("row rectangle"),
+                    }
+                }
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let row = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("section section0"))
+            .unwrap();
+        assert_eq!(row.attribute("x"), Some("7"));
+        assert_eq!(row.attribute("y"), Some("57"));
+        let expected = format!(
+            "fill:#112233;fill-opacity:{};stroke:none;opacity:0.4;",
+            128.0 / 255.0
+        );
+        assert_eq!(row.attribute("style"), Some(expected.as_str()));
+
+        document.public.commands.insert(
+            index,
+            DrawingCommand::ConcatTransform {
+                transform: merman_display_list::Transform {
+                    e: 5.0,
+                    f: 11.0,
+                    ..merman_display_list::Transform::IDENTITY
+                },
+            },
+        );
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let row = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("section section0"))
+            .unwrap();
+        assert_eq!(row.attribute("transform"), Some("matrix(1 0 0 1 5 11)"));
+        assert_eq!(row.attribute("style"), Some(expected.as_str()));
+
+        document.public.commands.insert(
+            index,
+            DrawingCommand::SetBlendMode {
+                blend_mode: merman_display_list::BlendMode::Multiply,
+            },
+        );
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).expect("noncompact row remains valid SVG");
+        let row = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("section section0"))
+            .unwrap();
+        assert_eq!(row.attribute("fill"), Some("#112233"));
+        assert_eq!(row.attribute("opacity"), Some("0.4"));
+        assert_eq!(row.attribute("style"), Some("mix-blend-mode: multiply;"));
+    }
+
+    #[test]
     fn gantt_today_collection_preserves_marker_children_and_public_metadata() {
         let parsed = Engine::new()
             .parse_diagram_for_render_model_sync(

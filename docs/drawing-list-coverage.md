@@ -286,6 +286,15 @@ regression checks public text paint, weight and anchor, distinct section fills, 
 SVG output. The active-clickable case failed before the fix; this remains focused evidence, not
 full-family canonical admission.
 
+Section backgrounds now retain the source rectangle attributes and class, with fill alpha and
+object opacity independently projected from public commands into inline CSS. Geometry and
+transform edits remain effective; nonrectangular, stroked, resource-painted or blended rows keep
+the general serializer. The 39 focused Gantt tests pass. A strict canonical probe of
+`upstream_examples_gantt_basic_project_timeline_001` at `d1bfa73fa` plus this change preserves all
+four rows' source attributes (apart from the resolved style); the whole fixture still fails on
+task and label structure. Its report is `target/compare/gantt_d1bfa73fa_rows_candidate_structure.md`.
+Temporary route admission was removed; no family or comparator gate changed.
+
 The full candidate comparison at `51ff7fda0` was refreshed with temporary Gantt canonical
 route/coverage admission, which was removed afterward. It selected 157 fixtures: 150 canonical
 renders all still had structure differences, two unsupported effects failed the route check

@@ -2387,6 +2387,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            if self.emit_gantt_row(path_id, style)? {
+                return Ok(());
+            }
             if self.emit_gantt_axis_path(path_id, style)? {
                 return Ok(());
             }
