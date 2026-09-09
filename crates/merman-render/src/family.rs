@@ -2189,6 +2189,80 @@ mod tests {
     }
 
     #[test]
+    fn gantt_zero_width_tasks_retain_identity_without_painting_a_line() {
+        use merman_display_list::DrawingCommand;
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "gantt\ndateFormat YY-MM-DD\nsection A\ny68: t1, 68-01-01, 1d\ny69: t2, 69-01-01, 1d\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let BuiltinFamilyArtifact::Gantt(pair) = &artifact.family else {
+            panic!("Gantt")
+        };
+        assert!(pair.layout().tasks.iter().all(|task| task.bar.width == 0.0));
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let bars: Vec<_> = document
+            .public
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str().starts_with("gantt.task.") =>
+                {
+                    Some(style)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bars.len(), 2);
+        assert!(
+            bars.iter()
+                .all(|style| style.fill.is_none() && style.stroke.is_none()),
+            "a collapsed SVG rectangle has no paint, unlike a stroked closed path"
+        );
+        assert!(
+            document
+                .public
+                .semantics
+                .iter()
+                .any(|s| s.id == "gantt.task.0" && s.title.as_deref() == Some("y69"))
+        );
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let svg_bars: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                node.attribute("data-merman-resource")
+                    .is_some_and(|id| id.starts_with("gantt.task."))
+            })
+            .collect();
+        assert_eq!(svg_bars.len(), 2);
+        for bar in svg_bars {
+            assert_eq!(bar.attribute("fill"), Some("none"));
+            assert_eq!(bar.attribute("stroke"), Some("none"));
+            assert!(bar.attribute("id").is_some());
+        }
+        assert!(
+            xml.descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("y69"))
+        );
+    }
+
+    #[test]
     fn gantt_rectangles_clamp_horizontal_and_vertical_corner_radii_independently() {
         use merman_display_list::{DrawingResource, PathSegment};
         for height in [20.0, 4.0] {

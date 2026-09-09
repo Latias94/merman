@@ -388,6 +388,22 @@ adds observable accessibility attributes rather than dropping semantics to reduc
 Focused regressions exercise ten collection scopes and name-only edits separately; the earlier
 strict comparison predates these semantic corrections and is not current admission evidence.
 
+The full canonical-route probe at `f42805334` selected 157 fixtures: 150 rendered canonically and
+all 150 still failed strict structure comparison, five retained existing skips, and two produced
+explicit unsupported-effect legacy routes (`stoke` and `themeCSS`) rejected by the route gate.
+`target/compare/gantt_f42805334_canonical_structure.md` is the current full structure report;
+temporary admission was removed afterward. It does not cover root parity or browser rendering.
+Inspection of its raw SVGs exposed a visual defect: a task rounded to zero width became a stroked
+closed path, unlike Mermaid's non-rendering zero-width rectangle. Zero-extent task commands now
+retain geometry and semantics with no paint; the 41 focused Gantt tests pass after that repair.
+
+Today-marker CSS remains open: Mermaid replaces every comma with a semicolon before final entity
+decoding. In Chromium, `stroke:rgb(0;0;255);opacity:0.5` and `stroke:&00f;opacity:0.5` both retain
+the theme stroke and apply 0.5 opacity. The direct adapter currently treats the first as blue and
+rejects the second; the existing empty-task semicolon fixture is not visible-color evidence.
+This requires source-order declaration resolution, not replaying an SVG stylesheet or relaxing
+the structural comparator.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

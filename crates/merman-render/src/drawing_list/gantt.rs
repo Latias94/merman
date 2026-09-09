@@ -517,7 +517,17 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            let style = self.task_style(&task.bar.class);
+            let style = if task.bar.width == 0.0 || task.bar.height == 0.0 {
+                // SVG suppresses zero-extent rectangles, including their stroke. A closed
+                // zero-width path would otherwise paint a line in renderer-neutral hosts.
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: None,
+                    stroke: None,
+                }
+            } else {
+                self.task_style(&task.bar.class)
+            };
             let bar_id = format!("{semantic_id}.bar");
             self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
             self.path_classes
