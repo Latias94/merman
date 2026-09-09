@@ -256,16 +256,6 @@ fn write_section_rect(
     }
 }
 
-fn journey_css(
-    diagram_id: impl SvgDiagramIdValue,
-    effective_config: &serde_json::Value,
-    theme: &JourneyTheme,
-    emit_palette_css: bool,
-) -> String {
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
-    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts).css
-}
-
 struct JourneyCss {
     css: String,
     font_family: String,
@@ -281,14 +271,16 @@ fn journey_css_with_resolved_typography(
     font_family_css: &str,
     font_size_css: &str,
     emit_palette_css: bool,
+    text_receipt: Option<&mut crate::journey::JourneyTextPaintReceipt<'_>>,
 ) -> JourneyCss {
-    let parts = info_css_parts_with_resolved_typography(
-        diagram_id,
+    let parts = super::super::css::InfoCssWriter::with_resolved_typography(
         effective_config,
         font_family_css,
         font_size_css,
-    );
-    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts)
+    )
+    .with_text_color(&theme.text_color)
+    .into_parts(diagram_id);
+    journey_css_from_parts(diagram_id, theme, emit_palette_css, parts, text_receipt)
 }
 
 fn journey_css_from_parts(
@@ -296,6 +288,7 @@ fn journey_css_from_parts(
     theme: &JourneyTheme,
     emit_palette_css: bool,
     parts: InfoCssParts,
+    mut text_receipt: Option<&mut crate::journey::JourneyTextPaintReceipt<'_>>,
 ) -> JourneyCss {
     let InfoCssParts {
         css_prefix,
@@ -310,6 +303,10 @@ fn journey_css_from_parts(
     let font = font_family.as_str();
     let text_color = text_color.as_str();
     let line_color = line_color.as_str();
+    // InfoCssParts records the value used by the successful root-prefix writer.
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_css(text_color);
+    }
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -318,27 +315,42 @@ fn journey_css_from_parts(
         r#"#{} .label{{font-family:{};color:{};}}"#,
         diagram_id, font, text_color
     );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_css(text_color);
+    }
     let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, diagram_id);
     let _ = write!(
         &mut out,
         r#"#{} line{{stroke:{};}}"#,
         diagram_id, text_color
     );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_css(text_color);
+    }
     let _ = write!(
         &mut out,
         r#"#{} .legend{{fill:{};font-family:{};}}"#,
         diagram_id, text_color, font
     );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_css(text_color);
+    }
     let _ = write!(
         &mut out,
         r#"#{} .label text{{fill:{};}}"#,
         diagram_id, text_color
     );
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_css(text_color);
+    }
     let _ = write!(
         &mut out,
         r#"#{} .label{{color:{};}}"#,
         diagram_id, text_color
     );
+    if let Some(receipt) = text_receipt {
+        receipt.record_css(text_color);
+    }
     let _ = write!(
         &mut out,
         r#"#{} .face{{fill:{};stroke:#999;}}"#,
@@ -445,6 +457,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     model: &JourneyDiagramRenderModel,
     task_theme: &crate::journey::JourneyTaskTheme,
     typography_theme: &crate::journey::JourneyTypographyThemePlan,
+    text_paint: &crate::journey::JourneyTextPaintPlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
@@ -554,7 +567,12 @@ pub(crate) fn render_journey_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let theme = MermaidThemeAdapter::new(effective_config).journey();
+    let mut theme = MermaidThemeAdapter::new(effective_config).journey();
+    if let Some(fill) = text_paint.fill_css() {
+        theme.text_color = fill.to_owned();
+    }
+    let mut text_receipt =
+        text_paint.begin_terminal_receipt(layout, diagram_title.is_some(), options.work_meter())?;
     let css = journey_css_with_resolved_typography(
         diagram_id,
         effective_config,
@@ -562,6 +580,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         typography_theme.font_family_css(),
         typography_theme.font_size_css(),
         !task_theme.palette_surface_owned(),
+        text_receipt.as_mut(),
     );
     let mut typography_receipt = typography_theme.begin_terminal_receipt(layout);
     if let Some(receipt) = typography_receipt.as_mut() {
@@ -583,6 +602,9 @@ pub(crate) fn render_journey_diagram_svg_model(
     );
     out.checkpoint()?;
 
+    if let Some(receipt) = text_receipt.as_mut() {
+        receipt.record_label(crate::journey::JourneyTextPaintRole::Arrowhead, None);
+    }
     for item in &layout.actor_legend {
         let _ = write!(
             &mut out,
@@ -605,20 +627,26 @@ pub(crate) fn render_journey_diagram_svg_model(
             if let Some(receipt) = typography_receipt.as_mut() {
                 receipt.record_text_run(&line.text);
             }
+            if let Some(receipt) = text_receipt.as_mut() {
+                receipt.record_label(crate::journey::JourneyTextPaintRole::Legend, None);
+            }
         }
         out.checkpoint()?;
     }
 
     let mut section_iter = layout.sections.iter();
     let mut section_index = 0usize;
-    let mut last_section: Option<&str> = None;
+    // Match layout's empty initial section: tasks before the first section have no header.
+    let mut last_section = "";
     let mut task_theme_receipt: Option<crate::journey::JourneyTaskThemeReceipt> =
         task_theme.begin_terminal_receipt();
     for (task_index, task) in layout.tasks.iter().enumerate() {
-        if last_section != Some(task.section.as_str()) {
-            let Some(section) = section_iter.next() else {
-                break;
-            };
+        if last_section != task.section {
+            let section = section_iter
+                .next()
+                .ok_or_else(|| crate::Error::InvalidModel {
+                    message: "Journey section layout is missing a task's section header".to_owned(),
+                })?;
             let section_class = format!("journey-section section-type-{}", section.num);
             write_section_rect(
                 &mut out,
@@ -643,6 +671,12 @@ pub(crate) fn render_journey_diagram_svg_model(
             )?;
             out.push_str("</g>");
             out.checkpoint()?;
+            if let Some(receipt) = text_receipt.as_mut() {
+                receipt.record_label(
+                    crate::journey::JourneyTextPaintRole::Section,
+                    Some(&theme.text_color),
+                );
+            }
             if let Some(receipt) = task_theme_receipt.as_mut() {
                 receipt.record_checkpointed_section(
                     section_index,
@@ -652,7 +686,7 @@ pub(crate) fn render_journey_diagram_svg_model(
             section_index += 1;
         }
 
-        last_section = Some(task.section.as_str());
+        last_section = task.section.as_str();
 
         let _ = write!(
             &mut out,
@@ -664,6 +698,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             y2 = fmt(task.line_y2),
         );
         options.checkpoint_emit()?;
+
+        if let Some(receipt) = text_receipt.as_mut() {
+            receipt.record_line();
+        }
 
         let _ = write!(
             &mut out,
@@ -719,6 +757,11 @@ pub(crate) fn render_journey_diagram_svg_model(
             }
         }
 
+        if !matches!(task.mouth, crate::model::JourneyMouthKind::Ambivalent) {
+            if let Some(receipt) = text_receipt.as_mut() {
+                receipt.record_label(crate::journey::JourneyTextPaintRole::Mouth, None);
+            }
+        }
         out.push_str("</g>");
 
         let emitted_fill = task_theme.terminal_fill_css_for_task(task_index);
@@ -766,6 +809,12 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
         out.checkpoint()?;
+        if let Some(receipt) = text_receipt.as_mut() {
+            receipt.record_label(
+                crate::journey::JourneyTextPaintRole::Task,
+                Some(&theme.text_color),
+            );
+        }
         if let Some(receipt) = task_theme_receipt.as_mut() {
             receipt.record_checkpointed_task_with_terminal_paint(
                 task_index,
@@ -789,6 +838,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             text = escape_xml(title),
         );
         out.checkpoint()?;
+        if let Some(receipt) = text_receipt.as_mut() {
+            // A nonempty journey.titleColor is an independent owner; otherwise inherit root fill.
+            receipt.record_label(crate::journey::JourneyTextPaintRole::Title, None);
+        }
     }
 
     let _ = write!(
@@ -803,6 +856,14 @@ pub(crate) fn render_journey_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if let Some(mut receipt) = text_receipt {
+        receipt.record_line();
+        if !text_paint.record_terminal(receipt) {
+            return Err(crate::Error::InvalidModel {
+                message: "Journey text paint receipt did not match the terminal SVG".to_owned(),
+            });
+        }
+    }
     if task_theme_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Journey task radius receipt did not match the terminal SVG".to_string(),
@@ -915,6 +976,11 @@ mod tests {
             &JourneyDiagramRenderModel::default(),
             &task_theme,
             &typography_theme,
+            &crate::journey::JourneyTextPaintPlan::resolve(
+                None,
+                &MermaidConfig::empty_object(),
+                execution.work_meter(),
+            )?,
             &serde_json::json!({}),
             None,
             &DeterministicTextMeasurer::default(),
@@ -978,8 +1044,12 @@ mod tests {
         });
 
         let theme = MermaidThemeAdapter::new(&cfg).journey();
-        let css = journey_css("journey", &cfg, &theme, true);
+        let parts = info_css_parts_with_config("journey", &cfg);
+        let css = journey_css_from_parts("journey", &theme, true, parts, None).css;
 
+        assert!(css.contains(
+            r#"#journey .label{font-family:"ibm plex sans",arial,sans-serif;color:#101010;}"#
+        ));
         assert!(css.contains(r#"#journey line{stroke:#101010;}"#));
         assert!(css.contains(r#"#journey .face{fill:#303030;stroke:#999;}"#));
         assert!(css.contains(r#"#journey .node rect,#journey .node circle,#journey .node ellipse,#journey .node polygon,#journey .node path{fill:#404040;stroke:#505050;stroke-width:1px;}"#));
@@ -995,6 +1065,20 @@ mod tests {
         assert!(css.contains(r#"#journey .actor-0{fill:#d0d0d0;}"#));
         assert!(css.contains(r#"#journey .actor-1{fill:#e0e0e0;}"#));
         assert!(css.contains(r#"#journey .flowchart-link{stroke:#202020;fill:none;}"#));
+    }
+
+    #[test]
+    fn journey_css_uses_default_font_and_edge_color() {
+        let cfg = serde_json::json!({});
+        let theme = MermaidThemeAdapter::new(&cfg).journey();
+        let parts = info_css_parts_with_config("journey", &cfg);
+        let css = journey_css_from_parts("journey", &theme, true, parts, None).css;
+
+        assert!(css.contains(
+            r#"#journey .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}"#
+        ));
+        assert!(css.contains(r#"#journey .edgePaths .path{stroke:#333333;stroke-width:1.5px;}"#));
+        assert!(css.contains(r#"#journey .flowchart-link{stroke:#333333;fill:none;}"#));
     }
 
     #[test]
@@ -1076,6 +1160,11 @@ mod tests {
                 &JourneyDiagramRenderModel::default(),
                 &task_theme,
                 &typography_theme,
+                &crate::journey::JourneyTextPaintPlan::resolve(
+                    None,
+                    &MermaidConfig::from_value(cfg.clone()),
+                    options.work_meter(),
+                )?,
                 &cfg,
                 None,
                 &DeterministicTextMeasurer::default(),
@@ -1135,6 +1224,11 @@ mod tests {
                 &JourneyDiagramRenderModel::default(),
                 &task_theme,
                 &typography_theme,
+                &crate::journey::JourneyTextPaintPlan::resolve(
+                    None,
+                    &MermaidConfig::empty_object(),
+                    options.work_meter(),
+                )?,
                 &serde_json::json!({}),
                 None,
                 &DeterministicTextMeasurer::default(),

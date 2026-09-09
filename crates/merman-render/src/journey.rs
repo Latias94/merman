@@ -10,10 +10,12 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
+mod text_paint;
 mod theme;
 mod typography;
 
 pub(crate) use config::{JourneyConfigView, default_use_max_width};
+pub(crate) use text_paint::{JourneyTextPaintPlan, JourneyTextPaintReceipt, JourneyTextPaintRole};
 pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
 pub(crate) use typography::JourneyTypographyThemePlan;
 

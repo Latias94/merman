@@ -61,6 +61,192 @@ fn journey_typography_theme(font_size: f32) -> merman_render::diagram_theme::Dia
 }
 
 #[test]
+fn journey_text_fill_has_portable_terminal_evidence() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for paint in [
+            CanvasPaint::solid("#123456").unwrap(),
+            CanvasPaint::Transparent,
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .expect("compile Journey Text.fill");
+            let parsed = merman_render::__private::install_parse_compatibility(
+                &theme,
+                Engine::new(),
+            )
+            .parse_diagram_for_render_model_sync(
+                "journey\n  title Release\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                ParseOptions::strict(),
+            )
+            .expect("parse Journey")
+            .expect("detect Journey");
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .expect("start portable Journey session");
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .expect("prepare Journey");
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .expect("Journey Text.fill has direct portable evidence");
+            roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG");
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+fn render_journey_text_rules(
+    source: &str,
+    styles: ThemeRuleSet,
+    config: serde_json::Value,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Journey rules");
+    let parsed = merman_render::__private::install_parse_compatibility(
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(config)),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .expect("parse Journey")
+    .expect("detect Journey");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .expect("begin Journey session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+#[test]
+fn journey_text_fill_preserves_unsectioned_tasks_and_empty_diagram_lines() {
+    for (source, tasks) in [
+        ("journey\n", 0),
+        ("journey\n  title Release\n", 0),
+        ("journey\n  Unsectioned: 5: Actor\n", 1),
+        (
+            "journey\n  Unsectioned: 5: Actor\n  section Delivery\n  Named: 3: Actor\n",
+            2,
+        ),
+    ] {
+        let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        ));
+        let rendered = render_journey_text_rules(source, styles, serde_json::json!({}))
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG");
+        let task_count = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "task")
+                    })
+            })
+            .count();
+        assert_eq!(task_count, tasks, "{source}");
+        let lines = document
+            .descendants()
+            .filter(|node| node.has_tag_name("line") && node.attribute("class") != Some("mouth"))
+            .count();
+        assert_eq!(lines, tasks + 1, "task lines and persistent activity line");
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_text_fill_does_not_certify_unsupported_siblings() {
+    for config in [
+        serde_json::json!({}),
+        serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+    ] {
+        for font_sibling in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if font_sibling {
+                patch.typography.font_size_px = Specified::Value(40.0);
+            } else {
+                patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+            }
+            let styles =
+                ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Text, patch));
+            let error = render_journey_text_rules(
+                "journey\n  section Delivery\n  Ship: 5: Actor\n",
+                styles,
+                config.clone(),
+            )
+            .err()
+            .expect("typed fill must not certify an unsupported sibling");
+            assert!(
+                matches!(error, merman_render::Error::UnverifiedFamilyTheme { .. }),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn journey_text_fill_config_owner_and_shadowed_palette_are_accounted() {
+    for config_owned in [false, true] {
+        let styles = ThemeRuleSet::default()
+            .with_ordinal_palette(
+                ThemeTarget::Text,
+                OrdinalPalette::new([merman_render::diagram_theme::ThemeColorValue::parse(
+                    "#fedcba",
+                )
+                .unwrap()])
+                .unwrap(),
+            )
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ));
+        let config = if config_owned {
+            serde_json::json!({"themeVariables": {"textColor": "#abcdef"}})
+        } else {
+            serde_json::json!({})
+        };
+        let rendered = render_journey_text_rules(
+            "journey\n  section Delivery\n  Ship: 5: Actor\n",
+            styles,
+            config,
+        )
+        .expect("source owner and inactive palette are portable");
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.accounted_count(), 2);
+        assert_eq!(evidence.applied_count(), usize::from(!config_owned));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            1 + usize::from(config_owned)
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
 fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
     for variant in [None, Some(ThemeVariant::Default)] {
         for (paint, expected_paint) in [("#123456", "#123456"), ("transparent", "#00000000")] {

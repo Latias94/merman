@@ -21,9 +21,8 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 #[test]
 fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        0x53, 0x8d, 0xb4, 0x7c, 0xb8, 0x66, 0x3a, 0x43, 0xc8, 0xa9, 0x37, 0x08, 0xed, 0x46, 0x45,
-        0x0c, 0x68, 0xf5, 0xb8, 0x18, 0x31, 0x29, 0x2d, 0x7c, 0x26, 0x96, 0x27, 0xe9, 0x37, 0x8f,
-        0x3f, 0xce,
+        234, 248, 144, 208, 35, 120, 120, 26, 110, 140, 49, 15, 204, 101, 217, 213, 12, 182, 75,
+        57, 114, 129, 30, 23, 24, 119, 200, 95, 205, 165, 44, 229,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
         0x95, 0xdd, 0x05, 0x43, 0x4f, 0x1d, 0x61, 0xb2, 0x62, 0x0c, 0xd6, 0x5f, 0x2d, 0x95, 0xf9,
@@ -39,7 +38,7 @@ fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert_eq!(status.matrix_route_count(), 258);
+    assert_eq!(status.matrix_route_count(), 254);
     assert_eq!(status.matrix_family_count(), 14);
     assert_eq!(status.dispatched_family_count(), 14);
     assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);

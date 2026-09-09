@@ -1555,10 +1555,15 @@ pub(crate) struct TimelineFamilyArtifact {
 pub(crate) struct JourneyFamilyArtifact {
     pair: FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout>,
     task_theme: crate::journey::JourneyTaskTheme,
+    text_paint: crate::journey::JourneyTextPaintPlan,
     typography_theme: crate::journey::JourneyTypographyThemePlan,
 }
 
 impl JourneyFamilyArtifact {
+    pub(crate) const fn text_paint(&self) -> &crate::journey::JourneyTextPaintPlan {
+        &self.text_paint
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<diagrams::journey::JourneyDiagramRenderModel, JourneyDiagramLayout> {
@@ -2453,6 +2458,7 @@ impl BuiltinFamilyArtifact {
         match self {
             Self::Journey(artifact) => {
                 let mut evidence = artifact.task_theme().finish_evidence();
+                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
                 Some(evidence)
             }

@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 53;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 54;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    0xc4, 0xb3, 0x4a, 0xeb, 0x98, 0x13, 0x3b, 0xb9, 0x1f, 0x3f, 0xb2, 0x95, 0x5f, 0xb2, 0x6f, 0xc0,
-    0xf3, 0xbf, 0x00, 0xb3, 0xb6, 0x96, 0x7a, 0x34, 0x74, 0x72, 0xf5, 0xdb, 0xda, 0xdd, 0xf8, 0xf6,
+    33, 52, 17, 94, 220, 176, 161, 170, 1, 36, 91, 93, 140, 237, 38, 20, 10, 16, 196, 238, 212,
+    126, 63, 209, 4, 165, 47, 40, 191, 235, 255, 134,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -341,6 +341,8 @@ const GANTT_TASK_WARNING_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::GanttTaskWarningStroke];
 const JOURNEY_TASK_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskFill];
+const JOURNEY_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TextFill];
 const JOURNEY_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::JourneyTaskStroke];
 const KANBAN_TASK_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
@@ -363,7 +365,37 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 296] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 300] = [
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        JOURNEY_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        JOURNEY_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        JOURNEY_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::JOURNEY,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        JOURNEY_TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::C4,
         ThemeTarget::Text,
@@ -3372,20 +3404,27 @@ mod tests {
             .iter()
             .filter(|route| route.id.family_id() == DiagramFamilyId::JOURNEY)
             .collect::<Vec<_>>();
-        assert_eq!(journey_routes.len(), 8);
-        for (facet, projection) in [
+        assert_eq!(journey_routes.len(), 12);
+        for (target, facet, projection) in [
             (
+                ThemeTarget::JourneyTask,
                 ThemeRouteCutoverFacet::Fill,
                 ThemeRouteCutoverProjection::JourneyTaskFill,
             ),
             (
+                ThemeTarget::JourneyTask,
                 ThemeRouteCutoverFacet::Stroke,
                 ThemeRouteCutoverProjection::JourneyTaskStroke,
+            ),
+            (
+                ThemeTarget::Text,
+                ThemeRouteCutoverFacet::Fill,
+                ThemeRouteCutoverProjection::TextFill,
             ),
         ] {
             let routes = journey_routes
                 .iter()
-                .filter(|route| route.id.facet() == facet)
+                .filter(|route| route.id.target() == target && route.id.facet() == facet)
                 .collect::<Vec<_>>();
             assert_eq!(routes.len(), 4);
             assert!(

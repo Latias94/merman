@@ -4,7 +4,7 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-08
+## Snapshot: 2026-09-09
 
 The source inventories, not this summary, authorize rendering and retirement:
 
@@ -12,16 +12,17 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 19/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 14/33; 258 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 14/33; 254 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 47 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v53; 296 routes / 334 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 48 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v54; 300 routes / 338 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v2; 58 routes / 116 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 53 adds four C4 Text.fill routes, each with Classic, Neo, and HandDrawn
-witnesses. Gantt Warning today and vertical strokes retain separate profiles.
+output files. Version 54 adds four Journey Text.fill routes with Classic witnesses. The four C4
+Text.fill routes retain Classic, Neo, and HandDrawn witnesses. Gantt Warning today and vertical
+strokes retain separate profiles.
 The today profile fixes the runtime clock to 2024-01-03 within the task interval; `todayMarker`
 is a style directive, not a clock override. Neither terminal can supply the other's pixel evidence.
 Neither KTD17 nor KTD23 is a percentage of all theme capabilities. Their selector/value domains
@@ -77,6 +78,11 @@ or native-export qualification for an otherwise unverified output.
 
 Important boundaries that a family-level count cannot express:
 
+- Journey static unqualified/Default Text.fill owns root inherited paint, native/HTML labels,
+  actor legends, and generic line strokes. Explicit `themeVariables.textColor` remains the owner;
+  `journey.titleColor` owns only the diagram title. Actor/task paints and the mouth's fixed stroke
+  remain independent. Even a text-less diagram emits an activity line, so Text.fill is applicable.
+  KTD17 replaces only `text.fill`; the separate legacy `title.fill` projection is not retired here.
 - C4 static unqualified/Default Text.fill owns the root inherited color and optional diagram title.
   Shape, boundary, and relationship labels retain independent colors. Explicit
   `themeVariables.textColor` owns the root; a title-less document with statically owned label colors

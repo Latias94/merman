@@ -294,6 +294,11 @@ const JOURNEY_TASK_PAINT_SOURCE: &str = r#"journey
   section Delivery
     Ship release: 5: Maintainer
 "#;
+const JOURNEY_TEXT_PAINT_SOURCE: &str = r#"journey
+  title Cutover Journey text
+  section Delivery
+    Ship release: 5: Maintainer
+"#;
 const TIMELINE_EVENT_FILL_SOURCE: &str = r#"timeline
   title Cutover Timeline event
   section Delivery
@@ -581,6 +586,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::JourneyTask,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(JOURNEY_TASK_PAINT_SOURCE),
+        (DiagramFamilyId::JOURNEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(JOURNEY_TEXT_PAINT_SOURCE)
+        }
         (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
             Ok(TIMELINE_EVENT_FILL_SOURCE)
         }
@@ -1540,11 +1548,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_296_routes_and_334_artifact_witnesses() {
+    fn route_inventory_retains_300_routes_and_338_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 296);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 334);
+        assert_eq!(inventory.len(), 300);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 338);
     }
 
     #[test]

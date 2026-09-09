@@ -2416,15 +2416,14 @@ mod tests {
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 258);
+        assert_eq!(status.matrix_route_count(), 254);
         assert_eq!(status.matrix_family_count(), 14);
         assert_eq!(status.dispatched_family_count(), 14);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                0x53, 0x8d, 0xb4, 0x7c, 0xb8, 0x66, 0x3a, 0x43, 0xc8, 0xa9, 0x37, 0x08, 0xed, 0x46,
-                0x45, 0x0c, 0x68, 0xf5, 0xb8, 0x18, 0x31, 0x29, 0x2d, 0x7c, 0x26, 0x96, 0x27, 0xe9,
-                0x37, 0x8f, 0x3f, 0xce,
+                234, 248, 144, 208, 35, 120, 120, 26, 110, 140, 49, 15, 204, 101, 217, 213, 12,
+                182, 75, 57, 114, 129, 30, 23, 24, 119, 200, 95, 205, 165, 44, 229,
             ]
         );
         assert_eq!(
@@ -3008,10 +3007,7 @@ mod tests {
         );
         assert_eq!(
             artifact.contribution_ids,
-            BTreeSet::from([
-                "merman.legacy-family-theme.v1.journey.text.fill".to_owned(),
-                "merman.legacy-family-theme.v1.journey.title.fill".to_owned(),
-            ])
+            BTreeSet::from(["merman.legacy-family-theme.v1.journey.title.fill".to_owned()])
         );
         assert!(
             !artifact
@@ -3020,7 +3016,7 @@ mod tests {
         );
 
         let parsed = parse(&spec, JOURNEY_FIXTURE);
-        assert_eq!(
+        assert_ne!(
             parsed.effective_config.get_str("themeVariables.textColor"),
             Some("#16a34a")
         );
@@ -3032,19 +3028,13 @@ mod tests {
         for (explicit_config, expected_paths) in [
             (
                 serde_json::json!({}),
-                vec![
-                    ("text.fill", "themeVariables.textColor"),
-                    ("title.fill", "themeVariables.titleColor"),
-                ],
+                vec![("title.fill", "themeVariables.titleColor")],
             ),
             (
                 serde_json::json!({"textColor": "#112233"}),
                 vec![("title.fill", "themeVariables.titleColor")],
             ),
-            (
-                serde_json::json!({"titleColor": "#445566"}),
-                vec![("text.fill", "themeVariables.textColor")],
-            ),
+            (serde_json::json!({"titleColor": "#445566"}), vec![]),
         ] {
             let parsed = parse_with_compatibility(
                 &spec,

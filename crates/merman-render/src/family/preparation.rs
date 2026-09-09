@@ -620,6 +620,11 @@ fn prepare_journey_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let text_paint = crate::journey::JourneyTextPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        execution.work_meter_ref(),
+    )?;
     let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -641,6 +646,7 @@ fn prepare_journey_family(
         JourneyFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             task_theme,
+            text_paint,
             typography_theme,
         },
     )))

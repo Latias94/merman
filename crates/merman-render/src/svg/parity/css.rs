@@ -505,6 +505,18 @@ impl InfoCssWriter {
         &self.values.font_family
     }
 
+    pub(super) fn with_text_color(mut self, text_color: &str) -> Self {
+        self.values.text_color = text_color.to_owned();
+        self
+    }
+
+    pub(super) fn into_parts<I>(self, diagram_id: I) -> InfoCssParts
+    where
+        I: Copy + std::fmt::Display,
+    {
+        info_css_parts_from_values(diagram_id, self.values)
+    }
+
     pub(super) fn write_prefix<I>(
         &self,
         out: &mut impl SvgOutput,

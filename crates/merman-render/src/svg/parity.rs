@@ -1132,6 +1132,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             artifact.task_theme(),
             artifact.typography_theme(),
+            artifact.text_paint(),
             effective_config_value,
             title,
             measurer,

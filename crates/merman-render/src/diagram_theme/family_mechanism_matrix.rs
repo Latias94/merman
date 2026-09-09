@@ -476,6 +476,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_STROKE)
         }
+        (DiagramFamilyId::JOURNEY, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Cluster,
@@ -1889,6 +1892,23 @@ pub(super) fn classify_rule_facet(
         && target == ThemeTarget::Edge
         && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
         && facet == FamilyThemeRuleFacet::StrokeWidth
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::JOURNEY
+        && target == ThemeTarget::Text
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -5445,6 +5465,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::JOURNEY,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::JOURNEY,
                 ThemeTarget::JourneyTask,
                 Fill,
                 Transparent,
@@ -6154,7 +6188,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 146);
+        assert_eq!(qualified.len(), 148);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6212,7 +6246,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::JOURNEY)
                 .count(),
-            4
+            6
         );
         assert_eq!(
             qualified
@@ -6290,6 +6324,21 @@ mod tests {
 
         for route in qualified {
             let projections = route.projections().iter().collect::<Vec<_>>();
+            if route.family_id() == DiagramFamilyId::JOURNEY {
+                let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::JourneyTaskFill
+                    }
+                    (ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Stroke) => {
+                        ThemeRouteCutoverProjection::JourneyTaskStroke
+                    }
+                    (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::TextFill
+                    }
+                    _ => panic!("unexpected Journey route: {route:?}"),
+                };
+                assert_eq!(projections, [expected]);
+            }
             let expected_projection_count = if route.family_id() == DiagramFamilyId::C4
                 || (matches!(
                     route.family_id(),
