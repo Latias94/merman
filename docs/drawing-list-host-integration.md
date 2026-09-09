@@ -71,6 +71,20 @@ Use the public semantic/resource tables for host integration and source DOM IDs 
 | Math | v1 has `GlyphRun`, `Outline`, and raster obligations, but the current Mermaid math path is HTML/KaTeX-oriented and does not yet splice a RaTeX `DisplayList` into the public document. | Known gap. Current correct behavior is fail-closed. The next implementation should translate RaTeX display items directly to paths/glyph resources, not parse generated SVG or require host KaTeX fonts. |
 | SVG output | `RenderDocument` owns the public list and an SVG-only structural sidecar. The generic SVG encoder is admitted family-by-family while source-backed parity bridges remain. | Migration in progress. The sidecar is not a second public geometry source. |
 
+## Registry icon assets
+
+TreeView lowers registered icon assets directly to public primitives, using the same lookup and
+alias geometry as SVG. The supported subset includes groups, paths, rectangles, circles, ellipses,
+lines, polygons, polylines, affine transforms, and resolved solid fill/stroke styles. Viewport
+clipping and non-square `xMidYMid meet` placement are explicit commands. No final diagram SVG is
+parsed to produce the list, and hosts do not load icon assets themselves.
+
+Missing registry names use Mermaid's blue rectangle and host-text question mark. Existing assets
+with unsupported effects are not replaced by that fallback. Stylesheets, class-driven styles,
+filters, referenced resources, asset text/metadata, and nontrivial group opacity currently fail
+explicitly; dash patterns longer than 32 entries are also outside this initial asset subset.
+These asset limits do not restrict the general DrawingList protocol's own supported commands.
+
 ## Text policy
 
 The default host contract is host-shaped text, not universal outline conversion. Merman's layout

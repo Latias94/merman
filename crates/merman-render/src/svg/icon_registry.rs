@@ -1,4 +1,5 @@
 mod error;
+mod geometry;
 mod ingest;
 mod limits;
 mod lookup;
@@ -13,6 +14,7 @@ pub use limits::{
 };
 pub use pack::IconPack;
 
+pub(crate) use geometry::{IconGeometryPlan, IconTransform};
 use ingest::{BuildUsage, ParsedPack, ResolvedIcon};
 use limits::IconRegistryBuildLimits;
 use merman_core::OperationPhase;
@@ -261,6 +263,14 @@ pub struct IconRegistry {
     inner: Arc<IconRegistryInner>,
 }
 
+/// Borrowed, structurally validated Iconify asset, not sanitized output or a portability claim.
+/// Consumers must reject unsupported/security-sensitive asset effects and apply operation limits.
+pub(crate) struct ResolvedIconAsset<'a> {
+    pub(crate) body: &'a str,
+    pub(crate) element_count: usize,
+    pub(crate) geometry: IconGeometryPlan,
+}
+
 impl fmt::Debug for IconRegistry {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -287,6 +297,27 @@ impl IconRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.inner.icons.is_empty()
+    }
+
+    pub(crate) fn resolve_asset(
+        &self,
+        icon_name: &str,
+        fallback_prefix: Option<&str>,
+    ) -> crate::Result<Option<ResolvedIconAsset<'_>>> {
+        let Some(key) = lookup::resolve_icon_key(icon_name, fallback_prefix) else {
+            return Ok(None);
+        };
+        self.inner
+            .icons
+            .get(&key)
+            .map(|icon| {
+                Ok(ResolvedIconAsset {
+                    body: icon.body.source(),
+                    element_count: icon.body.element_count(),
+                    geometry: IconGeometryPlan::new(icon)?,
+                })
+            })
+            .transpose()
     }
 
     pub(in crate::svg) fn render_icon(
@@ -370,6 +401,49 @@ fn build_allocation_error(
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn resolved_assets_share_lookup_alias_geometry_and_borrowed_source() {
+        let registry = IconRegistry::from_packs([IconPack::new(
+            br#"{
+            "prefix":"test", "width":20, "height":10,
+            "icons":{"shape":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10Z\"/>"}},
+            "aliases":{"turned":{"parent":"shape","rotate":1}}
+        }"#,
+        )])
+        .unwrap();
+        let base = registry.resolve_asset("test:shape", None).unwrap().unwrap();
+        let alias = registry
+            .resolve_asset("test-turned", None)
+            .unwrap()
+            .unwrap();
+        let provider = registry
+            .resolve_asset("@host:test:turned", None)
+            .unwrap()
+            .unwrap();
+        let fallback = registry
+            .resolve_asset("turned", Some("test"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(base.body, "<path fill=\"currentColor\" d=\"M0 0H20V10Z\"/>");
+        assert_eq!(base.body.as_ptr(), alias.body.as_ptr());
+        assert_eq!(base.element_count, 1);
+        assert_eq!((alias.geometry.width, alias.geometry.height), (10.0, 20.0));
+        assert_eq!(alias.geometry, provider.geometry);
+        assert_eq!(alias.geometry, fallback.geometry);
+        assert!(
+            registry
+                .resolve_asset("test:missing", None)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            registry
+                .resolve_asset(" turned", Some("test"))
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn incremental_icon_scope_preserves_the_legacy_concatenated_hash() {

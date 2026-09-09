@@ -3062,15 +3062,181 @@ src/ :::highlight icon(folder) ## source directory
 }
 
 #[test]
-fn tree_view_rejects_registry_svg_icons_instead_of_substituting_fallback_art() {
-    let error = Renderer::new()
+fn tree_view_missing_icon_uses_the_source_unknown_icon() {
+    let output = Renderer::new()
         .render(RenderRequest::drawing_list(
             "treeView-beta\nRoot icon(logos:react)\n",
             OperationControl::new(),
             DrawingListRequest::default(),
         ))
-        .expect_err("registry TreeView icons must remain an explicit capability boundary");
-    assert!(error.to_string().contains("non-builtin icon `logos:react`"));
+        .unwrap();
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("DrawingList expected")
+    };
+    let document = output.document();
+    let text = document
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            DrawingCommand::DrawText { run } if run.text == "?" => Some(run),
+            _ => None,
+        })
+        .expect("missing Iconify name uses the Mermaid fallback, not an empty icon");
+    assert_eq!(text.origin, merman_display_list::Point::new(21.16, 64.67));
+    assert_eq!(text.style.font_size, 67.75);
+    assert_eq!(text.style.font.families, ["ArialMT", "Arial"]);
+    assert!(
+        document
+            .commands
+            .iter()
+            .any(|command| matches!(command, DrawingCommand::ClipPath { .. }))
+    );
+    assert!(document.commands.iter().any(
+        |command| matches!(command, DrawingCommand::DrawPath { style, .. }
+        if style.fill == Some(Paint::solid(merman_display_list::Color::rgba(8, 126, 191, 255))))
+    ));
+}
+
+#[test]
+fn tree_view_registered_icon_preserves_viewport_alias_and_current_color() {
+    use merman_display_list::{Color, Point, Transform};
+    let pack = br#"{"prefix":"test","width":20,"height":10,"icons":{"box":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10H0Z\"/>"}},"aliases":{"turned":{"parent":"box","rotate":1}}}"#;
+    let registry =
+        merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)]).unwrap();
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+        MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": { "treeView": { "iconColor": "#123456" } }
+        })),
+    ));
+    for (name, expected) in [
+        (
+            "box",
+            Transform {
+                a: 0.7,
+                d: 0.7,
+                e: 0.0,
+                f: 3.5,
+                ..Transform::IDENTITY
+            },
+        ),
+        (
+            "turned",
+            Transform {
+                a: 0.0,
+                b: 0.7,
+                c: -0.7,
+                d: 0.0,
+                e: 10.5,
+                f: 0.0,
+            },
+        ),
+    ] {
+        let output = renderer
+            .render(RenderRequest::drawing_list(
+                &format!("treeView-beta\nRoot icon(test:{name})\n"),
+                OperationControl::new(),
+                DrawingListRequest {
+                    environment: merman::SvgEnvironment::deterministic()
+                        .with_icon_registry(registry.clone()),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::DrawingList(Some(output)) = output else {
+            panic!("DrawingList expected")
+        };
+        let document = output.document();
+        let mut matrix = Transform::IDENTITY;
+        let mut saves = Vec::new();
+        let mut painted = 0;
+        let mut viewport_origin = None;
+        for command in &document.commands {
+            match command {
+                DrawingCommand::Save => saves.push(matrix),
+                DrawingCommand::Restore => matrix = saves.pop().unwrap(),
+                DrawingCommand::ConcatTransform { transform: right } => {
+                    matrix = Transform {
+                        a: matrix.a * right.a + matrix.c * right.b,
+                        b: matrix.b * right.a + matrix.d * right.b,
+                        c: matrix.a * right.c + matrix.c * right.d,
+                        d: matrix.b * right.c + matrix.d * right.d,
+                        e: matrix.a * right.e + matrix.c * right.f + matrix.e,
+                        f: matrix.b * right.e + matrix.d * right.f + matrix.f,
+                    }
+                }
+                DrawingCommand::ClipPath { path, .. } => {
+                    assert!(path.as_str().ends_with(".asset.clip"));
+                    assert_eq!(
+                        (matrix.a, matrix.b, matrix.c, matrix.d),
+                        (1.0, 0.0, 0.0, 1.0)
+                    );
+                    viewport_origin = Some(Point::new(matrix.e, matrix.f));
+                }
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str().contains(".asset.shape.") =>
+                {
+                    let origin = viewport_origin.expect("viewport clip precedes asset geometry");
+                    assert_eq!(
+                        matrix,
+                        Transform {
+                            e: origin.x + expected.e,
+                            f: origin.y + expected.f,
+                            ..expected
+                        }
+                    );
+                    assert_eq!(
+                        style.fill,
+                        Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255)))
+                    );
+                    assert!(style.stroke.is_none());
+                    let resource = document
+                        .resources
+                        .iter()
+                        .find_map(|resource| match resource {
+                            merman_display_list::DrawingResource::Path(resource)
+                                if &resource.id == path =>
+                            {
+                                Some(resource)
+                            }
+                            _ => None,
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        resource.segments[0],
+                        merman_display_list::PathSegment::MoveTo {
+                            to: Point::new(0.0, 0.0)
+                        }
+                    );
+                    painted += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(painted, 1);
+        assert!(
+            !document.commands.iter().any(
+                |command| matches!(command, DrawingCommand::DrawText { run } if run.text == "?")
+            )
+        );
+    }
+}
+
+#[test]
+fn tree_view_rejects_unsupported_registry_effects_instead_of_substituting_fallback_art() {
+    let pack = br#"{"prefix":"test","icons":{"filtered":{"body":"<path d=\"M0 0L16 16\" style=\"filter:blur(2px)\"/>"}}}"#;
+    let registry =
+        merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)]).unwrap();
+    let error = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            "treeView-beta\nRoot icon(test:filtered)\n",
+            OperationControl::new(),
+            DrawingListRequest {
+                environment: merman::SvgEnvironment::deterministic().with_icon_registry(registry),
+                ..Default::default()
+            },
+        ))
+        .expect_err("an existing non-portable icon must not be replaced by the unknown icon");
+    assert!(error.to_string().contains("filter"), "{error}");
 }
 
 #[test]

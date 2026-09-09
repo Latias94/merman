@@ -55,26 +55,23 @@ routing. It is withdrawn. Running `compare-tree-view-svgs --check-dom --dom-mode
 --dom-decimals 3` on `bd3dac32e` with TreeView admitted selected 17 fixtures: 12 canonical
 outputs had DOM differences and 5 fell back for unsupported registry icons. None passed.
 The local evidence is `target/compare/treeView_bd3dac32e_canonical_parity_root.md`.
-The candidate now projects paint and font attributes from public commands without replaying
-TreeView theme CSS. Its exact full-viewport white background can use root CSS; edited or
-removed backgrounds keep their public paint semantics. Public text preserves whitespace and
-`middle` baseline semantics. A mutation test verifies config independence, edited text paint,
-and background edits/removal. Source containers now carry equivalent semantic scopes without
-extra wrappers or duplicate accessible names; edited names, descriptions, and links retain generic
-semantic projection. A full-family candidate comparison at `558f7316e` still passed none of the
-17 fixtures (12 canonical outputs with differences; 5 registry-icon bridges). Its report is
-`target/compare/treeView_558f7316e_scopes_parity_root.md`. Root/container and a11y ordering
-converged, but public style attributes and icon path representation still differ. The report also
-exposed a missing closing parenthesis in the icon translation, now covered by transform parsing.
-Style projection, source icon structure, and registry-icon support remain unfinished.
-Historical legacy parity reports are not canonical admission evidence.
+At `53982cbfb`, all 12 builtin/no-icon canonical outputs pass the full-family DOM/root check;
+5 registry-icon inputs still bridge. Evidence: `target/compare/treeView_public_paths_parity_root.md`.
+Shared text/path CSS is derived from public styles, not replayed theme CSS. Heterogeneous edits
+disable class sharing. Source containers retain edited accessibility/link metadata. Builtin icon
+spelling is used only after exact public-path equality; edited geometry, strokes, or nonuniform
+transforms keep generic public projection without an implicit private clip.
 
-The `ec817b096` candidate derives shared text CSS exclusively from identical public text styles;
-heterogeneous siblings retain explicit attributes. Focused mutation tests cover that fallback,
-and icon viewports now follow public scale edits. The full-family report
-`target/compare/treeView_ec817b096_text_css_parity_root.md` still records 12 canonical DOM
-mismatches and 5 registry-icon bridges, so TreeView remains unadmitted. Path presentation and
-icon representation still require convergence; moving text styling into CSS is not admission.
+A three-fixture Chromium probe (`target/compare/treeview-public-paint-probe.json`) confirms text
+and stroke styling. Remaining browser differences include RGBA8 alpha quantization (0.15 becomes
+38/255) and the existing deterministic text-height residual (17.6px versus the browser's 18px),
+which accumulates in row positions. These are not hidden by pixel adjustments or a new tolerance.
+
+Registry assets now have a direct portable primitive lowerer, shared Iconify alias geometry,
+explicit viewport clipping, and the source unknown-icon fallback. Filters, resource references,
+asset text, nontrivial group opacity, and other unsupported asset effects remain explicit errors.
+Registry-asset SVG DOM projection is not yet admitted. TreeView therefore remains bridged;
+historical legacy parity reports and focused adapter tests are not canonical admission evidence.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

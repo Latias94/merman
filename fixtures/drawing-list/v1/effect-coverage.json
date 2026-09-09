@@ -96,7 +96,7 @@
     {
       "family": "journey",
       "source": "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n",
-      "expected_effects": ["host_text", "path"]
+      "expected_effects": ["clip_path", "host_text", "path"]
     },
     {
       "family": "requirement",
@@ -289,14 +289,13 @@
       "evidence": "bounded hachure and outline paths with exact paint opacity; seeded path and painter-order parity are checked in venn_svg_test"
     },
     {
-      "id": "external-icon",
-      "disposition": "error",
+      "id": "unknown-icon",
+      "disposition": "vector",
       "family": "treeView",
       "source": "treeView-beta\nRoot icon(logos:react)\n",
-      "assertion": "error_message",
-      "expected_effects": [],
-      "expected_error": "non-builtin icon `logos:react`",
-      "evidence": "structured DrawingListUnavailable instead of embedding registry SVG"
+      "assertion": "clip_path",
+      "expected_effects": ["clip_path", "host_text", "path", "transform"],
+      "evidence": "a missing registry icon uses Mermaid's clipped blue rectangle and host-text question mark; existing unsupported assets fail explicitly in the facade icon regression"
     }
   ]
 }

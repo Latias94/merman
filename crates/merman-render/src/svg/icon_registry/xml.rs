@@ -153,6 +153,10 @@ impl ValidatedIconBody {
         self.source.len()
     }
 
+    pub(super) fn source(&self) -> &str {
+        &self.source
+    }
+
     pub(super) const fn element_count(&self) -> usize {
         self.element_count
     }

@@ -16,6 +16,7 @@ mod eventmodeling;
 mod flowchart;
 mod gantt;
 mod gitgraph;
+mod icon_asset;
 mod info;
 mod ishikawa;
 mod journey;
@@ -1101,8 +1102,25 @@ fn portable_font_unavailable(family: RenderFamilyKind, error: PortableFontFamily
 }
 
 pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
-    let mut cursor = PathCursor::default();
     let mut output = Vec::new();
+    write_svg_path(data, &mut |segment| {
+        output
+            .try_reserve(1)
+            .map_err(|_| Error::DrawingListAllocationFailed {
+                collection: "source SVG path segments",
+            })?;
+        output.push(segment);
+        Ok(())
+    })?;
+    Ok(output)
+}
+
+/// Lower source-asset geometry directly into a bounded builder's segment sink.
+pub(crate) fn write_svg_path(
+    data: &str,
+    emit: &mut dyn FnMut(PathSegment) -> Result<()>,
+) -> Result<()> {
+    let mut cursor = PathCursor::default();
     for segment in PathParser::from(data) {
         let segment = segment.map_err(|error| Error::InvalidModel {
             message: format!("invalid source-backed SVG path: {error}"),
@@ -1113,25 +1131,25 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 cursor.current = to;
                 cursor.subpath_start = to;
                 cursor.reset_controls();
-                output.push(PathSegment::MoveTo { to });
+                emit(PathSegment::MoveTo { to })?;
             }
             SvgPathSegment::LineTo { abs, x, y } => {
                 let to = cursor.point(abs, x, y);
                 cursor.current = to;
                 cursor.reset_controls();
-                output.push(PathSegment::LineTo { to });
+                emit(PathSegment::LineTo { to })?;
             }
             SvgPathSegment::HorizontalLineTo { abs, x } => {
                 let to = Point::new(if abs { x } else { cursor.current.x + x }, cursor.current.y);
                 cursor.current = to;
                 cursor.reset_controls();
-                output.push(PathSegment::LineTo { to });
+                emit(PathSegment::LineTo { to })?;
             }
             SvgPathSegment::VerticalLineTo { abs, y } => {
                 let to = Point::new(cursor.current.x, if abs { y } else { cursor.current.y + y });
                 cursor.current = to;
                 cursor.reset_controls();
-                output.push(PathSegment::LineTo { to });
+                emit(PathSegment::LineTo { to })?;
             }
             SvgPathSegment::CurveTo {
                 abs,
@@ -1148,11 +1166,11 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 cursor.current = to;
                 cursor.cubic_control = Some(control2);
                 cursor.quadratic_control = None;
-                output.push(PathSegment::CubicTo {
+                emit(PathSegment::CubicTo {
                     control1,
                     control2,
                     to,
-                });
+                })?;
             }
             SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
                 let control1 = cursor
@@ -1163,11 +1181,11 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 cursor.current = to;
                 cursor.cubic_control = Some(control2);
                 cursor.quadratic_control = None;
-                output.push(PathSegment::CubicTo {
+                emit(PathSegment::CubicTo {
                     control1,
                     control2,
                     to,
-                });
+                })?;
             }
             SvgPathSegment::Quadratic { abs, x1, y1, x, y } => {
                 let control = cursor.point(abs, x1, y1);
@@ -1175,7 +1193,7 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 cursor.current = to;
                 cursor.cubic_control = None;
                 cursor.quadratic_control = Some(control);
-                output.push(PathSegment::QuadTo { control, to });
+                emit(PathSegment::QuadTo { control, to })?;
             }
             SvgPathSegment::SmoothQuadratic { abs, x, y } => {
                 let control = cursor
@@ -1185,7 +1203,7 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 cursor.current = to;
                 cursor.cubic_control = None;
                 cursor.quadratic_control = Some(control);
-                output.push(PathSegment::QuadTo { control, to });
+                emit(PathSegment::QuadTo { control, to })?;
             }
             SvgPathSegment::EllipticalArc {
                 abs,
@@ -1200,23 +1218,23 @@ pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
                 let to = cursor.point(abs, x, y);
                 cursor.current = to;
                 cursor.reset_controls();
-                output.push(PathSegment::ArcTo {
+                emit(PathSegment::ArcTo {
                     radius_x: rx,
                     radius_y: ry,
                     x_axis_rotation_degrees: x_axis_rotation,
                     large_arc,
                     sweep_clockwise: sweep,
                     to,
-                });
+                })?;
             }
             SvgPathSegment::ClosePath { .. } => {
                 cursor.current = cursor.subpath_start;
                 cursor.reset_controls();
-                output.push(PathSegment::Close);
+                emit(PathSegment::Close)?;
             }
         }
     }
-    Ok(output)
+    Ok(())
 }
 
 #[derive(Debug)]

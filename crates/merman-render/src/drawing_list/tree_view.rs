@@ -1,8 +1,8 @@
 //! Renderer-neutral TreeView adapter.
 //!
 //! TreeView layout already owns row geometry, connector endpoints, text bounds, icon placement,
-//! and highlight width growth. The public document expands its two built-in icons to paths and
-//! rejects arbitrary registry SVG rather than hiding or approximating it.
+//! and highlight width growth. Icon assets are lowered separately from diagram SVG; unsupported
+//! asset effects fail explicitly instead of hiding or approximating them.
 
 use super::{
     RenderDocument, SvgStructureBody, SvgStructureSidecar, TreeViewSvgBody,
@@ -205,7 +205,7 @@ impl<'a> TreeViewBuilder<'a> {
                 "x-merman-tree-view".to_string(),
                 json!({
                     "diagram_type": self.metadata.diagram_type,
-                    "icons": "builtin_paths_only",
+                    "icons": "portable_assets",
                     "text_mode": "layout_measured_host_text",
                     "use_max_width": self.layout.use_max_width,
                 }),
@@ -293,13 +293,11 @@ impl<'a> TreeViewBuilder<'a> {
             }
         }
         if let Some(icon_name) = node.resolved_icon.as_deref() {
-            let icon = tree_view_builtin_icon(icon_name).ok_or_else(|| {
-                unavailable(format!(
-                    "TreeView node `{}` uses non-builtin icon `{icon_name}`",
-                    node.name
-                ))
-            })?;
-            self.emit_icon(&semantic_id, &node, icon)?;
+            if let Some(icon) = tree_view_builtin_icon(icon_name) {
+                self.emit_icon(&semantic_id, &node, icon)?;
+            } else {
+                self.emit_external_icon(&semantic_id, &node, icon_name)?;
+            }
         }
         self.emit_node_label(&node)?;
         self.emit_description(&node)?;
@@ -361,6 +359,129 @@ impl<'a> TreeViewBuilder<'a> {
         )?;
         self.output.push_control(DrawingCommand::Restore)?;
         Ok(())
+    }
+
+    fn emit_external_icon(
+        &mut self,
+        semantic_id: &str,
+        node: &TreeViewNodeLayout,
+        name: &str,
+    ) -> Result<()> {
+        let asset = self
+            .session
+            .icon_registry()
+            .map(|registry| registry.resolve_asset(name, None))
+            .transpose()?
+            .flatten();
+        let id = format!("{semantic_id}.asset");
+        self.output.push_control(DrawingCommand::Save)?;
+        self.output.push_control(DrawingCommand::ConcatTransform {
+            transform: translate(
+                node.x + self.layout.padding_x,
+                node.y + self.layout.padding_y,
+            ),
+        })?;
+        // Nested SVG's viewport clips before viewBox/alias transforms. Keep this public so
+        // native hosts and later SVG projections agree even on overflowing asset geometry.
+        self.output.draw_clip_path(
+            ResourceId::new(format!("{id}.clip")),
+            polygon_path(&[
+                Point::new(0.0, 0.0),
+                Point::new(TREE_VIEW_ICON_SIZE, 0.0),
+                Point::new(TREE_VIEW_ICON_SIZE, TREE_VIEW_ICON_SIZE),
+                Point::new(0.0, TREE_VIEW_ICON_SIZE),
+            ]),
+            FillRule::NonZero,
+        )?;
+        if let Some(asset) = asset {
+            self.session
+                .work_meter()
+                .charge_at(asset.element_count, OperationPhase::Emit)?;
+            let geometry = asset.geometry;
+            let scale =
+                (TREE_VIEW_ICON_SIZE / geometry.width).min(TREE_VIEW_ICON_SIZE / geometry.height);
+            let transform = Transform {
+                a: scale,
+                d: scale,
+                e: (TREE_VIEW_ICON_SIZE - scale * geometry.width) / 2.0 - scale * geometry.left,
+                f: (TREE_VIEW_ICON_SIZE - scale * geometry.height) / 2.0 - scale * geometry.top,
+                ..Transform::IDENTITY
+            };
+            self.output
+                .push_control(DrawingCommand::ConcatTransform { transform })?;
+            for transform in geometry.transforms() {
+                self.output.push_control(DrawingCommand::ConcatTransform {
+                    transform: transform.matrix(),
+                })?;
+            }
+            let inherited_fill = PortableStyleResolver::new("treeView").color(
+                "textColor",
+                self.metadata
+                    .effective_config
+                    .as_value()
+                    .pointer("/themeVariables/textColor")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("#333"),
+            )?;
+            super::icon_asset::lower_icon_asset(
+                asset.body,
+                self.icon_color
+                    .ok_or_else(|| invalid("TreeView icon color was not resolved"))?,
+                inherited_fill,
+                &id,
+                &mut self.output,
+                self.session,
+                RenderFamilyKind::TreeView,
+            )?;
+        } else {
+            let scale = TREE_VIEW_ICON_SIZE / 80.0;
+            self.output.push_control(DrawingCommand::ConcatTransform {
+                transform: Transform {
+                    a: scale,
+                    d: scale,
+                    ..Transform::IDENTITY
+                },
+            })?;
+            self.output.draw_path(
+                ResourceId::new(format!("{id}.unknown.background")),
+                polygon_path(&[
+                    Point::new(0.0, 0.0),
+                    Point::new(80.0, 0.0),
+                    Point::new(80.0, 80.0),
+                    Point::new(0.0, 80.0),
+                ]),
+                PathStyle {
+                    fill_rule: FillRule::NonZero,
+                    fill: Some(Paint::solid(Color::rgba(8, 126, 191, 255))),
+                    stroke: None,
+                },
+            )?;
+            let obligation = self.text_obligation.clone();
+            self.output.draw_host_text("?", |text| TextRun {
+                text,
+                origin: Point::new(21.16, 64.67),
+                bounds: Rect::new(0.0, 0.0, 80.0, 80.0),
+                style: TextStyle {
+                    font: font(
+                        vec!["ArialMT".into(), "Arial".into()],
+                        400,
+                        FontStyle::Normal,
+                    ),
+                    font_size: 67.75,
+                    letter_spacing: 0.0,
+                    line_height: 67.75,
+                    fill: Paint::solid(Color::rgba(255, 255, 255, 255)),
+                    stroke: None,
+                    paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                },
+                anchor: TextAnchor::Start,
+                baseline: TextBaseline::Alphabetic,
+                direction: TextDirection::Auto,
+                language: None,
+                obligation,
+            })?;
+        }
+        self.output.push_control(DrawingCommand::Restore)
     }
 
     fn emit_node_label(&mut self, node: &TreeViewNodeLayout) -> Result<()> {
@@ -547,14 +668,6 @@ impl<'a> TreeViewBuilder<'a> {
 
 fn validate_node_effects(layout: &TreeViewDiagramLayout) -> Result<()> {
     for node in &layout.nodes {
-        if let Some(icon) = node.resolved_icon.as_deref()
-            && tree_view_builtin_icon(icon).is_none()
-        {
-            return Err(unavailable(format!(
-                "TreeView node `{}` uses non-builtin icon `{icon}` whose SVG subtree is not portable",
-                node.name
-            )));
-        }
         if node_has_class(node, LINE_CLASS) || node_has_class(node, HIGHLIGHT_BACKGROUND_CLASS) {
             return Err(unavailable(format!(
                 "TreeView node `{}` applies a built-in class that requires text stroke semantics",

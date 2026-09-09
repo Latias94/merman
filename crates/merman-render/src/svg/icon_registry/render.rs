@@ -313,75 +313,24 @@ impl TransformedIcon {
 }
 
 fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
-    let mut left = icon.left;
-    let mut top = icon.top;
-    let mut width = icon.width;
-    let mut height = icon.height;
-    let mut transformations = Vec::with_capacity(3);
-    let mut rotation = i32::from(icon.rotate);
-
-    if icon.h_flip {
-        if icon.v_flip {
-            rotation += 2;
-        } else {
-            transformations.push(format!(
-                "translate({} {})",
-                js_number(width + left),
-                js_number(-top)
-            ));
-            transformations.push("scale(-1 1)".to_string());
-            left = 0.0;
-            top = 0.0;
-        }
-    } else if icon.v_flip {
-        transformations.push(format!(
-            "translate({} {})",
-            js_number(-left),
-            js_number(height + top)
-        ));
-        transformations.push("scale(1 -1)".to_string());
-        left = 0.0;
-        top = 0.0;
-    }
-
-    rotation = rotation.rem_euclid(4);
-    match rotation {
-        1 => {
-            let center = height / 2.0 + top;
-            transformations.insert(
-                0,
-                format!("rotate(90 {} {})", js_number(center), js_number(center)),
-            );
-        }
-        2 => transformations.insert(
-            0,
-            format!(
-                "rotate(180 {} {})",
-                js_number(width / 2.0 + left),
-                js_number(height / 2.0 + top)
+    let plan = super::IconGeometryPlan::new(icon)?;
+    let transformations = plan
+        .transforms()
+        .map(|transform| match transform {
+            super::IconTransform::Translate { x, y } => {
+                format!("translate({} {})", js_number(x), js_number(y))
+            }
+            super::IconTransform::Scale { x, y } => {
+                format!("scale({} {})", js_number(x), js_number(y))
+            }
+            super::IconTransform::Rotate { turn, x, y } => format!(
+                "rotate({} {} {})",
+                turn.degrees(),
+                js_number(x),
+                js_number(y)
             ),
-        ),
-        3 => {
-            let center = width / 2.0 + left;
-            transformations.insert(
-                0,
-                format!("rotate(-90 {} {})", js_number(center), js_number(center)),
-            );
-        }
-        _ => {}
-    }
-    if rotation % 2 == 1 {
-        std::mem::swap(&mut left, &mut top);
-        std::mem::swap(&mut width, &mut height);
-    }
-
-    for value in [left, top, width, height] {
-        if !value.is_finite() {
-            return Err(crate::Error::invalid_icon_output(
-                "icon transformation produced non-finite geometry",
-            ));
-        }
-    }
+        })
+        .collect::<Vec<_>>();
     let wrapper = (!transformations.is_empty()).then(|| {
         (
             format!(r#"<g transform="{}">"#, transformations.join(" ")),
@@ -389,10 +338,10 @@ fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
         )
     });
     Ok(TransformedIcon {
-        left,
-        top,
-        width,
-        height,
+        left: plan.left,
+        top: plan.top,
+        width: plan.width,
+        height: plan.height,
         wrapper,
     })
 }
@@ -466,6 +415,99 @@ mod tests {
             v_flip: false,
             rotate: 0,
         }
+    }
+
+    #[test]
+    fn typed_geometry_retains_iconify_svg_transform_spelling() {
+        let mut icon = resolved_icon("<path d=\"M0 0H1\"/>");
+        icon.left = 2.0;
+        icon.top = 3.0;
+        icon.width = 20.0;
+        icon.height = 10.0;
+        for (h_flip, v_flip, rotate, expected, viewport) in [
+            (false, false, 0, None, [2.0, 3.0, 20.0, 10.0]),
+            (
+                false,
+                false,
+                1,
+                Some("rotate(90 8 8)"),
+                [3.0, 2.0, 10.0, 20.0],
+            ),
+            (
+                false,
+                false,
+                2,
+                Some("rotate(180 12 8)"),
+                [2.0, 3.0, 20.0, 10.0],
+            ),
+            (
+                false,
+                false,
+                3,
+                Some("rotate(-90 12 12)"),
+                [3.0, 2.0, 10.0, 20.0],
+            ),
+            (
+                true,
+                false,
+                1,
+                Some("rotate(90 5 5) translate(22 -3) scale(-1 1)"),
+                [0.0, 0.0, 10.0, 20.0],
+            ),
+            (
+                false,
+                true,
+                3,
+                Some("rotate(-90 10 10) translate(-2 13) scale(1 -1)"),
+                [0.0, 0.0, 10.0, 20.0],
+            ),
+            (
+                true,
+                true,
+                0,
+                Some("rotate(180 12 8)"),
+                [2.0, 3.0, 20.0, 10.0],
+            ),
+            (true, true, 2, None, [2.0, 3.0, 20.0, 10.0]),
+        ] {
+            icon.h_flip = h_flip;
+            icon.v_flip = v_flip;
+            icon.rotate = rotate;
+            let actual = transformed_icon(&icon).unwrap();
+            assert_eq!(
+                [actual.left, actual.top, actual.width, actual.height],
+                viewport
+            );
+            assert_eq!(
+                actual.wrapper,
+                expected.map(|value| (format!("<g transform=\"{value}\">"), "</g>"))
+            );
+        }
+    }
+
+    #[test]
+    fn typed_geometry_matrices_follow_svg_list_order() {
+        let mut icon = resolved_icon("<path d=\"M0 0H1\"/>");
+        icon.left = 2.0;
+        icon.top = 3.0;
+        icon.width = 20.0;
+        icon.height = 10.0;
+        icon.h_flip = true;
+        icon.rotate = 1;
+        let plan = super::super::IconGeometryPlan::new(&icon).unwrap();
+        let matrices = plan
+            .transforms()
+            .map(|step| step.matrix())
+            .collect::<Vec<_>>();
+        // SVG's rightmost matrix acts first: rotation * translation * reflection.
+        let mut point = (4.0, 5.0);
+        for matrix in matrices.iter().rev() {
+            point = (
+                matrix.a * point.0 + matrix.c * point.1 + matrix.e,
+                matrix.b * point.0 + matrix.d * point.1 + matrix.f,
+            );
+        }
+        assert_eq!(point, (8.0, 18.0));
     }
 
     fn render(
