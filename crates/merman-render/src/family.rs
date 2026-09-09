@@ -2241,6 +2241,63 @@ mod tests {
         assert!(style.contains("text[class=\"treeView-node-label\"]{"));
         assert!(style.contains("text[class=\"treeView-node-label treeView-node-dir highlight\"]{"));
         assert!(style.contains("white-space:pre"));
+        assert!(style.contains("line[class=\"treeView-node-line\"]{"));
+        assert!(style.contains("rect[class=\"treeView-highlight-bg\"]{"));
+        assert!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("line"))
+                .all(|node| node.attribute("stroke").is_none()
+                    && node.attribute("stroke-width").is_some())
+        );
+        let highlight = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+            .unwrap();
+        assert_eq!(highlight.attribute("rx"), Some("3"));
+        assert_eq!(highlight.attribute("ry"), None);
+        assert_eq!(highlight.attribute("fill"), None);
+
+        let mut edited_paths = document.clone();
+        let (id, stroke) = edited_paths
+            .public
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str().starts_with("treeView.line.") =>
+                {
+                    Some((path.as_str().to_owned(), style.stroke.as_mut().unwrap()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        stroke.paint = Paint::solid(Color::rgba(0x12, 0x34, 0x56, 128));
+        stroke.width = 7.0;
+        stroke.dash_array = vec![2.0, 3.0];
+        let edited_svg = render(&edited_paths, config);
+        let edited_xml = roxmltree::Document::parse(&edited_svg).unwrap();
+        let line = edited_xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(&id))
+            .unwrap();
+        assert_eq!(line.attribute("stroke"), Some("#123456"));
+        assert_eq!(line.attribute("stroke-width"), Some("7"));
+        assert_eq!(line.attribute("stroke-dasharray"), Some("2,3"));
+        assert!(
+            line.attribute("stroke-opacity")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                > 0.5
+        );
+        assert!(
+            !edited_xml
+                .descendants()
+                .filter(|node| node.has_tag_name("style"))
+                .filter_map(|node| node.text())
+                .any(|css| css.contains("line[class=\"treeView-node-line\"]{")),
+            "one changed edge must disable the shared rule for all edge siblings"
+        );
         let main = xml
             .descendants()
             .find(|node| node.has_tag_name("text") && node.text() == Some("main.rs"))
@@ -2360,6 +2417,152 @@ mod tests {
                 .attribute("style")
                 .unwrap_or("")
                 .contains("background-color:")
+        );
+    }
+
+    #[test]
+    fn tree_view_candidate_icon_projection_preserves_edited_geometry_and_paint() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingResource, FillRule, Paint, PathSegment,
+        };
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(folder)\n  child icon(file)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let icons: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node
+                        .attribute("data-merman-resource")
+                        .is_some_and(|id| id.ends_with(".icon"))
+            })
+            .collect();
+        assert_eq!(icons.len(), 2);
+        for (icon, name) in icons
+            .iter()
+            .zip(["mermaid-treeview:folder", "mermaid-treeview:file"])
+        {
+            assert_eq!(
+                icon.attribute("d"),
+                Some(
+                    crate::tree_view::tree_view_builtin_icon(name)
+                        .unwrap()
+                        .path_data
+                )
+            );
+            assert!(icon.parent().unwrap().has_tag_name("svg"));
+        }
+        let id = icons[0].attribute("data-merman-resource").unwrap();
+        let mut recolored = document.clone();
+        for command in &mut recolored.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == id
+            {
+                style.fill = Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 128)));
+                style.fill_rule = FillRule::EvenOdd;
+            }
+        }
+        let svg = render(&recolored);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let icon = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(id))
+            .unwrap();
+        assert_eq!(icon.attribute("fill"), Some("currentColor"));
+        assert_eq!(icon.attribute("fill-rule"), Some("evenodd"));
+        assert!(icon.attribute("style").unwrap().contains("color:#123456;"));
+        assert!(
+            icon.attribute("style")
+                .unwrap()
+                .contains("fill-opacity:0.501960")
+        );
+
+        let mut moved = recolored.clone();
+        for resource in &mut moved.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == id
+            {
+                let PathSegment::MoveTo { to } = &mut path.segments[0] else {
+                    panic!("icon starts with MoveTo")
+                };
+                to.x = 100.0;
+            }
+        }
+        let svg = render(&moved);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let icon = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(id))
+            .unwrap();
+        assert!(icon.attribute("d").unwrap().starts_with("M 100 "));
+        assert_eq!(icon.attribute("fill"), Some("#123456"));
+        assert_eq!(icon.attribute("fill-rule"), Some("evenodd"));
+        assert_eq!(
+            icon.ancestors()
+                .filter(|node| node.has_tag_name("svg"))
+                .count(),
+            1,
+            "modified public geometry must not inherit a private 24x24 clip"
+        );
+        assert!(icon.attribute("transform").is_some());
+
+        let stroke = document
+            .public
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { style, .. } => style.stroke.clone(),
+                _ => None,
+            })
+            .unwrap();
+        let mut stroked = document.clone();
+        for command in &mut stroked.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == id
+            {
+                style.stroke = Some(stroke.clone());
+            }
+        }
+        let svg = render(&stroked);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let icon = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(id))
+            .unwrap();
+        assert!(
+            icon.attribute("stroke")
+                .is_some_and(|paint| paint != "none")
+        );
+        assert_eq!(
+            icon.ancestors()
+                .filter(|node| node.has_tag_name("svg"))
+                .count(),
+            1
         );
     }
 

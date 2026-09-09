@@ -71,6 +71,63 @@ pub(super) fn shared_text_styles<'a>(
     Ok(styles)
 }
 
+/// Only source line/highlight shapes with a uniform public style can share presentation CSS.
+/// Unsupported or edited geometry disables sharing for its class, including otherwise ordinary
+/// siblings, so CSS never overrides a generic path's explicit paint.
+pub(super) fn shared_path_styles<'a>(
+    document: &'a DrawingListDocument,
+    body: &crate::drawing_list::TreeViewSvgBody,
+    resources: &BTreeMap<String, &'a DrawingResource>,
+    session: &RenderSession,
+) -> Result<BTreeMap<String, Option<&'a PathStyle>>> {
+    let mut styles = BTreeMap::new();
+    for command in &document.commands {
+        session.checkpoint(OperationPhase::Emit)?;
+        let DrawingCommand::DrawPath { path, style } = command else {
+            continue;
+        };
+        let Some(class) = body.path_classes.get(path.as_str()) else {
+            continue;
+        };
+        if !matches!(
+            class.as_str(),
+            "treeView-node-line" | "treeView-highlight-bg"
+        ) {
+            continue;
+        }
+        let geometry_matches = resources.get(path.as_str()).is_some_and(|resource| {
+            let DrawingResource::Path(path) = resource else {
+                return false;
+            };
+            if class == "treeView-node-line" {
+                line_from_path(path).is_some()
+            } else {
+                rounded_rectangle_from_path(path).is_some()
+            }
+        });
+        let candidate = (geometry_matches
+            && style.fill_rule == FillRule::NonZero
+            && style
+                .fill
+                .as_ref()
+                .is_none_or(|paint| matches!(paint, Paint::Solid { .. }))
+            && style
+                .stroke
+                .as_ref()
+                .is_none_or(|stroke| matches!(stroke.paint, Paint::Solid { .. })))
+        .then_some(style);
+        styles
+            .entry(class.clone())
+            .and_modify(|shared| {
+                if *shared != candidate {
+                    *shared = None;
+                }
+            })
+            .or_insert(candidate);
+    }
+    Ok(styles)
+}
+
 impl DocumentSvgEncoder<'_> {
     pub(super) fn write_tree_view_styles(&mut self) -> Result<()> {
         self.output.push_str("<style>")?;
@@ -110,7 +167,116 @@ impl DocumentSvgEncoder<'_> {
                 text_anchor(shared.anchor),
             )?;
         }
+        for (class, shared) in &self.tree_view_path_styles {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let Some(style) = shared else { continue };
+            let tag = if class == "treeView-node-line" {
+                "line"
+            } else {
+                "rect"
+            };
+            write!(
+                self.output,
+                "#{} {}[class=\"{}\"]{{",
+                self.diagram_id, tag, class
+            )?;
+            if let Some(Paint::Solid { color }) = style.fill {
+                write!(
+                    self.output,
+                    "fill:{};fill-opacity:{};",
+                    color_css(color),
+                    fmt(f64::from(color.alpha) / 255.0)
+                )?;
+            } else {
+                self.output.push_str("fill:none;")?;
+            }
+            if let Some(stroke) = &style.stroke {
+                let Paint::Solid { color } = stroke.paint else {
+                    return Err(invalid("TreeView shared stroke must be solid"));
+                };
+                write!(
+                    self.output,
+                    "stroke:{};stroke-opacity:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
+                    color_css(color),
+                    fmt(f64::from(color.alpha) / 255.0),
+                    line_cap(stroke.line_cap),
+                    line_join(stroke.line_join),
+                    fmt(stroke.miter_limit),
+                    fmt(stroke.dash_offset)
+                )?;
+                if stroke.dash_array.is_empty() {
+                    self.output.push_str("none")?;
+                }
+                for (index, dash) in stroke.dash_array.iter().enumerate() {
+                    if index != 0 {
+                        self.output.push(',')?;
+                    }
+                    write!(self.output, "{}", fmt(*dash))?;
+                }
+                self.output.push(';')?;
+                if tag == "rect" {
+                    write!(self.output, "stroke-width:{};", fmt(stroke.width))?;
+                }
+            } else {
+                self.output.push_str("stroke:none;")?;
+            }
+            self.output.push('}')?;
+        }
         self.output.push_str("</style>")
+    }
+
+    pub(super) fn emit_compact_tree_view_path(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        let SvgStructureBody::TreeView(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(class) = body.path_classes.get(path_id.as_str()) else {
+            return Ok(false);
+        };
+        if self.tree_view_path_styles.get(class).copied().flatten() != Some(style) {
+            return Ok(false);
+        }
+        let path = self.path_resource(path_id)?;
+        if class == "treeView-node-line" {
+            let Some((start, end)) = line_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"",
+                fmt(start.x),
+                fmt(start.y),
+                fmt(end.x),
+                fmt(end.y)
+            )?;
+            if let Some(stroke) = &style.stroke {
+                write!(self.output, " stroke-width=\"{}\"", fmt(stroke.width))?;
+            }
+        } else if class == "treeView-highlight-bg" {
+            let Some((bounds, radius)) = rounded_rectangle_from_path(path) else {
+                return Ok(false);
+            };
+            write!(
+                self.output,
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\"",
+                fmt(bounds.x),
+                fmt(bounds.y),
+                fmt(bounds.width),
+                fmt(bounds.height),
+                fmt(radius)
+            )?;
+        } else {
+            return Ok(false);
+        }
+        write!(self.output, " class=\"{}\"", class)?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
+        self.write_state_attrs()?;
+        self.write_path_metadata(path_id.as_str())?;
+        self.output.push_str("/>")?;
+        Ok(true)
     }
 
     pub(super) fn emit_compact_tree_view_text(

@@ -36,6 +36,7 @@ mod journey_marker;
 mod pie;
 mod sankey;
 mod tree_view;
+mod tree_view_icon;
 mod venn;
 
 /// Serializes one validated canonical document to SVG.
@@ -92,6 +93,8 @@ struct DocumentSvgEncoder<'a> {
     cynefin_text_styles: BTreeMap<String, Option<&'a merman_display_list::TextStyle>>,
     cynefin_path_styles: BTreeMap<String, Option<cynefin::PathCssStyle<'a>>>,
     tree_view_text_styles: BTreeMap<String, Option<tree_view::TextCssStyle<'a>>>,
+    tree_view_path_styles: BTreeMap<String, Option<&'a PathStyle>>,
+    tree_view_icons: Option<tree_view_icon::IconProjection>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -240,6 +243,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 .then(|| merman_core::MermaidConfig::from_value(effective_config.clone())),
             session,
             diagram_id,
+            tree_view_path_styles: if let SvgStructureBody::TreeView(body) = &document.svg.body {
+                tree_view::shared_path_styles(&document.public, body, &resources, session)?
+            } else {
+                BTreeMap::new()
+            },
             resources,
             resource_svg_ids,
             semantics,
@@ -279,6 +287,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 tree_view::shared_text_styles(&document.public, body, session)?
             } else {
                 BTreeMap::new()
+            },
+            tree_view_icons: if matches!(document.svg.body, SvgStructureBody::TreeView(_)) {
+                Some(tree_view_icon::IconProjection::new(session)?)
+            } else {
+                None
             },
             sankey_inline_gradients,
             emitted_sankey_gradients: BTreeSet::new(),
@@ -2455,10 +2468,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            if self.emit_compact_tree_view_path(path_id, style)? {
+                return Ok(());
+            }
             let raw_id = path_id.as_str();
             if raw_id.starts_with("treeView.node.") && raw_id.ends_with(".icon") {
-                let path = self.path_resource(path_id)?.clone();
-                return self.emit_tree_view_icon(path_id, &path, style);
+                let path = self.path_resource(path_id)?;
+                return self.emit_tree_view_icon(path_id, path, style);
             }
             let path = self.path_resource(path_id)?;
             if raw_id.ends_with(".path")
@@ -2880,49 +2896,6 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_path_metadata(raw_id)?;
         self.output.push_str("/>")?;
-        Ok(())
-    }
-
-    fn emit_tree_view_icon(
-        &mut self,
-        path_id: &ResourceId,
-        path: &PathResource,
-        style: &PathStyle,
-    ) -> Result<()> {
-        let transform = self.state.transform;
-        if transform.b.abs() > 1e-9
-            || transform.c.abs() > 1e-9
-            || (transform.a - transform.d).abs() > 1e-9
-            || !transform.a.is_finite()
-            || transform.a <= 0.0
-        {
-            return self.emit_path_as_standard(path_id, path, style);
-        }
-        let path_data = path_d(&path.segments);
-        self.output
-            .push_str("<g class=\"treeView-node-icon\" transform=\"translate(")?;
-        write!(self.output, "{},{})\">", fmt(transform.e), fmt(transform.f))?;
-        if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
-            // Preserve compositing on the icon group without changing the public geometry.
-            self.output.pop();
-            self.output.push(' ')?;
-            if self.state.opacity != 1.0 {
-                write!(self.output, "opacity=\"{}\"", fmt(self.state.opacity))?;
-            }
-            write_blend_style(&mut self.output, self.state.blend_mode)?;
-            self.output.push('>')?;
-        }
-        write!(
-            self.output,
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 24 24\"><path d=\"{}\"",
-            fmt(24.0 * transform.a),
-            fmt(24.0 * transform.d),
-            escaped_attr(&path_data),
-        )?;
-        self.write_path_style(style)?;
-        self.write_path_metadata(path_id.as_str())?;
-        self.output.push_str("/>")?;
-        self.output.push_str("</svg></g>")?;
         Ok(())
     }
 

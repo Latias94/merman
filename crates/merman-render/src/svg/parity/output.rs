@@ -85,10 +85,6 @@ impl<'a> SvgOutput<'a> {
         self.append_char(character)
     }
 
-    pub(super) fn pop(&mut self) -> Option<char> {
-        self.text.pop()
-    }
-
     pub(super) fn write_fmt(&mut self, arguments: fmt::Arguments<'_>) -> Result<()> {
         self.append_fmt(arguments)
     }
