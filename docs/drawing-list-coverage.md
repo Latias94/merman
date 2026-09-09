@@ -405,8 +405,9 @@ stroke; valid but unsupported paints such as `var(...)` still return a structure
 source normalization is charged before allocation and uses the existing placeholder decoder.
 Nine source cases agree with Chromium's computed stroke, width and opacity, including invalid
 RGB separators, hash-like entities, entity-encoded commas and repeated important declarations.
-The 43 focused Gantt tests pass; the existing empty-task semicolon fixture is not visible-color
-evidence. This does not refresh full-family structure evidence or admit Gantt as canonical.
+The 43 focused Gantt tests passed at that stage. A later browser check corrected the initial
+empty-task assumption: invalid `NaN` line lengths use zero and do paint (see the empty-marker
+evidence below). This historical run did not admit Gantt as canonical.
 
 Source-shaped projection now retains zero-extent, unpainted tasks as rectangles. If a host adds
 stroke to the public path, SVG keeps that path so the edit remains drawable rather than disappearing
@@ -894,3 +895,41 @@ pass; authored document accessibility remains independent. Tests cover repeated/
 non-breaking spaces, an empty text command, measured bounds and explicit `accTitle`. All 51 focused
 Gantt/metadata tests pass. This fix has not yet been included in another full-family comparison;
 the 121/29 report above remains the latest full structure evidence.
+
+Empty Gantt inputs now retain the today-marker semantic scope and paint a finite line at x=0.
+The pinned renderer's empty D3 domain writes `x1="NaN" x2="NaN"`; Chromium uses zero for both
+invalid lengths and visibly paints the line at the left edge. The earlier assumption that this
+was inert DOM was incorrect. `weekday_monday` and `today_marker_semicolon_truncates` have identical
+browser pixels after replacing only those attributes with zero; their computed stroke is red,
+width 2px (`target/compare/gantt_empty_today_browser.json`). No private visual sidecar is needed:
+public path coordinates, paint, and the existing semantic scope drive both outputs. A mutation
+test moves the public path to x=37 and verifies the serialized line follows; `todayMarker off`
+still omits the scope entirely.
+
+The remaining overflow-label classes reflect a discrete decision sensitive to font measurement.
+For `Create tests for renderer`, the source raw bbox is 123.78125px, the deterministic estimate
+116.82px, and the task width 121px; the resulting x changes from 992 to 926.5. For
+`Implement parser and jison`, the corresponding widths are 135.375px / 122.65px / 129px, and x
+changes from 209 to 139.5. The source calls getBBox before applying task classes, using the root
+font at 11px; the existing Rust raw-bbox route and placement formulas match this ordering.
+These are visible placement/color differences, not ignorable class noise. The focused source
+measurement replay injects the browser widths through the existing profile and asserts the
+outside class and source x. Production deterministic measurements and thresholds remain intact.
+
+The refresh `target/compare/gantt_6417ed1cd_candidate_structure.md` still reports 121/150 strict
+structure passes: empty diagrams now contain the marker, but the comparator distinguishes source
+`NaN` attributes from the equivalent finite zero coordinates. It also exposed redundant root
+accessibility after title whitespace normalization. The default root name now comes from the
+same resolved title; explicit `accTitle` and descriptions still use source metadata resolution,
+and public edits retain their independent meaning. The next full report must include that repair.
+
+The first candidate `parity-root` run is recorded separately in
+`target/compare/gantt_6417ed1cd_candidate_parity_root.md`: all 150 rendered fixtures have raw
+parity differences, with the same five skips and two unsupported-effect route failures. Its
+stronger mode observes presentation attributes versus CSS, including tick opacity and inline
+resolved text styles that structure mode omits. No blanket normalization or admission was added;
+this report extends the outstanding evidence beyond strict structure and checks root viewports.
+
+After the default-name repair, all 53 focused Gantt/metadata tests pass, including both injected
+source-width placement cases and the empty marker/public-coordinate mutation. The full comparison
+reports above predate that final repair; neither is claimed as final family admission evidence.

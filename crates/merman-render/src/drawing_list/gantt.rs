@@ -191,13 +191,10 @@ impl<'a> GanttBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.document.push_mermaid_semantic(SemanticAnnotation {
+        let mut root_semantic = self.document.resolve_mermaid_semantic(SemanticAnnotation {
             id: "gantt.document".to_string(),
             role: SemanticRole::Document,
-            title: acc_title
-                .map(str::to_owned)
-                .or_else(|| title.clone())
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
+            title: acc_title.map(str::to_owned),
             description: self
                 .model
                 .acc_descr
@@ -233,7 +230,16 @@ impl<'a> GanttBuilder<'a> {
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.emit_today_marker()?;
         // Mermaid keeps the title element even when its text is empty.
-        self.emit_title(title.as_deref().unwrap_or_default())?;
+        let default_name =
+            self.emit_title(title.as_deref().unwrap_or_default(), acc_title.is_none())?;
+        if let Some(name) = default_name {
+            root_semantic.title = Some(if name.is_empty() {
+                self.metadata.diagram_type.clone()
+            } else {
+                name
+            });
+        }
+        self.document.push_semantic(root_semantic)?;
 
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
@@ -728,28 +734,34 @@ impl<'a> GanttBuilder<'a> {
 
     fn emit_today_marker(&mut self) -> Result<()> {
         let marker = self.layout.today_marker.trim();
-        if marker.eq_ignore_ascii_case("off") || self.layout.tasks.is_empty() {
+        if marker.eq_ignore_ascii_case("off") {
             return Ok(());
         }
         let (color, width, opacity) = self.resolve_today_marker(marker)?;
-        let min_ms = self
-            .layout
-            .tasks
-            .iter()
-            .map(|task| task.start_ms)
-            .min()
-            .ok_or_else(|| invalid("Gantt today marker has no minimum task time"))?;
-        let max_ms = self
-            .layout
-            .tasks
-            .iter()
-            .map(|task| task.end_ms)
-            .max()
-            .ok_or_else(|| invalid("Gantt today marker has no maximum task time"))?;
-        let range =
-            (self.layout.width - self.layout.left_padding - self.layout.right_padding).max(1.0);
-        let x = scale_time(self.session.unix_millis(), min_ms, max_ms, range)
-            + self.layout.left_padding;
+        let x = if self.layout.tasks.is_empty() {
+            // An empty D3 time domain emits x1/x2="NaN". SVG's invalid length fallback is zero,
+            // so the pinned browser output paints the marker at the viewport's left edge.
+            // Resolve that used coordinate here; public geometry must stay finite.
+            0.0
+        } else {
+            let min_ms = self
+                .layout
+                .tasks
+                .iter()
+                .map(|task| task.start_ms)
+                .min()
+                .ok_or_else(|| invalid("Gantt today marker has no minimum task time"))?;
+            let max_ms = self
+                .layout
+                .tasks
+                .iter()
+                .map(|task| task.end_ms)
+                .max()
+                .ok_or_else(|| invalid("Gantt today marker has no maximum task time"))?;
+            let range =
+                (self.layout.width - self.layout.left_padding - self.layout.right_padding).max(1.0);
+            scale_time(self.session.unix_millis(), min_ms, max_ms, range) + self.layout.left_padding
+        };
         self.document
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "gantt.today".to_string(),
@@ -791,7 +803,7 @@ impl<'a> GanttBuilder<'a> {
         Ok(())
     }
 
-    fn emit_title(&mut self, title: &str) -> Result<()> {
+    fn emit_title(&mut self, title: &str, name_document: bool) -> Result<Option<String>> {
         self.text_classes
             .insert("gantt.title".to_string(), "titleText".to_string());
         self.document
@@ -815,6 +827,9 @@ impl<'a> GanttBuilder<'a> {
         let text_start = self.document.command_count();
         self.emit_text_in_bounds("gantt.title", &text, spec, bounds)?;
         let title_name = self.document.resolved_text_name_since(text_start)?;
+        let document_name = name_document
+            .then(|| self.document.resolved_text_name_since(text_start))
+            .transpose()?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.document.push_semantic(SemanticAnnotation {
@@ -824,7 +839,7 @@ impl<'a> GanttBuilder<'a> {
             description: None,
             link: None,
         })?;
-        Ok(())
+        Ok(document_name)
     }
 
     fn measure_text_bounds(&self, text: &str, spec: &TextEmitSpec) -> Result<Rect> {
@@ -1441,9 +1456,16 @@ mod tests {
                         .as_deref()
                 };
                 assert_eq!(name("gantt.title"), Some(expected));
-                if !accessibility.is_empty() {
-                    assert_eq!(name("gantt.document"), Some("Independent name"));
-                }
+                assert_eq!(
+                    name("gantt.document"),
+                    Some(if !accessibility.is_empty() {
+                        "Independent name"
+                    } else if expected.is_empty() {
+                        "gantt"
+                    } else {
+                        expected
+                    })
+                );
             }
         }
     }

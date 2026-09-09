@@ -73,7 +73,16 @@ impl DrawingListBuilder<'_> {
         self.resolve_source_text(source, SourceTextPurpose::Normalization)
     }
 
-    pub(crate) fn push_mermaid_semantic(&mut self, mut semantic: SemanticAnnotation) -> Result<()> {
+    pub(crate) fn push_mermaid_semantic(&mut self, semantic: SemanticAnnotation) -> Result<()> {
+        let semantic = self.resolve_mermaid_semantic(semantic)?;
+        self.push_semantic(semantic)
+    }
+
+    /// Resolve authored metadata before combining it with already-resolved public text names.
+    pub(crate) fn resolve_mermaid_semantic(
+        &self,
+        mut semantic: SemanticAnnotation,
+    ) -> Result<SemanticAnnotation> {
         for field in [&mut semantic.title, &mut semantic.description] {
             if let Some(source) = field.as_deref()
                 && let Cow::Owned(resolved) =
@@ -82,7 +91,7 @@ impl DrawingListBuilder<'_> {
                 *field = Some(resolved);
             }
         }
-        self.push_semantic(semantic)
+        Ok(semantic)
     }
 
     fn resolve_source_text<'a>(

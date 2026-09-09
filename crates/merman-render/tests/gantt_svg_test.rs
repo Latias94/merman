@@ -105,6 +105,65 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
 }
 
 #[test]
+fn gantt_source_bbox_measurements_restore_threshold_sensitive_label_placement() {
+    // Browser getBBox measurements are injected through the existing host measurement route.
+    // These fixture observations are evidence for the placement formula, not correction factors
+    // in the production deterministic profile. Only the selected task is compared: the probe
+    // deliberately returns the same width for other tasks in each fixture.
+    for (fixture, task_id, source_width, expected_bar_width, expected_x) in [
+        (
+            "upstream_cypress_gantt_spec_example_001",
+            "task5",
+            123.78125,
+            121.0,
+            992.0,
+        ),
+        (
+            "upstream_cypress_theme_spec_should_render_a_gantt_diagram_006",
+            "task2",
+            135.375,
+            129.0,
+            209.0,
+        ),
+    ] {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/gantt")
+                .join(format!("{fixture}.mmd")),
+        )
+        .expect("Gantt source fixture");
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.gantt-source-raw-bbox").unwrap(),
+                "v1",
+            )
+            .unwrap(),
+            Arc::new(RawBBoxProbeMeasurer {
+                calls: Default::default(),
+                width: source_width,
+                inputs: Default::default(),
+            }),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let layout = layout_gantt_from_text_with_environment(&source, 1_184.0, &environment);
+        let task = layout.tasks.iter().find(|task| task.id == task_id).unwrap();
+        assert_eq!(task.label.width, source_width, "{fixture}");
+        assert_eq!(task.bar.width, expected_bar_width, "{fixture}");
+        assert!(source_width > task.bar.width, "{fixture}");
+        assert!(
+            task.label
+                .class
+                .split_whitespace()
+                .any(|class| class == "taskTextOutsideRight"),
+            "{fixture}: {}",
+            task.label.class,
+        );
+        assert_eq!(task.label.x, expected_x, "{fixture}");
+    }
+}
+
+#[test]
 fn gantt_label_placement_uses_the_resolved_container_edges() {
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(

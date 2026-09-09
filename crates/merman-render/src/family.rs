@@ -3704,6 +3704,114 @@ mod tests {
     }
 
     #[test]
+    fn gantt_empty_diagram_today_marker_uses_the_browser_zero_coordinate() {
+        use merman_display_list::{DrawingResource, PathSegment, Point};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "gantt\ntitle Empty    schedule\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let marker = document
+            .public
+            .resources
+            .iter_mut()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "gantt.today.line" => Some(path),
+                _ => None,
+            })
+            .expect("the empty source diagram still paints a today marker");
+        assert_eq!(
+            marker.segments,
+            vec![
+                PathSegment::MoveTo {
+                    to: Point::new(0.0, 25.0)
+                },
+                PathSegment::LineTo {
+                    to: Point::new(0.0, 75.0)
+                },
+            ]
+        );
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(xml.root_element().attribute("aria-labelledby"), None);
+        assert!(!xml.descendants().any(|node| node.has_tag_name("title")));
+        assert_eq!(
+            xml.descendants()
+                .find(|node| node.attribute("class") == Some("titleText"))
+                .unwrap()
+                .text(),
+            Some("Empty schedule")
+        );
+        let line = xml
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .unwrap();
+        assert_eq!(line.parent().unwrap().attribute("class"), Some("today"));
+        assert_eq!(line.attribute("x1"), Some("0"));
+        assert_eq!(line.attribute("x2"), Some("0"));
+        assert_eq!(line.attribute("y1"), Some("25"));
+        assert_eq!(line.attribute("y2"), Some("75"));
+        assert!(line.attribute("style").unwrap().contains("stroke:#ff0000;"));
+        assert!(!svg.contains("NaN"));
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == "gantt.today.line"
+            {
+                for segment in &mut path.segments {
+                    match segment {
+                        PathSegment::MoveTo { to } | PathSegment::LineTo { to } => to.x = 37.0,
+                        _ => panic!("marker line"),
+                    }
+                }
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let line = xml
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .unwrap();
+        assert_eq!(line.attribute("x1"), Some("37"));
+        assert_eq!(line.attribute("x2"), Some("37"));
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("gantt\ntodayMarker off\n", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let disabled = prepare(parsed, &LayoutOptions::default(), session())
+            .unwrap()
+            .render_drawing_list(DrawingListPolicy::VectorOnly, DrawingListLimits::default())
+            .unwrap();
+        assert!(
+            !disabled
+                .document()
+                .semantics
+                .iter()
+                .any(|semantic| semantic.id == "gantt.today")
+        );
+    }
+
+    #[test]
     fn gantt_today_collection_preserves_marker_children_and_public_metadata() {
         use merman_display_list::DrawingCommand;
         let parsed = Engine::new()
