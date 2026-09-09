@@ -301,12 +301,20 @@ impl TreemapTypographyThemePlan {
         let mut retained_reservation = work_meter
             .reserve_prepared_text_retained_bytes(retained_upper_bound)
             .map_err(crate::Error::from)?;
-        let mut possible_participating_text_count = usize::from(
-            layout
-                .title
-                .as_deref()
-                .is_some_and(|title| !title.trim().is_empty()),
-        );
+        // This count only feeds unsupported typography evidence. Source styles still need to be
+        // resolved below for ordinary measurement and rendering, but an unthemed plan has no
+        // typography evidence to reconcile and must not scan every visible label just to compute
+        // an unused count.
+        let tracks_typography_evidence =
+            theme.is_some() && inherited_font_stack.typography_requested();
+        let mut possible_participating_text_count = tracks_typography_evidence
+            .then_some(usize::from(
+                layout
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| !title.trim().is_empty()),
+            ))
+            .unwrap_or_default();
         let mut section_source_styles = Vec::with_capacity(layout.sections.len());
         for section in &layout.sections {
             let style = resolve_treemap_source_text_style(
@@ -314,10 +322,15 @@ impl TreemapTypographyThemePlan {
                 root_font_size_px,
                 work_meter.as_ref(),
             )?;
-            possible_participating_text_count = possible_participating_text_count.saturating_add(
-                usize::from(section.depth != 0 && !section.name.trim().is_empty())
-                    + usize::from(layout.show_values && section.depth != 0 && section.value != 0.0),
-            );
+            if tracks_typography_evidence {
+                possible_participating_text_count = possible_participating_text_count
+                    .saturating_add(
+                        usize::from(section.depth != 0 && !section.name.trim().is_empty())
+                            + usize::from(
+                                layout.show_values && section.depth != 0 && section.value != 0.0,
+                            ),
+                    );
+            }
             section_source_styles.push(style);
         }
         let mut leaf_source_styles = Vec::with_capacity(layout.leaves.len());
@@ -327,10 +340,13 @@ impl TreemapTypographyThemePlan {
                 root_font_size_px,
                 work_meter.as_ref(),
             )?;
-            possible_participating_text_count = possible_participating_text_count.saturating_add(
-                usize::from(!leaf.name.trim().is_empty())
-                    + usize::from(layout.show_values && leaf.value != 0.0),
-            );
+            if tracks_typography_evidence {
+                possible_participating_text_count = possible_participating_text_count
+                    .saturating_add(
+                        usize::from(!leaf.name.trim().is_empty())
+                            + usize::from(layout.show_values && leaf.value != 0.0),
+                    );
+            }
             leaf_source_styles.push(style);
         }
         let retained_bytes = section_source_styles
@@ -1330,15 +1346,61 @@ struct TreemapRuleObservation {
 
 #[cfg(test)]
 mod tests {
-    use super::{TreemapTitleThemePlan, TreemapTitleThemeReceipt};
+    use super::{TreemapTitleThemePlan, TreemapTitleThemeReceipt, TreemapTypographyThemePlan};
     use crate::DiagramFamilyId;
     use crate::diagram_theme::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
         ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
     };
+    use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_core::MermaidConfig;
     use serde_json::json;
+
+    #[test]
+    fn unthemed_typography_plan_skips_evidence_only_participating_text_scan() {
+        let layout = TreemapDiagramLayout {
+            title_height: 30.0,
+            width: 960.0,
+            height: 500.0,
+            use_max_width: true,
+            diagram_padding: 8.0,
+            show_values: true,
+            value_format: ",".to_string(),
+            acc_title: None,
+            acc_descr: None,
+            title: Some("A title that still needs ordinary rendering".to_string()),
+            sections: vec![TreemapSectionLayout {
+                name: "A section".to_string(),
+                depth: 1,
+                value: 3.0,
+                x0: 0.0,
+                y0: 0.0,
+                x1: 100.0,
+                y1: 100.0,
+                class_selector: None,
+                css_compiled_styles: None,
+            }],
+            leaves: vec![TreemapLeafLayout {
+                name: "A leaf".to_string(),
+                value: 2.0,
+                parent_name: Some("A section".to_string()),
+                x0: 0.0,
+                y0: 0.0,
+                x1: 50.0,
+                y1: 50.0,
+                class_selector: None,
+                css_compiled_styles: None,
+            }],
+        };
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let config = MermaidConfig::from_value(json!({}));
+        let plan = TreemapTypographyThemePlan::resolve(None, &config, &layout, meter.into())
+            .expect("resolve unthemed Treemap typography plan");
+
+        assert_eq!(plan.possible_participating_text_count, 0);
+        assert!(plan.begin_terminal_receipt(&layout).is_none());
+    }
 
     #[test]
     fn title_receipt_requires_one_matching_stylesheet_and_title_checkpoint() {
