@@ -151,6 +151,27 @@ fn treemap_format_precision(format_str: &str) -> Option<usize> {
     (!digits.is_empty()).then(|| digits.parse().unwrap_or(6))
 }
 
+fn treemap_is_valid_but_unsupported_d3_format(format_str: &str) -> bool {
+    let format_str = format_str.trim();
+    let Some(type_char) = format_str.chars().last() else {
+        return false;
+    };
+    if !matches!(
+        type_char,
+        '%' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'n' | 'o' | 'p' | 'r' | 's' | 'x' | 'X'
+    ) {
+        return false;
+    }
+    let prefix = &format_str[..format_str.len() - type_char.len_utf8()];
+    prefix.chars().all(|character| {
+        character.is_ascii_digit()
+            || matches!(
+                character,
+                '.' | ',' | '+' | '-' | ' ' | '(' | '$' | '#' | '<' | '>' | '=' | '^' | '~'
+            )
+    })
+}
+
 fn treemap_default_format(value: f64) -> String {
     let mut formatted = treemap_format_significant(value, 12);
     if !formatted.contains('e') {
@@ -217,7 +238,7 @@ fn treemap_format_standard(value: f64, format_str: &str) -> Option<String> {
     }
 }
 
-fn treemap_format_value(value: f64, format_str: &str) -> String {
+fn treemap_format_value(value: f64, format_str: &str) -> Option<String> {
     let format_str = format_str.trim();
     let format_str = if format_str.is_empty() {
         ","
@@ -225,26 +246,40 @@ fn treemap_format_value(value: f64, format_str: &str) -> String {
         format_str
     };
     if format_str == "$0,0" {
-        return format!(
+        return Some(format!(
             "${}",
             treemap_format_standard(value, ",").unwrap_or_else(|| treemap_default_format(value))
-        );
+        ));
     }
     if format_str.starts_with('$') && format_str.contains(',') {
         let precision = treemap_format_precision(format_str)
             .map_or_else(String::new, |precision| format!(".{precision}"));
-        return format!(
+        return Some(format!(
             "${}",
             treemap_format_standard(value, &format!(",{precision}"))
                 .unwrap_or_else(|| treemap_default_format(value))
-        );
+        ));
     }
     if let Some(rest) = format_str.strip_prefix('$') {
-        return treemap_format_standard(value, rest)
-            .map(|formatted| format!("${formatted}"))
-            .unwrap_or_else(|| treemap_default_format(value));
+        if let Some(formatted) = treemap_format_standard(value, rest) {
+            return Some(format!("${formatted}"));
+        }
+        return (!treemap_is_valid_but_unsupported_d3_format(rest))
+            .then(|| treemap_default_format(value));
     }
-    treemap_format_standard(value, format_str).unwrap_or_else(|| treemap_default_format(value))
+    treemap_format_standard(value, format_str).or_else(|| {
+        if treemap_is_valid_but_unsupported_d3_format(format_str) {
+            None
+        } else {
+            Some(treemap_default_format(value))
+        }
+    })
+}
+
+fn treemap_format_value_or_error(value: f64, format_str: &str) -> Result<String> {
+    treemap_format_value(value, format_str).ok_or_else(|| Error::InvalidModel {
+        message: format!("unsupported Treemap valueFormat `{}`", format_str.trim()),
+    })
 }
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
@@ -1013,7 +1048,7 @@ pub(crate) fn render_treemap_diagram_svg(
                 Some("italic"),
             );
             let value_text = if section.value != 0.0 {
-                treemap_format_value(section.value, &layout.value_format)
+                treemap_format_value_or_error(section.value, &layout.value_format)?
             } else {
                 String::new()
             };
@@ -1266,7 +1301,7 @@ pub(crate) fn render_treemap_diagram_svg(
 
         if layout.show_values {
             let value_text = if leaf.value != 0.0 {
-                treemap_format_value(leaf.value, &layout.value_format)
+                treemap_format_value_or_error(leaf.value, &layout.value_format)?
             } else {
                 String::new()
             };
@@ -1473,19 +1508,59 @@ mod tests {
 
     #[test]
     fn treemap_value_formats_match_mermaid_special_cases() {
-        assert_eq!(treemap_format_value(1_234_567.0, ","), "1,234,567");
-        assert_eq!(treemap_format_value(1_234.5, ""), "1,234.5");
-        assert_eq!(treemap_format_value(-1_234.5, ","), "−1,234.5");
-        assert_eq!(treemap_format_value(0.0, ","), "0");
-        assert_eq!(treemap_format_value(0.35, ".1%"), "35.0%");
-        assert_eq!(treemap_format_value(0.6723, ".2f"), "0.67");
-        assert_eq!(treemap_format_value(1_234_567.0, ".2e"), "1.23e+6");
-        assert_eq!(treemap_format_value(700_000.0, "$0,0"), "$700,000");
-        assert_eq!(treemap_format_value(0.35, "$.1%"), "$35.0%");
-        assert_eq!(treemap_format_value(1_234.5, "$,.2f"), "$1.2e+3");
-        assert_eq!(treemap_format_value(1_234.5, "$,.0f"), "$1e+3");
-        assert_eq!(treemap_format_value(1_234.5, "invalid"), "1,234.5");
-        assert_eq!(treemap_format_value(1_234.5, "$invalid"), "1,234.5");
+        assert_eq!(
+            treemap_format_value(1_234_567.0, ","),
+            Some("1,234,567".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234.5, ""),
+            Some("1,234.5".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(-1_234.5, ","),
+            Some("−1,234.5".to_string())
+        );
+        assert_eq!(treemap_format_value(0.0, ","), Some("0".to_string()));
+        assert_eq!(treemap_format_value(0.35, ".1%"), Some("35.0%".to_string()));
+        assert_eq!(
+            treemap_format_value(0.6723, ".2f"),
+            Some("0.67".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234_567.0, ".2e"),
+            Some("1.23e+6".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(700_000.0, "$0,0"),
+            Some("$700,000".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(0.35, "$.1%"),
+            Some("$35.0%".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234.5, "$,.2f"),
+            Some("$1.2e+3".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234.5, "$,.0f"),
+            Some("$1e+3".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234.5, "invalid"),
+            Some("1,234.5".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(1_234.5, "$invalid"),
+            Some("1,234.5".to_string())
+        );
+        assert!(treemap_format_value(1_234.5, ".2s").is_none());
+        assert!(treemap_format_value(1_234.5, "d").is_none());
+        assert!(treemap_format_value(1_234.5, "+.1f").is_none());
+        assert_eq!(
+            treemap_format_value(1_234.5, "$,.2s"),
+            Some("$1.2e+3".to_string())
+        );
     }
 
     #[derive(Default)]

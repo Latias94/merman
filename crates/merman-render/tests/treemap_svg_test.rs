@@ -1546,6 +1546,38 @@ fn treemap_huge_overwide_source_font_rejects_nonprogress_without_a_work_limit() 
 }
 
 #[test]
+fn treemap_rejects_value_format_outside_the_supported_d3_subset() {
+    let source = r#"---
+config:
+  treemap:
+    valueFormat: .2s
+---
+treemap
+"Section"
+  "Leaf": 1234
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse Treemap with valueFormat")
+        .expect("detect Treemap with valueFormat");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin Treemap session");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Treemap")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    {
+        Ok(_) => panic!("unsupported D3 valueFormat must fail closed"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        merman_render::Error::InvalidModel { ref message }
+            if message.contains("unsupported Treemap valueFormat")
+    ));
+}
+
+#[test]
 fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
     let tag = text_tag_by_text(&svg, "Accessories");
