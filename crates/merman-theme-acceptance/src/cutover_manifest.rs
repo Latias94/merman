@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 58;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 59;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    224, 146, 35, 9, 34, 107, 184, 201, 241, 95, 27, 220, 179, 38, 154, 85, 67, 86, 63, 27, 218,
-    18, 72, 172, 160, 106, 175, 179, 229, 213, 71, 151,
+    134, 30, 153, 179, 139, 48, 37, 65, 165, 128, 156, 182, 50, 220, 241, 117, 147, 136, 100, 84,
+    105, 138, 216, 63, 206, 114, 149, 222, 15, 144, 137, 107,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -376,7 +376,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 320] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 324] = [
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -2078,6 +2078,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 320] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Node,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        NODE_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Node,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        NODE_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::GIT_GRAPH,

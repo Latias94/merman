@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::{OperationControl, OperationControlResult};
 
-use super::MermaidConfig;
+use super::{MermaidConfig, PostDetectionDefaultPaths, ThemeCompatibilityState};
 
 const MAX_OVERLAY_FAMILIES: usize = 64;
 const MAX_FAMILY_NAME_BYTES: usize = 64;
@@ -20,6 +20,62 @@ const MAX_ASSIGNMENT_KEY_BYTES: usize = 128;
 const MAX_ASSIGNMENT_STRING_BYTES: usize = 4 * 1024;
 const MAX_RETAINED_BYTES_PER_FAMILY: usize = 3 * 1024 * 1024;
 const MAX_RETAINED_BYTES_PER_OVERLAY: usize = 4 * 1024 * 1024;
+
+pub(super) fn normalize_post_detection_default_paths(
+    existing: &PostDetectionDefaultPaths,
+    family: &str,
+    paths: &[&str],
+) -> Result<PostDetectionDefaultPaths, ConfigOverlayError> {
+    validate_name(family, MAX_FAMILY_NAME_BYTES, ConfigOverlayField::Family)?;
+    if paths.len() > MAX_ASSIGNMENTS_PER_FAMILY {
+        return Err(ConfigOverlayError::LimitExceeded {
+            field: ConfigOverlayField::Assignments,
+        });
+    }
+    let mut normalized = existing
+        .get(family)
+        .into_iter()
+        .flat_map(|paths| paths.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for path in paths {
+        for (depth, key) in path.split('.').enumerate() {
+            if depth >= MAX_ASSIGNMENT_DEPTH {
+                return Err(ConfigOverlayError::LimitExceeded {
+                    field: ConfigOverlayField::AssignmentPath,
+                });
+            }
+            validate_assignment_key(key)?;
+        }
+        normalized.insert(Arc::from(*path));
+        if normalized.len() > MAX_ASSIGNMENTS_PER_FAMILY {
+            return Err(ConfigOverlayError::LimitExceeded {
+                field: ConfigOverlayField::Assignments,
+            });
+        }
+    }
+    if normalized.is_empty() {
+        return Ok(existing.clone());
+    }
+    if !existing.contains_key(family) && existing.len() >= MAX_OVERLAY_FAMILIES {
+        return Err(ConfigOverlayError::LimitExceeded {
+            field: ConfigOverlayField::Families,
+        });
+    }
+    let total_paths = existing.values().map(|paths| paths.len()).sum::<usize>()
+        - existing.get(family).map_or(0, |paths| paths.len())
+        + normalized.len();
+    if total_paths > MAX_ASSIGNMENTS_PER_OVERLAY {
+        return Err(ConfigOverlayError::LimitExceeded {
+            field: ConfigOverlayField::Assignments,
+        });
+    }
+    let mut requests = existing.clone();
+    requests.insert(
+        Arc::from(family),
+        normalized.into_iter().collect::<Vec<_>>().into(),
+    );
+    Ok(requests)
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ConfigOverlayProvenance {
@@ -408,6 +464,46 @@ impl PostDetectionConfigDefaults<'_> {
     }
 }
 
+impl MermaidConfig {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn capture_post_detection_default_decisions(
+        &mut self,
+        family: &str,
+        explicit_site_config: &MermaidConfig,
+        explicit_source_config: &MermaidConfig,
+        config_before_detection: &MermaidConfig,
+        application: &ConfigOverlayApplication,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let Some(ThemeCompatibilityState::Tracking(ownership)) = self.theme_compatibility.as_ref()
+        else {
+            return Ok(());
+        };
+        let Some(paths) = ownership.binding.post_detection_default_paths.get(family) else {
+            return Ok(());
+        };
+        let defaults = PostDetectionConfigDefaults {
+            explicit_site_config,
+            explicit_source_config,
+            config_before_detection,
+        };
+        let mut decisions = Vec::with_capacity(paths.len());
+        for path in paths.iter() {
+            control.checkpoint()?;
+            decisions.push((
+                Arc::clone(path),
+                defaults.blocks_path(self, application, path),
+            ));
+        }
+        if let Some(ThemeCompatibilityState::Tracking(ownership)) =
+            self.theme_compatibility.as_mut()
+        {
+            Arc::make_mut(ownership).post_detection_defaults = Some(decisions.into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct ConfigOverlayApplication {
     claimed_paths: BTreeSet<Arc<str>>,
@@ -605,6 +701,19 @@ fn flatten_patch(value: &Value) -> Result<Vec<ConfigOverlayAssignment>, ConfigOv
     Ok(assignments)
 }
 
+fn validate_assignment_key(key: &str) -> Result<(), ConfigOverlayError> {
+    if key.is_empty()
+        || key.len() > MAX_ASSIGNMENT_KEY_BYTES
+        || key.contains('.')
+        || key.chars().any(char::is_control)
+    {
+        return Err(ConfigOverlayError::InvalidValue {
+            field: ConfigOverlayField::AssignmentPath,
+        });
+    }
+    Ok(())
+}
+
 fn flatten_object<'a>(
     object: &'a serde_json::Map<String, Value>,
     path: &mut Vec<&'a str>,
@@ -617,15 +726,7 @@ fn flatten_object<'a>(
         });
     }
     for (key, value) in object {
-        if key.is_empty()
-            || key.len() > MAX_ASSIGNMENT_KEY_BYTES
-            || key.contains('.')
-            || key.chars().any(char::is_control)
-        {
-            return Err(ConfigOverlayError::InvalidValue {
-                field: ConfigOverlayField::AssignmentPath,
-            });
-        }
+        validate_assignment_key(key)?;
         path.push(key);
         match value {
             Value::Object(nested) if !nested.is_empty() => {
@@ -1375,6 +1476,63 @@ mod tests {
                 field: ConfigOverlayField::RetainedBytes
             }
         );
+    }
+
+    #[test]
+    fn capturing_default_decisions_is_selected_family_only_and_cancellable() {
+        let binding =
+            super::super::ThemeParseBinding::try_new([0x5a; 32], MermaidConfig::empty_object())
+                .unwrap()
+                .try_with_post_detection_default_paths("flowchart", &["a", "b", "c"])
+                .unwrap();
+        let mut config = MermaidConfig::from_theme_parse_binding(binding.clone());
+        let empty = MermaidConfig::empty_object();
+        let application = ConfigOverlayApplication::default();
+        let cancelled = OperationControl::new();
+        cancelled.cancel();
+        assert!(
+            config
+                .capture_post_detection_default_decisions(
+                    "sequence",
+                    &empty,
+                    &empty,
+                    &empty,
+                    &application,
+                    &cancelled,
+                )
+                .is_ok()
+        );
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(
+            config
+                .capture_post_detection_default_decisions(
+                    "flowchart",
+                    &empty,
+                    &empty,
+                    &empty,
+                    &application,
+                    &control,
+                )
+                .is_err()
+        );
+        config.freeze_theme_compatibility();
+        assert_eq!(config.post_detection_default_blocked("a"), None);
+
+        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        config
+            .capture_post_detection_default_decisions(
+                "flowchart",
+                &empty,
+                &empty,
+                &empty,
+                &application,
+                &OperationControl::new(),
+            )
+            .unwrap();
+        assert_eq!(config.post_detection_default_blocked("a"), None);
+        config.freeze_theme_compatibility();
+        assert_eq!(config.post_detection_default_blocked("a"), Some(false));
     }
 
     #[test]

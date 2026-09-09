@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 54);
+    assert_eq!(support.claim_revision(), 55);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -645,6 +645,7 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
 #[test]
 fn gitgraph_edge_text_and_label_fill_are_typed_partial_surfaces() {
     for target in [
+        ThemeTarget::Node,
         ThemeTarget::Text,
         ThemeTarget::NodeLabel,
         ThemeTarget::EdgeLabel,

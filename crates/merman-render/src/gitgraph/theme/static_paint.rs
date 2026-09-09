@@ -25,6 +25,7 @@ struct StaticPaintAssignment {
 
 #[derive(Debug)]
 pub(crate) struct GitGraphStaticPaintPlan {
+    node_fill: Option<super::node_fill::GitGraphNodeFillPlan>,
     assignment: Option<StaticPaintAssignment>,
     pending_key: Option<FamilyThemeMechanismKey>,
     evidence: FamilyThemeEvidence,
@@ -34,6 +35,7 @@ pub(crate) struct GitGraphStaticPaintPlan {
 impl GitGraphStaticPaintPlan {
     pub(crate) fn baseline() -> Self {
         Self {
+            node_fill: None,
             assignment: None,
             pending_key: None,
             evidence: FamilyThemeEvidence::default(),
@@ -54,6 +56,8 @@ impl GitGraphStaticPaintPlan {
         let Some(theme) = theme else {
             return Ok(plan);
         };
+        plan.node_fill =
+            super::node_fill::GitGraphNodeFillPlan::resolve(theme, effective_config, work_meter)?;
 
         let style = theme.style_with_work_meter(
             ThemeTarget::EdgeLabelBackground,
@@ -161,6 +165,10 @@ impl GitGraphStaticPaintPlan {
             .map(|assignment| assignment.paint.css())
     }
 
+    pub(crate) fn node_fill(&self) -> Option<&super::node_fill::GitGraphNodeFillPlan> {
+        self.node_fill.as_ref()
+    }
+
     pub(crate) fn begin_terminal_receipt(&self) -> Option<GitGraphStaticPaintReceipt> {
         self.assignment
             .as_ref()
@@ -200,6 +208,9 @@ impl GitGraphStaticPaintPlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        if let Some(node_fill) = self.node_fill.as_ref() {
+            node_fill.finish_evidence(&mut evidence);
+        }
         if let Some(key) = self.pending_key.clone() {
             match self.terminal_receipt.get() {
                 Some(receipt) if receipt.proves(self) => {

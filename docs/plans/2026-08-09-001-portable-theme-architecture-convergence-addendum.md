@@ -63,8 +63,12 @@ record. The current source and generated contract are authoritative for these su
   four static unqualified/Default solid/transparent Edge.fill routes through the existing
   branch-line stroke writer and `edge.stroke` projection obligation (`commitLineColor`), with
   Classic, Neo, and HandDrawn witnesses. Stroke-first fallback, explicit configuration owners,
-  and visible branch requirements remain intact; arrows gain no Edge consumer. Only Node paint
-  still requires the GitGraph bridge. KTD23 gains no retirement rows.
+  and visible branch requirements remain intact; arrows gain no Edge consumer. KTD17 v59 migrates
+  the four static unqualified/Default Node.fill routes with the same three looks. Raw ownership
+  of primaryColor, mainBkg, and tagLabelBackground is captured before fallback projection;
+  derived colors cannot suppress the typed default. Writer receipts require actual state,
+  tag, or theme-dependent branch/highlight consumers. Only Node.stroke still requires the
+  GitGraph bridge. KTD23 gains no retirement rows.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

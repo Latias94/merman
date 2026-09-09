@@ -3005,6 +3005,378 @@ fn gitgraph_label_fallbacks_require_their_own_visible_terminal() {
 }
 
 #[test]
+fn gitgraph_node_fill_reaches_state_and_tag_terminals_for_default_selectors() {
+    let source = "gitGraph\n  commit id: \"A\" type: HIGHLIGHT tag: \"v1\"\n  branch next\n  commit id: \"B\" type: REVERSE\n  checkout main\n  merge next id: \"C\"\n";
+    for theme_name in ["default", "neo", "redux-color"] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, color) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let rendered = render_gitgraph_with_theme_and_engine(
+                    source,
+                    &gitgraph_edge_rules_theme([rule]),
+                    Engine::new()
+                        .with_site_config(MermaidConfig::from_value(json!({"theme": theme_name}))),
+                    "git-node-fill-terminals",
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let css = gitgraph_stylesheet(rendered.svg());
+                for class in [
+                    "commit-highlight-inner",
+                    "commit-reverse",
+                    "commit-merge",
+                    "tag-label-bkg",
+                ] {
+                    assert!(document.descendants().any(|node| has_class(&node, class)));
+                    assert_eq!(
+                        css_property_winner(
+                            &gitgraph_css_rule(&css, &format!("#git-node-fill-terminals .{class}")),
+                            "fill"
+                        ),
+                        Some(color),
+                        "{theme_name}/{variant:?}/{color}/{class}"
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_requires_an_unowned_visible_fill_terminal() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for (case, source, config) in [
+        ("empty", "gitGraph\n", json!({})),
+        ("ordinary", "gitGraph\n  commit id: \"A\"\n", json!({})),
+        (
+            "owned-state",
+            "gitGraph\n  commit id: \"A\" type: REVERSE\n",
+            json!({"themeVariables": {"primaryColor": "#abcdef"}}),
+        ),
+        (
+            "owned-tag",
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            json!({"themeVariables": {"tagLabelBackground": "#abcdef"}}),
+        ),
+    ] {
+        render_source_and_site_config_cases(
+            source,
+            config,
+            &theme,
+            "git-node-fill-absent",
+            |owner, rendered| {
+                roxmltree::Document::parse(rendered.svg()).unwrap();
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1, "{case}/{owner}");
+                assert_eq!(evidence.applied_count(), 0, "{case}/{owner}");
+                assert_eq!(evidence.not_applicable_count(), 1, "{case}/{owner}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{case}/{owner}");
+            },
+        );
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_remains_portable_with_owned_legacy_stroke_in_the_same_rule() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    for portability in [
+        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
+    ] {
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {
+                    "primaryBorderColor": "#abcdef",
+                    "nodeBorder": "#abcdef",
+                    "tagLabelBorder": "#abcdef"
+                }
+            }))),
+            "git-node-fill-owned-stroke",
+            portability,
+        )
+        .expect("owned compatibility stroke must not reject portable Node fill");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = gitgraph_stylesheet(rendered.svg());
+        for class in ["commit-reverse", "tag-label-bkg"] {
+            assert!(document.descendants().any(|node| has_class(&node, class)));
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, &format!("#git-node-fill-owned-stroke .{class}")),
+                    "fill"
+                ),
+                Some("#123456")
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        source,
+        &theme,
+        Engine::new(),
+        "git-node-fill-unowned-stroke",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let css = gitgraph_stylesheet(rendered.svg());
+    for class in ["commit-reverse", "tag-label-bkg"] {
+        assert_eq!(
+            css_property_winner(
+                &gitgraph_css_rule(&css, &format!("#git-node-fill-unowned-stroke .{class}")),
+                "fill"
+            ),
+            Some("#123456")
+        );
+    }
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 1);
+
+    let error = match try_render_gitgraph_with_theme_and_engine(
+        source,
+        &theme,
+        Engine::new(),
+        "git-node-fill-unowned-stroke-strict",
+    ) {
+        Ok(_) => panic!("unowned Node stroke must retain its compatibility residual"),
+        Err(error) => error,
+    };
+    match error {
+        merman_render::Error::LegacyFamilyThemeCompatibility {
+            family_id,
+            residual_count,
+        } => {
+            assert_eq!(family_id, DiagramFamilyId::GIT_GRAPH);
+            assert_eq!(residual_count, 1);
+        }
+        other => panic!("expected GitGraph legacy compatibility residual, got {other}"),
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_does_not_certify_an_unsupported_font_in_the_same_rule() {
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    patch.typography.font_stack =
+        Specified::Value(FontStack::single("UnsupportedNodeFont").unwrap());
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(ThemeTarget::Node, patch)]);
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    for owned in [false, true] {
+        let config = if owned {
+            json!({"themeVariables": {
+                "primaryColor": "#abcdef", "tagLabelBackground": "#abcdef"
+            }})
+        } else {
+            json!({})
+        };
+        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            engine(),
+            "git-node-fill-mixed",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let css = gitgraph_stylesheet(rendered.svg());
+        for class in ["commit-reverse", "tag-label-bkg"] {
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, &format!("#git-node-fill-mixed .{class}")),
+                    "fill"
+                ),
+                Some(if owned { "#abcdef" } else { "#123456" })
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let strict = try_render_gitgraph_with_theme_and_engine(
+            source,
+            &theme,
+            engine(),
+            "git-node-fill-mixed-strict",
+        );
+        let error = match strict {
+            Err(error) => error,
+            Ok(_) => panic!("a supported Node fill must not certify its unsupported font"),
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::GIT_GRAPH, 1))
+        );
+    }
+}
+
+#[test]
+fn gitgraph_static_node_fill_keeps_palette_strokes_in_either_builder_order() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    let mut previous_svg = None;
+    for palette_first in [true, false] {
+        let palette = OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap();
+        let rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        );
+        let styles = if palette_first {
+            ThemeRuleSet::default()
+                .with_ordinal_palette(ThemeTarget::Node, palette)
+                .with_rule(rule)
+        } else {
+            ThemeRuleSet::default()
+                .with_rule(rule)
+                .with_ordinal_palette(ThemeTarget::Node, palette)
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let rendered = render_gitgraph_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            "git-node-fill-palette",
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| has_class(&node, "commit0"))
+        );
+        let css = gitgraph_stylesheet(rendered.svg());
+        for class in ["commit-reverse", "tag-label-bkg"] {
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, &format!("#git-node-fill-palette .{class}")),
+                    "fill"
+                ),
+                Some("#123456")
+            );
+        }
+        let (_, palette_rule) = css.rsplit_once("#git-node-fill-palette .commit0{").unwrap();
+        let (palette_rule, _) = palette_rule.split_once('}').unwrap();
+        assert_eq!(css_property_winner(palette_rule, "stroke"), Some("#abcdef"));
+        assert_eq!(css_property_winner(palette_rule, "fill"), None);
+        if let Some(previous_svg) = previous_svg.as_ref() {
+            assert_eq!(rendered.svg(), previous_svg);
+        }
+        previous_svg = Some(rendered.svg().to_owned());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_preserves_independent_state_and_tag_owners() {
+    let source = "gitGraph\n  commit id: \"state\" type: REVERSE tag: \"v1\"\n";
+    for theme_name in ["base", "neo", "redux", "redux-color"] {
+        for explicit_path in [
+            None,
+            Some("primaryColor"),
+            Some("mainBkg"),
+            Some("tagLabelBackground"),
+        ] {
+            let mut config = json!({"theme": theme_name});
+            if let Some(path) = explicit_path {
+                config["themeVariables"] = json!({path: "#fedcba"});
+            }
+            let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            )
+            .for_family(DiagramFamilyId::GIT_GRAPH)]);
+            let rendered = render_gitgraph_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                "git-node-fill",
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| has_class(&node, "commit-reverse"))
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| has_class(&node, "tag-label-bkg"))
+            );
+            let css = gitgraph_stylesheet(rendered.svg());
+            let color_gen = theme_name != "base";
+            let state_path = if color_gen { "mainBkg" } else { "primaryColor" };
+            let tag_path = if color_gen {
+                "mainBkg"
+            } else {
+                "tagLabelBackground"
+            };
+            for (selector, path) in [
+                ("#git-node-fill .commit-reverse", state_path),
+                ("#git-node-fill .tag-label-bkg", tag_path),
+            ] {
+                assert_eq!(
+                    css_property_winner(&gitgraph_css_rule(&css, selector), "fill"),
+                    Some(if explicit_path == Some(path) {
+                        "#fedcba"
+                    } else {
+                        "#123456"
+                    }),
+                    "{theme_name}/{explicit_path:?}/{selector}"
+                );
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            let entirely_owned = color_gen && explicit_path == Some("mainBkg");
+            assert_eq!(evidence.applied_count(), usize::from(!entirely_owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(entirely_owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn gitgraph_edge_fill_replaces_the_branch_line_config_without_changing_other_surfaces() {
     for theme_name in ["default", "neo", "neo-dark", "redux", "redux-color"] {
         for look in ["classic", "neo", "handDrawn"] {

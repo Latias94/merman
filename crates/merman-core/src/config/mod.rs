@@ -84,7 +84,11 @@ pub(crate) enum ThemeParseBindingError {
 pub(crate) struct ThemeParseBinding {
     recipe_identity: [u8; 32],
     compatibility_config: Arc<Value>,
+    post_detection_default_paths: Arc<PostDetectionDefaultPaths>,
 }
+
+type PostDetectionDefaultPaths = BTreeMap<Arc<str>, Arc<[Arc<str>]>>;
+type PostDetectionDefaultDecisions = Arc<[(Arc<str>, bool)]>;
 
 impl ThemeParseBinding {
     /// Validates and canonicalizes the restricted Mermaid compatibility input for one recipe.
@@ -97,11 +101,35 @@ impl ThemeParseBinding {
             compatibility_config: Arc::new(normalize_theme_compatibility_config(
                 compatibility_config.as_value(),
             )?),
+            post_detection_default_paths: Arc::new(BTreeMap::new()),
         })
     }
 
     pub(crate) const fn recipe_identity(&self) -> &[u8; 32] {
         &self.recipe_identity
+    }
+
+    pub(crate) fn try_with_post_detection_default_paths(
+        mut self,
+        family: &str,
+        paths: &[&str],
+    ) -> Result<Self, ThemeParseBindingError> {
+        self.post_detection_default_paths = Arc::new(
+            overlay::normalize_post_detection_default_paths(
+                &self.post_detection_default_paths,
+                family,
+                paths,
+            )
+            .map_err(|error| match error {
+                ConfigOverlayError::LimitExceeded { .. } => ThemeParseBindingError::LimitExceeded {
+                    field: "postDetectionDefaultPaths",
+                },
+                _ => ThemeParseBindingError::InvalidValue {
+                    field: "postDetectionDefaultPaths",
+                },
+            })?,
+        );
+        Ok(self)
     }
 
     fn into_tracking_config(self) -> MermaidConfig {
@@ -260,6 +288,7 @@ enum ThemeCompatibilityState {
     Frozen {
         binding: ThemeParseBinding,
         fields: Arc<[FrozenThemeCompatibilityField]>,
+        post_detection_defaults: Option<PostDetectionDefaultDecisions>,
     },
 }
 
@@ -288,6 +317,7 @@ impl FrozenThemeCompatibilityField {
 struct ThemeCompatibilityOwnership {
     binding: ThemeParseBinding,
     fields: Vec<ThemeCompatibilityFieldOwnership>,
+    post_detection_defaults: Option<PostDetectionDefaultDecisions>,
 }
 
 #[derive(Debug, Clone)]
@@ -314,7 +344,11 @@ impl ThemeCompatibilityOwnership {
     fn from_config(binding: ThemeParseBinding, config: &Value) -> Self {
         let mut fields = Vec::new();
         let Some(root) = config.as_object() else {
-            return Self { binding, fields };
+            return Self {
+                binding,
+                fields,
+                post_detection_defaults: None,
+            };
         };
 
         if root.contains_key("theme") {
@@ -348,7 +382,11 @@ impl ThemeCompatibilityOwnership {
             );
         }
 
-        Self { binding, fields }
+        Self {
+            binding,
+            fields,
+            post_detection_defaults: None,
+        }
     }
 
     fn shadow_path(&mut self, dotted_path: &str) {
@@ -517,6 +555,20 @@ impl MermaidConfig {
         binding.into_tracking_config()
     }
 
+    pub(crate) fn post_detection_default_blocked(&self, path: &str) -> Option<bool> {
+        let Some(ThemeCompatibilityState::Frozen {
+            post_detection_defaults: Some(decisions),
+            ..
+        }) = self.theme_compatibility.as_ref()
+        else {
+            return None;
+        };
+        decisions
+            .binary_search_by(|(candidate, _)| candidate.as_ref().cmp(path))
+            .ok()
+            .map(|index| decisions[index].1)
+    }
+
     pub(crate) fn adopt_tracking_theme_compatibility_from(&mut self, source: &mut Self) {
         let Some(state @ ThemeCompatibilityState::Tracking(_)) = source.theme_compatibility.take()
         else {
@@ -571,6 +623,7 @@ impl MermaidConfig {
         self.theme_compatibility = Some(ThemeCompatibilityState::Frozen {
             binding: ownership.binding.clone(),
             fields: ownership.freeze_fields(),
+            post_detection_defaults: ownership.post_detection_defaults.clone(),
         });
     }
 

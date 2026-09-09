@@ -740,15 +740,6 @@ fn compile_gitgraph_family(
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
 
-    let node_fill = reader.fill(ThemeTarget::Node);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeFill.contribution_id(),
-        [
-            ("primaryColor", node_fill.clone()),
-            ("mainBkg", node_fill.clone()),
-            ("tagLabelBackground", node_fill),
-        ],
-    );
     let node_stroke = reader.stroke(ThemeTarget::Node);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
@@ -1857,15 +1848,15 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_node_defaults_are_post_materialization_assignments() {
+    fn gitgraph_retired_node_fill_leaves_only_independent_stroke_assignments() {
         const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
-        const PATHS: [(&str, &str); 6] = [
-            ("primaryColor", "#123456"),
-            ("mainBkg", "#123456"),
-            ("tagLabelBackground", "#123456"),
-            ("primaryBorderColor", "#abcdef"),
-            ("nodeBorder", "#abcdef"),
-            ("tagLabelBorder", "#abcdef"),
+        const PATHS: [(&str, &str, bool); 6] = [
+            ("primaryColor", "#123456", false),
+            ("mainBkg", "#123456", false),
+            ("tagLabelBackground", "#123456", false),
+            ("primaryBorderColor", "#abcdef", true),
+            ("nodeBorder", "#abcdef", true),
+            ("tagLabelBorder", "#abcdef", true),
         ];
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -1898,7 +1889,8 @@ mod tests {
             "redux-color",
             "redux-dark-color",
         ] {
-            for explicit in std::iter::once(None).chain(PATHS.iter().map(|(key, _)| Some(*key))) {
+            for explicit in std::iter::once(None).chain(PATHS.iter().map(|(key, _, _)| Some(*key)))
+            {
                 let mut config = serde_json::json!({"theme": theme_name});
                 if let Some(key) = explicit {
                     config["themeVariables"] = serde_json::json!({key: "#fedcba"});
@@ -1907,8 +1899,8 @@ mod tests {
                     merman_core::Engine::new().with_site_config(MermaidConfig::from_value(config));
                 let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
                 let mut expected = baseline.effective_config.as_value().clone();
-                for (key, color) in PATHS {
-                    if explicit != Some(key) {
+                for (key, color, retained_in_bridge) in PATHS {
+                    if explicit != Some(key) && retained_in_bridge {
                         expected["themeVariables"][key] = serde_json::json!(color);
                     }
                 }
@@ -1918,16 +1910,16 @@ mod tests {
                 assert_eq!(
                     parsed.effective_config.as_value(),
                     &expected,
-                    "{theme_name}/{explicit:?}: post-detection defaults must only replace the six unowned paths, without deriving palette or gradient values again"
+                    "{theme_name}/{explicit:?}: only unowned stroke paths remain in the bridge; retired fill must not rederive other colors"
                 );
-                for (key, _) in PATHS {
+                for (key, _, retained_in_bridge) in PATHS {
                     let path = format!("themeVariables.{key}");
                     assert_eq!(
                         merman_core::__private::fallback_overlay_owns_path(
                             &parsed.effective_config,
                             &path
                         ),
-                        explicit != Some(key),
+                        explicit != Some(key) && retained_in_bridge,
                         "{theme_name}/{explicit:?}/{key}"
                     );
                 }
@@ -1986,8 +1978,6 @@ gitGraph
         ));
         let mut expected = baseline.effective_config.as_value().clone();
         for (key, value) in [
-            ("mainBkg", "#123456"),
-            ("tagLabelBackground", "#123456"),
             ("primaryBorderColor", "#abcdef"),
             ("nodeBorder", "#abcdef"),
             ("tagLabelBorder", "#abcdef"),
@@ -2012,7 +2002,7 @@ gitGraph
     }
 
     #[test]
-    fn gitgraph_legacy_paint_keeps_only_node_projections() {
+    fn gitgraph_legacy_paint_keeps_only_node_stroke_projections() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -2072,9 +2062,6 @@ gitGraph
         let parsed = parse(&spec, source);
 
         for (path, value) in [
-            ("themeVariables.primaryColor", node_fill),
-            ("themeVariables.mainBkg", node_fill),
-            ("themeVariables.tagLabelBackground", node_fill),
             ("themeVariables.primaryBorderColor", node_stroke),
             ("themeVariables.nodeBorder", node_stroke),
             ("themeVariables.tagLabelBorder", node_stroke),
@@ -2094,6 +2081,9 @@ gitGraph
         );
 
         for (path, value) in [
+            ("themeVariables.primaryColor", node_fill),
+            ("themeVariables.mainBkg", node_fill),
+            ("themeVariables.tagLabelBackground", node_fill),
             ("themeVariables.commitLineColor", edge),
             ("themeVariables.textColor", text),
             ("themeVariables.tagLabelColor", node_label),
@@ -2119,11 +2109,8 @@ gitGraph
         assert_eq!(
             assignments,
             std::collections::BTreeMap::from([
-                ("themeVariables.mainBkg", node_fill),
                 ("themeVariables.nodeBorder", node_stroke),
                 ("themeVariables.primaryBorderColor", node_stroke),
-                ("themeVariables.primaryColor", node_fill),
-                ("themeVariables.tagLabelBackground", node_fill),
                 ("themeVariables.tagLabelBorder", node_stroke),
             ])
         );
@@ -2134,7 +2121,7 @@ gitGraph
     }
 
     #[test]
-    fn gitgraph_direct_typography_retires_only_the_typography_contribution() {
+    fn gitgraph_direct_typography_and_node_fill_leave_no_fallback_contribution() {
         let typography = TextStyle::default()
             .with_font_stack(
                 super::super::FontStack::new(["GitGraph Direct", "sans-serif"])
@@ -2162,8 +2149,8 @@ gitGraph
         let node_fill_id = "merman.legacy-family-theme.v1.gitGraph.node.fill";
         assert!(!artifact.contribution_ids.contains(typography_id));
         assert!(!bridge.owns_contribution_id(typography_id));
-        assert!(artifact.contribution_ids.contains(node_fill_id));
-        assert!(bridge.owns_contribution_id(node_fill_id));
+        assert!(!artifact.contribution_ids.contains(node_fill_id));
+        assert!(!bridge.owns_contribution_id(node_fill_id));
 
         let parsed = parse(&spec, "gitGraph\n  commit id: \"A\"\n");
         for path in [
@@ -2176,7 +2163,7 @@ gitGraph
                 "GitGraph typography must not retain fallback ownership of `{path}`"
             );
         }
-        assert_eq!(
+        assert_ne!(
             parsed.effective_config.get_str("themeVariables.mainBkg"),
             Some("#123456")
         );
@@ -2186,6 +2173,7 @@ gitGraph
     fn gitgraph_edge_text_and_label_fill_retire_projections_and_preserve_explicit_config() {
         const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         for target in [
+            ThemeTarget::Node,
             ThemeTarget::Text,
             ThemeTarget::NodeLabel,
             ThemeTarget::EdgeLabel,
@@ -2458,14 +2446,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 226);
+        assert_eq!(status.matrix_route_count(), 222);
         assert_eq!(status.matrix_family_count(), 12);
         assert_eq!(status.dispatched_family_count(), 12);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                23, 21, 29, 131, 37, 72, 238, 197, 22, 171, 157, 68, 237, 156, 6, 41, 102, 0, 71,
-                130, 152, 69, 125, 83, 242, 254, 162, 137, 86, 235, 53, 152
+                41, 195, 178, 225, 121, 255, 229, 238, 166, 43, 129, 19, 186, 13, 103, 218, 159,
+                54, 4, 100, 178, 36, 214, 23, 222, 41, 48, 183, 247, 196, 34, 143
             ]
         );
         assert_eq!(

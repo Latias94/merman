@@ -70,12 +70,26 @@ impl DiagramThemeCompiler {
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
         let parse_compatibility_bridge = legacy_family_theme_bridge.clone();
-        let parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
+        let mut parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
             fingerprint,
             mermaid_config,
             move |family, control| parse_compatibility_bridge.overlay_for_family(family, control),
         )
         .expect("compiled Mermaid compatibility must satisfy the core plan contract");
+        if spec.styles().rules().iter().any(|rule| {
+            rule.target() == super::ThemeTarget::Node
+                && rule
+                    .family()
+                    .is_none_or(|family| family == crate::DiagramFamilyId::GIT_GRAPH)
+                && !matches!(rule.style().paint.fill, super::Specified::Unspecified)
+        }) {
+            parse_compatibility = parse_compatibility
+                .try_with_post_detection_default_paths(
+                    crate::DiagramFamilyId::GIT_GRAPH.as_str(),
+                    &crate::gitgraph::GITGRAPH_NODE_FILL_PATHS,
+                )
+                .expect("GitGraph writer default paths satisfy the bounded core contract");
+        }
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),

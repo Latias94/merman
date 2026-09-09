@@ -294,6 +294,29 @@ pub mod __private {
         pub fn recipe(&self) -> &ThemeCompatibilityRecipe {
             &self.recipe
         }
+
+        /// Requests historical default eligibility for structural paths in one render family.
+        /// Repeated requests are merged, sorted, and deduplicated as part of the parse contract.
+        pub fn try_with_post_detection_default_paths(
+            mut self,
+            family: &str,
+            paths: &[&str],
+        ) -> Result<Self, ThemeCompatibilityPlanError> {
+            self.recipe.0 = self
+                .recipe
+                .0
+                .try_with_post_detection_default_paths(family, paths)?;
+            Ok(self)
+        }
+    }
+
+    /// Returns the requested decision captured after host overlays and before fallback defaults.
+    /// Unrequested, unfrozen, and subsequently mutated configurations have no decision.
+    pub fn config_post_detection_default_blocked(
+        config: &MermaidConfig,
+        path: &str,
+    ) -> Option<bool> {
+        config.post_detection_default_blocked(path)
     }
 
     /// Installs one compiled theme's complete parse compatibility plan on an engine.

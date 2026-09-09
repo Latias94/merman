@@ -438,6 +438,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL)
+        }
         (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::EdgeLabelBackground,
@@ -1714,7 +1717,8 @@ pub(super) fn classify_rule_facet(
         )
         && matches!(
             target,
-            ThemeTarget::Edge
+            ThemeTarget::Node
+                | ThemeTarget::Edge
                 | ThemeTarget::EdgeLabelBackground
                 | ThemeTarget::NodeLabel
                 | ThemeTarget::EdgeLabel
@@ -5628,6 +5632,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Node,
+                Fill,
+                Transparent,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Node,
+                Fill,
+                Solid,
+                vec!["node.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
                 ThemeTarget::NodeLabel,
                 Fill,
                 Transparent,
@@ -6477,7 +6495,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 158);
+        assert_eq!(qualified.len(), 160);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6591,7 +6609,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
                 .count(),
-            12
+            14
         );
         assert_eq!(
             qualified
@@ -6766,6 +6784,9 @@ mod tests {
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::GIT_GRAPH {
                 let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
+                        vec![ThemeRouteCutoverProjection::NodeFill]
+                    }
                     (
                         ThemeTarget::Edge,
                         ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,

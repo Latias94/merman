@@ -358,6 +358,216 @@ fn theme_binding() -> ThemeParseBinding {
     theme_binding_for(theme_compatibility_config())
 }
 
+const NODE_DEFAULT_PATHS: &[&str] = &[
+    "themeVariables.primaryColor",
+    "themeVariables.mainBkg",
+    "themeVariables.tagLabelBackground",
+    "themeVariables.primaryBorderColor",
+    "themeVariables.nodeBorder",
+    "themeVariables.tagBorderColor",
+];
+
+fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {
+    crate::__private::ThemeCompatibilityPlan::try_new(
+        [0x5a; 32],
+        MermaidConfig::from_value(config),
+        |_, _| Ok(Ok(None)),
+    )
+    .unwrap()
+    .try_with_post_detection_default_paths("gitGraph", NODE_DEFAULT_PATHS)
+    .unwrap()
+}
+
+#[test]
+fn post_detection_default_requests_are_normalized_and_part_of_the_parse_contract() {
+    let make_plan = || {
+        crate::__private::ThemeCompatibilityPlan::try_new(
+            [0x5a; 32],
+            MermaidConfig::empty_object(),
+            |_, _| Ok(Ok(None)),
+        )
+        .unwrap()
+    };
+    let one = make_plan()
+        .try_with_post_detection_default_paths("gitGraph", &["a.b", "c", "a.b"])
+        .unwrap();
+    let two = make_plan()
+        .try_with_post_detection_default_paths("gitGraph", &["c"])
+        .unwrap()
+        .try_with_post_detection_default_paths("gitGraph", &["a.b"])
+        .unwrap();
+    assert_eq!(one.recipe(), two.recipe());
+    assert_ne!(one.recipe(), make_plan().recipe());
+    assert_ne!(
+        one.recipe(),
+        make_plan()
+            .try_with_post_detection_default_paths("flowchart", &["a.b", "c"])
+            .unwrap()
+            .recipe()
+    );
+    assert_eq!(
+        make_plan().recipe(),
+        make_plan()
+            .try_with_post_detection_default_paths("gitGraph", &[])
+            .unwrap()
+            .recipe()
+    );
+    for path in [
+        "",
+        ".a",
+        "a.",
+        "a..b",
+        "a.\n",
+        &"x".repeat(129),
+        &vec!["a"; 17].join("."),
+    ] {
+        assert!(
+            make_plan()
+                .try_with_post_detection_default_paths("gitGraph", &[path])
+                .is_err()
+        );
+    }
+    assert!(
+        make_plan()
+            .try_with_post_detection_default_paths(" gitGraph", &["a"])
+            .is_err()
+    );
+    assert!(
+        make_plan()
+            .try_with_post_detection_default_paths("gitGraph", &vec!["a"; 1025])
+            .is_err()
+    );
+}
+
+#[test]
+fn post_detection_defaults_capture_six_raw_paths_without_a_fallback_overlay() {
+    use crate::__private::{
+        config_post_detection_default_blocked as blocked, install_theme_compatibility,
+    };
+    for explicit_path in NODE_DEFAULT_PATHS {
+        let mut compatibility = MermaidConfig::from_value(json!({"theme": "base"}));
+        compatibility.set_value(explicit_path, json!("#123456"));
+        let plan = node_default_plan(compatibility.as_value().clone());
+        let parsed = install_theme_compatibility(Engine::new(), &plan)
+            .parse_metadata_sync("gitGraph\ncommit")
+            .unwrap();
+        for path in NODE_DEFAULT_PATHS {
+            assert_eq!(
+                blocked(&parsed.effective_config, path),
+                Some(path == explicit_path),
+                "{explicit_path} -> {path}"
+            );
+        }
+        assert!(
+            crate::__private::theme_parse_evidence(&parsed).matches_recipe(Some(plan.recipe()))
+        );
+    }
+    let plan =
+        node_default_plan(json!({"theme": "base", "themeVariables": {"primaryColor": "#fff4dd"}}));
+    let parsed = install_theme_compatibility(Engine::new(), &plan)
+        .parse_metadata_sync("gitGraph\ncommit")
+        .unwrap();
+    assert!(crate::__private::config_path_overrides_typed_default(
+        &parsed.effective_config,
+        "themeVariables.mainBkg"
+    ));
+    assert_eq!(
+        blocked(&parsed.effective_config, "themeVariables.mainBkg"),
+        Some(false)
+    );
+}
+
+#[test]
+fn post_detection_defaults_keep_requests_across_secure_source_theme_reselection() {
+    use crate::__private::{
+        config_post_detection_default_blocked as blocked, install_theme_compatibility,
+    };
+    let plan = node_default_plan(json!({"theme": "default"}));
+    let source = "%%{init: {\"theme\": \"base\", \"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\ngitGraph\ncommit";
+    for (site, expected) in [
+        (json!({"secure": []}), true),
+        (json!({"secure": ["theme", "themeVariables"]}), false),
+    ] {
+        let parsed = install_theme_compatibility(
+            Engine::new().with_site_config(MermaidConfig::from_value(site)),
+            &plan,
+        )
+        .parse_metadata_sync(source)
+        .unwrap();
+        assert_eq!(
+            blocked(&parsed.effective_config, "themeVariables.primaryColor"),
+            Some(expected)
+        );
+        assert_eq!(
+            blocked(&parsed.effective_config, "themeVariables.mainBkg"),
+            Some(false)
+        );
+        assert!(
+            crate::__private::theme_parse_evidence(&parsed).matches_recipe(Some(plan.recipe()))
+        );
+    }
+}
+
+#[test]
+fn post_detection_defaults_distinguish_missing_decisions_and_frozen_mutation() {
+    use crate::__private::{
+        config_post_detection_default_blocked as blocked, install_theme_compatibility,
+    };
+    let path = NODE_DEFAULT_PATHS[0];
+    let plan = node_default_plan(json!({}));
+    assert_eq!(blocked(&MermaidConfig::empty_object(), path), None);
+    let other_family = install_theme_compatibility(Engine::new(), &plan)
+        .parse_metadata_sync("flowchart TD\nA-->B")
+        .unwrap();
+    assert_eq!(blocked(&other_family.effective_config, path), None);
+    let parsed = install_theme_compatibility(Engine::new(), &plan)
+        .parse_metadata_sync("gitGraph\ncommit")
+        .unwrap();
+    assert_eq!(blocked(&parsed.effective_config, path), Some(false));
+    assert_eq!(
+        blocked(&parsed.effective_config, "themeVariables.unrequested"),
+        None
+    );
+    let mut changed = parsed.effective_config.clone();
+    changed.set_value("unrelated", json!(true));
+    assert_eq!(blocked(&changed, path), None);
+    assert_eq!(blocked(&parsed.effective_config, path), Some(false));
+}
+
+#[test]
+fn post_detection_defaults_capture_same_value_host_claims_before_fallback_writes() {
+    use crate::__private::{
+        config_post_detection_default_blocked as blocked, install_theme_compatibility,
+    };
+    let plan = node_default_plan(json!({"theme": "base"}));
+    let baseline = install_theme_compatibility(Engine::new(), &plan)
+        .parse_metadata_sync("gitGraph\ncommit")
+        .unwrap();
+    let host_path = "themeVariables.mainBkg";
+    let fallback_path = "themeVariables.tagLabelBackground";
+    let host = family_overlay(
+        "gitGraph",
+        "host.same",
+        host_path,
+        baseline.effective_config.as_value()["themeVariables"]["mainBkg"].clone(),
+    );
+    let fallback = family_overlay("gitGraph", "fallback.tag", fallback_path, json!("#123456"));
+    let parsed = install_theme_compatibility(Engine::new(), &plan)
+        .with_post_detection_config_overlay(host)
+        .with_fallback_post_detection_config_overlay(fallback)
+        .parse_metadata_sync("gitGraph\ncommit")
+        .unwrap();
+    assert_eq!(blocked(&parsed.effective_config, host_path), Some(true));
+    assert_eq!(
+        blocked(&parsed.effective_config, fallback_path),
+        Some(false)
+    );
+    assert_eq!(
+        parsed.effective_config.get_str(fallback_path),
+        Some("#123456")
+    );
+}
+
 #[test]
 fn effective_config_tracks_only_high_priority_explicit_owners() {
     let metadata = Engine::new()

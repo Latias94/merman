@@ -1303,6 +1303,14 @@ impl<'a> ParsePipeline<'a> {
                 control,
             )?;
         }
+        effective_config.capture_post_detection_default_decisions(
+            family,
+            &self.engine.fallback_overlay_explicit_config,
+            effective_source_config,
+            config_before_detection,
+            &application,
+            control,
+        )?;
         let fallback_overlay = match &self.engine.fallback_post_detection_config_overlay {
             #[cfg(test)]
             Some(crate::FallbackPostDetectionConfigOverlay::Static(overlay)) => {

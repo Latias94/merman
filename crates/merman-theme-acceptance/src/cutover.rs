@@ -258,6 +258,9 @@ title: GitGraph inherited text
 gitGraph
   commit id: "visible commit" tag: "visible tag"
 "#;
+const GITGRAPH_NODE_FILL_SOURCE: &str = r#"gitGraph
+  commit id: "state" type: REVERSE tag: "visible tag"
+"#;
 const GITGRAPH_EDGE_SOURCE: &str = r#"gitGraph
   commit id: "1"
   branch develop
@@ -372,7 +375,10 @@ impl CutoverWitnessProfile {
             || (route.family_id() == DiagramFamilyId::GIT_GRAPH
                 && matches!(
                     route.target(),
-                    ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
+                    ThemeTarget::Text
+                        | ThemeTarget::NodeLabel
+                        | ThemeTarget::EdgeLabel
+                        | ThemeTarget::Node
                 ))
             || (route.family_id() == DiagramFamilyId::GIT_GRAPH
                 && route.target() == ThemeTarget::Edge
@@ -579,6 +585,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         )
         | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_PAINT_SOURCE)
+        }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
+            Ok(GITGRAPH_NODE_FILL_SOURCE)
         }
         (
             DiagramFamilyId::GIT_GRAPH,
@@ -1582,11 +1591,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_320_routes_and_398_artifact_witnesses() {
+    fn route_inventory_retains_324_routes_and_410_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 320);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 398);
+        assert_eq!(inventory.len(), 324);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 410);
     }
 
     #[test]
@@ -1713,6 +1722,7 @@ mod tests {
             (DiagramFamilyId::C4, ThemeTarget::Text),
             (DiagramFamilyId::KANBAN, ThemeTarget::Text),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text),
+            (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::NodeLabel),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::EdgeLabel),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge),
