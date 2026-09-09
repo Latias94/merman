@@ -70,12 +70,16 @@ which accumulates in row positions. These are not hidden by pixel adjustments or
 Registry assets now have a direct portable primitive lowerer, shared Iconify alias geometry,
 explicit viewport clipping, and the source unknown-icon fallback. Filters, resource references,
 asset text, nontrivial group opacity, and other unsupported asset effects remain explicit errors.
-The `0c39d1af8` full-family candidate comparison renders all 17 inputs through the canonical
-document without a bridge: 12 pass and the 5 registry/unknown-icon inputs have SVG DOM differences
-(root clip definitions and icon containers). Evidence:
-`target/compare/treeView_registry_assets_parity_root.md`. Registry-asset SVG DOM projection is
-not yet admitted. TreeView therefore remains bridged; historical legacy parity reports and
-focused adapter tests are not canonical admission evidence.
+The unknown-icon projection now derives its nested viewport, rectangle, text, and paint from the
+public command stream. Unsupported edits keep generic projection, and generic uses of a shared
+clip still receive a definition. All 17 full-family candidate fixtures pass DOM/root comparison
+with 17 observed canonical routes and no bridge. Evidence:
+`target/compare/treeView_unknown_icon_public_parity_root.md`.
+
+The five fixtures with registry-related names contain seven **unknown-icon fallbacks**, not
+successful external pack assets. This corpus does not prove registered-asset SVG DOM parity.
+That projection remains unfinished, so TreeView remains bridged; fixture names and focused
+adapter tests are not evidence of a broader capability.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

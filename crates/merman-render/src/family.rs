@@ -2421,6 +2421,172 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_unknown_icon_projects_public_viewport_and_paint() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(missing:icon)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(!xml.descendants().any(|node| node.has_tag_name("defs")));
+        let viewport = xml
+            .descendants()
+            .find(|node| node.attribute("viewBox") == Some("0 0 80 80"))
+            .unwrap();
+        assert_eq!(viewport.attribute("width"), Some("14"));
+        assert_eq!(viewport.attribute("height"), Some("14"));
+        assert_eq!(
+            viewport.parent().unwrap().attribute("class"),
+            Some("treeView-node-icon")
+        );
+        let label = viewport
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(label.attribute("transform"), Some("translate(21.16 64.67)"));
+        assert_eq!(label.first_element_child().unwrap().text(), Some("?"));
+
+        for (clip_factor, scale_factor, width, view_box) in [
+            (2.0, 1.0, "28", "0 0 160 160"),
+            (1.0, 2.0, "14", "0 0 40 40"),
+        ] {
+            let mut edited = document.clone();
+            for resource in &mut edited.public.resources {
+                if let DrawingResource::Path(path) = resource
+                    && path.id.as_str().ends_with(".asset.clip")
+                {
+                    for segment in &mut path.segments {
+                        if let PathSegment::MoveTo { to } | PathSegment::LineTo { to } = segment {
+                            to.x *= clip_factor;
+                            to.y *= clip_factor;
+                        }
+                    }
+                }
+            }
+            for command in &mut edited.public.commands {
+                if let DrawingCommand::ConcatTransform { transform } = command
+                    && transform.a == 0.175
+                    && transform.d == 0.175
+                {
+                    transform.a *= scale_factor;
+                    transform.d *= scale_factor;
+                }
+            }
+            let svg = render(&edited);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let viewport = xml
+                .descendants()
+                .find(|node| node.attribute("viewBox") == Some(view_box))
+                .unwrap();
+            assert_eq!(viewport.attribute("width"), Some(width));
+            assert_eq!(viewport.attribute("height"), Some(width));
+        }
+        let mut shared_clip = document.clone();
+        let clip = document
+            .public
+            .commands
+            .iter()
+            .find(|command| matches!(command, DrawingCommand::ClipPath { .. }))
+            .unwrap()
+            .clone();
+        let insert = shared_clip.public.commands.len() - 1;
+        shared_clip.public.commands.splice(
+            insert..insert,
+            [DrawingCommand::Save, clip, DrawingCommand::Restore],
+        );
+        let svg = render(&shared_clip);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            xml.descendants().any(|node| node.has_tag_name("clipPath")),
+            "a generic use of the same resource still needs its definition"
+        );
+        assert!(
+            xml.descendants()
+                .any(|node| node.attribute("viewBox") == Some("0 0 80 80"))
+        );
+
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str().ends_with(".unknown.background") =>
+                {
+                    style.fill = Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 128)));
+                }
+                DrawingCommand::DrawText { run } if run.text == "?" => {
+                    run.text = "!".into();
+                    run.origin.x = 19.0;
+                }
+                _ => {}
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let background = xml
+            .descendants()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert!(
+            background
+                .attribute("style")
+                .unwrap()
+                .contains("fill:#123456;")
+        );
+        assert!(
+            background
+                .attribute("style")
+                .unwrap()
+                .contains("fill-opacity:0.501960")
+        );
+        let label = xml
+            .descendants()
+            .find(|node| node.attribute("transform") == Some("translate(19 64.67)"))
+            .unwrap();
+        assert_eq!(label.first_element_child().unwrap().text(), Some("!"));
+
+        // A nonrectangular public clip cannot be replaced by an implicit rectangular viewport.
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str().ends_with(".asset.clip")
+                && let PathSegment::MoveTo { to } = &mut path.segments[0]
+            {
+                to.x = 2.0;
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(xml.descendants().any(|node| node.has_tag_name("clipPath")));
+        assert_eq!(
+            xml.descendants()
+                .filter(|node| node.has_tag_name("svg"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
     fn tree_view_candidate_icon_projection_preserves_edited_geometry_and_paint() {
         use merman_display_list::{
             Color, DrawingCommand, DrawingResource, FillRule, Paint, PathSegment,

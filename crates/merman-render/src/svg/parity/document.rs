@@ -37,6 +37,7 @@ mod pie;
 mod sankey;
 mod tree_view;
 mod tree_view_icon;
+mod tree_view_unknown_icon;
 mod venn;
 
 /// Serializes one validated canonical document to SVG.
@@ -95,6 +96,7 @@ struct DocumentSvgEncoder<'a> {
     tree_view_text_styles: BTreeMap<String, Option<tree_view::TextCssStyle<'a>>>,
     tree_view_path_styles: BTreeMap<String, Option<&'a PathStyle>>,
     tree_view_icons: Option<tree_view_icon::IconProjection>,
+    tree_view_unknown_icons: BTreeMap<usize, tree_view_unknown_icon::UnknownIcon<'a>>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -245,6 +247,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             diagram_id,
             tree_view_path_styles: if let SvgStructureBody::TreeView(body) = &document.svg.body {
                 tree_view::shared_path_styles(&document.public, body, &resources, session)?
+            } else {
+                BTreeMap::new()
+            },
+            tree_view_unknown_icons: if matches!(document.svg.body, SvgStructureBody::TreeView(_)) {
+                tree_view_unknown_icon::projections(&document.public, &resources, session)?
             } else {
                 BTreeMap::new()
             },
@@ -598,6 +605,10 @@ impl<'a> DocumentSvgEncoder<'a> {
                 continue;
             }
             if root_background && index == 2 {
+                continue;
+            }
+            if self.emit_tree_view_unknown_icon(index)? {
+                consumed_until = index + tree_view_unknown_icon::COMMAND_COUNT;
                 continue;
             }
             if let Some(count) = self.emit_journey_box_text(index)? {
@@ -1220,7 +1231,13 @@ impl<'a> DocumentSvgEncoder<'a> {
             .document
             .commands
             .iter()
-            .filter_map(|command| match command {
+            .enumerate()
+            .filter(|(index, _)| {
+                !index
+                    .checked_sub(2)
+                    .is_some_and(|start| self.tree_view_unknown_icons.contains_key(&start))
+            })
+            .filter_map(|(_, command)| match command {
                 DrawingCommand::ClipPath { path, .. } => Some(path.as_str().to_owned()),
                 _ => None,
             })
