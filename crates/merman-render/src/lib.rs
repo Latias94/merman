@@ -1321,7 +1321,15 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         assert!(svg.contains("+"));
         assert!(svg.contains(r#"<title id="chart-title-railroad-test">Railroad grammar</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-railroad-test">Expression grammar</desc>"#));
-        assert!(svg.contains("</style><g/><title id=\"chart-title-railroad-test\">"));
+        // Mermaid inserts accessibility elements at :first-child, before style and drawing.
+        let chrome = document
+            .root_element()
+            .children()
+            .filter(roxmltree::Node::is_element)
+            .take(4)
+            .map(|node| node.tag_name().name())
+            .collect::<Vec<_>>();
+        assert_eq!(chrome, ["title", "desc", "style", "g"]);
     }
 
     #[cfg(feature = "layout-elk")]

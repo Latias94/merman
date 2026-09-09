@@ -18,6 +18,12 @@ impl HostTextMeasurer for FixedTextMeasurer {
     fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
         let width = request.text.chars().count() as f64 * 8.0;
         Ok(Some(match request.operation {
+            TextMeasurementOperation::NormalLineMetrics => {
+                HostTextMeasurement::NormalLineMetrics(merman_render::text::NormalLineMetrics {
+                    line_height: 20.0,
+                    baseline_offset: 16.0,
+                })
+            }
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
             | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
@@ -40,6 +46,12 @@ impl HostTextMeasurer for WidthAwareTextMeasurer {
         let width = request.text.lines().map(line_width).fold(0.0_f64, f64::max);
         let line_count = request.text.split('\n').count().max(1);
         Ok(Some(match request.operation {
+            TextMeasurementOperation::NormalLineMetrics => {
+                HostTextMeasurement::NormalLineMetrics(merman_render::text::NormalLineMetrics {
+                    line_height: 20.0,
+                    baseline_offset: 16.0,
+                })
+            }
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
             | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
@@ -78,6 +90,12 @@ impl HostTextMeasurer for FontSizeAwareTextMeasurer {
         };
 
         Ok(Some(match request.operation.required_result_kind() {
+            TextMeasurementResultKind::NormalLineMetrics => {
+                HostTextMeasurement::NormalLineMetrics(merman_render::text::NormalLineMetrics {
+                    line_height: request.style.font_size,
+                    baseline_offset: request.style.font_size * 0.8,
+                })
+            }
             TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
             TextMeasurementResultKind::Length => {
                 let length = match request.operation {
