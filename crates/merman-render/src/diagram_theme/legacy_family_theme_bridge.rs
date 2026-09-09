@@ -15,18 +15,16 @@ use crate::DiagramFamilyId;
 use crate::theme_route_cutover::ThemeRouteCutoverProjection;
 
 use super::canvas::CanvasPaint;
-use super::family_mechanism_matrix::{
-    FamilyThemeDisposition, FamilyThemeRuleFacet, MAX_LEGACY_ASSIGNMENT_STRING_BYTES,
-};
+use super::family_mechanism_matrix::{FamilyThemeDisposition, FamilyThemeRuleFacet};
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::family_mechanism_matrix::{
     FamilyThemePaintKind, FamilyThemeSelectorShape, LegacyCompatibilityRouteKey,
     classify_rule_facet, legacy_compatibility_route_inventory,
 };
 use super::family_program::{FamilyThemeProgram, FamilyThemeProgramCache};
-use super::resolved::{ResolvedProperty, ResolvedThemeStyle, ThemeTypographyProperty};
+use super::resolved::{ResolvedProperty, ResolvedThemeStyle};
 use super::semantic::{ThemeTarget, ThemeVariant};
-use super::typography::{Specified, TextStyle};
+use super::typography::Specified;
 
 #[cfg(any(test, feature = "internal-theme-acceptance"))]
 use super::semantic::OrdinalSelector;
@@ -198,8 +196,8 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Sequence => {
             compile_sequence_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Task => {
-            compile_task_family(&mut builder, &reader)?;
+        LegacyFamilyDispatch::Kanban => {
+            compile_kanban_family(&mut builder, &reader)?;
         }
         LegacyFamilyDispatch::Requirement => {
             compile_requirement_family(&mut builder, &reader)?;
@@ -231,7 +229,7 @@ enum LegacyFamilyDispatch {
     Node,
     GitGraph,
     Sequence,
-    Task,
+    Kanban,
     Requirement,
     Er,
     Chart,
@@ -529,7 +527,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
         DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
-        DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Task,
+        DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Kanban,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
         DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
@@ -654,7 +652,6 @@ fn compile_node_family(
     let family = reader.family;
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeFill.contribution_id(),
         [
@@ -802,7 +799,6 @@ fn compile_sequence_family(
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::ActorFill.contribution_id(),
         [("actorBkg", reader.fill(ThemeTarget::Actor))],
@@ -879,14 +875,12 @@ fn compile_sequence_family(
     contributions.finish_into(builder)
 }
 
-fn compile_task_family(
+fn compile_kanban_family(
     builder: &mut OverlayBuilder,
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
-    let family = reader.family;
     let mut contributions = FamilyContributions::new();
 
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         "text.fill",
         [
@@ -898,25 +892,6 @@ fn compile_task_family(
         "title.fill",
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
-
-    if family == DiagramFamilyId::GANTT {
-        // Gantt task fill/stroke state variants are owned by the typed adapter.
-        // Keep only the warning-line projection, which still has no terminal
-        // typed route.
-        contributions.add_theme_variables(
-            "task.warning",
-            [
-                (
-                    "todayLineColor",
-                    reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
-                ),
-                (
-                    "vertLineColor",
-                    reader.stroke_variant(ThemeTarget::Task, ThemeVariant::Warning),
-                ),
-            ],
-        );
-    }
 
     contributions.finish_into(builder)
 }
@@ -1049,7 +1024,6 @@ fn compile_timeline_family(
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
-    contributions.add_typography(reader);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::TimelineEventFill.contribution_id(),
         [("mainBkg", reader.fill(ThemeTarget::TimelineEvent))],
@@ -1102,14 +1076,6 @@ impl FamilyStyleReader {
         Self { family, program }
     }
 
-    fn base_typography(&self) -> &TextStyle {
-        self.program.base_typography()
-    }
-
-    fn has_legacy_base_typography(&self, property: ThemeTypographyProperty) -> bool {
-        self.program.has_legacy_base_typography(property)
-    }
-
     fn style(&self, target: ThemeTarget) -> ResolvedThemeStyle {
         self.style_variant(target, ThemeVariant::Default)
     }
@@ -1137,14 +1103,6 @@ impl FamilyStyleReader {
 
     fn stroke(&self, target: ThemeTarget) -> Option<String> {
         self.stroke_resolution(target).into_value()
-    }
-
-    fn stroke_variant(&self, target: ThemeTarget, variant: ThemeVariant) -> Option<String> {
-        self.paint_resolution(
-            self.style_variant(target, variant).stroke_resolution(),
-            FamilyThemeRuleFacet::stroke,
-        )
-        .into_value()
     }
 
     fn stroke_or_fill(&self, target: ThemeTarget) -> Option<String> {
@@ -1287,30 +1245,6 @@ impl FamilyContributions {
         }
     }
 
-    fn add_typography(&mut self, reader: &FamilyStyleReader) {
-        let typography = reader.base_typography();
-        let mut variables = Map::new();
-        let mut root = Map::new();
-        if reader.has_legacy_base_typography(ThemeTypographyProperty::FontStack) {
-            let font_family = typography.font_stack().as_css();
-            if font_family.len() <= MAX_LEGACY_ASSIGNMENT_STRING_BYTES {
-                variables.insert("fontFamily".to_string(), Value::String(font_family.clone()));
-                root.insert("fontFamily".to_string(), Value::String(font_family));
-            }
-        }
-        if reader.has_legacy_base_typography(ThemeTypographyProperty::FontSize) {
-            variables.insert(
-                "fontSize".to_string(),
-                Value::String(format!("{}px", typography.font_size_px())),
-            );
-        }
-        if variables.is_empty() {
-            return;
-        }
-        root.insert("themeVariables".to_string(), Value::Object(variables));
-        self.add_patch("typography", root);
-    }
-
     fn add_theme_variables<const N: usize>(
         &mut self,
         mapping: &'static str,
@@ -1432,6 +1366,8 @@ impl OverlayBuilder {
 
 #[cfg(test)]
 mod tests {
+    use super::super::resolved::ThemeTypographyProperty;
+    use super::super::typography::TextStyle;
     use super::*;
     use crate::diagram_theme::{
         CanvasSpec, FontStack, LineHeight, MermaidThemeCompatibility, Specified, TextAlign,
@@ -2602,29 +2538,14 @@ mod tests {
     }
 
     #[test]
-    fn every_matrix_legacy_route_reaches_the_bridge_with_its_probe_value() {
-        let mut matrix_legacy_families = BTreeSet::new();
-
+    fn base_typography_never_reenters_the_legacy_bridge() {
         for &family in DiagramFamilyId::all() {
-            for property in [
-                ThemeTypographyProperty::FontStack,
-                ThemeTypographyProperty::FontSize,
-                ThemeTypographyProperty::FontWeight,
-                ThemeTypographyProperty::FontStyle,
-                ThemeTypographyProperty::LineHeight,
-                ThemeTypographyProperty::LetterSpacing,
-                ThemeTypographyProperty::WordSpacing,
-                ThemeTypographyProperty::Transform,
-                ThemeTypographyProperty::Decoration,
-                ThemeTypographyProperty::TextAlign,
-                ThemeTypographyProperty::WhiteSpace,
-                ThemeTypographyProperty::Wrap,
-            ] {
+            for &property in ThemeTypographyProperty::ALL {
                 let typography = typography_probe_style(property);
                 let spec = DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default().with_family_style(family, typography.clone()),
+                    TypographySpec::default().with_family_style(family, typography),
                 );
-                let family_programs = FamilyThemeProgramCache::new(Arc::new(spec.clone()));
+                let family_programs = FamilyThemeProgramCache::new(Arc::new(spec));
                 let program = family_programs.get_or_compile(family);
                 let route = program
                     .mechanism_routes()
@@ -2638,19 +2559,20 @@ mod tests {
                             property.id()
                         )
                     });
-                if route.disposition() != FamilyThemeDisposition::LegacyCompatibility {
-                    continue;
-                }
-                matrix_legacy_families.insert(family);
-                assert_legacy_probe_projects(
-                    family,
-                    spec,
-                    FamilyThemeMechanism::BaseTypography(property),
-                    value_digest(&legacy_typography_probe_value(property, &typography)),
-                    &format!("base typography {}", property.id()),
+                assert_ne!(
+                    route.disposition(),
+                    FamilyThemeDisposition::LegacyCompatibility,
+                    "retired typography projection must not return: family={family} property={}",
+                    property.id(),
                 );
             }
+        }
+    }
 
+    #[test]
+    fn every_matrix_legacy_route_reaches_the_bridge_with_its_probe_value() {
+        let mut matrix_legacy_families = BTreeSet::new();
+        for &family in DiagramFamilyId::all() {
             for &target in ThemeTarget::ALL {
                 if target == ThemeTarget::Canvas || !target.valid_for(family) {
                     continue;
@@ -2760,33 +2682,6 @@ mod tests {
                 .all(|projection| projection.value_digest() == expected_value_digest),
             "legacy route did not preserve its probe value: family={family} route={route}"
         );
-    }
-
-    fn legacy_typography_probe_value(
-        property: ThemeTypographyProperty,
-        typography: &TextStyle,
-    ) -> Value {
-        match property {
-            ThemeTypographyProperty::FontStack => Value::String(typography.font_stack().as_css()),
-            ThemeTypographyProperty::FontSize => {
-                Value::String(format!("{}px", typography.font_size_px()))
-            }
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => {
-                panic!(
-                    "base typography property {} entered the legacy bridge without a probe value",
-                    property.id()
-                )
-            }
-        }
     }
 
     fn typography_probe_style(property: ThemeTypographyProperty) -> TextStyle {

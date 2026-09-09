@@ -191,16 +191,6 @@ impl FamilyThemeProgram {
         &self.effect_binding_indices
     }
 
-    pub(super) fn has_legacy_base_typography(
-        &self,
-        property: super::resolved::ThemeTypographyProperty,
-    ) -> bool {
-        self.has_route(
-            FamilyThemeMechanism::BaseTypography(property),
-            FamilyThemeDisposition::LegacyCompatibility,
-        )
-    }
-
     pub(super) fn has_legacy_compatibility(&self) -> bool {
         self.mechanism_routes
             .iter()
@@ -223,16 +213,6 @@ impl FamilyThemeProgram {
 
     pub(super) fn mechanism_routes(&self) -> &[FamilyThemeRoute] {
         &self.mechanism_routes
-    }
-
-    fn has_route(
-        &self,
-        mechanism: FamilyThemeMechanism,
-        disposition: FamilyThemeDisposition,
-    ) -> bool {
-        self.mechanism_routes
-            .iter()
-            .any(|route| route.mechanism() == mechanism && route.disposition() == disposition)
     }
 
     pub(super) fn resolve_style(
