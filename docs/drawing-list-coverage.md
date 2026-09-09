@@ -1096,8 +1096,12 @@ The serializer does not reconstruct the layout fill that source theme CSS overwr
 
 The latest full reports are `target/compare/journey_5e2265766_background_title_structure.md` and
 `target/compare/journey_5e2265766_background_title_parity_root.md`: 26 selected, 25 canonical outputs,
-no skips, **0/25 passes** in both modes. The `size: 2rem` title-font fixture retains the explicit
-non-finite face rejection. The reports still expose background attributes, added public clips,
+no skips, **0/25 passes** in both modes. The fixture `upstream_cypress_journey_spec_should_correctly_render_the_user_journey_diagram_title_with_the_011`
+contains a trailing `size: 2rem` task line. Pinned Mermaid emits a literal `size` task whose face,
+eyes, and neutral mouth coordinates are `NaN`; the source SVG is not finite geometry. The public
+DrawingList protocol rejects non-finite points, so the adapter records `DrawingListUnavailable`
+with `Journey score produced non-finite face geometry` and uses the explicit legacy bridge. This
+is a structured safety disposition, not a candidate to admit by serializing NaN. The reports still expose background attributes, added public clips,
 text shells, and color/font spellings. They are failure evidence, not admission.
 Temporary runtime and fixture admission were removed after the processes exited. No comparator
 normalization was relaxed. These reports include the background presentation and title-inheritance
