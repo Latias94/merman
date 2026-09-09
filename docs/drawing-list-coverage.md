@@ -43,14 +43,21 @@ inventory row fails at test time.  The current inventory is:
 | QuadrantChart | yes | legacy bridge |
 | XYChart | yes | legacy bridge |
 | GitGraph | yes | legacy bridge |
-| TreeView | yes | canonical |
+| TreeView | yes | legacy bridge |
 | Ishikawa | yes | legacy bridge |
 | EventModeling | yes | legacy bridge |
 | Venn | yes | legacy bridge |
 
-### TreeView admission, September 9, 2026
+### TreeView admission correction, September 9, 2026
 
-TreeView is now admitted to the canonical SVG route. The complete pinned family report covers 17/17 fixtures in structure and parity-root modes; the route and coverage matrix are checked in together.
+The admission in `392c9b9ac` relied on an older report that did not establish canonical
+routing. It is withdrawn. Running `compare-tree-view-svgs --check-dom --dom-mode parity-root
+--dom-decimals 3` on `bd3dac32e` with TreeView admitted selected 17 fixtures: 12 canonical
+outputs had DOM differences and 5 fell back for unsupported registry icons. None passed.
+The local evidence is `target/compare/treeView_bd3dac32e_canonical_parity_root.md`.
+Remaining work includes public-only style projection, root/semantic grouping, source icon
+structure, and explicit support or error disposition for registry icons. Historical legacy
+parity reports are not canonical admission evidence.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
@@ -1110,3 +1117,11 @@ text shells, and color/font spellings. They are failure evidence, not admission.
 Temporary runtime and fixture admission were removed after the processes exited. No comparator
 normalization was relaxed. These reports include the background presentation and title-inheritance
 repairs. They do not establish exact x-height/font rendering or approve the remaining DOM residuals.
+
+### Gantt vertical label correction, September 9, 2026
+
+`9b916eca2` incorrectly treated the source `font-size="11"` presentation attribute as the
+resolved font size. Pinned `gantt/styles.js` sets `.vertText { font-size: 15px; }`, overriding
+that attribute. Chromium computed style for both labels in
+`upstream_docs_gantt_vertical_markers_011.svg` is `15px`. The public text run therefore retains
+15px; matching the inactive attribute cannot justify changing its visible size.
