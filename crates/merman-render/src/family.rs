@@ -5812,6 +5812,122 @@ gantt
     }
 
     #[test]
+    fn journey_legend_tspan_and_shared_defs_preserve_public_text() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        for placement in ["fo", "old"] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "journey": {"textPlacement": placement, "boxTextMargin": 13}
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "journey\nsection Work\nRead: 5: Alice\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let run = document
+                .public
+                .commands
+                .iter_mut()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == "Alice" => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                run.origin.x, 66.0,
+                "source tspan x is 40 + 2 * boxTextMargin"
+            );
+            run.text = "Edited <legend>".to_owned();
+            run.origin.x = 91.0;
+            run.origin.y = 123.0;
+            run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+            run.style.font_size = 27.0;
+            run.language = Some("en".to_owned());
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                &json!({"journey": {"boxTextMargin": 99}}),
+                &artifact.session,
+            )
+            .unwrap();
+            let native = crate::svg::SvgPipeline::resvg_safe()
+                .process_resvg_compatible(&svg, &artifact.session)
+                .unwrap();
+            for output in [svg.as_str(), native.as_str()] {
+                let xml = roxmltree::Document::parse(output).unwrap();
+                let defs = xml
+                    .root_element()
+                    .children()
+                    .filter(|node| node.has_tag_name("defs"))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    defs.len(),
+                    1,
+                    "{placement}: marker and clip share the source defs"
+                );
+                assert!(
+                    defs[0]
+                        .children()
+                        .find(|node| node.is_element())
+                        .unwrap()
+                        .has_tag_name("marker")
+                );
+                assert_eq!(
+                    defs[0]
+                        .children()
+                        .filter(|node| node.has_tag_name("clipPath"))
+                        .count(),
+                    if placement == "fo" { 2 } else { 0 }
+                );
+                let spans = xml
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("tspan") && node.text() == Some("Edited <legend>")
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(spans.len(), 1);
+                let span = spans[0];
+                let text = span.parent().unwrap();
+                assert!(text.has_tag_name("text"));
+                assert_eq!(text.attribute("class"), Some("legend"));
+                assert_eq!(text.attribute("x"), Some("40"));
+                assert_eq!(span.attribute("x"), Some("91"));
+                assert_eq!(text.attribute("y"), Some("123"));
+                assert_eq!(text.attribute("fill"), Some("#123456"));
+                assert_eq!(
+                    text.attribute("fill-opacity")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap(),
+                    128.0 / 255.0
+                );
+                assert_eq!(text.attribute("font-size"), Some("27"));
+                assert_eq!(
+                    text.attribute(("http://www.w3.org/XML/1998/namespace", "lang")),
+                    Some("en")
+                );
+                assert!(
+                    text.ancestors().any(|node| node
+                        .children()
+                        .any(|child| child.has_tag_name("title") && child.text() == Some("Alice"))),
+                    "the independent public name remains available"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn journey_html_shell_and_native_pipeline_preserve_public_text_and_clip() {
         use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
         let parsed = Engine::new()

@@ -1097,3 +1097,28 @@ text, font, paint, opacity, and clip references are unchanged. The matching text
 is consistent with HTML subpixel layout quantization, not proven pixel identity. The probe's
 0.001px threshold fails and has not been relaxed; no pixel screenshot comparison was performed.
 This bounded browser residual is recorded separately from the still-failing structural admission.
+
+## Journey shared definitions and legend text follow-up
+
+Journey's source marker and public clip definitions now share one root `defs`, with the marker
+first. This also keeps marker-only `old` text-placement output valid. Clip resources and their
+references are unchanged; no definition is inferred from private label geometry.
+
+Legend text retains the source `text > tspan` structure from `svgDrawCommon.drawText`. The source
+container's fixed `x=40` is inert: the only tspan explicitly receives the public `TextRun.origin.x`,
+while the parent receives the public y, font, paint, language, and graphics state. The serializer
+does not read `boxTextMargin` or measure text again. Edited or multi-line runs retain their public
+positions; multi-line runs use the ordinary host-text projection.
+
+The focused regression exercises default/old placement, a non-default source text margin, and
+independent public text/position/font/alpha/language edits through source and finalized native SVG.
+It checks the public semantic name survives the visible-text edit. These assertions complement,
+but do not replace, the complete candidate comparison.
+
+Fresh candidate reports are `target/compare/journey_051f6243a_defs_legend_structure.md` and
+`target/compare/journey_051f6243a_defs_legend_parity_root.md`: 26 selected, 25 canonical outputs,
+no skips, **0/25 passes** in both modes, with the same non-finite face rejection. Raw SVG has one
+root defs whose first child is the marker; the comparator's normalized defs order still exposes
+the added public clips. Legend tspan structure is restored, while explicit style attributes,
+HTML/native label structure, and source attribute spellings continue to differ. Runtime/fixture
+admission was withdrawn after the comparison processes exited; the public cohort is unchanged.

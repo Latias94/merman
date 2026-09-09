@@ -131,20 +131,20 @@ fn source_marker_matches(path: &PathResource, start: Point, end: Point, width: f
 }
 
 impl DocumentSvgEncoder<'_> {
-    /// Call at the source root defs position, after root accessibility and before the legend.
-    pub(super) fn write_journey_marker_defs(&mut self) -> Result<()> {
+    /// Emit the source marker first in the shared root defs, alongside public clip resources.
+    pub(super) fn write_journey_marker(&mut self) -> Result<()> {
         let Some(marker) = self.journey_marker.as_ref() else {
             return Ok(());
         };
         let (style, arrow_id) = (marker.arrow_style, marker.arrow_id);
         write!(
             self.output,
-            "<defs><marker id=\"{}-arrowhead\" refX=\"5\" refY=\"2\" markerWidth=\"6\" markerHeight=\"4\" orient=\"auto\"><path d=\"M 0,0 V 4 L6,2 Z\"",
+            "<marker id=\"{}-arrowhead\" refX=\"5\" refY=\"2\" markerWidth=\"6\" markerHeight=\"4\" orient=\"auto\"><path d=\"M 0,0 V 4 L6,2 Z\"",
             escaped_attr(&self.diagram_id)
         )?;
         self.write_fill_stroke_style(style)?;
         write_resource_metadata(&mut self.output, self.debug, arrow_id.as_str())?;
-        self.output.push_str("/></marker></defs>")?;
+        self.output.push_str("/></marker>")?;
         Ok(())
     }
 

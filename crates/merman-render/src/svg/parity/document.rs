@@ -548,7 +548,6 @@ impl<'a> DocumentSvgEncoder<'a> {
             self.output.push_str("<g/>")?;
         }
         self.write_defs()?;
-        self.write_journey_marker_defs()?;
         if !matches!(
             self.svg_body,
             SvgStructureBody::Packet(_)
@@ -1213,10 +1212,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                     | DrawingResource::Font(_)
             ) || matches!(resource, DrawingResource::Path(_)) && clip_paths.contains(raw_id)
         });
-        if !has_defs {
+        if !has_defs && self.journey_marker.is_none() {
             return Ok(());
         }
         self.output.push_str("<defs>")?;
+        self.write_journey_marker()?;
         let resources = self
             .resources
             .iter()
@@ -3438,6 +3438,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             _ => text_baseline(run.baseline),
         };
+        let journey_legend = self.journey_legend_text(run, semantic_id.as_deref());
         let gitgraph_branch_label = matches!(self.svg_body, SvgStructureBody::GitGraph(body)
         if self.current_semantic_id().is_some_and(|id| {
             body.text_classes
@@ -3459,7 +3460,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             write!(
                 self.output,
                 " x=\"{}\" y=\"{}\" text-anchor=\"{}\" dominant-baseline=\"{}\" direction=\"{}\" font-size=\"{}\" letter-spacing=\"{}\"",
-                fmt(run.origin.x),
+                // Journey's source text container has an inert x=40. Its tspan below owns
+                // the absolute public position, including any caller edit.
+                fmt(if journey_legend { 40.0 } else { run.origin.x }),
                 fmt(run.origin.y),
                 text_anchor(run.anchor),
                 baseline,
@@ -3498,7 +3501,11 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push('>')?;
 
         let mut lines = run.text.split('\n');
-        if gitgraph_branch_label {
+        if journey_legend {
+            write!(self.output, "<tspan x=\"{}\">", fmt(run.origin.x))?;
+            output::escape_xml(&mut self.output, &run.text)?;
+            self.output.push_str("</tspan>")?;
+        } else if gitgraph_branch_label {
             if let Some(first) = lines.next() {
                 self.output
                     .push_str(r#"<tspan xml:space="preserve" dy="1em" x="0" class="row">"#)?;

@@ -3,6 +3,15 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    /// The source legend uses text > tspan with an absolute tspan x. Keep this identity
+    /// spelling only for single-line host text; all paint/state still uses the common writer.
+    pub(super) fn journey_legend_text(&self, run: &TextRun, semantic_id: Option<&str>) -> bool {
+        matches!(self.svg_body, SvgStructureBody::Journey(body)
+            if semantic_id.is_some_and(|id| id.starts_with("journey.actor.")
+                && body.text_classes.get(id).is_some_and(|class| class == "legend")))
+            && !run.text.contains(['\n', '\r'])
+    }
+
     pub(super) fn begin_journey_semantic_group(
         &mut self,
         id: &str,
