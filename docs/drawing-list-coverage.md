@@ -501,8 +501,26 @@ The full follow-up `target/compare/gantt_3287556d0_candidate_structure.md` selec
 explicit unsupported-effect routes (`stoke` and `themeCSS`) remain. The milestone fixture now passes.
 Most remaining attribute differences are task section descriptions with their accessibility names,
 exclude paint attributes, zero-radius attributes, and a few whitespace/opacity attributes; linked
-fixtures also differ in element structure. This is the current full structure report, not root or
+fixtures also differ in element structure. This records that full structure run, not root or
 browser evidence. Temporary admission was removed; Gantt remains a legacy bridge publicly.
+
+The following task-description correction stops synthesizing English `"<section> section"` text
+from model membership. Source Gantt has no such task description, and DrawingList does not define
+prose as a machine-readable section relationship. Public section drawing, task identity/name/role
+and navigation remain. Explicit task descriptions, including that same literal phrase, continue
+to project verbatim; serializer code never filters public description values. The now-unused
+source-description-only builder helper is removed. Exclude rectangles also reuse the public solid
+paint CSS projection; edited translucent paint and non-default dashed strokes retain their values
+through compact or general projection without replaying source CSS.
+
+All 49 focused Gantt/metadata/diagnostic tests pass. The full canonical candidate refresh
+`target/compare/gantt_19617815f_candidate_structure.md` selected 157 fixtures: 150 rendered, 110 passed
+strict structure and 40 failed, with the existing five skips and two explicit unsupported-effect
+routes unchanged. This supersedes the prior 6/144 full structure result. Remaining mismatches
+include source radius representation, whitespace, today-marker presentation, and static navigation
+structure; root/browser comparison is not implied. Temporary admission was removed. The source's
+non-sandbox URL navigation uses runtime event listeners absent from exported SVG; preserving static
+headless links needs an explicit navigation projection decision and scoped evidence before admission.
 
 ### Journey color correction
 

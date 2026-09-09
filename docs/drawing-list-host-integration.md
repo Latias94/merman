@@ -26,6 +26,13 @@ A `DrawPath` with both `fill: null` and `stroke: null` retains its geometry and 
 ownership but produces no paint. Hosts must not substitute a default fill or stroke. Empty
 `DrawText` commands likewise preserve their semantic position without painting glyphs.
 
+Semantic descriptions carry source or explicitly authored accessibility metadata. They are not a
+serialization of every family model relationship. In particular, Gantt does not synthesize English
+`"<section> section"` descriptions for tasks: the section's text, background, and placement remain
+in the public drawing, while machine-readable task-to-section membership remains in the typed
+semantic/layout artifacts. Hosts must not infer a relationship by parsing description prose. A
+future portable relationship API would need an explicit versioned contract.
+
 Before bytes are exposed, the renderer computes a document-wide footprint (commands, resources,
 path segments, stroke dash entries, text/glyph work, inline assets, pixels, and maximum state
 nesting) and charges it to the existing operation work budget. Protocol limits still validate the

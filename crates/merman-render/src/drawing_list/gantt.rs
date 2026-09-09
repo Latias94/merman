@@ -642,18 +642,17 @@ impl<'a> GanttBuilder<'a> {
                 (semantic_id, SemanticRole::Label),
             ] {
                 let title = self.document.resolved_text_name_since(text_start)?;
-                self.document
-                    .push_semantic_with_source_description(SemanticAnnotation {
-                        id,
-                        role,
-                        title: Some(title),
-                        description: (!source.section.is_empty())
-                            .then(|| format!("{} section", source.section)),
-                        link: portable_navigation_uri(
-                            self.model.links.get(&source.id).map(String::as_str),
-                            self.navigation_security,
-                        ),
-                    })?;
+                self.document.push_semantic(SemanticAnnotation {
+                    id,
+                    role,
+                    title: Some(title),
+                    // Section membership is layout context, not an authored description.
+                    description: None,
+                    link: portable_navigation_uri(
+                        self.model.links.get(&source.id).map(String::as_str),
+                        self.navigation_security,
+                    ),
+                })?;
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
@@ -1667,7 +1666,7 @@ mod tests {
             assert_eq!(node.link, label.link);
             if task.id == "a" {
                 assert_eq!(node.link.as_deref(), Some("https://example.com/task"));
-                assert_eq!(node.description.as_deref(), Some("Core section"));
+                assert_eq!(node.description, None);
             }
         }
         let root = document

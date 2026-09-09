@@ -73,6 +73,7 @@ impl DocumentSvgEncoder<'_> {
         };
         let raw_id = path_id.as_str();
         let primitive = raw_id.starts_with("gantt.task.") && raw_id.ends_with(".bar")
+            || raw_id.starts_with("gantt.exclude.")
             || raw_id == "gantt.today.line";
         let origin = body.path_transform_bases.get(raw_id).copied();
         if !primitive && origin.is_none() {

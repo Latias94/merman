@@ -85,20 +85,6 @@ impl DrawingListBuilder<'_> {
         self.push_semantic(semantic)
     }
 
-    /// Keeps an already-resolved title literal while resolving its source-only description.
-    pub(crate) fn push_semantic_with_source_description(
-        &mut self,
-        mut semantic: SemanticAnnotation,
-    ) -> Result<()> {
-        if let Some(source) = semantic.description.as_deref()
-            && let Cow::Owned(resolved) =
-                self.resolve_source_text(source, SourceTextPurpose::Metadata)?
-        {
-            semantic.description = Some(resolved);
-        }
-        self.push_semantic(semantic)
-    }
-
     fn resolve_source_text<'a>(
         &self,
         source: &'a str,

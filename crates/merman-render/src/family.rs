@@ -2032,6 +2032,13 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
+        document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|entry| entry.id == "gantt.task.0")
+            .unwrap()
+            .description = Some("Delivery section".into());
         let run = document
             .public
             .commands
@@ -2668,6 +2675,96 @@ mod tests {
     }
 
     #[test]
+    fn gantt_excludes_project_public_paint_and_preserve_general_strokes() {
+        use merman_display_list::{Color, DrawingCommand, Paint, StrokeStyle};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nexcludes weekends\nTask :a, 2019-02-01, 2019-02-05\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let baseline = render(&document);
+        let xml = roxmltree::Document::parse(&baseline).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("exclude-range"))
+            .unwrap();
+        assert!(rect.has_tag_name("rect"));
+        assert_eq!(rect.attribute("fill"), None);
+        assert_eq!(rect.attribute("stroke"), None);
+        assert!(rect.attribute("style").unwrap().contains("fill:#eeeeee;"));
+        assert!(rect.attribute("transform-origin").is_some());
+        let command = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == "gantt.exclude.0"
+                )
+            })
+            .unwrap();
+        let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[command] else {
+            unreachable!()
+        };
+        style.fill = Some(Paint::solid(Color::rgba(18, 52, 86, 128)));
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("exclude-range"))
+            .unwrap();
+        let css = rect.attribute("style").unwrap();
+        assert!(css.contains("fill:#123456;"));
+        let alpha: f64 = css
+            .split(';')
+            .find_map(|value| value.strip_prefix("fill-opacity:"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!((alpha - 128.0 / 255.0).abs() < 1e-6);
+        let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[command] else {
+            unreachable!()
+        };
+        style.stroke = Some(StrokeStyle {
+            paint: Paint::solid(Color::rgba(171, 205, 239, 255)),
+            width: 3.0,
+            dash_array: vec![2.0, 4.0],
+            dash_offset: 0.0,
+            line_cap: merman_display_list::LineCap::Butt,
+            line_join: merman_display_list::LineJoin::Miter,
+            miter_limit: 4.0,
+        });
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("exclude-range"))
+            .unwrap();
+        assert_eq!(rect.attribute("fill"), Some("#123456"));
+        assert_eq!(rect.attribute("stroke"), Some("#abcdef"));
+        assert_eq!(rect.attribute("stroke-width"), Some("3"));
+        assert_eq!(rect.attribute("stroke-dasharray"), Some("2,4"));
+    }
+
+    #[test]
     fn gantt_transform_origins_retain_source_dom_without_becoming_visual_inputs() {
         use merman_display_list::{DrawingCommand, FillRule, Point, ResourceId, Transform};
         let parsed = Engine::new()
@@ -2969,7 +3066,7 @@ mod tests {
                 rect.attribute("data-merman-semantic-id"),
                 Some("gantt.task.0")
             );
-            assert!(rect.attribute("aria-label").is_some());
+            assert_eq!(rect.attribute("aria-label"), None);
             assert!(
                 rect.parent()
                     .unwrap()
@@ -3098,7 +3195,7 @@ mod tests {
                 path.attribute("data-merman-semantic-id"),
                 Some("gantt.task.0")
             );
-            assert!(path.attribute("aria-label").is_some());
+            assert_eq!(path.attribute("aria-label"), None);
         }
     }
 
@@ -4219,7 +4316,7 @@ mod tests {
     fn gantt_task_names_follow_public_text_and_survive_edited_label_scopes() {
         use merman_display_list::{DrawingCommand, SemanticRole};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(
-            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nAlpha     #quot;Beta#quot; :a, 2026-01-01, 1d\n",
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nAlpha     #quot;Beta#quot; :a, 2026-01-01, 1d\n",
             ParseOptions::strict(),
         ).unwrap().unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
@@ -4252,6 +4349,7 @@ mod tests {
                 .find(|entry| entry.id == id)
                 .unwrap();
             assert_eq!(semantic.title.as_deref(), Some(name));
+            assert_eq!(semantic.description, None);
             let element = xml
                 .descendants()
                 .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
@@ -4290,6 +4388,26 @@ mod tests {
                     )
                     .count(),
                 1
+            );
+        }
+        for id in ["gantt.task.0", "gantt.task.0.label"] {
+            let mut document = baseline.clone();
+            document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap()
+                .description = Some("Delivery section".into());
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let element = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
+                .unwrap();
+            assert_eq!(
+                element.attribute("aria-description"),
+                Some("Delivery section")
             );
         }
         let mut linked = baseline.clone();
@@ -4689,6 +4807,13 @@ mod tests {
                 )
             })
             .unwrap();
+        document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|entry| entry.id == "gantt.task.1")
+            .unwrap()
+            .description = Some("Explicit task description".into());
         document.public.commands.insert(bar, DrawingCommand::Save);
         document
             .public
