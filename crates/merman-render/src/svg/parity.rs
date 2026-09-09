@@ -1119,12 +1119,9 @@ fn render_builtin_family_artifact_raw(
         ),
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),
-            artifact.pair().semantic(),
             artifact.event_theme(),
             artifact.typography_theme(),
             effective_config_value,
-            title,
-            measurer,
             options,
         ),
         BuiltinFamilyArtifact::Journey(artifact) => journey::render_journey_diagram_svg_model(

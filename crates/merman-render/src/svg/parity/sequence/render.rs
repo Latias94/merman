@@ -87,24 +87,8 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_sequence_diagram_svg_inner(
-        prepared,
-        model,
-        effective_config.as_value(),
-        effective_config,
-        measurer,
-        options,
-    )
-}
-
-fn render_sequence_diagram_svg_inner(
-    prepared: &crate::sequence::SequencePreparedArtifact,
-    model: &SequenceSvgModel,
-    effective_config: &serde_json::Value,
-    sanitize_config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
+    let sanitize_config = effective_config;
+    let effective_config = effective_config.as_value();
     let checkpoints = SequenceEmitCheckpoints::for_emit(options.work_meter());
     checkpoints.checkpoint()?;
     let layout = prepared.layout();

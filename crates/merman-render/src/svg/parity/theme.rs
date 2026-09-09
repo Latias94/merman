@@ -14,7 +14,6 @@ pub(super) struct CommonCssTheme {
     pub(super) dark_mode: bool,
     pub(super) look: String,
     pub(super) font_family_css: String,
-    pub(super) font_size_px: f64,
     pub(super) text_color: String,
     pub(super) line_color: String,
     pub(super) error_bkg: String,
@@ -185,7 +184,6 @@ pub(crate) struct GanttTheme {
     pub(crate) section_bkg_color2: String,
     pub(crate) alt_section_bkg_color: String,
     pub(crate) title_color: String,
-    pub(crate) title_text_color: String,
     pub(crate) grid_color: String,
     pub(crate) today_line_color: String,
     pub(crate) task_text_dark_color: String,
@@ -286,9 +284,7 @@ impl VennTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JourneyTheme {
-    pub(crate) font_family_css: String,
     pub(crate) text_color: String,
-    pub(crate) line_color: String,
     pub(crate) face_color: String,
     pub(crate) main_bkg: String,
     pub(crate) node_border: String,
@@ -359,7 +355,6 @@ impl<'a> MermaidThemeAdapter<'a> {
             theme_name,
             look: raw.look(),
             font_family_css: raw.font_family_css(),
-            font_size_px: raw.font_size_px(),
             text_color: raw.color("textColor", "#333"),
             line_color: raw.color("lineColor", "#333333"),
             error_bkg: raw.color("errorBkgColor", "#552222"),

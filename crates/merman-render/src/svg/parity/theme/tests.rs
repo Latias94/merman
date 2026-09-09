@@ -7,11 +7,7 @@ fn mermaid_theme_adapter_prefers_explicit_dark_mode_over_theme_name() {
         "theme": "base",
         "themeVariables": { "darkMode": true }
     });
-    assert!(
-        MermaidThemeAdapter::new(&typed_dark)
-            .common()
-            .is_dark_theme()
-    );
+    assert!(MermaidThemeAdapter::new(&typed_dark).common.is_dark_theme());
 
     let explicitly_light = json!({
         "theme": "dark",
@@ -20,7 +16,7 @@ fn mermaid_theme_adapter_prefers_explicit_dark_mode_over_theme_name() {
     });
     assert!(
         !MermaidThemeAdapter::new(&explicitly_light)
-            .common()
+            .common
             .is_dark_theme()
     );
 }
@@ -294,7 +290,10 @@ fn mermaid_theme_adapter_gantt_resolves_gantt_roles() {
     assert_eq!(gantt.section_bkg_color2, "#303030");
     assert_eq!(gantt.alt_section_bkg_color, "#404040");
     assert_eq!(gantt.title_color, "#505050");
-    assert_eq!(gantt.title_text_color, "#505050");
+    let css = crate::svg::parity::css::gantt_css_with_overrides(
+        "g", &cfg, None, None, None, None, None, None,
+    );
+    assert!(css.contains(r#"#g .titleText{text-anchor:middle;font-size:18px;fill:#505050;"#));
     assert_eq!(gantt.grid_color, "#606060");
     assert_eq!(gantt.today_line_color, "#808080");
     assert_eq!(gantt.task_text_dark_color, "#909090");
@@ -324,7 +323,10 @@ fn mermaid_theme_adapter_gantt_uses_text_color_for_empty_title_color() {
     let gantt = MermaidThemeAdapter::new(&cfg).gantt();
 
     assert_eq!(gantt.title_color, "   ");
-    assert_eq!(gantt.title_text_color, "#707070");
+    let css = crate::svg::parity::css::gantt_css_with_overrides(
+        "g", &cfg, None, None, None, None, None, None,
+    );
+    assert!(css.contains(r#"#g .titleText{text-anchor:middle;font-size:18px;fill:#707070;"#));
 }
 
 #[test]
@@ -651,12 +653,7 @@ fn mermaid_theme_adapter_journey_resolves_style_roles() {
 
     let journey = MermaidThemeAdapter::new(&cfg).journey();
 
-    assert_eq!(
-        journey.font_family_css,
-        "\"ibm plex sans\",arial,sans-serif"
-    );
     assert_eq!(journey.text_color, "#101010");
-    assert_eq!(journey.line_color, "#202020");
     assert_eq!(journey.face_color, "#303030");
     assert_eq!(journey.main_bkg, "#404040");
     assert_eq!(journey.node_border, "#505050");
@@ -679,12 +676,7 @@ fn mermaid_theme_adapter_journey_uses_default_style_roles() {
 
     let journey = MermaidThemeAdapter::new(&cfg).journey();
 
-    assert_eq!(
-        journey.font_family_css,
-        "\"trebuchet ms\",verdana,arial,sans-serif"
-    );
     assert_eq!(journey.text_color, "#333");
-    assert_eq!(journey.line_color, "#333333");
     assert_eq!(journey.face_color, "#FFF8DC");
     assert_eq!(journey.main_bkg, "#ECECFF");
     assert_eq!(journey.node_border, "#9370DB");

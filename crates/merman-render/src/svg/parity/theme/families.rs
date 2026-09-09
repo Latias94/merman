@@ -226,11 +226,6 @@ impl<'a> MermaidThemeAdapter<'a> {
 
         let text_color = self.common.text_color.clone();
         let title_color = option("titleColor", "#333");
-        let title_text_color = if title_color.trim().is_empty() {
-            text_color.clone()
-        } else {
-            title_color.clone()
-        };
 
         GanttTheme {
             font_family: self.common.font_family_css.clone(),
@@ -240,7 +235,6 @@ impl<'a> MermaidThemeAdapter<'a> {
             section_bkg_color2: option("sectionBkgColor2", "#fff400"),
             alt_section_bkg_color: option("altSectionBkgColor", "white"),
             title_color,
-            title_text_color,
             grid_color: option("gridColor", "lightgrey"),
             today_line_color: option("todayLineColor", "red"),
             task_text_dark_color: option("taskTextDarkColor", "black"),
@@ -356,9 +350,7 @@ impl<'a> MermaidThemeAdapter<'a> {
         let text_color = self.raw.color("textColor", "#333");
 
         JourneyTheme {
-            font_family_css: self.raw.font_family_css(),
             text_color: text_color.clone(),
-            line_color: self.raw.color("lineColor", "#333333"),
             face_color: self.raw.color("faceColor", "#FFF8DC"),
             main_bkg: self.raw.color("mainBkg", "#ECECFF"),
             node_border: self.raw.color("nodeBorder", "#9370DB"),
@@ -461,10 +453,6 @@ impl<'a> MermaidThemeAdapter<'a> {
             border_colors: self.raw.string_array("borderColorArray"),
             sections,
         }
-    }
-
-    pub(in crate::svg::parity) fn common(&self) -> &CommonCssTheme {
-        &self.common
     }
 
     fn treemap_style_option(&self, key: &str, default_value: &str) -> String {

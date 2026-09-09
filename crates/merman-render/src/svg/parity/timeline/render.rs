@@ -1,7 +1,6 @@
 use super::super::theme::TimelineTheme;
 use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
-use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
 fn timeline_css(
     diagram_id: impl Copy + std::fmt::Display,
@@ -495,32 +494,9 @@ impl<'a> TimelineEventEmissionState<'a> {
 
 pub(crate) fn render_timeline_diagram_svg_model(
     layout: &TimelineDiagramLayout,
-    _model: &TimelineDiagramRenderModel,
     event_theme: &crate::timeline::TimelineEventTheme,
     typography_theme: &crate::timeline::TimelineTypographyThemePlan,
     effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    render_timeline_diagram_svg_inner(
-        layout,
-        event_theme,
-        typography_theme,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-fn render_timeline_diagram_svg_inner(
-    layout: &TimelineDiagramLayout,
-    event_theme: &crate::timeline::TimelineEventTheme,
-    typography_theme: &crate::timeline::TimelineTypographyThemePlan,
-    effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
@@ -611,7 +587,6 @@ fn render_timeline_diagram_svg_inner(
             None
         };
         let fill_style = effective_fill
-            .as_deref()
             .map(|fill| format!(r#" style="fill:{};""#, escape_attr(fill)))
             .unwrap_or_default();
         let look_attr = if is_neo { r#" data-look="neo""# } else { "" };
@@ -1244,7 +1219,7 @@ mod tests {
             SvgExecution::unthemed_for_test(&options, &debug, &session, DiagramFamilyId::TIMELINE)
                 .expect("SVG execution");
 
-        let svg = render_timeline_diagram_svg_inner(
+        let svg = render_timeline_diagram_svg_model(
             &layout,
             &crate::timeline::TimelineEventTheme::baseline(),
             &crate::timeline::TimelineTypographyThemePlan::resolve(
@@ -1252,8 +1227,6 @@ mod tests {
                 &merman_core::MermaidConfig::default(),
             ),
             &serde_json::json!({}),
-            None,
-            &crate::text::DeterministicTextMeasurer::default(),
             &execution,
         )
         .unwrap();
