@@ -464,6 +464,11 @@ pub struct SvgDebugOptions {
     pub include_cluster_debug_markers: bool,
     pub include_edge_id_labels: bool,
     pub include_timing_diagnostics: bool,
+    /// Include SVG-to-DrawingList diagnostic attributes on projected elements.
+    ///
+    /// This does not alter source DOM IDs, accessibility, navigation, or drawing commands.
+    /// Compact projections may merge commands and need not expose an attribute for every item.
+    pub include_drawing_list_metadata: bool,
     /// Optional caller-owned trace collection request.
     ///
     /// Use [`SvgDebugOptions::with_flowchart_edge_trace`] to construct a non-empty request. The
@@ -481,6 +486,7 @@ impl Default for SvgDebugOptions {
             include_cluster_debug_markers: false,
             include_edge_id_labels: false,
             include_timing_diagnostics: false,
+            include_drawing_list_metadata: false,
             flowchart_edge_trace: None,
         }
     }

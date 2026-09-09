@@ -6,6 +6,15 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::Value;
 
 fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String {
+    render_wardley_with_debug(source, site_config, diagram_id, &SvgDebugOptions::default())
+}
+
+fn render_wardley_with_debug(
+    source: &str,
+    site_config: Value,
+    diagram_id: &str,
+    debug: &SvgDebugOptions,
+) -> String {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -22,7 +31,7 @@ fn render_wardley(source: &str, site_config: Value, diagram_id: &str) -> String 
                 diagram_id: Some(diagram_id.to_string()),
                 ..Default::default()
             },
-            &SvgDebugOptions::default(),
+            debug,
         )
         .expect("Wardley SVG renders")
         .svg()
@@ -96,10 +105,15 @@ annotation 1,[0.78, 0.82] "User touchpoints"
 accelerator "Cloud Native" [0.20, 0.85]
 deaccelerator "Legacy Data" [0.45, 0.35]
 "#;
-    let svg = render_wardley(
+    let svg = render_wardley_with_debug(
         source,
         serde_json::json!({ "wardley-beta": { "showGrid": true } }),
         "wardley-feature-rich",
+        &SvgDebugOptions {
+            // The marker regression below checks for duplicated expanded drawing resources.
+            include_drawing_list_metadata: true,
+            ..Default::default()
+        },
     );
     let document = roxmltree::Document::parse(&svg).expect("valid Wardley XML");
     let root = document.root_element();

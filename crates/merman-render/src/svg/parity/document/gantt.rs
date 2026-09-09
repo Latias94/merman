@@ -532,11 +532,7 @@ impl DocumentSvgEncoder<'_> {
         // its separate anchor or express its description. Ordinary labels remain native text.
         let explicit_name = !native_name
             || semantic.role == SemanticRole::Node && (semantic.description.is_some() || *linked);
-        write!(
-            self.output,
-            " data-merman-semantic-id=\"{}\"",
-            escaped_attr(semantic_id)
-        )?;
+        write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
         if explicit_name {
             if semantic
                 .title
@@ -893,9 +889,10 @@ impl DocumentSvgEncoder<'_> {
             let svg_id = self.semantic_svg_id(semantic_id)?;
             write!(
                 self.output,
-                "<g class=\"today\" id=\"{}\" role=\"group\" data-merman-semantic-id=\"gantt.today\"",
+                "<g class=\"today\" id=\"{}\" role=\"group\"",
                 escaped_attr(&svg_id)
             )?;
+            write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
             if let Some(title) = &semantic.title {
                 write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
             }

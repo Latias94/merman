@@ -45,6 +45,11 @@ flowchart LR
    transform. For an absolute origin `P`, `T(P) [T(-P) M T(P)] T(-P)` must remain equal to the
    public element matrix `M`; already-emitted ancestor transforms are outside that compensation.
    The hint must not replay source rotation/scale CSS or become another geometry input.
+   SVG-to-DrawingList association attributes (`data-merman-resource`,
+   `data-merman-semantic-id`, `data-merman-bounds`, and `data-merman-text-obligation`) are
+   opt-in diagnostics, controlled by `SvgDebugOptions.include_drawing_list_metadata`.
+   They are not a substitute for the public resource/semantic tables. Disabling them must not
+   change source DOM IDs, functional markers, drawing references, links, or accessibility.
 2. DrawingList JSON and SVG are target-local serializers of that canonical document. SVG is never
    parsed back into the public DrawingList as the permanent architecture. A migration bridge may be
    used only when it records an accountable vector, raster, or error disposition and is deleted

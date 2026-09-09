@@ -32,6 +32,19 @@ nesting) and charges it to the existing operation work budget. Protocol limits s
 exact document counts and serialized byte ceiling; the footprint is an additional
 admission/accounting signal, not a second wire contract.
 
+## SVG diagnostic associations
+
+Stable DrawingList identity, text bounds, and shaping obligations live in the public document.
+Production SVG does not duplicate them as `data-merman-resource`, `data-merman-semantic-id`,
+`data-merman-bounds`, or `data-merman-text-obligation` attributes. Rust diagnostic callers may set
+`SvgDebugOptions.include_drawing_list_metadata = true` to request those associations on projected
+SVG elements. Compact projections may merge commands, so this is not a complete reverse mapping
+and consumers must not reconstruct the public document from these attributes.
+
+The switch changes diagnostic attributes only. Source DOM IDs/classes, paint/resource references,
+ARIA, descriptions, links, and functional markers such as `data-merman-native-text` remain intact.
+Use the public semantic/resource tables for host integration and source DOM IDs for SVG interaction.
+
 ## Requirements mapped to the current contract
 
 | Host requirement | Current v1 representation | Alpha status |

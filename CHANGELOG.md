@@ -9,7 +9,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Highlights
 
 - Added DrawingList v1, a versioned renderer-neutral output for Compose, Flutter, Canvas, Skia, ImGui-style, and other native graphics hosts that need resolved Mermaid geometry, paint, text obligations, and interaction metadata without embedding an SVG interpreter. Thanks @darriousliu for #114.
-- Moved SVG and DrawingList toward one canonical render-document boundary: every render family now has a direct DrawingList adapter. SVG switches to that document only after the family passes the full upstream-shaped DOM, accessibility, root, and effect gate; Info is currently admitted, while all other families retain an explicit, auditable bridge during migration.
+- Moved SVG and DrawingList toward one canonical render-document boundary: every render family now has a direct DrawingList adapter. SVG switches to that document only after the family passes the full upstream-shaped DOM, accessibility, root, and effect gate; families awaiting admission retain an explicit, auditable bridge during migration.
 
 ### Added
 
@@ -19,6 +19,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- SVG-to-DrawingList diagnostic attributes are now opt-in through Rust's `SvgDebugOptions.include_drawing_list_metadata`. Production output preserves source DOM identities, accessibility, links, and drawing references without duplicating public document metadata.
 - The Rust facade now exposes DrawingList behind its own `drawing-list` feature; the default `complete-svg` aggregate includes it, while custom artifacts can advertise SVG without claiming DrawingList support.
 - SVG results now expose whether serialization used the canonical document or an explicit legacy bridge, including a structured reason for diagnostic requests, not-yet-migrated families, and effects that the portable contract cannot honestly represent.
 - Default native binding, Node.js, and applicable Web render profiles now compile and advertise DrawingList alongside their existing SVG surface; generated contracts and package APIs derive the operation from the shared capability authority.

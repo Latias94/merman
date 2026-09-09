@@ -1977,6 +1977,14 @@ mod tests {
     };
     use serde_json::{Value, json};
 
+    // Mutation tests opt into diagnostic associations; source parity keeps production defaults.
+    fn drawing_list_svg_diagnostics() -> SvgDebugOptions {
+        SvgDebugOptions {
+            include_drawing_list_metadata: true,
+            ..Default::default()
+        }
+    }
+
     fn custom_semantic_parser(
         _code: &str,
         meta: &ParseMetadata,
@@ -2004,6 +2012,114 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn canonical_svg_diagnostics_only_add_association_attributes() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))).parse_diagram_for_render_model_sync(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\nTask :a, 2026-01-01, 1d\nclick a href \"https://example.com/task?a=1&b=2\"\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let run = document
+            .public
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text == "Task" => Some(run),
+                _ => None,
+            })
+            .unwrap();
+        // Translucent public text exercises generic text as well as compact task projection.
+        run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+        let options = SvgRenderOptions {
+            diagram_id: Some("diagnostics".into()),
+            ..Default::default()
+        };
+        let render = |debug: &SvgDebugOptions| {
+            crate::svg::render_document_svg(
+                &document,
+                &options,
+                debug,
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let production = render(&SvgDebugOptions::default());
+        let diagnostic = render(&drawing_list_svg_diagnostics());
+        let production = roxmltree::Document::parse(&production).unwrap();
+        let diagnostic = roxmltree::Document::parse(&diagnostic).unwrap();
+        let fields = [
+            "data-merman-resource",
+            "data-merman-semantic-id",
+            "data-merman-bounds",
+            "data-merman-text-obligation",
+        ];
+        assert!(
+            !production
+                .descendants()
+                .any(|node| node.attributes().any(|attr| fields.contains(&attr.name())))
+        );
+        for name in fields {
+            assert!(
+                diagnostic
+                    .descendants()
+                    .any(|node| node.attribute(name).is_some()),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            production.descendants().count(),
+            diagnostic.descendants().count()
+        );
+        for (plain, debug) in production.descendants().zip(diagnostic.descendants()) {
+            assert_eq!(plain.node_type(), debug.node_type());
+            assert_eq!(plain.tag_name(), debug.tag_name());
+            assert_eq!(plain.text(), debug.text());
+            let attrs = |node: roxmltree::Node<'_, '_>| {
+                let mut attrs = node
+                    .attributes()
+                    .filter(|attr| !fields.contains(&attr.name()))
+                    .map(|attr| {
+                        (
+                            attr.namespace().map(str::to_owned),
+                            attr.name().to_owned(),
+                            attr.value().to_owned(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                attrs.sort();
+                attrs
+            };
+            assert_eq!(attrs(plain), attrs(debug));
+        }
+        assert!(
+            production
+                .descendants()
+                .any(|node| node.attribute("id") == Some("diagnostics-a"))
+        );
+        assert!(
+            production
+                .descendants()
+                .any(|node| node.attribute("href") == Some("https://example.com/task?a=1&b=2"))
+        );
+        assert!(
+            production
+                .descendants()
+                .any(|node| node.attribute("aria-description") == Some("Delivery section"))
+        );
     }
 
     #[test]
@@ -2237,7 +2353,7 @@ mod tests {
         let svg = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -2286,7 +2402,7 @@ mod tests {
         let svg = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -2334,7 +2450,7 @@ mod tests {
                 crate::svg::render_document_svg(
                     document,
                     &SvgRenderOptions::default(),
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     artifact.metadata.effective_config.as_value(),
                     &artifact.session,
                 )
@@ -2578,7 +2694,7 @@ mod tests {
                     diagram_id: Some("origins".into()),
                     ..Default::default()
                 },
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -2832,7 +2948,7 @@ mod tests {
                 crate::svg::render_document_svg(
                     doc,
                     &SvgRenderOptions::default(),
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     artifact.metadata.effective_config.as_value(),
                     &artifact.session,
                 )
@@ -3029,7 +3145,7 @@ mod tests {
                     let svg = crate::svg::render_document_svg(
                         &document,
                         &SvgRenderOptions::default(),
-                        &SvgDebugOptions::default(),
+                        &drawing_list_svg_diagnostics(),
                         &json!({"securityLevel": encoder_security}),
                         &artifact.session,
                     )
@@ -3146,7 +3262,7 @@ mod tests {
                 crate::svg::render_document_svg(
                     document,
                     &SvgRenderOptions::default(),
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     artifact.metadata.effective_config.as_value(),
                     &artifact.session,
                 )
@@ -3296,7 +3412,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -3513,7 +3629,7 @@ mod tests {
             let rendered = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -3563,7 +3679,7 @@ mod tests {
             let rendered = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -3580,7 +3696,7 @@ mod tests {
         let rendered = crate::svg::render_document_svg(
             &baseline,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -3609,7 +3725,7 @@ mod tests {
             let rendered = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -3671,7 +3787,7 @@ mod tests {
                         diagram_id: Some("schedule".to_owned()),
                         ..Default::default()
                     },
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     artifact.metadata.effective_config.as_value(),
                     &artifact.session,
                 )
@@ -3860,7 +3976,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -4078,7 +4194,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -4243,7 +4359,7 @@ mod tests {
                 diagram_id: Some("compact".to_owned()),
                 ..Default::default()
             },
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -4254,7 +4370,7 @@ mod tests {
                 diagram_id: Some("compact".to_owned()),
                 ..Default::default()
             },
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             &json!({
                 "securityLevel": "loose",
                 "themeCSS": "text { fill: red !important; }",
@@ -4387,7 +4503,7 @@ mod tests {
                 diagram_id: Some("compact".to_owned()),
                 ..Default::default()
             },
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -4446,7 +4562,7 @@ mod tests {
         let edited = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -4477,7 +4593,7 @@ mod tests {
         let expanded = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -4544,7 +4660,7 @@ mod tests {
         let expanded = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -4576,7 +4692,7 @@ mod tests {
                 &SvgRenderOptions::default(),
                 &SvgDebugOptions {
                     include_nodes: false,
-                    ..Default::default()
+                    ..drawing_list_svg_diagnostics()
                 },
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
@@ -4639,7 +4755,7 @@ mod tests {
                 let svg = crate::svg::render_document_svg(
                     &document,
                     &SvgRenderOptions::default(),
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     artifact.metadata.effective_config.as_value(),
                     &artifact.session,
                 )
@@ -4694,7 +4810,7 @@ mod tests {
             let svg = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -5042,7 +5158,7 @@ mod tests {
             let svg = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -5232,7 +5348,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 config,
                 &artifact.session,
             )
@@ -5581,7 +5697,7 @@ mod tests {
             let svg = crate::svg::render_document_svg(
                 &document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 artifact.metadata.effective_config.as_value(),
                 &artifact.session,
             )
@@ -5757,7 +5873,7 @@ mod tests {
                 crate::svg::render_document_svg(
                     document,
                     &SvgRenderOptions::default(),
-                    &SvgDebugOptions::default(),
+                    &drawing_list_svg_diagnostics(),
                     config,
                     &artifact.session,
                 )
@@ -6045,7 +6161,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 &json!({"themeCSS": "span {color:red}"}),
                 &artifact.session,
             )
@@ -6180,7 +6296,7 @@ mod tests {
             &SvgRenderOptions::default(),
             &SvgDebugOptions {
                 include_nodes: false,
-                ..SvgDebugOptions::default()
+                ..drawing_list_svg_diagnostics()
             },
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
@@ -6200,7 +6316,7 @@ mod tests {
             &SvgRenderOptions::default(),
             &SvgDebugOptions {
                 include_clusters: false,
-                ..SvgDebugOptions::default()
+                ..drawing_list_svg_diagnostics()
             },
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
@@ -6321,7 +6437,7 @@ mod tests {
         let svg = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
+            &drawing_list_svg_diagnostics(),
             artifact.metadata.effective_config.as_value(),
             &artifact.session,
         )
@@ -6500,7 +6616,7 @@ mod tests {
             crate::svg::render_document_svg(
                 document,
                 &SvgRenderOptions::default(),
-                &SvgDebugOptions::default(),
+                &drawing_list_svg_diagnostics(),
                 config,
                 &artifact.session,
             )
@@ -7341,7 +7457,7 @@ mod tests {
             diagram_id: Some("pie-public-source".to_string()),
             ..Default::default()
         };
-        let debug = SvgDebugOptions::default();
+        let debug = drawing_list_svg_diagnostics();
         let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
             crate::svg::render_document_svg(document, &options, &debug, config, &artifact.session)
                 .unwrap()
@@ -7525,7 +7641,7 @@ mod tests {
             diagram_id: Some("packet-public-source".to_string()),
             ..SvgRenderOptions::default()
         };
-        let debug = SvgDebugOptions::default();
+        let debug = drawing_list_svg_diagnostics();
         let render = |document: &crate::drawing_list::RenderDocument, config: &Value| {
             crate::svg::render_document_svg(document, &options, &debug, config, &artifact.session)
                 .expect("serialize canonical packet document")

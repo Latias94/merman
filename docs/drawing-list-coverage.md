@@ -476,6 +476,18 @@ removed. Chromium's accessibility tree exposes the same four task StaticText/Inl
 as the pinned milestone fixture, without duplicate named task images; this is not full-tree or
 full-family accessibility parity evidence.
 
+SVG-to-DrawingList association attributes are now explicitly diagnostic. The shared encoder writes
+`data-merman-resource`, `data-merman-semantic-id`, `data-merman-bounds`, and
+`data-merman-text-obligation` only when `include_drawing_list_metadata` is enabled. Source DOM IDs,
+functional attributes, rendering references, links and ARIA are unchanged. Public-document mutation
+tests opt in; source-DOM comparisons keep default production output. The new regression compares
+all nodes, text and non-diagnostic attributes between both modes, including native IDs, links and
+descriptions. The renderer suite ran 1,796 tests: 1,794 passed initially, and the two stale Railroad/
+Cynefin assertions passed after source-backed corrections. The full run also required synchronizing
+two test measurers with the previously introduced normal-line metrics operation; 27 existing tests
+remain skipped. C4's future expanded-marker candidate evidence still needs explicit diagnostics or
+source marker reconstruction; default comparison remains fail-closed when marker evidence is absent.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

@@ -461,11 +461,11 @@ impl DocumentSvgEncoder<'_> {
         )?;
         write!(
             self.output,
-            "<g data-merman-native-text=\"v1\" id=\"{}\" class=\"merman-semantic {}\" role=\"group\" data-merman-semantic-id=\"{}\"",
+            "<g data-merman-native-text=\"v1\" id=\"{}\" class=\"merman-semantic {}\" role=\"group\"",
             escaped_attr(&svg_id),
             semantic_role_class(semantic.role),
-            escaped_attr(semantic_id)
         )?;
+        write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
         if !self.debug_visibility(semantic.role) {
             self.output.push_str(" display=\"none\"")?;
         }

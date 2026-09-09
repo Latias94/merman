@@ -19,6 +19,15 @@ fn render_family_svg_with_engine(
     source: &str,
     diagram_id: &str,
 ) -> RenderedFamilySvg {
+    render_family_svg_with_debug(engine, source, diagram_id, &SvgDebugOptions::default())
+}
+
+fn render_family_svg_with_debug(
+    engine: Engine,
+    source: &str,
+    diagram_id: &str,
+    debug: &SvgDebugOptions,
+) -> RenderedFamilySvg {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::lenient())
         .expect("source parses")
@@ -33,7 +42,7 @@ fn render_family_svg_with_engine(
                 diagram_id: Some(diagram_id.to_owned()),
                 ..Default::default()
             },
-            &SvgDebugOptions::default(),
+            debug,
         )
         .expect("canonical SVG succeeds")
 }
@@ -44,6 +53,26 @@ fn render_svg(source: &str, diagram_id: &str) -> String {
         output.serialization_route(),
         SvgSerializationRoute::CanonicalDocument,
         "{diagram_id} must not silently pass parity through the legacy bridge"
+    );
+    output.svg().to_owned()
+}
+
+// Only identity/resource assertions request diagnostic attributes. Source DOM parity uses the
+// default helper, so diagnostic output cannot conceal changes to the ordinary SVG surface.
+fn render_diagnostic_svg(source: &str, diagram_id: &str) -> String {
+    let output = render_family_svg_with_debug(
+        Engine::new(),
+        source,
+        diagram_id,
+        &SvgDebugOptions {
+            include_drawing_list_metadata: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument,
+        "{diagram_id} must not silently pass identity checks through the legacy bridge"
     );
     output.svg().to_owned()
 }
@@ -531,7 +560,7 @@ fn packet_canonical_svg_preserves_empty_labels_words_and_authored_accessibility(
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"requirementDiagram
   direction LR
   accTitle: Requirement parity
@@ -623,7 +652,7 @@ fn requirement_canonical_svg_keeps_nodes_relationships_and_accessibility() {
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn state_canonical_svg_keeps_typed_shapes_transitions_and_labels() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"stateDiagram-v2
   [*] --> Idle: start
   Idle --> Done: finish
@@ -815,7 +844,7 @@ fn radar_canonical_svg_keeps_root_profile_and_family_roles() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "xychart\n  title Sales\n  x-axis [A, B]\n  y-axis 0 --> 100\n  bar [40, 60]\n  line [30, 70]\n",
         "xychart-parity",
     );
@@ -850,7 +879,7 @@ fn xychart_canonical_svg_keeps_root_profile_theme_and_group_roles() {
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn quadrantchart_canonical_svg_keeps_root_profile_and_dom_roles() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "quadrantChart\n  accTitle: Quadrant parity\n  title Portfolio\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
         "quadrantchart-parity",
     );
@@ -980,7 +1009,7 @@ fn pie_canonical_svg_retains_unpainted_geometry_and_authored_legend_text() {
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn timeline_canonical_svg_keeps_node_connector_and_axis_roles() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "timeline\n  accTitle: Timeline parity\n  section Release\n    2026 : Ship\n",
         "timeline-parity",
     );
@@ -1086,7 +1115,7 @@ fn sankey_canonical_svg_keeps_nodes_labels_links_and_gradients() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "venn-beta\n title Product Surface\n set A[\"Core\"]:20\n set B[\"Editor\"]:14\n union A,B[\"Shared\"]:4\n",
         "venn-parity",
     );
@@ -1130,7 +1159,7 @@ fn venn_canonical_svg_keeps_area_roles_labels_and_theme() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "railroad-beta\naccTitle: Railroad parity\nexpr = sequence(nonterminal(\"term\"), terminal(\"+\"), special(\"guard\")) ;\n",
         "railroad-parity",
     );
@@ -1186,7 +1215,7 @@ fn railroad_canonical_svg_keeps_rule_roles_connectors_and_theme() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "eventmodeling\ntf 01 ui Web.ShopCart\ntf 02 cmd Cart.AddItem ->> 01 { sku: \"SKU-1\" }\ntf 03 evt Cart.ItemAdded ->> 02\n",
         "eventmodeling-parity",
     );
@@ -1226,7 +1255,7 @@ fn eventmodeling_canonical_svg_keeps_swimlanes_boxes_relations_and_text() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn ishikawa_canonical_svg_keeps_fishbone_geometry_and_semantic_labels() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n    User\n        Shaky hands\n",
         "ishikawa-parity",
     );
@@ -1349,7 +1378,7 @@ fn cynefin_canonical_svg_keeps_domains_transitions_and_accessibility() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn tree_view_canonical_svg_keeps_lines_icons_labels_and_semantics() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
         "tree-view-parity",
     );
@@ -1453,7 +1482,7 @@ fn gantt_canonical_svg_keeps_axes_tasks_states_ids_and_semantics() {
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn journey_canonical_svg_keeps_faces_sections_actors_and_activity_axis() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n    Pay: 3: Bob\n    Review: 1: Alice\n",
         "journey-parity",
     );
@@ -1604,7 +1633,7 @@ kanban
 #[test]
 #[ignore = "full-family structure comparison failed; public canonical admission withdrawn"]
 fn gitgraph_canonical_svg_keeps_branch_commit_arrow_and_label_roles() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r##"gitGraph
   commit id: "A"
   branch dev
@@ -1734,7 +1763,7 @@ gitGraph
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"erDiagram
   CAR ||--o{ NAMED-DRIVER : allows
   CAR {
@@ -1833,7 +1862,7 @@ fn er_canonical_svg_keeps_attribute_table_columns_rows_and_relationship_roles() 
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn wardley_canonical_svg_keeps_sections_expanded_markers_and_accessibility() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"wardley-beta
 accTitle: Platform map
 accDescr: Strategic platform evolution
@@ -1914,7 +1943,7 @@ annotation 1,[0.68, 0.62] "Platform boundary"
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn c4_canonical_svg_keeps_shapes_boundaries_relations_and_accessibility() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"C4Context
 accDescr: Internal platform relationships
 title Platform map
@@ -1994,7 +2023,7 @@ Rel(api, worker, "Publishes", "Events")
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn architecture_canonical_svg_keeps_services_groups_routes_and_accessibility() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%
 architecture-beta
 accTitle: Platform architecture
@@ -2078,7 +2107,7 @@ db:B -[events]-> R:worker
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn mindmap_canonical_svg_keeps_dom_routes_shapes_and_html_labels() {
-    let svg = render_svg(
+    let svg = render_diagnostic_svg(
         r#"mindmap
   root((Root))
     child[Child]
@@ -2161,7 +2190,7 @@ fn mindmap_canonical_svg_keeps_dom_routes_shapes_and_html_labels() {
 #[test]
 #[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
 fn zenuml_canonical_svg_keeps_typed_geometry_and_statement_roles() {
-    let svg = render_svg("zenuml\nA->B: hello\n", "zenuml-parity");
+    let svg = render_diagnostic_svg("zenuml\nA->B: hello\n", "zenuml-parity");
     let document = roxmltree::Document::parse(&svg).expect("canonical ZenUML SVG is XML");
     let root = document.root_element();
 
