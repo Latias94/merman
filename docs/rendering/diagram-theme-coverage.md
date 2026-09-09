@@ -12,15 +12,16 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 22/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 11/33; 218 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 11/33; 214 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 56 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v60; 328 routes / 422 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 57 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v61; 332 routes / 426 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
+output files. Version 61 adds four ER Table.fill routes (Odd/Even, solid/transparent) with Classic
+witnesses. Family tests also cover Neo/HandDrawn and HTML/SVG labels. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
 witnesses covering tag outlines. Version 59 added four GitGraph Node.fill routes with Classic, Neo, and HandDrawn
 witnesses covering state glyphs and tag backgrounds. Version 58 added four GitGraph Edge.fill routes with Classic, Neo, and HandDrawn
 witnesses for branch-line stroke. Version 57 added eight GitGraph NodeLabel.fill/EdgeLabel.fill routes with Classic,
@@ -33,6 +34,11 @@ The today profile fixes the runtime clock to 2024-01-03 within the task interval
 is a style directive, not a clock override. Neither terminal can supply the other's pixel evidence.
 Neither KTD17 nor KTD23 is a percentage of all theme capabilities. Their selector/value domains
 differ from the live bridge inventory and must not be added together to calculate migration progress.
+
+ER Table.fill now has separate direct Odd and Even row consumers. Explicit `rowOdd` and
+`rowEven` configuration owners suppress only their matching row route. Entity source fill owns
+the even row path; odd row fill remains independent. Missing matching rows are NotApplicable.
+Unqualified Table.fill retains both compatibility projections. ER still requires its bridge.
 
 ## Family Boundaries
 

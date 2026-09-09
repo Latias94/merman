@@ -373,11 +373,13 @@ pub enum ThemeRouteCutoverProjection {
     TimelineEventFill = 41,
     C4TitleFillFallback = 42,
     EdgeLabelFill = 43,
+    ErTableOddFill = 44,
+    ErTableEvenFill = 45,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 44] = [
+    const ALL: [Self; 46] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -422,6 +424,8 @@ impl ThemeRouteCutoverProjection {
         Self::TimelineEventFill,
         Self::C4TitleFillFallback,
         Self::EdgeLabelFill,
+        Self::ErTableOddFill,
+        Self::ErTableEvenFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -456,6 +460,8 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
             Self::EdgeLabelFill => "edge-label.fill",
+            Self::ErTableOddFill => "table.odd.fill",
+            Self::ErTableEvenFill => "table.even.fill",
             Self::PieSliceFill => "slice.fill",
             Self::RequirementStroke => "requirement.paint",
             Self::GanttTaskDefaultStroke => "task.default.stroke",
@@ -518,9 +524,10 @@ impl ThemeRouteCutoverProjection {
             | Self::JourneyTaskStroke
             | Self::TreeViewMarkerPaint
             | Self::GitGraphCommitLabelBackgroundFill => ThemeRouteCutoverProjectionAction::Replace,
-            Self::GanttTaskWarningStroke | Self::TimelineEventFill => {
-                ThemeRouteCutoverProjectionAction::Replace
-            }
+            Self::GanttTaskWarningStroke
+            | Self::TimelineEventFill
+            | Self::ErTableOddFill
+            | Self::ErTableEvenFill => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
 
@@ -651,6 +658,10 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::GanttTaskWarningStroke);
     pub const REPLACE_TIMELINE_EVENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::TimelineEventFill);
+    pub const REPLACE_ER_TABLE_ODD_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ErTableOddFill);
+    pub const REPLACE_ER_TABLE_EVEN_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::ErTableEvenFill);
 
     pub(crate) const fn replacing(projection: ThemeRouteCutoverProjection) -> Self {
         Self(projection.bit())
@@ -1307,6 +1318,8 @@ mod tests {
         assert_eq!(ThemeRouteCutoverProjection::TimelineEventFill as u8, 41);
         assert_eq!(ThemeRouteCutoverProjection::C4TitleFillFallback as u8, 42);
         assert_eq!(ThemeRouteCutoverProjection::EdgeLabelFill as u8, 43);
+        assert_eq!(ThemeRouteCutoverProjection::ErTableOddFill as u8, 44);
+        assert_eq!(ThemeRouteCutoverProjection::ErTableEvenFill as u8, 45);
     }
 
     #[test]

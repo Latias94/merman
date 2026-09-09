@@ -850,14 +850,14 @@ fn compile_er_family(builder: &mut OverlayBuilder, reader: &FamilyStyleReader) -
         [("lineColor", reader.stroke_or_fill(ThemeTarget::Relation))],
     );
     contributions.add_theme_variables(
-        "table.odd.fill",
+        ThemeRouteCutoverProjection::ErTableOddFill.contribution_id(),
         [(
             "rowOdd",
             reader.fill_variant(ThemeTarget::Table, ThemeVariant::Odd),
         )],
     );
     contributions.add_theme_variables(
-        "table.even.fill",
+        ThemeRouteCutoverProjection::ErTableEvenFill.contribution_id(),
         [(
             "rowEven",
             reader.fill_variant(ThemeTarget::Table, ThemeVariant::Even),
@@ -2399,14 +2399,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 218);
+        assert_eq!(status.matrix_route_count(), 214);
         assert_eq!(status.matrix_family_count(), 11);
         assert_eq!(status.dispatched_family_count(), 11);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                242, 127, 181, 198, 156, 227, 236, 27, 151, 238, 119, 222, 36, 94, 138, 245, 21,
-                36, 109, 59, 122, 110, 69, 127, 234, 10, 244, 39, 199, 89, 210, 99
+                117, 134, 23, 95, 146, 125, 61, 71, 160, 18, 18, 137, 235, 114, 48, 45, 196, 34,
+                88, 87, 59, 37, 144, 5, 214, 137, 228, 185, 178, 160, 117, 99
             ]
         );
         assert_eq!(

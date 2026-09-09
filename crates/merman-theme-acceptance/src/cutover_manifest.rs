@@ -11,19 +11,19 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 60;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 61;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    74, 186, 254, 40, 199, 45, 131, 241, 150, 155, 65, 76, 141, 20, 63, 152, 84, 84, 251, 159, 185,
-    181, 23, 105, 33, 2, 96, 73, 115, 222, 70, 238,
+    160, 45, 130, 61, 168, 182, 14, 105, 35, 227, 211, 64, 134, 102, 237, 242, 5, 236, 147, 229,
+    65, 88, 177, 234, 69, 175, 226, 184, 205, 89, 58, 224,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 44] = [
+); 46] = [
     (
         ThemeRouteCutoverProjection::EdgeLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -200,6 +200,14 @@ const PROJECTION_ACTIONS: [(
         ThemeRouteCutoverProjection::TimelineEventFill,
         ThemeRouteCutoverProjectionAction::Replace,
     ),
+    (
+        ThemeRouteCutoverProjection::ErTableOddFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::ErTableEvenFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
 ];
 
 #[derive(Clone, Copy)]
@@ -362,6 +370,10 @@ const TREE_VIEW_MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
 const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
+const ER_TABLE_ODD_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ErTableOddFill];
+const ER_TABLE_EVEN_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::ErTableEvenFill];
 
 #[derive(Clone, Copy)]
 struct RouteTombstone {
@@ -376,7 +388,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 328] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 332] = [
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -1930,6 +1942,38 @@ const ACTIVE_ROUTES: [RouteAuthorization; 328] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeVariant::Odd,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ER_TABLE_ODD_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeVariant::Odd,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ER_TABLE_ODD_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeVariant::Even,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        ER_TABLE_EVEN_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::ER,
+        ThemeTarget::Table,
+        ThemeVariant::Even,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        ER_TABLE_EVEN_FILL_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::ER,

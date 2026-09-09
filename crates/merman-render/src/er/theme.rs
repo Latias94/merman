@@ -1110,6 +1110,11 @@ fn table_terminal_source_owned(
     entity_indices: &BTreeMap<String, usize>,
     entity_source_styles: &[ErEntitySourceStyle],
 ) -> bool {
+    // The row writer applies entity fill only to even row paths. Odd rows retain
+    // their own fill, independently of the enclosing entity's source style.
+    if terminal_id.variant() != ThemeVariant::Even {
+        return false;
+    }
     entity_indices
         .get(terminal_id.entity_id())
         .and_then(|index| entity_source_styles.get(*index))

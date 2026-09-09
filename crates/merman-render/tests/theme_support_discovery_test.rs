@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 56);
+    assert_eq!(support.claim_revision(), 57);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -1567,4 +1567,23 @@ fn v2_preserves_target_and_family_capability_gates() {
             ["theme-support.family-render-capability-not-built"]
         );
     }
+}
+
+#[test]
+fn er_table_fill_reports_a_partial_typed_consumer() {
+    let query = ThemeSupportQueryV1::known(
+        DiagramFamilyId::ER.as_str(),
+        ThemeSupportOutputV1::StandaloneSvg,
+        ThemeTarget::Table.id(),
+        ThemeRuleFacetV1::Fill,
+    );
+    let support = describe_theme_support(&query);
+    assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+    assert_eq!(
+        support.reason_ids(),
+        [
+            "theme-support.family-owned-consumer-present",
+            "theme-support.public-value-domain-partial",
+        ]
+    );
 }

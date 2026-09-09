@@ -461,6 +461,16 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
+        (DiagramFamilyId::ER, ThemeTarget::Table, ThemeRouteCutoverFacet::Fill) => match selector {
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Odd) => {
+                Some(ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_ODD_FILL)
+            }
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Even) => {
+                Some(ThemeRouteCutoverProjectionSet::REPLACE_ER_TABLE_EVEN_FILL)
+            }
+            ThemeRouteCutoverSelector::StaticUnqualified
+            | ThemeRouteCutoverSelector::StaticVariant(_) => None,
+        },
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
@@ -2178,6 +2188,23 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::ER
+        && target == ThemeTarget::Table
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: Some(ThemeVariant::Odd | ThemeVariant::Even)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::ER
         && target == ThemeTarget::Relation
         && matches!(
             selector,
@@ -3335,7 +3362,7 @@ mod tests {
                         },
                         FamilyThemeRuleFacet::Fill(paint_kind),
                     ),
-                    FamilyThemeDisposition::LegacyCompatibility,
+                    FamilyThemeDisposition::TypedAdapter,
                     "variant={variant:?}"
                 );
             }
@@ -6513,7 +6540,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 162);
+        assert_eq!(qualified.len(), 166);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6592,7 +6619,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::ER)
                 .count(),
-            2
+            6
         );
         assert_eq!(
             qualified
@@ -6783,11 +6810,25 @@ mod tests {
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::ER {
-                assert_eq!(
-                    projections,
-                    vec![ThemeRouteCutoverProjection::EdgeStroke],
-                    "route={route:?}"
-                );
+                let expected = match (route.target(), route.facet(), route.selector()) {
+                    (
+                        ThemeTarget::Relation,
+                        ThemeRouteCutoverFacet::Stroke,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+                    ) => ThemeRouteCutoverProjection::EdgeStroke,
+                    (
+                        ThemeTarget::Table,
+                        ThemeRouteCutoverFacet::Fill,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Odd),
+                    ) => ThemeRouteCutoverProjection::ErTableOddFill,
+                    (
+                        ThemeTarget::Table,
+                        ThemeRouteCutoverFacet::Fill,
+                        ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Even),
+                    ) => ThemeRouteCutoverProjection::ErTableEvenFill,
+                    _ => panic!("unexpected ER qualified route: {route:?}"),
+                };
+                assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::CLASS {
                 let expected = match route.facet() {
                     ThemeRouteCutoverFacet::Fill if route.target() == ThemeTarget::Node => {

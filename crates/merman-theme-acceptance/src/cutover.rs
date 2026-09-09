@@ -88,6 +88,7 @@ end
 "#;
 const CLASS_NODE_SOURCE: &str = "classDiagram\nclass Alpha\nclass Beta\n";
 const ER_TEXT_SOURCE: &str = "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n";
+const ER_TABLE_SOURCE: &str = "erDiagram\n  CUSTOMER {\n    string id\n    string name\n  }\n";
 const INFO_TEXT_SOURCE: &str = "info\n";
 const ARCHITECTURE_TEXT_SOURCE: &str = r#"architecture-beta
   group core(cloud)[Core]
@@ -568,6 +569,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Ok(ER_RELATION_SOURCE)
+        }
+        (DiagramFamilyId::ER, ThemeTarget::Table, ThemeRouteCutoverFacet::Fill) => {
+            Ok(ER_TABLE_SOURCE)
         }
         (DiagramFamilyId::ER, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(ER_TEXT_SOURCE)
@@ -1593,11 +1597,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_328_routes_and_422_artifact_witnesses() {
+    fn route_inventory_retains_332_routes_and_426_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 328);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 422);
+        assert_eq!(inventory.len(), 332);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 426);
     }
 
     #[test]

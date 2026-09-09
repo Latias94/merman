@@ -72,6 +72,11 @@ record. The current source and generated contract are authoritative for these su
   ownership and the same three looks. Color-generated geometry/text and existing gradient
   fallback semantics remain intact; unused CSS/defs do not prove application. GitGraph no
   longer needs a family bridge dispatch. KTD23 gains no retirement rows.
+- KTD17 v61 replaces ER Table Odd/Even solid/transparent fill through independent
+  `table.odd.fill` and `table.even.fill` projection identities. Configuration ownership is
+  row-local; entity source fill owns even row paths. Empty matching row sets are NotApplicable.
+  Unqualified Table.fill still projects both row colors through the compatibility bridge.
+  KTD23 is unchanged because these are typed replacements, not unsupported retirements.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

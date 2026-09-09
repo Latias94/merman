@@ -1875,59 +1875,233 @@ fn er_mixed_html_color_owners_cannot_prove_portable_typed_text_fill() {
     }
 }
 
+fn er_row_path<'a>(document: &'a roxmltree::Document<'a>, odd: bool) -> roxmltree::Node<'a, 'a> {
+    let class = if odd { "row-rect-odd" } else { "row-rect-even" };
+    document
+        .descendants()
+        .find(|node| node.attribute("class") == Some(class))
+        .and_then(|row| {
+            row.children()
+                .find(|node| node.has_tag_name("path") && node.attribute("stroke") == Some("none"))
+        })
+        .expect("visible row fill path")
+}
+
 #[test]
-fn er_table_odd_even_remain_legacy_compatibility_until_qualified_cutover() {
-    let source = r#"erDiagram
-  CUSTOMER {
-    string id PK
-    string name
-  }
-"#;
-    let theme = er_table_row_theme();
-
-    let error = match try_prepare_er_family_with_theme_and_engine(source, &theme, Engine::new()) {
-        Ok(_) => panic!("ER table Odd/Even routes must remain compatibility residuals"),
-        Err(error) => error,
-    };
-    match error {
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id,
-            residual_count,
-        } => {
-            assert_eq!(family_id, merman_render::DiagramFamilyId::ER);
-            assert_eq!(residual_count, 2);
+fn er_table_odd_even_fill_reaches_each_matching_row() {
+    let source = "erDiagram\n CUSTOMER {\n string id\n string name\n string email\n }\n ORDER {\n string id\n string status\n }\n";
+    for look in ["classic", "neo", "handDrawn"] {
+        for html in [true, false] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#aabbcc").unwrap(), "#aabbcc"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                for variant in [ThemeVariant::Odd, ThemeVariant::Even] {
+                    let theme = er_relation_rules_theme([ThemeRule::new(
+                        ThemeTarget::Table,
+                        ThemeStylePatch::default().with_fill(paint.clone()),
+                    )
+                    .with_variant(variant)]);
+                    let rendered = prepare_er_family_with_theme_and_engine(
+                        source,
+                        &theme,
+                        Engine::new().with_site_config(MermaidConfig::from_value(
+                            json!({"look": look, "htmlLabels": html}),
+                        )),
+                    )
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    for (class, count, row_variant) in [
+                        ("row-rect-odd", 3, ThemeVariant::Odd),
+                        ("row-rect-even", 2, ThemeVariant::Even),
+                    ] {
+                        let rows = document
+                            .descendants()
+                            .filter(|node| node.attribute("class") == Some(class))
+                            .collect::<Vec<_>>();
+                        assert_eq!(rows.len(), count);
+                        for row in rows {
+                            let path = row
+                                .children()
+                                .find(|node| {
+                                    node.has_tag_name("path")
+                                        && node.attribute("stroke") == Some("none")
+                                })
+                                .unwrap();
+                            assert!(path.attribute("d").is_some_and(|d| !d.is_empty()));
+                            let expected = (row_variant == variant).then(|| format!("fill:{css}"));
+                            assert_eq!(
+                                path.attribute("style"),
+                                expected.as_deref(),
+                                "{look}/{html}/{variant:?}"
+                            );
+                        }
+                    }
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                    assert_eq!(evidence.compatibility_residual_count(), 0);
+                }
+            }
         }
-        other => panic!("expected ER table compatibility residual, got {other}"),
     }
+}
 
-    let artifact = try_prepare_er_family_with_theme_and_engine_requirement(
-        source,
+#[test]
+fn er_table_row_config_ownership_is_property_local() {
+    let source = "erDiagram\n CUSTOMER {\n string id\n string name\n }\n";
+    let theme = er_table_row_theme();
+    for odd in [true, false] {
+        let key = if odd { "rowOdd" } else { "rowEven" };
+        for authored_source in [false, true] {
+            for color in ["#112233", if odd { "#aabbcc" } else { "#ddeeff" }] {
+                let config = json!({"themeVariables": {key: color}});
+                let text = if authored_source {
+                    format!("%%{{init: {config}}}%%\n{source}")
+                } else {
+                    source.to_owned()
+                };
+                let engine =
+                    Engine::new().with_site_config(MermaidConfig::from_value(if authored_source {
+                        json!({"secure": []})
+                    } else {
+                        config
+                    }));
+                let rendered = prepare_er_family_with_theme_and_engine(&text, &theme, engine)
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                assert_eq!(
+                    rendered
+                        .metadata()
+                        .effective_config
+                        .get_str(&format!("themeVariables.{key}")),
+                    Some(color),
+                    "{key}/source={authored_source}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let owned = er_row_path(&document, odd);
+                assert_eq!(
+                    owned.attribute("fill"),
+                    Some(color),
+                    "{key}/source={authored_source}"
+                );
+                assert_eq!(
+                    owned.attribute("style"),
+                    None,
+                    "{key}/source={authored_source}"
+                );
+                let other = er_row_path(&document, !odd);
+                assert_eq!(
+                    other.attribute("style"),
+                    Some(if odd { "fill:#ddeeff" } else { "fill:#aabbcc" })
+                );
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn er_table_source_fill_owns_only_even_row_paths() {
+    for source_style in [
+        "style CUSTOMER fill:#112233",
+        "classDef accent fill:#112233\n class CUSTOMER accent",
+    ] {
+        let source =
+            format!("erDiagram\n CUSTOMER {{\n string id\n string name\n }}\n {source_style}\n");
+        let rendered =
+            prepare_er_family_with_theme_and_engine(&source, &er_table_row_theme(), Engine::new())
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            er_row_path(&document, true).attribute("style"),
+            Some("fill:#aabbcc")
+        );
+        assert_eq!(
+            er_row_path(&document, false).attribute("style"),
+            Some("fill:#112233 !important")
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn er_table_unqualified_fill_keeps_both_compatibility_projections() {
+    let theme = er_relation_rules_theme([ThemeRule::new(
+        ThemeTarget::Table,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+    )]);
+    let rendered = try_prepare_er_family_with_theme_and_engine_requirement(
+        "erDiagram\n CUSTOMER {\n string id\n string name\n }\n",
         &theme,
         Engine::new(),
         ThemePortabilityRequirement::BestEffort,
     )
-    .expect("BestEffort ER table rendering should retain the compatibility bridge");
-    let rendered = artifact
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render ER table compatibility bridge");
-    let svg = rendered.svg();
+    .unwrap()
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    for odd in [true, false] {
+        let path = er_row_path(&document, odd);
+        assert_eq!(path.attribute("fill"), Some("#abcdef"));
+        assert_eq!(path.attribute("style"), None);
+    }
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 2);
+}
 
+#[test]
+fn er_table_fill_does_not_certify_unsupported_sibling_typography() {
+    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#aabbcc").unwrap());
+    patch.typography.font_size_px = Specified::Value(28.0);
+    let theme = er_relation_rules_theme([
+        ThemeRule::new(ThemeTarget::Table, patch).with_variant(ThemeVariant::Odd)
+    ]);
+    let source = "erDiagram\n CUSTOMER {\n string id\n }\n";
+    let result = try_prepare_er_family_with_theme_and_engine(source, &theme, Engine::new())
+        .and_then(|artifact| {
+            artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        });
     assert!(
-        Regex::new(r##"class="row-rect-odd"[^>]*><path[^>]*fill="#aabbcc""##)
-            .expect("ER odd bridge fill regex")
-            .is_match(svg),
-        "odd ER row must retain rowOdd compatibility projection: {svg}"
+        matches!(
+            result,
+            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+        ),
+        "unsupported Table typography must not be certified by its sibling fill"
     );
-    assert!(
-        Regex::new(r##"class="row-rect-even"[^>]*><path[^>]*fill="#ddeeff""##)
-            .expect("ER even bridge fill regex")
-            .is_match(svg),
-        "even ER row must retain rowEven compatibility projection: {svg}"
-    );
-    assert!(
-        !svg.contains("style=\"fill:#aabbcc") && !svg.contains("style=\"fill:#ddeeff"),
-        "ER table rows must not claim direct typed inline fills before qualified cutover: {svg}"
-    );
+}
+
+#[test]
+fn er_table_row_fill_requires_a_matching_visible_row() {
+    for (source, applied) in [
+        ("erDiagram\n", 0),
+        ("erDiagram\n CUSTOMER\n", 0),
+        ("erDiagram\n CUSTOMER {\n string id\n }\n", 1),
+    ] {
+        let rendered =
+            prepare_er_family_with_theme_and_engine(source, &er_table_row_theme(), Engine::new())
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+        roxmltree::Document::parse(rendered.svg()).unwrap();
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 2 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }
 
 #[test]
