@@ -10,9 +10,7 @@ use super::{
 use crate::config::{config_font_family_css_raw, config_theme_font_size_css_or_root_number_px};
 use crate::drawing_list::builder::DrawingListBuilder;
 use crate::drawing_list::flowchart::{ellipse_path, polygon_path, rounded_rect_path};
-use crate::drawing_list::support::{
-    PortableStyleResolver, stroke, svg_plain_text, text_obligation,
-};
+use crate::drawing_list::support::{PortableStyleResolver, stroke, text_obligation};
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
 use crate::journey::{
@@ -213,30 +211,40 @@ impl<'a> JourneyBuilder<'a> {
             .map(str::trim)
             .filter(|value| !value.is_empty());
 
+        let acc_title = self
+            .model
+            .acc_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+        let mut root_semantic = self.document.resolve_mermaid_semantic(SemanticAnnotation {
+            id: "journey.document".to_string(),
+            role: SemanticRole::Document,
+            title: acc_title.map(str::to_owned),
+            description: self.model.acc_descr.clone(),
+            link: None,
+        })?;
         self.emit_actor_legend()?;
         self.emit_sections()?;
         self.emit_tasks()?;
-        if let Some(title) = title {
-            self.emit_title(title)?;
+        let default_name = if let Some(title) = title {
+            self.emit_title(title, acc_title.is_none())?
+        } else {
+            None
+        };
+        if acc_title.is_none() {
+            root_semantic.title = Some(
+                default_name
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| self.metadata.diagram_type.clone()),
+            );
         }
         self.emit_activity_line()?;
 
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.document.push_control(DrawingCommand::Restore)?;
-        // Duplicate potentially large authored titles only after their visible text is admitted.
-        self.document.push_semantic(SemanticAnnotation {
-            id: "journey.document".to_string(),
-            role: SemanticRole::Document,
-            title: self
-                .model
-                .acc_title
-                .clone()
-                .or_else(|| title.map(str::to_string))
-                .or_else(|| Some(self.metadata.diagram_type.clone())),
-            description: self.model.acc_descr.clone(),
-            link: None,
-        })?;
+        self.document.push_semantic(root_semantic)?;
 
         let bounds = self
             .layout
@@ -262,7 +270,11 @@ impl<'a> JourneyBuilder<'a> {
                 json!({
                     "diagram_type": self.metadata.diagram_type,
                     "text_mode": "plain_host_text",
-                    "markup": "br_only",
+                    "text_placement": match self.text_placement {
+                        JourneyTextPlacement::HtmlTable => "fo",
+                        JourneyTextPlacement::LegacyText => "old",
+                        JourneyTextPlacement::Tspan => "tspan",
+                    },
                     "use_max_width": self.layout.use_max_width,
                     "actor_count": self.layout.actor_legend.len(),
                     "title_from_metadata": title_from_metadata,
@@ -277,13 +289,7 @@ impl<'a> JourneyBuilder<'a> {
                 body: SvgStructureBody::Journey(JourneySvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
                     use_max_width: self.layout.use_max_width,
-                    width: self.layout.width,
-                    svg_height: self.layout.svg_height
-                        + if title_from_metadata {
-                            JOURNEY_TITLE_EXTRA_HEIGHT_PX
-                        } else {
-                            0.0
-                        },
+                    expose_accessibility_title: acc_title.is_some(),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
@@ -743,15 +749,17 @@ impl<'a> JourneyBuilder<'a> {
         self.document.resolved_text_name_since(text_start)
     }
 
-    fn emit_title(&mut self, title: &str) -> Result<()> {
-        if normalized_text_parts(title).next().is_none() {
-            return Ok(());
+    fn emit_title(&mut self, title: &str, name_document: bool) -> Result<Option<String>> {
+        let resolved = self.document.resolve_mermaid_layout_text(title)?;
+        if normalized_text_parts(&resolved).next().is_none() {
+            return Ok(None);
         }
+        let text_start = self.document.command_count();
         let title_font = self.title_font.clone();
         let title_origin = Point::new(self.layout.title_x, self.layout.title_y);
         self.emit_text(
             "journey.title",
-            title,
+            &resolved,
             TextEmitSpec {
                 origin: title_origin,
                 font_size: self.title_font_size,
@@ -762,14 +770,18 @@ impl<'a> JourneyBuilder<'a> {
                 baseline: TextBaseline::Alphabetic,
             },
         )?;
+        let title_name = self.document.resolved_text_name_since(text_start)?;
+        let document_name = name_document
+            .then(|| self.document.resolved_text_name_since(text_start))
+            .transpose()?;
         self.document.push_semantic(SemanticAnnotation {
             id: "journey.title".to_string(),
             role: SemanticRole::Label,
-            title: Some(svg_plain_text(title)),
+            title: Some(title_name),
             description: None,
             link: None,
         })?;
-        Ok(())
+        Ok(document_name)
     }
 
     fn emit_activity_line(&mut self) -> Result<()> {

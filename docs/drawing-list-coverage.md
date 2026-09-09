@@ -999,3 +999,27 @@ fixtures are hand-drawn custom styles 018, complex labels/text nodes 013, and do
 their only reported differences are source span text versus the canonical positioned SVG child.
 Temporary Venn admission was removed after both invocations completed. The shell decision and
 its cross-consumer evidence remain required before admission.
+
+## September 9 Journey candidate at 61027ddf8
+
+The direct adapter now resolves `fo`, `old`, and tspan text placement separately, including
+literal markup, whitespace, fonts, colors, line positions, and names derived from final text.
+The bounded normal-text builder supports the source's expanding table-cell geometry without
+changing Venn's flex layout.
+
+A temporary canonical route selected all 26 Journey fixtures: 25 rendered canonically, with no
+skips; the title-font fixture containing `size: 2rem` fell back with the explicit non-finite face
+geometry reason. Both structure and parity-root passed **0/25**. Reports are
+`target/compare/journey_61027ddf8_candidate_structure.md` and
+`target/compare/journey_61027ddf8_candidate_parity_root.md`. The candidate adds root ARIA and semantic
+wrappers, omits source marker definitions, and does not yet preserve source text wrappers. These
+are migration failures, not accepted font residuals. Temporary admission was removed after both
+invocations exited; Journey remains a legacy bridge.
+
+The follow-up removes private root width/height: intrinsic SVG dimensions now derive from the
+public viewport, retaining the pinned source's 25px height addition and responsive/fixed sizing
+policy. Mutating the public viewport must update root dimensions; translating it must not resize
+the image. Ordinary headings no longer create redundant root ARIA; explicit accessibility
+metadata and independently edited public document names remain visible. Names are derived from
+final text, with placeholder decoding accounted through the existing bounded source resolver.
+These focused corrections do not constitute full-family admission.

@@ -376,6 +376,27 @@ impl<'a> DocumentSvgEncoder<'a> {
                 self.document_semantic()
                     .and_then(|semantic| semantic.description.clone()),
             ),
+            SvgStructureBody::Journey(body) => (
+                self.document_semantic().and_then(|semantic| {
+                    let default_name = self
+                        .semantics
+                        .get("journey.title")
+                        .and_then(|title| title.title.as_deref())
+                        .filter(|title| !title.is_empty())
+                        .unwrap_or(body.diagram_type.as_str());
+                    // The source has no root title for its ordinary visible heading. Preserve
+                    // explicit accessibility and independently edited public document names.
+                    (body.expose_accessibility_title
+                        || semantic
+                            .title
+                            .as_deref()
+                            .is_some_and(|title| title != default_name))
+                    .then(|| semantic.title.clone())
+                    .flatten()
+                }),
+                self.document_semantic()
+                    .and_then(|semantic| semantic.description.clone()),
+            ),
             SvgStructureBody::Gantt(body) => (
                 self.document_semantic().and_then(|semantic| {
                     let visible_title = self
@@ -663,13 +684,19 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
-            SvgStructureBody::Journey(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )
-            .with_mermaid_responsive_height(body.use_max_width, body.svg_height)
-            .with_fixed_size(body.width, body.svg_height)
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(body.width))),
+            SvgStructureBody::Journey(body) => {
+                // Mermaid adds 25 CSS pixels to the final viewBox height. Keep that source
+                // presentation rule, but derive every dimension from the public viewport.
+                let height = viewport_bounds.height + crate::journey::JOURNEY_VIEWBOX_TOP_PAD_PX;
+                Ok(
+                    root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
+                        .with_mermaid_responsive_height(body.use_max_width, height)
+                        .with_fixed_size(viewport_bounds.width, height)
+                        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
+                            viewport_bounds.width,
+                        )),
+                )
+            }
             SvgStructureBody::Treemap(_) => Ok(root_svg::RootViewportSpec::responsive(
                 viewport_bounds,
             )

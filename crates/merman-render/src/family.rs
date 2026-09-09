@@ -5812,6 +5812,100 @@ gantt
     }
 
     #[test]
+    fn journey_root_accessibility_preserves_explicit_and_independently_edited_names() {
+        for title in ["", "title Alpha     #quot;Beta#quot;\n"] {
+            for accessibility in [
+                "",
+                "accTitle: Authored name\naccDescr: Authored description\n",
+            ] {
+                let source =
+                    format!("journey\n{title}{accessibility}section Delivery\nTask: 5: Alice\n");
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+                let mut document = crate::drawing_list::build_for_family(
+                    &artifact.family,
+                    &artifact.metadata,
+                    DrawingListPolicy::VectorOnly,
+                    DrawingListLimits::default(),
+                    &artifact.session,
+                )
+                .unwrap();
+                let render = |document: &crate::drawing_list::RenderDocument| {
+                    crate::svg::render_document_svg(
+                        document,
+                        &SvgRenderOptions::default(),
+                        &SvgDebugOptions::default(),
+                        artifact.metadata.effective_config.as_value(),
+                        &artifact.session,
+                    )
+                    .unwrap()
+                };
+                let root_name = document
+                    .public
+                    .semantics
+                    .iter()
+                    .find(|s| s.id == "journey.document")
+                    .unwrap()
+                    .title
+                    .as_deref();
+                assert_eq!(
+                    root_name,
+                    Some(if !accessibility.is_empty() {
+                        "Authored name"
+                    } else if title.is_empty() {
+                        "journey"
+                    } else {
+                        "Alpha \"Beta\""
+                    })
+                );
+                if !title.is_empty() {
+                    assert!(document.public.commands.iter().any(|command| matches!(command,
+                        merman_display_list::DrawingCommand::DrawText { run } if run.text == "Alpha \"Beta\"")));
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let root = xml.root_element();
+                assert_eq!(
+                    root.attribute("aria-labelledby").is_some(),
+                    !accessibility.is_empty()
+                );
+                assert_eq!(
+                    root.attribute("aria-describedby").is_some(),
+                    !accessibility.is_empty()
+                );
+                if !accessibility.is_empty() {
+                    assert!(
+                        root.children().any(|node| node.has_tag_name("title")
+                            && node.text() == Some("Authored name"))
+                    );
+                    assert!(root.children().any(|node| node.has_tag_name("desc")
+                        && node.text() == Some("Authored description")));
+                }
+                let semantic = document
+                    .public
+                    .semantics
+                    .iter_mut()
+                    .find(|s| s.id == "journey.document")
+                    .unwrap();
+                semantic.title = Some("Independent &amp; <name>".into());
+                semantic.description = Some("Independent &amp; <description>".into());
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let root = xml.root_element();
+                assert!(root.attribute("aria-labelledby").is_some());
+                assert!(root.attribute("aria-describedby").is_some());
+                assert!(root.children().any(|node| node.has_tag_name("title")
+                    && node.text() == Some("Independent &amp; <name>")));
+                assert!(root.children().any(|node| node.has_tag_name("desc")
+                    && node.text() == Some("Independent &amp; <description>")));
+            }
+        }
+    }
+
+    #[test]
     fn journey_document_owns_visible_label_and_background_colors() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 
@@ -5901,6 +5995,80 @@ gantt
                     .find(|node| node.has_tag_name("text") && node.text() == Some(label))
                     .unwrap();
                 assert_eq!(text.attribute("fill"), Some("#123456"));
+            }
+        }
+    }
+
+    #[test]
+    fn journey_svg_root_dimensions_follow_the_public_viewport() {
+        use merman_display_list::Rect;
+
+        for use_max_width in [false, true] {
+            for title in ["", "title Checkout\n"] {
+                let parsed = Engine::new()
+                    .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                        "journey": {"useMaxWidth": use_max_width}
+                    })))
+                    .parse_diagram_for_render_model_sync(
+                        &format!("journey\n{title}section Cart\nPay: 5: Alice\n"),
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+                let mut document = crate::drawing_list::build_for_family(
+                    &artifact.family,
+                    &artifact.metadata,
+                    DrawingListPolicy::VectorOnly,
+                    DrawingListLimits::default(),
+                    &artifact.session,
+                )
+                .unwrap();
+                let original = document.public.viewport.bounds;
+                // Public dimensions and origin are independently editable; stale sidecar values
+                // must not keep the original intrinsic size or turn a translation into resizing.
+                for bounds in [
+                    original,
+                    Rect::new(-11.0, -60.0, 321.0, 234.0),
+                    Rect::new(10.0, 70.0, 321.0, 234.0),
+                ] {
+                    document.public.viewport.bounds = bounds;
+                    let svg = crate::svg::render_document_svg(
+                        &document,
+                        &SvgRenderOptions::default(),
+                        &SvgDebugOptions::default(),
+                        artifact.metadata.effective_config.as_value(),
+                        &artifact.session,
+                    )
+                    .unwrap();
+                    let xml = roxmltree::Document::parse(&svg).unwrap();
+                    let root = xml.root_element();
+                    let view_box = root
+                        .attribute("viewBox")
+                        .unwrap()
+                        .split_whitespace()
+                        .map(|part| part.parse::<f64>().unwrap())
+                        .collect::<Vec<_>>();
+                    assert_eq!(view_box, [bounds.x, bounds.y, bounds.width, bounds.height]);
+                    assert_eq!(
+                        root.attribute("height").unwrap().parse::<f64>().unwrap(),
+                        bounds.height + 25.0
+                    );
+                    assert_eq!(root.attribute("preserveAspectRatio"), Some("xMinYMin meet"));
+                    if use_max_width {
+                        assert_eq!(root.attribute("width"), Some("100%"));
+                        assert!(
+                            root.attribute("style")
+                                .unwrap()
+                                .contains(&format!("max-width: {}px", bounds.width))
+                        );
+                    } else {
+                        assert_eq!(
+                            root.attribute("width").unwrap().parse::<f64>().unwrap(),
+                            bounds.width
+                        );
+                    }
+                }
             }
         }
     }
@@ -9481,6 +9649,8 @@ linkStyle 0 font-size:12px,font-style:italic
             "packet\naccTitle: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ #quot;\n0-7: \"Byte\"\n",
             "packet\naccTitle: abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ literal\n0-7: \"Byte\"\n",
             "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection #quot;<br/> Alpha  Beta\nTask :a, 2026-01-01, 1d\n",
+            "journey\ntitle Alpha    #quot;Beta#quot;\nsection Checkout\nPay: 5: Alice\n",
+            "journey\ntitle Alpha    #quot;Beta#quot;\naccTitle: #quot;Accessible#quot;\naccDescr: A #amp; B\nsection Checkout\nPay: 5: Alice\n",
         ] {
             let render = |artifact: FamilyRenderArtifact| {
                 artifact.render_drawing_list(
