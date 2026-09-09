@@ -1045,3 +1045,26 @@ face bridge and no skips. Extra root `aria-labelledby` differences are gone; tex
 face subgroups, actor-circle titles, and source CSS/attribute representations still block admission.
 Temporary admission was removed after both processes exited. No comparison normalization or
 public canonical cohort changed.
+
+Journey expression paths and task actor circles now have public semantic scopes. The source face
+subgroup is projected from the expression scope, and each actor circle owns its public title and
+optional description. Edited links, roles, or non-circle geometry retain the generic semantic
+projection. Parent label-name matching skips only fixed non-text child scopes, so it cannot hide
+nested text or introduce recursive document scans. Circle recognition also requires diameter
+endpoints: two shorter lens arcs must not be silently converted into a circle.
+
+Focused tests cover these DOM shapes and independent semantic edits. The complete Journey reports
+above predate this change and remain failure evidence, not current admission results.
+
+A Chromium probe of the pinned Journey foreignObjects confirms computed `overflow:hidden`.
+For a 150×50 box, table content expanded to about 613px wide for a long word and 1140px tall for
+many lines; default/explicit-hidden output had identical pixels and no text ink outside the box.
+Explicit-visible variants painted outside it. Evidence is
+`target/compare/journey-fo-overflow-probe.json`, with the temporary replay script at
+`target/journey-fo-overflow-probe.cjs`.
+
+The `fo` adapter therefore emits an explicit rectangular label clip through the bounded builder,
+retaining all text and semantic names. Backgrounds, faces, and actor circles are outside that clip;
+`old` and tspan text remain unclipped. A future HTML shell must consume the public clip rather than
+silently reconstructing a box from private dimensions or independently rewrapping text. The planned
+shell remains unimplemented and does not change Journey admission.

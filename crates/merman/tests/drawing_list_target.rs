@@ -4214,16 +4214,29 @@ fn journey_text_placement_preserves_literal_text_fonts_and_final_colors() {
             panic!("expected DrawingList")
         };
         let document = output.document();
-        let mut scope = "";
+        assert_eq!(
+            document
+                .commands
+                .iter()
+                .filter(|command| matches!(command, DrawingCommand::ClipPath { .. }))
+                .count(),
+            if placement == "fo" { 2 } else { 0 }
+        );
+        let mut scopes = Vec::new();
         let mut task_runs = Vec::new();
         let mut section_runs = Vec::new();
         for command in &document.commands {
             match command {
-                DrawingCommand::BeginSemanticGroup { semantic_id } => scope = semantic_id,
-                DrawingCommand::DrawText { run } if scope == "journey.task.0" => {
+                DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                    scopes.push(semantic_id.as_str())
+                }
+                DrawingCommand::EndSemanticGroup => {
+                    scopes.pop();
+                }
+                DrawingCommand::DrawText { run } if scopes.last() == Some(&"journey.task.0") => {
                     task_runs.push(run)
                 }
-                DrawingCommand::DrawText { run } if scope == "journey.section.0" => {
+                DrawingCommand::DrawText { run } if scopes.last() == Some(&"journey.section.0") => {
                     section_runs.push(run)
                 }
                 _ => {}
@@ -4325,6 +4338,88 @@ Alpha     Beta     Gamma: 5: Alice
         assert_eq!(
             pair[1].bounds.y,
             pair[0].bounds.y + pair[0].style.line_height
+        );
+    }
+}
+
+#[test]
+fn journey_table_clips_overflow_without_truncating_text() {
+    use merman_display_list::{DrawingResource, PathSegment};
+    for text in [
+        "UnbreakableLongWordBeyondTheBox",
+        "Alpha Beta Gamma Delta Epsilon",
+    ] {
+        let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
+            MermaidConfig::from_value(serde_json::json!({
+                "journey": {"width":50, "height":10}
+            })),
+        ));
+        let source = format!("journey\nsection Heading\n{text}: 5: Alice\n");
+        let RenderOutput::DrawingList(Some(output)) = renderer
+            .render(RenderRequest::drawing_list(
+                &source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .unwrap()
+        else {
+            panic!("expected DrawingList")
+        };
+        let document = output.document();
+        let clip_index = document.commands.iter().position(|command| matches!(command,
+            DrawingCommand::ClipPath { path, .. } if path.as_str() == "journey.task.0.label.clip"
+        )).unwrap();
+        assert!(matches!(
+            document.commands[clip_index - 1],
+            DrawingCommand::Save
+        ));
+        let path = document
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "journey.task.0.label.clip" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let [
+            PathSegment::MoveTo { to: a },
+            PathSegment::LineTo { to: b },
+            PathSegment::LineTo { to: c },
+            PathSegment::LineTo { to: d },
+            PathSegment::Close,
+        ] = path.segments.as_slice()
+        else {
+            panic!("rectangular clip")
+        };
+        assert_eq!((b.x - a.x, c.y - b.y), (50.0, 10.0));
+        assert_eq!((d.x, d.y), (a.x, c.y));
+        let mut texts = Vec::new();
+        let mut restored = false;
+        for command in &document.commands[clip_index + 1..] {
+            match command {
+                DrawingCommand::DrawText { run } => texts.push(run),
+                DrawingCommand::Restore => {
+                    restored = true;
+                    break;
+                }
+                _ => panic!("only label text belongs inside the clip"),
+            }
+        }
+        assert!(restored);
+        assert_eq!(
+            texts
+                .iter()
+                .map(|run| run.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+            text
+        );
+        assert!(
+            texts
+                .iter()
+                .any(|run| run.bounds.width > 50.0 || run.bounds.y + run.bounds.height > c.y)
         );
     }
 }

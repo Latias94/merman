@@ -5836,8 +5836,9 @@ gantt
             .iter()
             .filter_map(|command| match command {
                 DrawingCommand::BeginSemanticGroup { semantic_id }
-                    if semantic_id.starts_with("journey.section.")
-                        || semantic_id.starts_with("journey.task.") =>
+                    if (semantic_id.starts_with("journey.section.")
+                        || semantic_id.starts_with("journey.task."))
+                        && semantic_id.split('.').count() == 3 =>
                 {
                     Some(semantic_id.as_str())
                 }
@@ -5896,12 +5897,37 @@ gantt
                         && node.attribute("class") == Some(expected))
             );
         }
+        for (task, actor) in [(groups[2], "Alice"), (groups[4], "Bob")] {
+            let expression = task.children().find(|node| node.has_tag_name("g")).unwrap();
+            assert_eq!(
+                expression
+                    .children()
+                    .filter(|node| node.has_tag_name("circle"))
+                    .count(),
+                2
+            );
+            assert_eq!(
+                expression
+                    .children()
+                    .filter(|node| node.has_tag_name("path") || node.has_tag_name("line"))
+                    .count(),
+                1
+            );
+            assert!(task.children().any(|node| {
+                node.has_tag_name("circle")
+                    && node
+                        .children()
+                        .any(|title| title.has_tag_name("title") && title.text() == Some(actor))
+            }));
+        }
         for id in [
             "journey.document",
             "journey.actor.0",
             "journey.section.0",
             "journey.task.0",
             "journey.activity",
+            "journey.task.0.expression",
+            "journey.task.0.actor.0",
         ] {
             for field in ["title", "description", "link", "role"] {
                 let mut document = original.clone();

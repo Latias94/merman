@@ -497,6 +497,11 @@ impl<'a> JourneyBuilder<'a> {
                     stroke: Some(stroke(FACE_STROKE_COLOR, 2.0)),
                 },
             )?;
+            let expression_id = format!("{semantic_id}.expression");
+            self.document
+                .push_control(DrawingCommand::BeginSemanticGroup {
+                    semantic_id: expression_id.clone(),
+                })?;
             self.add_path(
                 format!("{semantic_id}.face.left_eye"),
                 ellipse_path(
@@ -531,6 +536,16 @@ impl<'a> JourneyBuilder<'a> {
                 task.face_cx,
                 face_y,
             )?;
+
+            self.document
+                .push_control(DrawingCommand::EndSemanticGroup)?;
+            self.document.push_semantic(SemanticAnnotation {
+                id: expression_id,
+                role: SemanticRole::Group,
+                title: None,
+                description: None,
+                link: None,
+            })?;
 
             let fill = self.background_color(task.num, &task.fill)?;
             self.path_classes.insert(
@@ -602,6 +617,10 @@ impl<'a> JourneyBuilder<'a> {
             format!("{semantic_id}.circle"),
             format!("actor-{}", actor.pos),
         );
+        self.document
+            .push_control(DrawingCommand::BeginSemanticGroup {
+                semantic_id: semantic_id.clone(),
+            })?;
         self.add_path(
             format!("{semantic_id}.circle"),
             ellipse_path(actor.cx, actor.cy, actor.r, actor.r),
@@ -611,11 +630,13 @@ impl<'a> JourneyBuilder<'a> {
                 stroke: Some(stroke(BLACK, 1.0)),
             },
         )?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document
+            .push_control(DrawingCommand::EndSemanticGroup)?;
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
             title: Some(actor.actor.clone()),
-            description: Some("Journey task actor".to_string()),
+            description: None,
             link: None,
         })?;
         Ok(())
@@ -696,6 +717,20 @@ impl<'a> JourneyBuilder<'a> {
                         "Journey normal text requires unsupported discretionary line breaking",
                     ));
                 }
+                // The source foreignObject has overflow:hidden. Preserve full text and make
+                // its rectangular viewport clip explicit for every renderer-neutral host.
+                self.document.push_control(DrawingCommand::Save)?;
+                self.document.draw_clip_path(
+                    ResourceId::new(format!("{prefix}.clip")),
+                    polygon_path(&[
+                        Point::new(bounds.x, bounds.y),
+                        Point::new(bounds.x + bounds.width, bounds.y),
+                        Point::new(bounds.x + bounds.width, bounds.y + bounds.height),
+                        Point::new(bounds.x, bounds.y + bounds.height),
+                    ]),
+                    FillRule::NonZero,
+                )?;
+                let text_start = self.document.command_count();
                 self.document.draw_normal_table_text(
                     text,
                     bounds,
@@ -716,6 +751,9 @@ impl<'a> JourneyBuilder<'a> {
                     },
                     &text_obligation(self.session, TextMeasurementPhase::Wrap),
                 )?;
+                let name = self.document.resolved_text_name_since(text_start)?;
+                self.document.push_control(DrawingCommand::Restore)?;
+                return Ok(name);
             }
             JourneyTextPlacement::LegacyText => self.emit_text(
                 prefix,

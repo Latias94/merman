@@ -578,6 +578,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             if root_background && index == 2 {
                 continue;
             }
+            if let Some(count) = self.emit_journey_actor(index)? {
+                consumed_until = index + count;
+                continue;
+            }
             if self.emit_journey_marked_activity(index)? {
                 consumed_until = index + 2;
                 continue;
@@ -4913,6 +4917,10 @@ fn circle_from_path(path: &PathResource) -> Option<(Point, f64)> {
         || !*second_sweep_clockwise
         || !approx_eq(start.x, end.x)
         || !approx_eq(start.y, end.y)
+        || !same_rectangle_coordinate(
+            (start.x - opposite.x).hypot(start.y - opposite.y),
+            2.0 * radius_x,
+        )
     {
         return None;
     }
@@ -5481,6 +5489,38 @@ mod tests {
         wardley_text_baseline,
     };
     use merman_display_list::{PathSegment, Point, TextBaseline, Transform};
+
+    #[test]
+    fn circle_projection_requires_diameter_endpoints() {
+        use super::circle_from_path;
+        use merman_display_list::{PathResource, ResourceId};
+        let arc = |x| PathSegment::ArcTo {
+            radius_x: 7.0,
+            radius_y: 7.0,
+            x_axis_rotation_degrees: 0.0,
+            large_arc: false,
+            sweep_clockwise: true,
+            to: Point::new(x, 30.0),
+        };
+        let mut path = PathResource {
+            id: ResourceId::new("circle"),
+            segments: vec![
+                PathSegment::MoveTo {
+                    to: Point::new(27.0, 30.0),
+                },
+                arc(13.0),
+                arc(27.0),
+                PathSegment::Close,
+            ],
+        };
+        assert_eq!(circle_from_path(&path), Some((Point::new(20.0, 30.0), 7.0)));
+        // Shortening the chord creates two lens arcs; it must remain a path.
+        let PathSegment::ArcTo { to, .. } = &mut path.segments[1] else {
+            unreachable!()
+        };
+        to.x += 3.0;
+        assert!(circle_from_path(&path).is_none());
+    }
 
     #[test]
     fn nested_path_and_base64_formatters_preserve_output_resource_errors() {

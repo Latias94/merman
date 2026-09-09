@@ -17,7 +17,9 @@ impl DocumentSvgEncoder<'_> {
             (SemanticRole::Edge, false)
         } else if id.starts_with("journey.actor.") && body.semantic_classes.contains_key(id) {
             (SemanticRole::Label, false)
-        } else if id.starts_with("journey.section.") && body.semantic_classes.contains_key(id) {
+        } else if (id.starts_with("journey.section.") && body.semantic_classes.contains_key(id))
+            || (id.starts_with("journey.task.") && id.ends_with(".expression"))
+        {
             (SemanticRole::Group, true)
         } else if id.starts_with("journey.task.") && body.semantic_classes.contains_key(id) {
             (SemanticRole::Node, true)
@@ -54,13 +56,100 @@ impl DocumentSvgEncoder<'_> {
         Ok(true)
     }
 
+    pub(super) fn emit_journey_actor(&mut self, index: usize) -> Result<Option<usize>> {
+        if !matches!(self.svg_body, SvgStructureBody::Journey(_)) {
+            return Ok(None);
+        }
+        let Some(
+            [
+                DrawingCommand::BeginSemanticGroup { semantic_id },
+                DrawingCommand::DrawPath { path, style },
+                DrawingCommand::EndSemanticGroup,
+                ..,
+            ],
+        ) = self.document.commands.get(index..)
+        else {
+            return Ok(None);
+        };
+        if !semantic_id.starts_with("journey.task.")
+            || !semantic_id.contains(".actor.")
+            || path.as_str().strip_suffix(".circle") != Some(semantic_id.as_str())
+        {
+            return Ok(None);
+        }
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .copied()
+            .ok_or_else(|| invalid("Journey actor has no semantic annotation"))?;
+        if semantic.role != SemanticRole::Label
+            || semantic.link.is_some()
+            || !self.debug_visibility(semantic.role)
+        {
+            return Ok(None);
+        }
+        let Some((center, radius)) = circle_from_path(self.path_resource(path)?) else {
+            return Ok(None);
+        };
+        write!(
+            self.output,
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\"",
+            fmt(center.x),
+            fmt(center.y),
+            fmt(radius)
+        )?;
+        if let Some(class) = self.path_class(path) {
+            write!(self.output, " class=\"{}\"", escaped_attr(class.as_ref()))?;
+        }
+        self.write_fill_stroke_style(style)?;
+        self.write_state_attrs()?;
+        write_resource_metadata(&mut self.output, self.debug, path.as_str())?;
+        write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
+        self.output.push('>')?;
+        if let Some(title) = semantic.title.as_deref() {
+            self.output.push_str("<title>")?;
+            output::escape_xml(&mut self.output, title)?;
+            self.output.push_str("</title>")?;
+        }
+        if let Some(description) = semantic.description.as_deref() {
+            self.output.push_str("<desc>")?;
+            output::escape_xml(&mut self.output, description)?;
+            self.output.push_str("</desc>")?;
+        }
+        self.output.push_str("</circle>")?;
+        Ok(Some(3))
+    }
+
     fn journey_scope_has_native_name(&self, name: &str) -> Result<bool> {
         let mut remaining = name.as_bytes();
         let mut has_text = false;
-        for command in &self.document.commands[self.command_index + 1..] {
+        let mut commands = &self.document.commands[self.command_index + 1..];
+        while let Some((command, rest)) = commands.split_first() {
             self.session.checkpoint(OperationPhase::Emit)?;
             match command {
-                DrawingCommand::BeginSemanticGroup { .. } => return Ok(false),
+                DrawingCommand::BeginSemanticGroup { .. } => {
+                    // Only fixed non-text child scopes can be skipped. Nested or edited text
+                    // keeps the explicit parent name, without an unbounded recursive scan.
+                    let consumed = match commands {
+                        [
+                            DrawingCommand::BeginSemanticGroup { .. },
+                            DrawingCommand::DrawPath { .. },
+                            DrawingCommand::EndSemanticGroup,
+                            ..,
+                        ] => 3,
+                        [
+                            DrawingCommand::BeginSemanticGroup { .. },
+                            DrawingCommand::DrawPath { .. },
+                            DrawingCommand::DrawPath { .. },
+                            DrawingCommand::DrawPath { .. },
+                            DrawingCommand::EndSemanticGroup,
+                            ..,
+                        ] => 5,
+                        _ => return Ok(false),
+                    };
+                    commands = &commands[consumed..];
+                    continue;
+                }
                 DrawingCommand::EndSemanticGroup => return Ok(has_text && remaining.is_empty()),
                 DrawingCommand::DrawText { run } => {
                     if has_text {
@@ -77,6 +166,7 @@ impl DocumentSvgEncoder<'_> {
                 }
                 _ => {}
             }
+            commands = rest;
         }
         Ok(false)
     }
