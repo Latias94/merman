@@ -374,6 +374,9 @@ impl CutoverWitnessProfile {
                     route.target(),
                     ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
                 ))
+            || (route.family_id() == DiagramFamilyId::GIT_GRAPH
+                && route.target() == ThemeTarget::Edge
+                && route.facet() == ThemeRouteCutoverFacet::Fill)
         {
             return &Self::TEXT_LOOKS;
         }
@@ -582,7 +585,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
             ThemeRouteCutoverFacet::Fill,
         ) => Ok(GITGRAPH_TEXT_SOURCE),
-        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke)
+        (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::Edge,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        )
         | (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::EdgeLabelBackground,
@@ -1575,11 +1582,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_316_routes_and_386_artifact_witnesses() {
+    fn route_inventory_retains_320_routes_and_398_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 316);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 386);
+        assert_eq!(inventory.len(), 320);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 398);
     }
 
     #[test]
@@ -1700,7 +1707,7 @@ mod tests {
     }
 
     #[test]
-    fn text_routes_require_each_look_specific_witness() {
+    fn text_and_gitgraph_edge_fill_routes_require_each_look_specific_witness() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
         for (family, target) in [
             (DiagramFamilyId::C4, ThemeTarget::Text),
@@ -1708,11 +1715,16 @@ mod tests {
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::NodeLabel),
             (DiagramFamilyId::GIT_GRAPH, ThemeTarget::EdgeLabel),
+            (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge),
         ] {
             let routes = inventory
                 .iter()
                 .copied()
-                .filter(|route| route.family_id() == family && route.target() == target)
+                .filter(|route| {
+                    route.family_id() == family
+                        && route.target() == target
+                        && route.facet() == ThemeRouteCutoverFacet::Fill
+                })
                 .collect::<Vec<_>>();
             assert_eq!(routes.len(), 4);
             for route in routes {

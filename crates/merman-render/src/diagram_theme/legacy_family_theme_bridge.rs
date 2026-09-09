@@ -758,10 +758,6 @@ fn compile_gitgraph_family(
             ("tagLabelBorder", node_stroke),
         ],
     );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
-        [("commitLineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
-    );
 
     contributions.finish_into(builder)
 }
@@ -1861,7 +1857,7 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_legacy_paint_excludes_typed_text_label_and_commit_background_projections() {
+    fn gitgraph_legacy_paint_keeps_only_node_projections() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -1927,7 +1923,6 @@ mod tests {
             ("themeVariables.primaryBorderColor", node_stroke),
             ("themeVariables.nodeBorder", node_stroke),
             ("themeVariables.tagLabelBorder", node_stroke),
-            ("themeVariables.commitLineColor", edge),
         ] {
             assert_eq!(
                 parsed.effective_config.get_str(path),
@@ -1944,6 +1939,7 @@ mod tests {
         );
 
         for (path, value) in [
+            ("themeVariables.commitLineColor", edge),
             ("themeVariables.textColor", text),
             ("themeVariables.tagLabelColor", node_label),
             ("themeVariables.commitLabelColor", edge_label),
@@ -1968,7 +1964,6 @@ mod tests {
         assert_eq!(
             assignments,
             std::collections::BTreeMap::from([
-                ("themeVariables.commitLineColor", edge),
                 ("themeVariables.mainBkg", node_fill),
                 ("themeVariables.nodeBorder", node_stroke),
                 ("themeVariables.primaryBorderColor", node_stroke),
@@ -2033,12 +2028,13 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_text_and_label_fill_retire_their_projections_and_preserve_explicit_config() {
+    fn gitgraph_edge_text_and_label_fill_retire_projections_and_preserve_explicit_config() {
         const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         for target in [
             ThemeTarget::Text,
             ThemeTarget::NodeLabel,
             ThemeTarget::EdgeLabel,
+            ThemeTarget::Edge,
         ] {
             for paint in [CanvasPaint::Transparent, solid("#123456")] {
                 for variant in [None, Some(ThemeVariant::Default)] {
@@ -2057,6 +2053,8 @@ mod tests {
                     assert_eq!(fallback_contribution_count(&parsed), 0);
 
                     let compatibility = MermaidThemeCompatibility::default()
+                        .with_variable("commitLineColor", "#112233")
+                        .unwrap()
                         .with_variable("textColor", "#abcdef")
                         .unwrap()
                         .with_variable("tagLabelColor", "#445566")
@@ -2067,6 +2065,7 @@ mod tests {
                     let parsed =
                         parse_with_compatibility(&spec, SOURCE, spec.mermaid().to_mermaid_config());
                     for (path, value) in [
+                        ("commitLineColor", "#112233"),
                         ("textColor", "#abcdef"),
                         ("tagLabelColor", "#445566"),
                         ("commitLabelColor", "#778899"),
@@ -2304,14 +2303,14 @@ mod tests {
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 230);
+        assert_eq!(status.matrix_route_count(), 226);
         assert_eq!(status.matrix_family_count(), 12);
         assert_eq!(status.dispatched_family_count(), 12);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                139, 113, 72, 16, 197, 194, 73, 96, 91, 122, 235, 177, 70, 200, 34, 28, 197, 141,
-                203, 11, 157, 91, 220, 94, 117, 161, 200, 73, 231, 90, 7, 28
+                23, 21, 29, 131, 37, 72, 238, 197, 22, 171, 157, 68, 237, 156, 6, 41, 102, 0, 71,
+                130, 152, 69, 125, 83, 242, 254, 162, 137, 86, 235, 53, 152
             ]
         );
         assert_eq!(

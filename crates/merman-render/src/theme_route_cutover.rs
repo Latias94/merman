@@ -741,18 +741,20 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill and stroke share Mermaid's `signalColor` projection. The Message
-    /// fill route is therefore observed in the emitted stroke channel during native raster
-    /// admission, while its semantic facet remains `Fill` in the route identity and evidence.
+    /// Sequence Message fill and GitGraph Edge fill control native stroke colors. These routes
+    /// are observed in the emitted stroke channel during raster admission, while their semantic
+    /// facet remains `Fill` in the route identity and evidence.
     pub fn raster_paint_facet(self) -> ThemeRouteCutoverFacet {
         if self.family_id() == DiagramFamilyId::TREE_VIEW && self.target() == ThemeTarget::Marker {
             // Tree View exposes both semantic Marker facets through the icon's `currentColor`
             // fill terminal. The raster proof must inspect the emitted fill channel for either
             // route instead of pretending that an SVG stroke exists.
             ThemeRouteCutoverFacet::Fill
-        } else if self.family_id() == DiagramFamilyId::SEQUENCE
-            && self.target() == ThemeTarget::Message
-            && matches!(self.facet(), ThemeRouteCutoverFacet::Fill)
+        } else if matches!(self.facet(), ThemeRouteCutoverFacet::Fill)
+            && ((self.family_id() == DiagramFamilyId::SEQUENCE
+                && self.target() == ThemeTarget::Message)
+                || (self.family_id() == DiagramFamilyId::GIT_GRAPH
+                    && self.target() == ThemeTarget::Edge))
         {
             ThemeRouteCutoverFacet::Stroke
         } else {
@@ -1102,6 +1104,35 @@ mod tests {
             descriptor.raster_paint_facet(),
             ThemeRouteCutoverFacet::Stroke
         );
+    }
+
+    #[test]
+    fn gitgraph_edge_fill_is_observed_in_the_branch_stroke_channel() {
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Solid,
+                ThemeRouteCutoverValue::Transparent,
+            ] {
+                let descriptor = ThemeRouteCutoverDescriptor::new(
+                    ThemeRouteCutoverId::new(
+                        DiagramFamilyId::GIT_GRAPH,
+                        ThemeTarget::Edge,
+                        selector,
+                        ThemeRouteCutoverFacet::Fill,
+                        value,
+                    ),
+                    ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE,
+                );
+                assert_eq!(descriptor.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    descriptor.raster_paint_facet(),
+                    ThemeRouteCutoverFacet::Stroke
+                );
+            }
+        }
     }
 
     #[test]

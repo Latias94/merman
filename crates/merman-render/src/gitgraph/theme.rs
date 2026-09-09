@@ -573,6 +573,10 @@ impl GitGraphNodePalettePlan {
         self.branch_stroke.terminal_css()
     }
 
+    pub(crate) fn branch_stylesheet_stroke(&self) -> Option<&str> {
+        self.branch_stroke.stylesheet_css()
+    }
+
     pub(crate) fn mermaid_source_is_owned(&self, source: GitGraphPaletteSource) -> bool {
         self.mermaid_source_ownership.owns(source)
     }

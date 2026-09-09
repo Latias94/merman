@@ -59,8 +59,12 @@ record. The current source and generated contract are authoritative for these su
   retains all three historical replacement obligations. Config ownership remains per source,
   and Text/specific-label precedence follows global rule order. Visible root-inheriting geometry
   participates only in Text paint evidence; label routes require their own visible tag/commit
-  text, and a stylesheet alone does not establish an Applied terminal. GitGraph still requires
-  a bridge for its remaining Node and Edge paint routes. KTD23 gains no retirement rows.
+  text, and a stylesheet alone does not establish an Applied terminal. KTD17 v58 migrates the
+  four static unqualified/Default solid/transparent Edge.fill routes through the existing
+  branch-line stroke writer and `edge.stroke` projection obligation (`commitLineColor`), with
+  Classic, Neo, and HandDrawn witnesses. Stroke-first fallback, explicit configuration owners,
+  and visible branch requirements remain intact; arrows gain no Edge consumer. Only Node paint
+  still requires the GitGraph bridge. KTD23 gains no retirement rows.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

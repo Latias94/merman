@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 53);
+    assert_eq!(support.claim_revision(), 54);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -643,11 +643,12 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
-fn gitgraph_text_and_label_fill_are_typed_partial_surfaces() {
+fn gitgraph_edge_text_and_label_fill_are_typed_partial_surfaces() {
     for target in [
         ThemeTarget::Text,
         ThemeTarget::NodeLabel,
         ThemeTarget::EdgeLabel,
+        ThemeTarget::Edge,
     ] {
         let query = ThemeSupportQueryV1::known(
             DiagramFamilyId::GIT_GRAPH.as_str(),

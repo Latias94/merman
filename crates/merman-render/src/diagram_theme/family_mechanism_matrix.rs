@@ -435,6 +435,9 @@ fn legacy_bridge_projections(
             ThemeTarget::Edge,
             ThemeRouteCutoverFacet::Stroke,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE),
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
+        }
         (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::EdgeLabelBackground,
@@ -1711,7 +1714,10 @@ pub(super) fn classify_rule_facet(
         )
         && matches!(
             target,
-            ThemeTarget::EdgeLabelBackground | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
+            ThemeTarget::Edge
+                | ThemeTarget::EdgeLabelBackground
+                | ThemeTarget::NodeLabel
+                | ThemeTarget::EdgeLabel
         )
         && matches!(
             facet,
@@ -3930,11 +3936,12 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_text_and_label_fill_cutovers_are_static_scalar_and_role_local() {
+    fn gitgraph_edge_text_and_label_fill_cutovers_are_static_scalar_and_role_local() {
         for target in [
             ThemeTarget::Text,
             ThemeTarget::NodeLabel,
             ThemeTarget::EdgeLabel,
+            ThemeTarget::Edge,
         ] {
             for kind in [
                 FamilyThemePaintKind::Transparent,
@@ -5636,6 +5643,20 @@ mod tests {
             (
                 DiagramFamilyId::GIT_GRAPH,
                 ThemeTarget::Edge,
+                Fill,
+                Transparent,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Edge,
+                Fill,
+                Solid,
+                vec!["edge.stroke"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Edge,
                 Stroke,
                 Transparent,
                 vec!["edge.stroke"],
@@ -6456,7 +6477,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 156);
+        assert_eq!(qualified.len(), 158);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6570,7 +6591,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
                 .count(),
-            10
+            12
         );
         assert_eq!(
             qualified
@@ -6745,7 +6766,10 @@ mod tests {
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::GIT_GRAPH {
                 let expected = match (route.target(), route.facet()) {
-                    (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
+                    (
+                        ThemeTarget::Edge,
+                        ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+                    ) => {
                         vec![ThemeRouteCutoverProjection::EdgeStroke]
                     }
                     (ThemeTarget::EdgeLabelBackground, ThemeRouteCutoverFacet::Fill) => {

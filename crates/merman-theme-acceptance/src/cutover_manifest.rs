@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 57;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 58;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    135, 186, 99, 56, 203, 212, 40, 1, 246, 18, 0, 74, 7, 188, 95, 206, 220, 103, 136, 46, 38, 173,
-    227, 184, 198, 162, 218, 87, 21, 88, 192, 102,
+    224, 146, 35, 9, 34, 107, 184, 201, 241, 95, 27, 220, 179, 38, 154, 85, 67, 86, 63, 27, 218,
+    18, 72, 172, 160, 106, 175, 179, 229, 213, 71, 151,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -376,7 +376,7 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 316] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 320] = [
     route(
         DiagramFamilyId::KANBAN,
         ThemeTarget::Text,
@@ -2168,6 +2168,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 316] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         GITGRAPH_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        EDGE_STROKE_ONLY_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::GIT_GRAPH,
+        ThemeTarget::Edge,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        EDGE_STROKE_ONLY_PROJECTIONS,
     ),
     route(
         DiagramFamilyId::GIT_GRAPH,
@@ -3527,6 +3557,32 @@ mod tests {
                     ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
                 )
         }));
+    }
+
+    #[test]
+    fn manifest_keeps_gitgraph_edge_fill_on_the_branch_stroke_projection() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::GIT_GRAPH
+                    && route.id.target() == ThemeTarget::Edge
+                    && route.id.facet() == ThemeRouteCutoverFacet::Fill
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Transparent,
+                ThemeRouteCutoverValue::Solid,
+            ] {
+                assert!(routes.iter().any(|route| route.id.selector() == selector
+                    && route.id.value() == value
+                    && route.projections == super::EDGE_STROKE_ONLY_PROJECTIONS));
+            }
+        }
     }
 
     #[test]

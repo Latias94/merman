@@ -7,6 +7,7 @@ struct GitGraphCss {
     base_font_size_css: String,
     base_typography_emitted: bool,
     commit_label_background_fill: String,
+    branch_stroke: String,
     text_colors: Option<[String; 5]>,
     // These facts are set alongside the exact CSS declarations that mask root inheritance.
     root_geometry: [[bool; 8]; 4],
@@ -133,6 +134,7 @@ fn gitgraph_css(
     static_paint: &crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
     text_colors: Option<[Option<&str>; 3]>,
+    branch_stroke: Option<&str>,
 ) -> GitGraphCss {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
@@ -221,7 +223,9 @@ fn gitgraph_css(
         &["themeVariables", "strokeWidth"],
     )
     .unwrap_or_else(|| "1".to_string());
-    let commit_line_color = config_string(effective_config, &["themeVariables", "commitLineColor"])
+    let commit_line_color = branch_stroke
+        .map(str::to_owned)
+        .or_else(|| config_string(effective_config, &["themeVariables", "commitLineColor"]))
         .unwrap_or_else(|| parts.line_color.clone());
     let primary_color = theme_token(effective_config, "primaryColor", "#ECECFF");
     let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
@@ -548,6 +552,7 @@ fn gitgraph_css(
         base_font_size_css: parts.font_size_css,
         base_typography_emitted: parts.base_typography_emitted,
         commit_label_background_fill: commit_label_bkg_fill.to_string(),
+        branch_stroke: commit_line_color,
         text_colors: text_colors.map(|_| {
             [
                 parts.text_color.clone(),
@@ -904,6 +909,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             .text_paint()
             .is_requested()
             .then(|| node_palette.text_paint().css_colors()),
+        node_palette.branch_stylesheet_stroke(),
     );
     let node_palette_ownership =
         gitgraph_node_palette_surface_ownership(effective_config, node_palette);
@@ -924,6 +930,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         css.css, node_palette_css
     );
     out.checkpoint()?;
+    if let Some(receipt) = branch_stroke_receipt.as_mut() {
+        receipt.record_css(&css.branch_stroke);
+    }
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_css_emission(css.typography_emission());
     }
@@ -2032,6 +2041,7 @@ mod tests {
             &static_paint,
             &typography_theme,
             None,
+            None,
         )
         .css;
         assert!(css.contains(
@@ -2079,7 +2089,7 @@ mod tests {
         let config = json!({});
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None).css;
+        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None).css;
 
         assert!(css.contains(
             "#git .commit-id,#git .commit-msg,#git .branch-label{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:\"trebuchet ms\",verdana,arial,sans-serif;}"
@@ -2109,7 +2119,7 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None);
+        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None);
 
         assert!(css.defs.is_empty());
         assert!(
@@ -2162,7 +2172,7 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None).css;
+        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None).css;
 
         assert!(css.contains("#git .commit0{stroke:#101010;}"));
         assert!(css.contains("#git .commit-highlight0{stroke:#101010;fill:#ffffff;}"));
@@ -2194,7 +2204,7 @@ mod tests {
         });
         let typography_theme = typography_plan(&config);
         let static_paint = static_paint_plan();
-        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None);
+        let css = gitgraph_css("git", &config, &static_paint, &typography_theme, None, None);
 
         assert!(
             css.defs

@@ -3003,3 +3003,379 @@ fn gitgraph_label_fallbacks_require_their_own_visible_terminal() {
         }
     }
 }
+
+#[test]
+fn gitgraph_edge_fill_replaces_the_branch_line_config_without_changing_other_surfaces() {
+    for theme_name in ["default", "neo", "neo-dark", "redux", "redux-color"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for (paint, color) in [
+                    (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                    (CanvasPaint::Transparent, "transparent"),
+                ] {
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(paint),
+                    );
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let config = json!({"theme": theme_name, "look": look});
+                    let rendered = render_gitgraph_with_theme_and_engine(
+                        TWO_BRANCHES,
+                        &gitgraph_edge_rules_theme([rule]),
+                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        "git-edge-fill",
+                    );
+                    let mut legacy_config = config;
+                    legacy_config["themeVariables"] = json!({"commitLineColor": color});
+                    let legacy = render_gitgraph_with_theme_and_engine(
+                        TWO_BRANCHES,
+                        &gitgraph_edge_rules_theme([]),
+                        Engine::new().with_site_config(MermaidConfig::from_value(legacy_config)),
+                        "git-edge-fill",
+                    );
+                    assert_eq!(
+                        rendered.svg(),
+                        legacy.svg(),
+                        "{theme_name}/{look}/{variant:?}/{color}"
+                    );
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    assert_eq!(branch_lines(&document).len(), 2);
+                    let css = gitgraph_stylesheet(rendered.svg());
+                    assert_eq!(
+                        css_property_winner(
+                            &gitgraph_css_rule(&css, "#git-edge-fill .branch"),
+                            "stroke"
+                        ),
+                        Some(color)
+                    );
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.not_applicable_count(), 0);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_edge_fill_preserves_its_config_owner_and_visible_branch_domain() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for theme_name in ["default", "redux"] {
+        for (key, owned) in [("commitLineColor", true), ("lineColor", false)] {
+            let rendered = render_gitgraph_with_theme_and_engine(
+                TWO_BRANCHES,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    json!({"theme": theme_name, "themeVariables": {key: "#abcdef"}}),
+                )),
+                "git-edge-fill-owner",
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(branch_lines(&document).len(), 2);
+            let css = gitgraph_stylesheet(rendered.svg());
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, "#git-edge-fill-owner .branch"),
+                    "stroke"
+                ),
+                Some(if owned { "#abcdef" } else { "#123456" })
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), usize::from(!owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+    render_source_and_site_config_cases(
+        TWO_BRANCHES,
+        json!({"themeVariables": {"lineColor": "#abcdef"}}),
+        &theme,
+        "git-edge-fill-source",
+        |owner, rendered| {
+            let css = gitgraph_stylesheet(rendered.svg());
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, &format!("#git-edge-fill-source-{owner} .branch")),
+                    "stroke"
+                ),
+                Some("#123456")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        },
+    );
+    let rendered = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"gitGraph": {"showBranches": false}}),
+        )),
+        "git-edge-fill-hidden",
+    );
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(branch_lines(&doc).is_empty());
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+}
+
+#[test]
+fn gitgraph_edge_fill_is_only_a_fallback_for_unspecified_stroke() {
+    let fill = || {
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+    };
+    for reverse in [false, true] {
+        for clear in [false, true] {
+            let mut stroke = ThemeStylePatch::default();
+            stroke.stroke.paint = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value(CanvasPaint::solid("#abcdef").unwrap())
+            };
+            let stroke = ThemeRule::new(ThemeTarget::Edge, stroke);
+            let rules = if reverse {
+                vec![stroke, fill()]
+            } else {
+                vec![fill(), stroke]
+            };
+            let theme = gitgraph_edge_rules_theme(rules);
+            let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                TWO_BRANCHES,
+                &theme,
+                Engine::new(),
+                "git-edge-fill-fallback",
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let branches = branch_lines(&doc);
+            assert_eq!(branches.len(), 2);
+            assert!(branches.iter().all(|node| {
+                node.attribute("style")
+                    .is_none_or(|style| !style.contains("#123456"))
+            }));
+            if !clear {
+                assert!(
+                    branches
+                        .iter()
+                        .all(|node| node.attribute("style") == Some("stroke:#abcdef;"))
+                );
+            }
+            let css = gitgraph_stylesheet(rendered.svg());
+            assert_ne!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, "#git-edge-fill-fallback .branch"),
+                    "stroke"
+                ),
+                Some("#123456"),
+                "stroke/Clear must block the stylesheet fallback too"
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), usize::from(!clear));
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), usize::from(clear));
+            let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+                TWO_BRANCHES,
+                &theme,
+                Engine::new(),
+                "git-edge-fill-fallback-strict",
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if clear {
+                assert!(matches!(
+                    strict,
+                    Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+                ));
+            } else {
+                strict.unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_edge_fill_does_not_certify_unsupported_winners() {
+    let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let mut mixed = fill();
+    mixed.typography.font_stack =
+        Specified::Value(FontStack::single("UnverifiedBranchFont").unwrap());
+    for (rule, config, residuals, expected_color) in [
+        (
+            ThemeRule::new(ThemeTarget::Edge, mixed.clone()),
+            json!({}),
+            1,
+            Some("#123456"),
+        ),
+        (
+            ThemeRule::new(ThemeTarget::Edge, mixed),
+            json!({"themeVariables": {"commitLineColor": "#abcdef"}}),
+            1,
+            Some("#abcdef"),
+        ),
+        (
+            ThemeRule::new(ThemeTarget::Edge, fill())
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            json!({}),
+            1,
+            None,
+        ),
+        (
+            ThemeRule::new(ThemeTarget::Edge, fill()).with_variant(ThemeVariant::Active),
+            json!({}),
+            0,
+            None,
+        ),
+    ] {
+        let theme = gitgraph_edge_rules_theme([rule]);
+        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            engine(),
+            "git-edge-fill-unsupported",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        roxmltree::Document::parse(rendered.svg()).unwrap();
+        if let Some(color) = expected_color {
+            let css = gitgraph_stylesheet(rendered.svg());
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, "#git-edge-fill-unsupported .branch"),
+                    "stroke"
+                ),
+                Some(color)
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1 - residuals);
+        assert_eq!(evidence.theme_residual_count(), residuals);
+        let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            engine(),
+            "git-edge-fill-unsupported-strict",
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if residuals == 0 {
+            strict.unwrap();
+        } else {
+            let error = match strict {
+                Err(error) => error,
+                Ok(_) => panic!("unsupported Edge winner passed strict portability"),
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::GIT_GRAPH, 1))
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_edge_fill_partial_ordinals_preserve_best_effort_without_false_evidence() {
+    let paint = || CanvasPaint::solid("#123456").unwrap();
+    let static_fill = || {
+        ThemeRule::new(
+            ThemeTarget::Edge,
+            ThemeStylePatch::default().with_fill(paint()),
+        )
+    };
+    for stroke in [false, true] {
+        let mut patch = ThemeStylePatch::default();
+        if stroke {
+            patch.stroke.paint = Specified::Value(paint());
+        } else {
+            patch.paint.fill = Specified::Value(paint());
+        }
+        let ordinal = ThemeRule::new(ThemeTarget::Edge, patch)
+            .with_ordinal(OrdinalSelector::exact(1).unwrap());
+        let theme = gitgraph_edge_rules_theme([static_fill(), ordinal]);
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            Engine::new(),
+            "git-partial-ordinal",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let previous = render_gitgraph_with_theme_and_engine(
+            TWO_BRANCHES,
+            &gitgraph_edge_rules_theme([]),
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                json!({"themeVariables": {"commitLineColor": "#123456"}}),
+            )),
+            "git-partial-ordinal",
+        );
+        assert_eq!(
+            rendered.svg(),
+            previous.svg(),
+            "legacy fallback ignored unsupported ordinal routes; stroke={stroke}"
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.theme_residual_count(),
+            2,
+            "uniform CSS cannot certify partial ordinal ownership"
+        );
+        let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+            TWO_BRANCHES,
+            &theme,
+            Engine::new(),
+            "git-partial-ordinal-strict",
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert!(matches!(
+            strict,
+            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+        ));
+    }
+    let theme = gitgraph_edge_rules_theme([
+        static_fill().with_ordinal(OrdinalSelector::exact(1).unwrap()),
+        static_fill(),
+    ]);
+    let rendered = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new(),
+        "git-shadowed-ordinal",
+    );
+    let css = gitgraph_stylesheet(rendered.svg());
+    assert_eq!(
+        css_property_winner(
+            &gitgraph_css_rule(&css, "#git-shadowed-ordinal .branch"),
+            "stroke"
+        ),
+        Some("#123456")
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
