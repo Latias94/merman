@@ -618,7 +618,8 @@ impl<'a> GanttBuilder<'a> {
             let label_class = task_label_classes(task, source, self.layout);
             let label_color = self.task_text_style(&label_class);
             let label_size = if source.vert {
-                15.0
+                // Mermaid's `.vertText` rule fixes vertical marker labels at 11px.
+                11.0
             } else {
                 task.label.font_size
             };
@@ -1360,6 +1361,24 @@ mod tests {
             }
             assert!(found, "{marker}");
         }
+    }
+
+    #[test]
+    fn vertical_marker_labels_use_mermaid_font_size() {
+        let rendered = render_task_fixture(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nMarker: vert,marker,2026-01-01,1d\n",
+            json!({}),
+        );
+        let run = rendered
+            .document()
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text == "Marker" => Some(run),
+                _ => None,
+            })
+            .expect("vertical marker label");
+        assert_eq!(run.style.font_size, 11.0);
     }
 
     #[test]
