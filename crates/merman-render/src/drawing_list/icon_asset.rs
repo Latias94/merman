@@ -17,6 +17,62 @@ use merman_display_list::{
 use roxmltree::Node;
 use std::collections::BTreeMap;
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AssetStructure {
+    pub(crate) primitives: BTreeMap<String, PrimitiveGeometry>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) groups: BTreeMap<usize, AssetGroup>,
+}
+
+impl AssetStructure {
+    pub(crate) fn extend(&mut self, other: Self) {
+        self.primitives.extend(other.primitives);
+        self.dom_ids.extend(other.dom_ids);
+        self.groups.extend(other.groups);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct AssetGroup {
+    pub(crate) end: usize,
+    pub(crate) transform: Option<String>,
+    pub(crate) dom_id: Option<String>,
+}
+
+pub(crate) struct AssetIdentity<'a> {
+    pub(crate) resource_prefix: &'a str,
+    pub(crate) svg_scope: Option<crate::svg::IconIdScope>,
+}
+
+/// Source transform spelling is usable only for the exact current command prefix.
+pub(crate) fn matching_transform_prefix(
+    source: &str,
+    commands: &[DrawingCommand],
+    session: &RenderSession,
+) -> Result<Option<usize>> {
+    session
+        .work_meter()
+        .charge_at(source.len(), OperationPhase::Emit)?;
+    let context = Context {
+        session,
+        family: RenderFamilyKind::TreeView,
+    };
+    let mut count = 0;
+    for token in svgtypes::TransformListParser::from(source) {
+        session.checkpoint(OperationPhase::Emit)?;
+        let Ok(token) = token else { return Ok(None) };
+        let Ok(expected) = context.transform(token) else {
+            return Ok(None);
+        };
+        if !matches!(commands.get(count), Some(DrawingCommand::ConcatTransform { transform }) if *transform == expected)
+        {
+            return Ok(None);
+        }
+        count += 1;
+    }
+    Ok(Some(count))
+}
+
 /// Source spelling only. A serializer must check it against the current public path.
 #[derive(Debug, Clone)]
 pub(crate) struct PrimitiveGeometry {
@@ -144,11 +200,11 @@ pub(crate) fn lower_icon_asset(
     body: &str,
     color: Color,
     inherited_fill: Color,
-    id_prefix: &str,
+    identity: AssetIdentity<'_>,
     builder: &mut DrawingListBuilder<'_>,
     session: &RenderSession,
     family: RenderFamilyKind,
-) -> Result<BTreeMap<String, PrimitiveGeometry>> {
+) -> Result<AssetStructure> {
     let context = Context { session, family };
     let bytes = body
         .len()
@@ -170,7 +226,8 @@ pub(crate) fn lower_icon_asset(
     let mut stack = Vec::new();
     let mut state = Style::inherited(color, inherited_fill);
     let mut index = 0usize;
-    let mut primitives = BTreeMap::new();
+    let mut structure = AssetStructure::default();
+    let mut id_index = 0;
     let mut cursor = root.first_child().map(|node| (node, true));
     while let Some((node, entering)) = cursor {
         session.checkpoint(OperationPhase::Emit)?;
@@ -218,12 +275,47 @@ pub(crate) fn lower_icon_asset(
                     return Err(context.unsupported(format!("nested content in <{tag}>")));
                 }
                 let next = context.style(node, state)?;
+                let dom_id = if node.attribute("id").is_some() {
+                    let id = identity
+                        .svg_scope
+                        .map(|scope| scope.scoped_id(id_index))
+                        .transpose()?;
+                    id_index += 1;
+                    id
+                } else {
+                    None
+                };
+                let start = builder.command_count();
                 builder.push_control(DrawingCommand::Save)?;
                 stack
                     .try_reserve(1)
                     .map_err(|_| allocation("icon scopes"))?;
-                stack.push(state);
+                stack.push((state, start));
                 state = next;
+                if tag == "g" {
+                    let transform = node
+                        .attribute("transform")
+                        .map(|source| -> Result<String> {
+                            session
+                                .work_meter()
+                                .charge_at(source.len(), OperationPhase::Emit)?;
+                            let mut owned = String::new();
+                            owned
+                                .try_reserve_exact(source.len())
+                                .map_err(|_| allocation("icon transform spelling"))?;
+                            owned.push_str(source);
+                            Ok(owned)
+                        })
+                        .transpose()?;
+                    structure.groups.insert(
+                        start,
+                        AssetGroup {
+                            end: start,
+                            transform,
+                            dom_id: dom_id.clone(),
+                        },
+                    );
+                }
                 if let Some(value) = node.attribute("transform") {
                     for token in svgtypes::TransformListParser::from(value) {
                         session.checkpoint(OperationPhase::Emit)?;
@@ -236,26 +328,35 @@ pub(crate) fn lower_icon_asset(
                 }
                 if tag != "g" {
                     let style = context.path_style(state)?;
-                    let id = format!("{id_prefix}.shape.{index}");
+                    let id = format!("{}.shape.{index}", identity.resource_prefix);
                     if builder.draw_optional_path_with(
                         ResourceId::new(id.clone()),
                         style,
                         |emit| context.geometry(tag, |name| node.attribute(name), emit),
                     )? {
-                        primitives.insert(id, PrimitiveGeometry::capture(node, session)?);
+                        if let Some(dom_id) = dom_id {
+                            structure.dom_ids.insert(id.clone(), dom_id);
+                        }
+                        structure
+                            .primitives
+                            .insert(id, PrimitiveGeometry::capture(node, session)?);
                     }
                     index += 1;
                 }
             }
             false => {
-                builder.push_control(DrawingCommand::Restore)?;
-                state = stack
+                let (previous, start) = stack
                     .pop()
                     .ok_or_else(|| context.unsupported("unbalanced XML scopes"))?;
+                if let Some(group) = structure.groups.get_mut(&start) {
+                    group.end = builder.command_count();
+                }
+                builder.push_control(DrawingCommand::Restore)?;
+                state = previous;
             }
         }
     }
-    Ok(primitives)
+    Ok(structure)
 }
 
 struct Context<'a> {
@@ -616,7 +717,10 @@ mod tests {
             body,
             Color::rgba(12, 34, 56, 255),
             Color::rgba(51, 51, 51, 255),
-            "asset",
+            AssetIdentity {
+                resource_prefix: "asset",
+                svg_scope: None,
+            },
             &mut builder,
             &session,
             RenderFamilyKind::Architecture,

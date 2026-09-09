@@ -237,11 +237,11 @@ fn tree_view_icon_svg(
     let node_id = node_id.to_string();
     let icon_svg = match icon_registry {
         Some(registry) => {
-            let prefix = crate::svg::icon_registry::IconIdScopePrefix::from_parts(
-                &["tree-view-", diagram_id.semantic_str(), "-"],
+            let id_scope = crate::svg::IconIdScope::tree_view(
+                diagram_id.semantic_str(),
+                &node_id,
                 work_meter,
             )?;
-            let id_scope = prefix.scope_parts(&[&node_id], work_meter)?;
             registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
                 icon_name: icon,
                 width_px: TREE_VIEW_ICON_SIZE,

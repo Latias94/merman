@@ -90,9 +90,16 @@ Nonempty asset primitives also retain their source tags and geometry spelling, b
 the shared asset geometry decoder exactly matches every current public path segment. Paint,
 opacity, and transforms still come from public commands. A real seven-primitive pack test
 compares the direct legacy elements and mutates public paint, public geometry, and a malformed
-hint; changed geometry keeps generic path projection. Internal asset groups, empty primitives,
-and scoped IDs still need source-backed DOM projection. These steps do not admit TreeView or
-establish complete asset parity.
+hint; changed geometry keeps generic path projection.
+
+Asset groups now bind to matching public Save/Restore lifetimes. Source transform spelling is
+used only for an exactly matching public command prefix; otherwise those commands are emitted
+normally. Moving a public matrix onto a group resets only its local matrix, not leaf paint or
+opacity. Group and nonempty primitive IDs use the registry's shared scope/formatting rules;
+ID numbering still includes omitted empty primitives. A real nested pack test compares legacy
+IDs across diagram IDs and aliases, then edits public transforms, geometry, and scope hints.
+Empty primitive elements, alias wrapper structure, and complete registered-asset presentation
+parity remain unfinished. These steps do not admit TreeView or establish complete asset parity.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

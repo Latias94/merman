@@ -2421,6 +2421,182 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_registered_groups_preserve_scoped_identity_and_public_transforms() {
+        use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Transform};
+        let pack = serde_json::json!({
+            "prefix": "test", "width": 20, "height": 10,
+            "icons": { "grouped": { "body": r#"<path d="M0 0H1V1Z"/><g id="outer" transform="translate(1 2)"><rect id="empty" width="0" height="10"/><g id="inner" transform="scale(2)"><path id="face" d="M0 0H2V3Z"/></g></g><path id="tail" d="M1 1H2"/>"# } },
+            "aliases": { "turned": { "parent": "grouped", "rotate": 1 } }
+        });
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            &serde_json::to_vec(&pack).unwrap(),
+        )])
+        .unwrap();
+        let mut diagram_ids = Vec::new();
+        for diagram_id in ["treeView", "asset-custom"] {
+            let mut alias_ids = Vec::new();
+            for name in ["grouped", "turned"] {
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(
+                        &format!("treeView-beta\nRoot icon(test:{name})\n"),
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .with_icon_registry(registry.clone())
+                    .begin_session()
+                    .unwrap();
+                let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+                let options = SvgRenderOptions {
+                    diagram_id: Some(diagram_id.to_owned()),
+                    ..SvgRenderOptions::default()
+                };
+                let legacy = render_legacy_family_artifact_svg(
+                    &artifact,
+                    &options,
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap();
+                let mut document = crate::drawing_list::build_for_family_with_diagram_id(
+                    &artifact.family,
+                    &artifact.metadata,
+                    DrawingListPolicy::VectorOnly,
+                    DrawingListLimits::default(),
+                    Some(diagram_id),
+                    &artifact.session,
+                )
+                .unwrap();
+                let render = |document: &crate::drawing_list::RenderDocument| {
+                    crate::svg::render_document_svg(
+                        document,
+                        &options,
+                        &drawing_list_svg_diagnostics(),
+                        artifact.metadata.effective_config.as_value(),
+                        &artifact.session,
+                    )
+                    .unwrap()
+                };
+                let svg = render(&document);
+                let source = roxmltree::Document::parse(&legacy).unwrap();
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let expected_ids: Vec<_> = source
+                    .descendants()
+                    .filter(|node| !node.has_tag_name("rect"))
+                    .filter_map(|node| node.attribute("id"))
+                    .filter(|id| id.starts_with("IconifyId"))
+                    .map(str::to_owned)
+                    .collect();
+                let actual_ids: Vec<_> = xml
+                    .descendants()
+                    .filter_map(|node| node.attribute("id"))
+                    .filter(|id| id.starts_with("IconifyId"))
+                    .map(str::to_owned)
+                    .collect();
+                assert_eq!(
+                    expected_ids.len(),
+                    4,
+                    "two groups and two paths; the empty rectangle still consumes source ID 1"
+                );
+                assert_eq!(actual_ids, expected_ids);
+                assert!(actual_ids[1].ends_with('2'));
+                assert!(actual_ids[2].ends_with('3'));
+                let outer = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[0].as_str()))
+                    .unwrap();
+                let inner = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[1].as_str()))
+                    .unwrap();
+                let face = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                    .unwrap();
+                assert_eq!(inner.parent(), Some(outer));
+                assert_eq!(face.parent(), Some(inner));
+                assert_eq!(inner.attribute("transform"), Some("scale(2)"));
+                assert_eq!(face.attribute("transform"), None);
+                if name == "grouped" {
+                    assert_eq!(outer.attribute("transform"), Some("translate(1 2)"));
+                }
+                alias_ids.push(actual_ids.clone());
+
+                // A changed public matrix must override stale source transform spelling.
+                let group_start = match &document.svg.body {
+                    crate::drawing_list::SvgStructureBody::TreeView(body) => {
+                        *body.assets.groups.keys().next().unwrap()
+                    }
+                    _ => panic!("TreeView sidecar"),
+                };
+                if let DrawingCommand::ConcatTransform { transform } =
+                    &mut document.public.commands[group_start + 1]
+                {
+                    *transform = Transform {
+                        e: 8.0,
+                        f: 9.0,
+                        ..Transform::IDENTITY
+                    };
+                } else {
+                    panic!("source group transform")
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let outer = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[0].as_str()))
+                    .unwrap();
+                assert_ne!(outer.attribute("transform"), Some("translate(1 2)"));
+                let inner = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[1].as_str()))
+                    .unwrap();
+                assert_eq!(inner.attribute("transform"), Some("matrix(2 0 0 2 8 9)"));
+
+                // Editing a path uses generic geometry but keeps the source DOM identity.
+                for resource in &mut document.public.resources {
+                    if let DrawingResource::Path(path) = resource
+                        && path.id.as_str().ends_with(".asset.shape.2")
+                        && let PathSegment::MoveTo { to } = &mut path.segments[0]
+                    {
+                        to.x += 1.0;
+                    }
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let face = xml
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                    .unwrap();
+                assert_ne!(face.attribute("d"), Some("M0 0H2V3Z"));
+
+                // A stale scope boundary cannot create a group across a different save lifetime.
+                if let crate::drawing_list::SvgStructureBody::TreeView(body) =
+                    &mut document.svg.body
+                {
+                    body.assets.groups.get_mut(&group_start).unwrap().end += 1;
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                assert!(
+                    !xml.descendants()
+                        .any(|node| node.attribute("id") == Some(actual_ids[0].as_str()))
+                );
+                assert!(
+                    xml.descendants()
+                        .any(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                );
+            }
+            assert_eq!(
+                alias_ids[0], alias_ids[1],
+                "alias names do not change same-node source IDs"
+            );
+            diagram_ids.push(alias_ids.remove(0));
+        }
+        assert_ne!(diagram_ids[0], diagram_ids[1]);
+    }
+
+    #[test]
     fn tree_view_registered_primitives_keep_source_spelling_and_public_paint() {
         use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
 
@@ -2549,7 +2725,8 @@ mod tests {
             panic!("TreeView sidecar")
         };
         let (_, hint) = body
-            .asset_primitives
+            .assets
+            .primitives
             .iter_mut()
             .find(|(id, _)| id.ends_with(".asset.shape.2"))
             .unwrap();

@@ -17,6 +17,7 @@ mod flowchart;
 mod gantt;
 mod gitgraph;
 mod icon_asset;
+pub(crate) use icon_asset::{AssetGroup, matching_transform_prefix};
 mod info;
 mod ishikawa;
 mod journey;
@@ -516,7 +517,7 @@ pub(crate) struct TreeViewSvgBody {
     pub(crate) text_classes: BTreeMap<String, String>,
     /// Coordinate representation only; SVG must compensate against the current public matrix.
     pub(crate) asset_view_boxes: BTreeMap<String, merman_display_list::Rect>,
-    pub(crate) asset_primitives: BTreeMap<String, icon_asset::PrimitiveGeometry>,
+    pub(crate) assets: icon_asset::AssetStructure,
 }
 
 /// SVG-only metadata retained beside the public Venn document.
@@ -845,7 +846,7 @@ pub(crate) fn build_for_family_with_diagram_id(
             treemap::build_treemap_document(pair, metadata, policy, limits, session)
         }
         BuiltinFamilyArtifact::TreeView(pair) => {
-            tree_view::build_tree_view_document(pair, metadata, policy, limits, session)
+            tree_view::build_tree_view_document(pair, metadata, policy, limits, diagram_id, session)
         }
         BuiltinFamilyArtifact::Venn(pair) => {
             venn::build_venn_document(pair, metadata, policy, limits, session)

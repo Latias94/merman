@@ -99,6 +99,7 @@ struct DocumentSvgEncoder<'a> {
     tree_view_icons: Option<tree_view_icon::IconProjection>,
     tree_view_unknown_icons: BTreeMap<usize, tree_view_unknown_icon::UnknownIcon<'a>>,
     tree_view_asset_viewports: BTreeMap<usize, tree_view_asset::AssetViewport<'a>>,
+    tree_view_asset_groups: BTreeMap<usize, &'a crate::drawing_list::AssetGroup>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -151,6 +152,7 @@ enum GroupKind {
     },
     Clip,
     ViewportClip,
+    Asset,
 }
 
 impl<'a> DocumentSvgEncoder<'a> {
@@ -261,6 +263,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             tree_view_asset_viewports: if let SvgStructureBody::TreeView(body) = &document.svg.body
             {
                 tree_view_asset::projections(&document.public, body, &resources, session)?
+            } else {
+                BTreeMap::new()
+            },
+            tree_view_asset_groups: if let SvgStructureBody::TreeView(body) = &document.svg.body {
+                tree_view_asset::group_projections(&document.public, body, session)?
             } else {
                 BTreeMap::new()
             },
@@ -622,6 +629,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
             if self.emit_tree_view_asset_viewport(index)? {
                 consumed_until = index + 2;
+                continue;
+            }
+            if let Some(count) = self.emit_tree_view_asset_group(index)? {
+                consumed_until = index + count;
                 continue;
             }
             if let Some(count) = self.emit_journey_box_text(index)? {
@@ -1603,7 +1614,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             .ok_or_else(|| invalid("SVG restore has no matching save"))?;
         while self.groups.len() > save.group_len {
             match self.groups.pop() {
-                Some(GroupKind::Clip) => self.output.push_str("</g>")?,
+                Some(GroupKind::Clip | GroupKind::Asset) => self.output.push_str("</g>")?,
                 Some(GroupKind::ViewportClip) => self.output.push_str("</svg></g>")?,
                 Some(GroupKind::Semantic { .. }) | Some(GroupKind::Layer { .. }) => {
                     return Err(invalid(
@@ -4096,6 +4107,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
     fn write_sidecar_dom_id(&mut self, key: &str) -> Result<()> {
         let raw_id = match self.svg_body {
+            SvgStructureBody::TreeView(body) => body.assets.dom_ids.get(key),
             SvgStructureBody::GitGraph(body) => body.dom_ids.get(key),
             SvgStructureBody::Er(body) => body.dom_ids.get(key),
             SvgStructureBody::Block(body) => body.dom_ids.get(key),
@@ -4107,8 +4119,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         };
         self.output.push_str(" id=\"")?;
-        output::escape_attr(&mut self.output, self.diagram_id.as_str())?;
-        self.output.push('-')?;
+        if !matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            output::escape_attr(&mut self.output, self.diagram_id.as_str())?;
+            self.output.push('-')?;
+        }
         output::escape_attr(&mut self.output, raw_id.as_str())?;
         self.output.push('"')?;
         Ok(())

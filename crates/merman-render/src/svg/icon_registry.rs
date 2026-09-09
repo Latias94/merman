@@ -32,9 +32,29 @@ const ICON_ID_SCOPE_CHECKPOINT_BYTES: usize = 4 * 1024;
 /// Callers cannot provide an arbitrary string: the scope must first pass through the controlled
 /// prefix builder, which charges and checkpoints every scanned byte before icon materialization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::svg) struct IconIdScope(u64);
+pub(crate) struct IconIdScope(u64);
 
 impl IconIdScope {
+    pub(crate) fn tree_view(
+        diagram_id: &str,
+        node_id: &str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        IconIdScopePrefix::from_parts(&["tree-view-", diagram_id, "-"], work_meter)?
+            .scope_parts(&[node_id], work_meter)
+    }
+
+    /// Formats one admitted identity without charging the scope scan a second time.
+    pub(crate) fn scoped_id(self, index: usize) -> crate::Result<String> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(xml::scoped_id_len(index))
+            .map_err(|_| crate::Error::icon_processing("icon ID allocation failed"))?;
+        xml::write_scoped_id(&mut output, self.hash(), index)
+            .map_err(|_| crate::Error::icon_processing("icon ID formatting failed"))?;
+        Ok(output)
+    }
+
     pub(super) const fn hash(self) -> u64 {
         self.0
     }
@@ -476,6 +496,37 @@ mod tests {
             work_meter.used(),
             diagram_id.len() + "-flowchart-icon-".len() + "node-a".len() + "node-b".len()
         );
+    }
+
+    #[test]
+    fn tree_view_scope_preserves_node_identity_and_charges_once() {
+        for (diagram_id, node_id) in [
+            ("treeView", "0"),
+            ("diagram-a", "-1"),
+            ("diagram-b", "-9223372036854775808"),
+        ] {
+            let textual_scope = format!("tree-view-{diagram_id}-{node_id}");
+            let work_meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, textual_scope.len())
+                    .unwrap(),
+            );
+            let scope = IconIdScope::tree_view(diagram_id, node_id, &work_meter).unwrap();
+            assert_eq!(scope, icon_id_scope_for_test(&textual_scope));
+            assert_eq!(work_meter.used(), textual_scope.len());
+            for index in [0, 9, 10, usize::MAX] {
+                let id = scope.scoped_id(index).unwrap();
+                assert_eq!(id.len(), xml::scoped_id_len(index));
+                assert_eq!(work_meter.used(), textual_scope.len());
+            }
+        }
+    }
+
+    #[test]
+    fn scoped_id_preserves_fixed_width_hash_and_decimal_suffix() {
+        let scope = icon_id_scope_for_test("diagram-a");
+        assert_eq!(scope.scoped_id(0).unwrap(), "IconifyIdb5cb5676c39329100");
+        assert_eq!(scope.scoped_id(10).unwrap(), "IconifyIdb5cb5676c393291010");
     }
 
     #[test]

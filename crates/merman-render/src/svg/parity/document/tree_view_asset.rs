@@ -2,6 +2,42 @@
 
 use super::*;
 
+/// Match scopes once, rather than rescanning a subtree for each source group.
+pub(super) fn group_projections<'a>(
+    document: &DrawingListDocument,
+    body: &'a crate::drawing_list::TreeViewSvgBody,
+    session: &RenderSession,
+) -> Result<BTreeMap<usize, &'a crate::drawing_list::AssetGroup>> {
+    let mut result = BTreeMap::new();
+    if body.assets.groups.is_empty() {
+        return Ok(result);
+    }
+    let mut saves = Vec::new();
+    for (index, command) in document.commands.iter().enumerate() {
+        session.checkpoint(OperationPhase::Emit)?;
+        match command {
+            DrawingCommand::Save => {
+                saves
+                    .try_reserve(1)
+                    .map_err(|_| crate::Error::DrawingListAllocationFailed {
+                        collection: "icon SVG scopes",
+                    })?;
+                saves.push(index);
+            }
+            DrawingCommand::Restore => {
+                if let Some(start) = saves.pop()
+                    && let Some(group) = body.assets.groups.get(&start)
+                    && group.end == index
+                {
+                    result.insert(start, group);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(result)
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct AssetViewport<'a> {
     clip_id: &'a ResourceId,
@@ -113,6 +149,52 @@ fn compensate_view_box(viewport: Rect, view_box: Rect, public: Transform) -> Opt
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_tree_view_asset_group(&mut self, index: usize) -> Result<Option<usize>> {
+        let Some(&group) = self.tree_view_asset_groups.get(&index) else {
+            return Ok(None);
+        };
+        let commands = &self.document.commands[index + 1..group.end];
+        let prefix = group
+            .transform
+            .as_deref()
+            .map(|source| {
+                crate::drawing_list::matching_transform_prefix(source, commands, self.session)
+            })
+            .transpose()?
+            .flatten();
+        let count = prefix.unwrap_or(0);
+        let parent = self.state.transform;
+        self.emit_command(&DrawingCommand::Save)?;
+        for command in &commands[..count] {
+            self.emit_command(command)?;
+        }
+        self.output.push_str("<g")?;
+        if let Some(id) = &group.dom_id {
+            self.output.push_str(" id=\"")?;
+            output::escape_attr(&mut self.output, id)?;
+            self.output.push('"')?;
+        }
+        if parent == Transform::IDENTITY && prefix.is_some() {
+            self.output.push_str(" transform=\"")?;
+            output::escape_attr(
+                &mut self.output,
+                group.transform.as_deref().unwrap_or_default(),
+            )?;
+            self.output.push('"')?;
+        } else if self.state.transform != Transform::IDENTITY {
+            write!(
+                self.output,
+                " transform=\"matrix({})\"",
+                matrix_attr(self.state.transform)
+            )?;
+        }
+        self.output.push('>')?;
+        // Only the current public matrix moves onto the group. Paint/opacity stay on leaves.
+        self.state.transform = Transform::IDENTITY;
+        self.groups.push(GroupKind::Asset);
+        Ok(Some(count + 1))
+    }
+
     pub(super) fn emit_tree_view_asset_primitive(
         &mut self,
         path_id: &ResourceId,
@@ -121,7 +203,7 @@ impl DocumentSvgEncoder<'_> {
         let SvgStructureBody::TreeView(body) = self.svg_body else {
             return Ok(false);
         };
-        let Some(geometry) = body.asset_primitives.get(path_id.as_str()) else {
+        let Some(geometry) = body.assets.primitives.get(path_id.as_str()) else {
             return Ok(false);
         };
         let path = self.path_resource(path_id)?;
@@ -139,6 +221,7 @@ impl DocumentSvgEncoder<'_> {
         }
         self.write_path_style(style)?;
         self.write_state_attrs()?;
+        self.write_sidecar_dom_id(path_id.as_str())?;
         self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(true)

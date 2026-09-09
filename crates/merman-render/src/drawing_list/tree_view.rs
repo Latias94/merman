@@ -43,9 +43,10 @@ pub(crate) fn build_tree_view_document(
     metadata: &ParseMetadata,
     policy: DrawingListPolicy,
     limits: impl Into<super::DocumentBudget>,
+    diagram_id: Option<&str>,
     session: &RenderSession,
 ) -> Result<RenderDocument> {
-    TreeViewBuilder::new(pair, metadata, policy, limits, session)?.build()
+    TreeViewBuilder::new(pair, metadata, policy, limits, diagram_id, session)?.build()
 }
 
 struct TreeViewBuilder<'a> {
@@ -68,7 +69,8 @@ struct TreeViewBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     asset_view_boxes: BTreeMap<String, Rect>,
-    asset_primitives: BTreeMap<String, super::icon_asset::PrimitiveGeometry>,
+    assets: super::icon_asset::AssetStructure,
+    diagram_id: &'a str,
     output: DrawingListBuilder<'a>,
 }
 
@@ -78,6 +80,7 @@ impl<'a> TreeViewBuilder<'a> {
         metadata: &'a ParseMetadata,
         policy: DrawingListPolicy,
         limits: impl Into<super::DocumentBudget>,
+        diagram_id: Option<&'a str>,
         session: &'a RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Emit)?;
@@ -157,7 +160,8 @@ impl<'a> TreeViewBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             asset_view_boxes: BTreeMap::new(),
-            asset_primitives: BTreeMap::new(),
+            assets: super::icon_asset::AssetStructure::default(),
+            diagram_id: diagram_id.unwrap_or("treeView"),
             output,
         })
     }
@@ -227,7 +231,7 @@ impl<'a> TreeViewBuilder<'a> {
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
                     asset_view_boxes: self.asset_view_boxes,
-                    asset_primitives: self.asset_primitives,
+                    assets: self.assets,
                 }),
             },
         })
@@ -433,17 +437,24 @@ impl<'a> TreeViewBuilder<'a> {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("#333"),
             )?;
-            self.asset_primitives
-                .extend(super::icon_asset::lower_icon_asset(
-                    asset.body,
-                    self.icon_color
-                        .ok_or_else(|| invalid("TreeView icon color was not resolved"))?,
-                    inherited_fill,
-                    &id,
-                    &mut self.output,
-                    self.session,
-                    RenderFamilyKind::TreeView,
-                )?);
+            let id_scope = crate::svg::IconIdScope::tree_view(
+                self.diagram_id,
+                &node.id.to_string(),
+                self.session.work_meter(),
+            )?;
+            self.assets.extend(super::icon_asset::lower_icon_asset(
+                asset.body,
+                self.icon_color
+                    .ok_or_else(|| invalid("TreeView icon color was not resolved"))?,
+                inherited_fill,
+                super::icon_asset::AssetIdentity {
+                    resource_prefix: &id,
+                    svg_scope: Some(id_scope),
+                },
+                &mut self.output,
+                self.session,
+                RenderFamilyKind::TreeView,
+            )?);
         } else {
             let scale = TREE_VIEW_ICON_SIZE / 80.0;
             self.output.push_control(DrawingCommand::ConcatTransform {
