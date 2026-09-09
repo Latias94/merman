@@ -2421,6 +2421,135 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_registered_asset_projects_the_public_viewport() {
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            br#"{"prefix":"test","width":20,"height":10,"icons":{"box":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10H0Z\"/>"}},"aliases":{"turned":{"parent":"box","rotate":1}}}"#,
+        )]).unwrap();
+        for (name, expected_box) in [("box", "0 0 20 10"), ("turned", "0 0 10 20")] {
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(
+                    &format!("treeView-beta\nRoot icon(test:{name})\n"),
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_icon_registry(registry.clone())
+                .begin_session()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+            let legacy = render_legacy_family_artifact_svg(
+                &artifact,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&legacy).unwrap();
+            assert!(
+                xml.descendants()
+                    .any(|node| node.attribute("viewBox") == Some(expected_box)),
+                "a registered asset, not the unknown-icon fallback"
+            );
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let render = |document: &crate::drawing_list::RenderDocument| {
+                crate::svg::render_document_svg(
+                    document,
+                    &SvgRenderOptions::default(),
+                    &drawing_list_svg_diagnostics(),
+                    artifact.metadata.effective_config.as_value(),
+                    &artifact.session,
+                )
+                .unwrap()
+            };
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let viewport = xml
+                .descendants()
+                .find(|node| node.attribute("viewBox") == Some(expected_box))
+                .expect("registered asset source coordinate basis");
+            assert_eq!(viewport.attribute("width"), Some("14"));
+            assert_eq!(viewport.attribute("height"), Some("14"));
+            assert_eq!(
+                viewport.parent().unwrap().attribute("class"),
+                Some("treeView-node-icon")
+            );
+            assert!(!xml.descendants().any(|node| node.has_tag_name("clipPath")));
+            assert!(viewport.descendants().any(|node| node.has_tag_name("path")));
+            assert!(!viewport.descendants().any(|node| node.has_tag_name("text")));
+            let asset_matrix = |svg: &str| {
+                let xml = roxmltree::Document::parse(svg).unwrap();
+                let path = xml
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-merman-resource")
+                            .is_some_and(|id| id.ends_with(".asset.shape.0"))
+                    })
+                    .unwrap();
+                match path.attribute("transform") {
+                    None => [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                    Some(value) => match svgtypes::TransformListParser::from(value)
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                    {
+                        svgtypes::TransformListToken::Matrix { a, b, c, d, e, f } => {
+                            [a, b, c, d, e, f]
+                        }
+                        other => panic!("unexpected transform {other:?}"),
+                    },
+                }
+            };
+            let original = asset_matrix(&svg);
+            let mut edited = document.clone();
+            let crate::drawing_list::SvgStructureBody::TreeView(body) = &mut edited.svg.body else {
+                panic!("TreeView sidecar")
+            };
+            let hint = body.asset_view_boxes.values_mut().next().unwrap();
+            hint.x += 5.0;
+            hint.y -= 3.0;
+            let actual = asset_matrix(&render(&edited));
+            let expected = [
+                original[0],
+                original[1],
+                original[2],
+                original[3],
+                original[4] + 5.0,
+                original[5] - 3.0,
+            ];
+            for (actual, expected) in actual.into_iter().zip(expected) {
+                assert!(
+                    (actual - expected).abs() < 1e-10,
+                    "viewBox shift is compensated in public geometry"
+                );
+            }
+            for resource in &mut edited.public.resources {
+                if let merman_display_list::DrawingResource::Path(path) = resource
+                    && path.id.as_str().ends_with(".asset.clip")
+                    && let merman_display_list::PathSegment::MoveTo { to } = &mut path.segments[0]
+                {
+                    to.x += 1.0;
+                }
+            }
+            let svg = render(&edited);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert!(xml.descendants().any(|node| node.has_tag_name("clipPath")));
+            assert_eq!(
+                xml.descendants()
+                    .filter(|node| node.has_tag_name("svg"))
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[test]
     fn tree_view_unknown_icon_projects_public_viewport_and_paint() {
         use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
         let parsed = Engine::new()

@@ -36,6 +36,7 @@ mod journey_marker;
 mod pie;
 mod sankey;
 mod tree_view;
+mod tree_view_asset;
 mod tree_view_icon;
 mod tree_view_unknown_icon;
 mod venn;
@@ -97,6 +98,7 @@ struct DocumentSvgEncoder<'a> {
     tree_view_path_styles: BTreeMap<String, Option<&'a PathStyle>>,
     tree_view_icons: Option<tree_view_icon::IconProjection>,
     tree_view_unknown_icons: BTreeMap<usize, tree_view_unknown_icon::UnknownIcon<'a>>,
+    tree_view_asset_viewports: BTreeMap<usize, tree_view_asset::AssetViewport<'a>>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -148,6 +150,7 @@ enum GroupKind {
         projected_transform: Transform,
     },
     Clip,
+    ViewportClip,
 }
 
 impl<'a> DocumentSvgEncoder<'a> {
@@ -252,6 +255,12 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             tree_view_unknown_icons: if matches!(document.svg.body, SvgStructureBody::TreeView(_)) {
                 tree_view_unknown_icon::projections(&document.public, &resources, session)?
+            } else {
+                BTreeMap::new()
+            },
+            tree_view_asset_viewports: if let SvgStructureBody::TreeView(body) = &document.svg.body
+            {
+                tree_view_asset::projections(&document.public, body, &resources, session)?
             } else {
                 BTreeMap::new()
             },
@@ -609,6 +618,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
             if self.emit_tree_view_unknown_icon(index)? {
                 consumed_until = index + tree_view_unknown_icon::COMMAND_COUNT;
+                continue;
+            }
+            if self.emit_tree_view_asset_viewport(index)? {
+                consumed_until = index + 2;
                 continue;
             }
             if let Some(count) = self.emit_journey_box_text(index)? {
@@ -1233,9 +1246,10 @@ impl<'a> DocumentSvgEncoder<'a> {
             .iter()
             .enumerate()
             .filter(|(index, _)| {
-                !index
-                    .checked_sub(2)
-                    .is_some_and(|start| self.tree_view_unknown_icons.contains_key(&start))
+                !self.tree_view_asset_viewports.contains_key(index)
+                    && !index
+                        .checked_sub(2)
+                        .is_some_and(|start| self.tree_view_unknown_icons.contains_key(&start))
             })
             .filter_map(|(_, command)| match command {
                 DrawingCommand::ClipPath { path, .. } => Some(path.as_str().to_owned()),
@@ -1590,6 +1604,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         while self.groups.len() > save.group_len {
             match self.groups.pop() {
                 Some(GroupKind::Clip) => self.output.push_str("</g>")?,
+                Some(GroupKind::ViewportClip) => self.output.push_str("</svg></g>")?,
                 Some(GroupKind::Semantic { .. }) | Some(GroupKind::Layer { .. }) => {
                     return Err(invalid(
                         "SVG restore crossed an open semantic or layer group",

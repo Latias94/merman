@@ -81,6 +81,14 @@ successful external pack assets. This corpus does not prove registered-asset SVG
 That projection remains unfinished, so TreeView remains bridged; fixture names and focused
 adapter tests are not evidence of a broader capability.
 
+Registered assets now project their rectangular public clips into nested SVG viewports. The
+source viewBox is only a coordinate representation hint: its implicit matrix is compensated
+against the current public transform, including non-square assets and rotated aliases. Invalid
+hints or edited nonrectangular clips retain generic projection. Focused tests use a real pack,
+compare its coordinate basis with the direct legacy renderer, and mutate the hint and clip.
+Internal asset groups, primitive tags, path spelling, and scoped IDs still need source-backed
+DOM projection; this viewport step does not admit TreeView or establish complete asset parity.
+
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
 root geometry, style, DOM/a11y obligations, and effect disposition remain source-backed.  ZenUML

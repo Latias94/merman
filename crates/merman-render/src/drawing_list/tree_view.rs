@@ -67,6 +67,7 @@ struct TreeViewBuilder<'a> {
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
+    asset_view_boxes: BTreeMap<String, Rect>,
     output: DrawingListBuilder<'a>,
 }
 
@@ -154,6 +155,7 @@ impl<'a> TreeViewBuilder<'a> {
             )]),
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
+            asset_view_boxes: BTreeMap::new(),
             output,
         })
     }
@@ -222,6 +224,7 @@ impl<'a> TreeViewBuilder<'a> {
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
+                    asset_view_boxes: self.asset_view_boxes,
                 }),
             },
         })
@@ -398,6 +401,10 @@ impl<'a> TreeViewBuilder<'a> {
                 .work_meter()
                 .charge_at(asset.element_count, OperationPhase::Emit)?;
             let geometry = asset.geometry;
+            self.asset_view_boxes.insert(
+                format!("{id}.clip"),
+                Rect::new(geometry.left, geometry.top, geometry.width, geometry.height),
+            );
             let scale =
                 (TREE_VIEW_ICON_SIZE / geometry.width).min(TREE_VIEW_ICON_SIZE / geometry.height);
             let transform = Transform {
