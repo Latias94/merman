@@ -105,6 +105,91 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
 }
 
 #[test]
+fn gantt_raw_label_whitespace_preserves_width_threshold_placement() {
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = TextStyle {
+        font_size: 11.0,
+        ..Default::default()
+    };
+    let normalized_width = measurer.measure("Alpha Beta", &style).width;
+    let uncollapsed_width = measurer.measure("Alpha     Beta", &style).width;
+    assert!(uncollapsed_width > normalized_width);
+    // One-day task in a ten-day domain: put its bar between the old and correct widths.
+    let bar_width = (normalized_width + uncollapsed_width) / 2.0;
+    let container_width = 150.0 + 10.0 * bar_width;
+    let source = |label: &str| {
+        format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\n{label}: target, 2024-01-01, 1d\nHorizon: horizon, 2024-01-01, 10d\n"
+        )
+    };
+    let plain = layout_gantt_from_text_at_container_width(&source("Alpha Beta"), container_width);
+    let spaced =
+        layout_gantt_from_text_at_container_width(&source("Alpha     Beta"), container_width);
+    let plain = plain.tasks.iter().find(|task| task.id == "target").unwrap();
+    let spaced = spaced
+        .tasks
+        .iter()
+        .find(|task| task.id == "target")
+        .unwrap();
+    assert!(plain.label.width < plain.bar.width);
+    assert!(
+        uncollapsed_width > plain.bar.width,
+        "the previous measurement crossed this threshold"
+    );
+    assert_eq!(plain.label.width, spaced.label.width);
+    assert_eq!(plain.label.x, spaced.label.x);
+    assert_eq!(plain.label.class, spaced.label.class);
+    assert!(
+        spaced
+            .label
+            .class
+            .split_whitespace()
+            .any(|token| token == "taskText")
+    );
+    assert_eq!(
+        spaced.label.text, "Alpha     Beta",
+        "layout retains authored text for final source projection"
+    );
+
+    // Custom raw-DOM measurement stays authoritative and receives uncollapsed source text.
+    let inputs = Arc::new(Mutex::new(Vec::new()));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-whitespace").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Default::default(),
+            width: uncollapsed_width,
+            inputs: Arc::clone(&inputs),
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let host = layout_gantt_from_text_with_environment(
+        &source("Alpha     Beta"),
+        container_width,
+        &environment,
+    );
+    assert!(
+        inputs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(text, _)| text == "Alpha     Beta")
+    );
+    let task = host.tasks.iter().find(|task| task.id == "target").unwrap();
+    assert_eq!(task.label.width, uncollapsed_width);
+    assert!(
+        task.label
+            .class
+            .split_whitespace()
+            .any(|token| token == "taskTextOutsideRight")
+    );
+}
+
+#[test]
 fn gantt_source_bbox_measurements_restore_threshold_sensitive_label_placement() {
     // Browser getBBox measurements are injected through the existing host measurement route.
     // These fixture observations are evidence for the placement formula, not correction factors

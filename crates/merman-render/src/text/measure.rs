@@ -143,6 +143,15 @@ pub trait TextMeasurer {
         self.measure_svg_simple_text_bbox_width_px(text, style)
     }
 
+    /// Measures a direct SVG text node with default XML whitespace collapsing.
+    ///
+    /// This is an explicit layout intent, separate from raw callers that use CSS white-space:pre.
+    /// The built-in profile implements the collapse. Custom DOM measurers keep receiving the
+    /// original text through the existing raw-bbox operation and own their DOM measurement.
+    fn measure_svg_normal_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_raw_text_bbox_width_px(text, style)
+    }
+
     /// Measures raw SVG `<text>.getBBox().height` for direct text content.
     ///
     /// This stays distinct from tspan and Mermaid helper probes so browser hosts can preserve the

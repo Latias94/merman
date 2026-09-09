@@ -1248,6 +1248,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         )
     }
 
+    fn measure_svg_normal_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_normal_text_bbox_width_px(text, style),
+        )
+    }
+
     fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
             self.request(

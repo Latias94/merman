@@ -1403,10 +1403,11 @@ pub(crate) fn layout_gantt_diagram_typed(
             class: format!("task{task_class}"),
         };
 
-        // SVG discards trailing collapsible spaces, not NBSP or other Unicode spacing glyphs.
-        // Keep the authored text in the layout; the raw-SVG measurement operation owns collapse.
+        // Gantt uses default SVG whitespace, unlike raw callers with white-space:pre. Keep
+        // authored text for DOM hosts and final entity restoration; the built-in normal-text
+        // measurement collapses whitespace without changing raw measurement for other families.
         let text_width = text_measurer
-            .measure_svg_raw_text_bbox_width_px(
+            .measure_svg_normal_text_bbox_width_px(
                 crate::text::trim_end_html_collapsible_ascii_whitespace(&t.task),
                 &text_style,
             )
