@@ -103,6 +103,83 @@ fn path_style_requires_explicit_nullable_fill_and_stroke() {
 }
 
 #[test]
+fn nullable_protocol_fields_require_presence_in_both_schema_and_decoder() {
+    use merman_display_list::{
+        AlphaMode, FallbackReason, RasterFallback, RasterFormat, Rect, VisualSource,
+    };
+
+    let mut document = sample_document();
+    document.resources.extend(
+        extended_document()
+            .resources
+            .into_iter()
+            .filter(|resource| matches!(resource, merman_display_list::DrawingResource::Image(_))),
+    );
+    document.fallbacks.push(RasterFallback {
+        id: "fallback.test".into(),
+        image: ResourceId::new("image.pattern-tile"),
+        bounds: Rect::new(0.0, 0.0, 1.0, 1.0),
+        pixel_width: 1,
+        pixel_height: 1,
+        scale: 1.0,
+        format: RasterFormat::Png,
+        alpha: AlphaMode::Opaque,
+        reason: FallbackReason::UnsupportedEffect,
+        source: VisualSource {
+            family: "test".into(),
+            element_id: None,
+            effect: "test".into(),
+        },
+    });
+    document.commands.push(DrawingCommand::DrawRasterSubtree {
+        fallback_id: "fallback.test".into(),
+    });
+    let value = serde_json::to_value(document).unwrap();
+    let schema: Value =
+        serde_json::from_str(include_str!("../schema/drawing-list-v1.json")).unwrap();
+    let validator = jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&schema)
+        .unwrap();
+    assert!(validator.is_valid(&value));
+    DrawingListDocument::from_json_bytes(&serde_json::to_vec(&value).unwrap()).unwrap();
+    for (parent, field) in [
+        ("/commands/5/run/style/font", "postscript_name"),
+        ("/commands/5/run/style/font", "resource"),
+        ("/commands/5/run", "language"),
+        ("/semantics/0", "title"),
+        ("/semantics/0", "description"),
+        ("/semantics/0", "link"),
+        ("/fallbacks/0/source", "element_id"),
+    ] {
+        let mut nullable = value.clone();
+        nullable.pointer_mut(parent).unwrap()[field] = Value::Null;
+        assert!(
+            validator.is_valid(&nullable),
+            "explicit null: {parent}/{field}"
+        );
+        DrawingListDocument::from_json_bytes(&serde_json::to_vec(&nullable).unwrap()).unwrap();
+
+        let mut missing = nullable;
+        assert!(
+            missing
+                .pointer_mut(parent)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .remove(field)
+                .is_some()
+        );
+        assert!(!validator.is_valid(&missing), "missing: {parent}/{field}");
+        assert!(
+            DrawingListDocument::from_json_bytes(&serde_json::to_vec(&missing).unwrap()).is_err(),
+            "wire decoder must reject missing {parent}/{field}"
+        );
+        assert!(serde_json::from_value::<DrawingListDocument>(missing).is_err());
+    }
+}
+
+#[test]
 fn close_segment_rejects_unknown_fields() {
     let mut value = serde_json::to_value(sample_document()).unwrap();
     value["resources"][0]["segments"][4]["future_geometry"] = json!(true);

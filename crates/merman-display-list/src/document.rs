@@ -37,8 +37,11 @@ impl Viewport {
 pub struct SemanticAnnotation {
     pub id: String,
     pub role: SemanticRole,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub title: Option<String>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub description: Option<String>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub link: Option<String>,
 }
 
@@ -56,6 +59,7 @@ pub enum SemanticRole {
 #[serde(deny_unknown_fields)]
 pub struct VisualSource {
     pub family: String,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub element_id: Option<String>,
     pub effect: String,
 }

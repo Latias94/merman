@@ -264,6 +264,7 @@ pub struct TextRun {
     pub anchor: TextAnchor,
     pub baseline: TextBaseline,
     pub direction: TextDirection,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub language: Option<String>,
     pub obligation: TextObligation,
 }
@@ -379,7 +380,9 @@ pub struct FontDescriptor {
     pub families: Vec<String>,
     pub weight: u16,
     pub style: FontStyle,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub postscript_name: Option<String>,
+    #[serde(deserialize_with = "Deserialize::deserialize")]
     pub resource: Option<ResourceId>,
 }
 
