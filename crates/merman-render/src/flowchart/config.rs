@@ -93,6 +93,28 @@ impl<'a> FlowchartConfigView<'a> {
         }
     }
 
+    /// Returns the configured font-family without the SVG-only normalization fallback.
+    ///
+    /// Layout keeps using [`Self::font_family`] for Mermaid-compatible measurement defaults,
+    /// while the renderer-neutral adapter must inspect the original value so CSS expressions such
+    /// as `var(...)` become an explicit capability error instead of silently becoming the default
+    /// font.
+    pub(crate) fn raw_font_family(&self) -> String {
+        let theme_font_family = self.theme_string("fontFamily");
+        let top_font_family = self.root_string("fontFamily");
+
+        match (top_font_family, theme_font_family) {
+            (Some(top), Some(theme))
+                if normalize_css_font_family(&theme) == DEFAULT_FLOWCHART_FONT_FAMILY =>
+            {
+                top
+            }
+            (_, Some(theme)) => theme,
+            (Some(top), None) => top,
+            (None, None) => DEFAULT_FLOWCHART_FONT_FAMILY.to_string(),
+        }
+    }
+
     pub(crate) fn render_font_size(&self) -> f64 {
         self.theme_font_size_px().unwrap_or(16.0).max(1.0)
     }
@@ -440,6 +462,20 @@ mod tests {
             FlowchartConfigView::new(&cfg).font_family(),
             "Theme Sans,Arial"
         );
+    }
+
+    #[test]
+    fn flowchart_raw_font_family_preserves_unportable_values() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": "var(--host-font)"
+            }
+        });
+
+        let config = FlowchartConfigView::new(&cfg);
+
+        assert_eq!(config.raw_font_family(), "var(--host-font)");
+        assert_eq!(config.font_family(), "var(--host-font)");
     }
 
     #[test]

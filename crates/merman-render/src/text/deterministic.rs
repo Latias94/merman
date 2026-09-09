@@ -3,8 +3,8 @@
 use super::heuristic::append_text_width_em;
 use super::line_break::html_break_spaces_segments;
 use super::{
-    TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
-    trim_html_collapsible_ascii_whitespace,
+    NormalLineMetrics, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -307,6 +307,22 @@ impl TextMeasurer for DeterministicTextMeasurer {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
 
+    fn measure_svg_normal_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // Default SVG whitespace collapses XML spaces without parsing markup or entities.
+        // Keep this inside the built-in profile: DOM hosts must receive the authored request.
+        let text = Self::collapse_svg_text_whitespace(text);
+        LineWidthModel {
+            font_size: style.font_size.max(1.0),
+            uses_heuristic_widths: self.char_width_factor == 0.0,
+            char_width_factor: self.char_width_factor,
+        }
+        .width_px(&text)
+    }
+
+    fn measure_normal_line_metrics(&self, _text: &str, style: &TextStyle) -> NormalLineMetrics {
+        NormalLineMetrics::deterministic(style.font_size, self.line_height_factor)
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -451,6 +467,36 @@ impl DeterministicTextMeasurer {
 mod tests {
     use super::{DeterministicTextMeasurer, LineWidthModel};
     use crate::text::{TextMeasurer, TextStyle, WrapMode};
+
+    #[test]
+    fn normal_svg_bbox_collapses_xml_whitespace_without_decoding_text() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 0.5,
+            ..Default::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        for (source, width) in [
+            (" A \t B \r\n ", 15.0),
+            ("A\u{a0}\u{a0}B", 20.0),
+            ("A<br>B", 30.0),
+            ("&amp;", 25.0),
+            ("ﬂ°amp¶ß", 35.0),
+        ] {
+            assert_eq!(
+                measurer.measure_svg_normal_text_bbox_width_px(source, &style),
+                width,
+                "{source:?}"
+            );
+        }
+        assert_eq!(
+            measurer.measure_svg_raw_text_bbox_width_px("A  B", &style),
+            20.0,
+            "raw measurement retains preformatted whitespace used by TreeView"
+        );
+    }
 
     #[test]
     fn wrapping_uses_estimated_width_instead_of_character_count() {

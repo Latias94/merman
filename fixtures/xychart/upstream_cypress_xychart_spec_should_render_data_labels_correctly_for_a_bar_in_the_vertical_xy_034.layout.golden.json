@@ -49,6 +49,25 @@
           ]
         },
         {
+          "type": "barDataLabel",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "text": "4000",
+              "x": 391.9,
+              "y": 399.789,
+              "fill": "#131300",
+              "fontSize": 39.0,
+              "rotation": 0.0,
+              "verticalPos": "hanging",
+              "horizontalPos": "center"
+            }
+          ]
+        },
+        {
           "type": "path",
           "groupTexts": [
             "bottom-axis",

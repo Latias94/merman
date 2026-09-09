@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401";
 
 export const NODE_BINDING_OPERATIONS = [
   {
@@ -23,6 +23,10 @@ export const NODE_BINDING_OPERATIONS = [
   },
   {
     "id": "document-analysis-json",
+    "compiled_prerequisites": []
+  },
+  {
+    "id": "drawing-list-json",
     "compiled_prerequisites": []
   },
   {

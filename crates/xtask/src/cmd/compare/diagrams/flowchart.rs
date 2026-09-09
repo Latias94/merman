@@ -368,9 +368,10 @@ fn run_flowchart_compare_with_math_renderer(
                 .evidence()
                 .required_capabilities()
                 .contains(&merman::svg::RenderCapability::Math);
-            let render_evidence = state
-                .observed_operations
-                .observe(input.stem, rendered.evidence())?;
+            let render_evidence =
+                state
+                    .observed_operations
+                    .observe_svg(fact.diagram, input.stem, &rendered)?;
             let local_svg = rendered.svg().to_owned();
             let mut notes = Vec::new();
             let browser_measured_math = if let Some(evidence) = finish_math_evidence(

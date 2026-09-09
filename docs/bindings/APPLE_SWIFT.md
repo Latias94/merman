@@ -4,6 +4,10 @@ Merman ships its Apple package as a direct UniFFI binding. Swift calls the
 `merman-uniffi` component; it does not call the C ABI and does not maintain a
 second Swift implementation of engine ownership, callbacks, or result buffers.
 
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` XCFramework predates
+DrawingList and uses binding API 6. Current examples require API 7 generated Swift source and
+native libraries built from current source or a later matching release.
+
 The local SwiftPM package contains:
 
 - the root `Package.swift` product named `Merman`;
@@ -36,10 +40,12 @@ git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
 The generated binding validates its UniFFI contract version and API checksums before the
 first call. A mixed Swift source and native library fails with the generated binding's
-explicit contract/checksum mismatch message; prerelease artifacts must always be upgraded
-together.
+explicit contract/checksum mismatch message or fails to resolve a removed version-probe symbol;
+prerelease artifacts must always be upgraded together.
 
 ## Swift API
+
+The following example uses the current unreleased generated API:
 
 ```swift
 import Merman
@@ -47,12 +53,13 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV6() == 6 else {
+guard merman.bindingApiVersionV7() == 7 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
 let options = try resourceOptionsJson(profile: .constrained, overrides: [])
 let svg = try merman.renderSvg(source: source, optionsJson: options)
+let drawingListJson = try merman.renderDrawingList(source: source, optionsJson: options)
 
 let request = MermanOperationRequestV4(
     operationId: "ascii",
@@ -75,10 +82,10 @@ let diagnostics = try engine.analyzeJson(source: source, optionsJson: nil)
 
 The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
 values, returned media type, and metadata are owned by Merman's capability descriptor. Named
-methods such as `renderSvg`, `renderPng`, `renderJpeg`, and `renderPdf` are generated convenience
-methods over that path. One-shot request options may select `runtime_policy`; reusable request
-options deeply merge over the construction baseline but cannot replace its constructor-owned
-runtime policy.
+methods such as `renderSvg`, `renderDrawingList`, `renderPng`, `renderJpeg`, and `renderPdf` are
+generated convenience methods over that path. One-shot request options may select
+`runtime_policy`; reusable request options deeply merge over the construction baseline but cannot
+replace its constructor-owned runtime policy.
 
 Attach a `MermanOperationControl` to a generic request when the host needs a relative deadline or
 must stop stale work from another thread:
@@ -101,10 +108,11 @@ Cancellation is cooperative. Parser, layout, SVG/ASCII emission, and export chec
 the shared control, but an opaque callback or encoder call may return before the next checkpoint.
 Use worker or process isolation when the host requires hard preemption.
 
-The default XCFramework supports SVG, ASCII, semantic/layout operations, analysis, validation, and
-document analysis. It omits math and the PNG, JPEG, and PDF exporters. The generated export helpers
-remain valid for custom current-contract libraries; the default artifact returns
-`.missingCapability` with the required descriptor ID.
+The immutable alpha.6 default XCFramework supports SVG, ASCII, semantic/layout operations, analysis,
+validation, and document analysis, but not DrawingList. Current unreleased default XCFramework
+profiles additionally support DrawingList. Both profiles omit math and the PNG, JPEG, and PDF
+exporters. Generated Swift source and native libraries must remain release-matched; an operation
+omitted by a matching artifact returns `.missingCapability` with the required descriptor ID.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding
@@ -165,6 +173,10 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
+- Move API 6 generated source and native libraries together to API 7. Replace
+  `bindingApiVersionV6()` with `bindingApiVersionV7()`. `MermanError.Binding` now carries optional
+  `MermanDrawingListErrorDetails`; even an absent payload changes the error's wire layout. The
+  removed API 6 probe rejects old generated consumers before they can decode an error.
 - Move API 5 generated source and native libraries together to API 6. API 6 adds ASCII
   layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding; the generated
   source and native library must move atomically. `MermanOperationRequestV4` remains the current

@@ -1,12 +1,12 @@
 use super::super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_css(
+pub(crate) fn packet_css(
     diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
 ) -> String {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let font = crate::packet::PACKET_FONT_FAMILY_CSS;
     let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
     let mut out = String::new();
     let _ = write!(
@@ -184,15 +184,8 @@ pub(crate) fn render_packet_diagram_svg_model(
         out.push_str("</g>");
     }
 
-    let total_row_height = layout.row_height + layout.padding_y;
-    let title_y = layout.height - total_row_height / 2.0;
-    let title_from_semantic = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty());
-    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    match title_from_semantic.or(title_from_meta) {
+    let title_y = crate::packet::packet_title_y(layout);
+    match crate::packet::packet_title(model.title.as_deref(), diagram_title) {
         Some(title) => {
             let _ = write!(
                 &mut out,

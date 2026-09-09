@@ -200,6 +200,94 @@ fn request_overrides_take_precedence_over_renderer_defaults() {
 
 #[cfg(feature = "svg")]
 #[test]
+fn canonical_packet_svg_uses_operation_limits_instead_of_protocol_defaults() {
+    let source = format!("packet-beta\n0-262144: \"{}\"", "x".repeat(2048));
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .with_resource_policy(merman::svg::RenderResourcePolicy::unbounded_for_trusted_input()),
+        ..Default::default()
+    };
+    let output = Renderer::new()
+        .with_resource_policy(InputResourcePolicy::for_profile(
+            merman::resources::ResourceProfile::UnboundedForTrustedInput,
+        ))
+        .render(RenderRequest::svg(
+            &source,
+            OperationControl::new(),
+            request,
+        ))
+        .expect("trusted SVG must not inherit the DrawingList protocol text limit");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected typed SVG output");
+    };
+    assert_eq!(
+        output.serialization_route(),
+        merman::svg::SvgSerializationRoute::CanonicalDocument
+    );
+    assert!(output.svg().len() > 16 * 1024 * 1024);
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn canonical_svg_obeys_exact_output_byte_limits() {
+    use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgSerializationRoute};
+    let source = "packet-beta\n0-7: \"A & B\"";
+    let render = |policy, control| {
+        Renderer::new().render(RenderRequest::svg(
+            source,
+            control,
+            merman::SvgRequest {
+                environment: merman::SvgEnvironment::deterministic().with_resource_policy(policy),
+                ..Default::default()
+            },
+        ))
+    };
+    let RenderOutput::Svg(Some(baseline)) = render(
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+        OperationControl::new(),
+    )
+    .unwrap() else {
+        panic!("expected SVG");
+    };
+    let bytes = baseline.svg().len();
+    let RenderOutput::Svg(Some(exact)) = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, bytes)
+            .unwrap(),
+        OperationControl::new(),
+    )
+    .unwrap() else {
+        panic!("expected SVG at exact limit");
+    };
+    assert_eq!(
+        exact.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+    assert_eq!(exact.svg(), baseline.svg());
+    let control = OperationControl::new();
+    let error = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, bytes - 1)
+            .unwrap(),
+        control.clone(),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(error, RenderError::ResourceLimitExceeded(ref limit)
+        if limit.id == "max_svg_bytes" && limit.maximum == (bytes - 1) as u64)
+    );
+    let terminal = control
+        .terminal_checkpoint_at(OperationPhase::Emit)
+        .unwrap_err();
+    control.cancel();
+    assert_eq!(
+        control.terminal_checkpoint_at(OperationPhase::Emit),
+        Err(terminal)
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
 fn typed_svg_targets_share_the_prepared_operation() {
     let renderer = Renderer::new();
     let source = "flowchart TD\nA[Start] --> B[Done]";

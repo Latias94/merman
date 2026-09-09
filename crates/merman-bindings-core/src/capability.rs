@@ -11,6 +11,11 @@ include!("generated/capability_surface.rs");
 
 #[cfg(feature = "svg")]
 const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
+    | if cfg!(feature = "drawing-list") {
+        CapabilityKey::DrawingList.compact_bit()
+    } else {
+        0
+    }
     | if merman::svg::layout_cytoscape_available() {
         CapabilityKey::LayoutCytoscape.compact_bit()
     } else {

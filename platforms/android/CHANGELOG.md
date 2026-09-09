@@ -4,6 +4,12 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Added
+
+- Added the `drawing-list-json` operation to Android runtime discovery and generic `Merman.execute(...)` / `MermanEngine.execute(...)`. The default AAR now includes the DrawingList capability and returns validated v1 JSON with policy and limits supplied through Options JSON.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching Android AAR was attached to the GitHub Release on 2026-09-04.

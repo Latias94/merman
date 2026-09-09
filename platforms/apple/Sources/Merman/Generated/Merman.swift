@@ -651,7 +651,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersionV6()  -> UInt32
+    func bindingApiVersionV8()  -> UInt32
 
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
@@ -683,6 +683,8 @@ public protocol MermanProtocol: AnyObject, Sendable {
     func renderAscii(source: String, optionsJson: String?) throws  -> String
 
     func renderAsciiResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
+
+    func renderDrawingList(source: String, optionsJson: String?) throws  -> String
 
     func renderJpeg(source: String, optionsJson: String?) throws  -> Data
 
@@ -832,10 +834,10 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersionV6() -> UInt32  {
+open func bindingApiVersionV8() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6(
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -952,6 +954,17 @@ open func renderAsciiResult(source: String, optionsJson: String?)throws  -> Merm
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_merman_render_ascii_result(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
+}
+
+open func renderDrawingList(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_merman_render_drawing_list(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
@@ -1181,6 +1194,8 @@ public protocol MermanEngineProtocol: AnyObject, Sendable {
 
     func renderAsciiResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
 
+    func renderDrawingList(source: String, optionsJson: String?) throws  -> String
+
     func renderJpeg(source: String, optionsJson: String?) throws  -> Data
 
     func renderJpegResult(source: String, optionsJson: String?) throws  -> MermanOperationResult
@@ -1381,6 +1396,17 @@ open func renderAsciiResult(source: String, optionsJson: String?)throws  -> Merm
     return try  FfiConverterTypeMermanOperationResult_lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
         uniffiCallStatus in
     uniffi_merman_uniffi_fn_method_mermanengine_render_ascii_result(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(source),
+        FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
+    )
+})
+}
+
+open func renderDrawingList(source: String, optionsJson: String?)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeMermanError_lift) {
+        uniffiCallStatus in
+    uniffi_merman_uniffi_fn_method_mermanengine_render_drawing_list(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(source),
         FfiConverterOptionString.lower(optionsJson),uniffiCallStatus
@@ -2918,6 +2944,64 @@ public func FfiConverterTypeMermanDiagramFamilyCapability_lower(_ value: MermanD
 }
 
 
+public struct MermanDrawingListErrorDetails: Equatable, Hashable {
+    public var category: String
+    public var family: String?
+    public var reason: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(category: String, family: String?, reason: String?) {
+        self.category = category
+        self.family = family
+        self.reason = reason
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanDrawingListErrorDetails: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanDrawingListErrorDetails: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanDrawingListErrorDetails {
+        return
+            try MermanDrawingListErrorDetails(
+                category: FfiConverterString.read(from: &buf),
+                family: FfiConverterOptionString.read(from: &buf),
+                reason: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanDrawingListErrorDetails, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.family, into: &buf)
+        FfiConverterOptionString.write(value.reason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDrawingListErrorDetails_lift(_ buf: RustBuffer) throws -> MermanDrawingListErrorDetails {
+    return try FfiConverterTypeMermanDrawingListErrorDetails.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanDrawingListErrorDetails_lower(_ value: MermanDrawingListErrorDetails) -> RustBuffer {
+    return FfiConverterTypeMermanDrawingListErrorDetails.lower(value)
+}
+
+
 public struct MermanIconRegistryErrorDetails: Equatable, Hashable {
     public var kindId: String
     public var packIndex: UInt64?
@@ -3063,6 +3147,60 @@ public func FfiConverterTypeMermanLintRuleCatalogEntry_lift(_ buf: RustBuffer) t
 #endif
 public func FfiConverterTypeMermanLintRuleCatalogEntry_lower(_ value: MermanLintRuleCatalogEntry) -> RustBuffer {
     return FfiConverterTypeMermanLintRuleCatalogEntry.lower(value)
+}
+
+
+public struct MermanNormalLineMetrics: Equatable, Hashable {
+    public var lineHeight: Double
+    public var baselineOffset: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lineHeight: Double, baselineOffset: Double) {
+        self.lineHeight = lineHeight
+        self.baselineOffset = baselineOffset
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension MermanNormalLineMetrics: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMermanNormalLineMetrics: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MermanNormalLineMetrics {
+        return
+            try MermanNormalLineMetrics(
+                lineHeight: FfiConverterDouble.read(from: &buf),
+                baselineOffset: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MermanNormalLineMetrics, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.lineHeight, into: &buf)
+        FfiConverterDouble.write(value.baselineOffset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanNormalLineMetrics_lift(_ buf: RustBuffer) throws -> MermanNormalLineMetrics {
+    return try FfiConverterTypeMermanNormalLineMetrics.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMermanNormalLineMetrics_lower(_ value: MermanNormalLineMetrics) -> RustBuffer {
+    return FfiConverterTypeMermanNormalLineMetrics.lower(value)
 }
 
 
@@ -3730,10 +3868,11 @@ public struct MermanTextMeasureResult: Equatable, Hashable {
     public var bboxLeft: Double?
     public var bboxRight: Double?
     public var rawWidth: Double?
+    public var normalLineMetrics: MermanNormalLineMetrics?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(resultKind: MermanTextMeasurementResultKind, width: Double, height: Double, length: Double, lineCount: UInt64, bboxLeft: Double?, bboxRight: Double?, rawWidth: Double?) {
+    public init(resultKind: MermanTextMeasurementResultKind, width: Double, height: Double, length: Double, lineCount: UInt64, bboxLeft: Double?, bboxRight: Double?, rawWidth: Double?, normalLineMetrics: MermanNormalLineMetrics?) {
         self.resultKind = resultKind
         self.width = width
         self.height = height
@@ -3742,6 +3881,7 @@ public struct MermanTextMeasureResult: Equatable, Hashable {
         self.bboxLeft = bboxLeft
         self.bboxRight = bboxRight
         self.rawWidth = rawWidth
+        self.normalLineMetrics = normalLineMetrics
     }
 
 
@@ -3767,7 +3907,8 @@ public struct FfiConverterTypeMermanTextMeasureResult: FfiConverterRustBuffer {
                 lineCount: FfiConverterUInt64.read(from: &buf),
                 bboxLeft: FfiConverterOptionDouble.read(from: &buf),
                 bboxRight: FfiConverterOptionDouble.read(from: &buf),
-                rawWidth: FfiConverterOptionDouble.read(from: &buf)
+                rawWidth: FfiConverterOptionDouble.read(from: &buf),
+                normalLineMetrics: FfiConverterOptionTypeMermanNormalLineMetrics.read(from: &buf)
         )
     }
 
@@ -3780,6 +3921,7 @@ public struct FfiConverterTypeMermanTextMeasureResult: FfiConverterRustBuffer {
         FfiConverterOptionDouble.write(value.bboxLeft, into: &buf)
         FfiConverterOptionDouble.write(value.bboxRight, into: &buf)
         FfiConverterOptionDouble.write(value.rawWidth, into: &buf)
+        FfiConverterOptionTypeMermanNormalLineMetrics.write(value.normalLineMetrics, into: &buf)
     }
 }
 
@@ -3866,7 +4008,7 @@ enum MermanError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
-    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, cancellation: MermanCancelledDetails?, message: String
+    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, cancellation: MermanCancelledDetails?, drawingList: MermanDrawingListErrorDetails?, message: String
     )
 
 
@@ -3906,6 +4048,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             diagnostic: try FfiConverterOptionTypeMermanDiagnosticErrorDetails.read(from: &buf),
             iconRegistry: try FfiConverterOptionTypeMermanIconRegistryErrorDetails.read(from: &buf),
             cancellation: try FfiConverterOptionTypeMermanCancelledDetails.read(from: &buf),
+            drawingList: try FfiConverterOptionTypeMermanDrawingListErrorDetails.read(from: &buf),
             message: try FfiConverterString.read(from: &buf)
             )
 
@@ -3920,7 +4063,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
 
 
 
-        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,cancellation,message):
+        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,cancellation,drawingList,message):
             writeInt(&buf, Int32(1))
             FfiConverterInt32.write(code, into: &buf)
             FfiConverterString.write(codeName, into: &buf)
@@ -3930,6 +4073,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             FfiConverterOptionTypeMermanDiagnosticErrorDetails.write(diagnostic, into: &buf)
             FfiConverterOptionTypeMermanIconRegistryErrorDetails.write(iconRegistry, into: &buf)
             FfiConverterOptionTypeMermanCancelledDetails.write(cancellation, into: &buf)
+            FfiConverterOptionTypeMermanDrawingListErrorDetails.write(drawingList, into: &buf)
             FfiConverterString.write(message, into: &buf)
 
         }
@@ -4406,6 +4550,7 @@ public enum MermanTextMeasurementOperation: Equatable, Hashable {
     case canvasMeasureTextWidth
     case createTextMiddleBBoxYOffset
     case rawBBoxHeight
+    case normalLineMetrics
 
 
 
@@ -4464,6 +4609,8 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
         case 18: return .createTextMiddleBBoxYOffset
 
         case 19: return .rawBBoxHeight
+
+        case 20: return .normalLineMetrics
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4547,6 +4694,10 @@ public struct FfiConverterTypeMermanTextMeasurementOperation: FfiConverterRustBu
 
         case .rawBBoxHeight:
             writeInt(&buf, Int32(19))
+
+
+        case .normalLineMetrics:
+            writeInt(&buf, Int32(20))
 
         }
     }
@@ -4656,6 +4807,7 @@ public enum MermanTextMeasurementResultKind: Equatable, Hashable {
     case length
     case horizontalExtents
     case wrappedWithRawWidth
+    case normalLineMetrics
 
 
 
@@ -4685,6 +4837,8 @@ public struct FfiConverterTypeMermanTextMeasurementResultKind: FfiConverterRustB
 
         case 4: return .wrappedWithRawWidth
 
+        case 5: return .normalLineMetrics
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4707,6 +4861,10 @@ public struct FfiConverterTypeMermanTextMeasurementResultKind: FfiConverterRustB
 
         case .wrappedWithRawWidth:
             writeInt(&buf, Int32(4))
+
+
+        case .normalLineMetrics:
+            writeInt(&buf, Int32(5))
 
         }
     }
@@ -5093,6 +5251,30 @@ fileprivate struct FfiConverterOptionTypeMermanDiagnosticSpan: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMermanDrawingListErrorDetails: FfiConverterRustBuffer {
+    typealias SwiftType = MermanDrawingListErrorDetails?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanDrawingListErrorDetails.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanDrawingListErrorDetails.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMermanIconRegistryErrorDetails: FfiConverterRustBuffer {
     typealias SwiftType = MermanIconRegistryErrorDetails?
 
@@ -5109,6 +5291,30 @@ fileprivate struct FfiConverterOptionTypeMermanIconRegistryErrorDetails: FfiConv
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMermanIconRegistryErrorDetails.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMermanNormalLineMetrics: FfiConverterRustBuffer {
+    typealias SwiftType = MermanNormalLineMetrics?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMermanNormalLineMetrics.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMermanNormalLineMetrics.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -5475,7 +5681,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6() != 60120) {
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8() != 7797) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {
@@ -5509,6 +5715,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_render_ascii_result() != 39001) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_merman_render_drawing_list() != 50720) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_render_jpeg() != 9686) {
@@ -5575,6 +5784,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_render_ascii_result() != 64926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_merman_uniffi_checksum_method_mermanengine_render_drawing_list() != 21198) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_mermanengine_render_jpeg() != 55446) {

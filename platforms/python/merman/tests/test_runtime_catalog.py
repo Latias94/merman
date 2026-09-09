@@ -13,7 +13,7 @@ CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
 def valid_catalog():
     return {
         "schema_version": 1,
-        "transport_api_version": 6,
+        "transport_api_version": 8,
         "package_version": "test",
         "options_schema_versions": [2],
         "payload_schemas": [
@@ -139,8 +139,8 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def binding_api_version_v6(self):
-        return 6
+    def binding_api_version_v8(self):
+        return 8
 
     def package_version(self):
         return "test"
@@ -660,6 +660,21 @@ class RuntimeCatalogTest(unittest.TestCase):
         self.assertIs(exported["MermanAsciiOutputPlan"], GeneratedAsciiOutputPlan)
         self.assertIn("MermanAsciiOutputPlan", merman.__all__)
 
+    def test_public_drawing_list_error_details_is_a_generated_top_level_export(self):
+        from merman import MermanDrawingListErrorDetails
+        from merman.merman_uniffi import (
+            MermanDrawingListErrorDetails as GeneratedDrawingListErrorDetails,
+        )
+
+        exported = {}
+        exec("from merman import *", exported)
+
+        self.assertIs(MermanDrawingListErrorDetails, GeneratedDrawingListErrorDetails)
+        self.assertIs(
+            exported["MermanDrawingListErrorDetails"], GeneratedDrawingListErrorDetails
+        )
+        self.assertIn("MermanDrawingListErrorDetails", merman.__all__)
+
     def test_public_star_export_includes_resource_options_api(self):
         exported = {}
         exec("from merman import *", exported)
@@ -715,7 +730,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         cases.append(boolean_schema)
 
         wrong_transport = valid_catalog()
-        wrong_transport["transport_api_version"] = 2
+        wrong_transport["transport_api_version"] = 6
         cases.append(wrong_transport)
 
         wrong_package = valid_catalog()

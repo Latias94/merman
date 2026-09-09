@@ -15,6 +15,10 @@ export interface MermanBindingOptions {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
   };
+  drawing_list?: {
+    policy?: "allow_raster_subtree" | "vector_only";
+    limits?: Record<string, number>;
+  };
   [key: string]: unknown;
 }
 
@@ -187,6 +191,12 @@ export declare class MermanEngine {
   renderSvg(source: string, options?: RenderSvgOptions): Promise<string>;
   /** Synchronous rendering is intended only for explicit SSG build paths. */
   renderSvgSync(source: string, options?: Omit<RenderSvgOptions, "signal">): string;
+  renderDrawingList(source: string, options?: RenderSvgOptions): Promise<string>;
+  /** Synchronous rendering is intended only for explicit SSG build paths. */
+  renderDrawingListSync(
+    source: string,
+    options?: Omit<RenderSvgOptions, "signal">,
+  ): string;
   svgPlanJson(source: string, options?: RenderSvgOptions): Promise<string>;
   svgPlanJsonSync(
     source: string,
@@ -251,6 +261,12 @@ export interface MermanCancellationErrorDetails {
   readonly [key: string]: unknown;
 }
 
+export interface MermanDrawingListErrorDetails {
+  readonly category: string;
+  readonly family: string | null;
+  readonly reason: string | null;
+}
+
 export declare class MermanOperationError extends MermanError {
   readonly status: number | null;
   readonly codeName: string | null;
@@ -259,6 +275,7 @@ export declare class MermanOperationError extends MermanError {
   readonly resourceDetails: MermanResourceErrorDetails | null;
   readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
   readonly cancellationDetails: MermanCancellationErrorDetails | null;
+  readonly drawingListDetails: MermanDrawingListErrorDetails | null;
 }
 
 export declare class MermanQueueSaturatedError extends MermanError {

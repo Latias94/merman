@@ -3,7 +3,7 @@
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1 as const;
 export const BINDING_OPTIONS_SCHEMA_VERSION = 2 as const;
-export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
+export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 2 as const;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$" as const;
 export const RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN = "^[a-z][a-z0-9_-]*$" as const;
@@ -17,6 +17,12 @@ export const CAPABILITY_SPECS = [
   {
     "id": "ascii",
     "implication_ids": []
+  },
+  {
+    "id": "drawing-list",
+    "implication_ids": [
+      "svg"
+    ]
   },
   {
     "id": "editor",
@@ -146,6 +152,14 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "always_available": false,
     "any_capability_ids": [
       "ascii"
+    ],
+    "requires_svg_pipeline": false
+  },
+  {
+    "id": "drawing_list",
+    "always_available": false,
+    "any_capability_ids": [
+      "drawing-list"
     ],
     "requires_svg_pipeline": false
   },

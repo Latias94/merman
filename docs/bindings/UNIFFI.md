@@ -5,13 +5,26 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `6`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
+
+This guide tracks current unreleased source. The immutable `0.8.0-alpha.6` Python and Apple
+artifacts do not include DrawingList or the named `render_drawing_list` method; DrawingList examples
+require a source build or a later matching release.
 
 API 6 expands `MermanAsciiCapability` with `layout_profiles`, `width_profiles`, `encodings`, and
 `fallback_encodings`. It also adds `encoding` to `MermanAsciiOutputPlan`, whose ASCII result schema is
 now `2`. Regenerate Swift and Python projections with the matching native library; do not decode
 either changed record with API 5 generated source.
+
+API 7 adds optional `MermanDrawingListErrorDetails` to `MermanError::Binding`. This changes every
+structured error's wire layout, even when `drawing_list` is absent. API 6 consumers must be
+regenerated and deployed with the matching native library.
+
+API 8 adds optional `MermanNormalLineMetrics` to `MermanTextMeasureResult` for text-measurement
+protocol 2. The `normal-line-metrics` operation returns line height and alphabetic baseline offset
+as one result; a host must supply both values or decline the operation. Regenerate complete
+Swift/Python projections together with their native library.
 
 ## Public Model
 
@@ -25,9 +38,9 @@ The generated API exposes:
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, drawing_list, message }` failures, where resource, diagnostic, icon-registry, cancellation, and DrawingList evidence remain separate optional records.
 
-`Merman::binding_api_version_v6()` reports `6`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v8()` reports `8`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -49,9 +62,20 @@ limitation applies to the newly expanded `MermanAsciiCapability` and `MermanAsci
 so API `5` generated source fails before decoding an API `6` value. The version probe, generated
 projection, and native library are one deployment unit.
 
-Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
-owns the generic operation's options. Named methods such as
-`render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
+API `7` replaces `binding_api_version_v6()` with `binding_api_version_v7()` because adding
+`MermanError::Binding.drawing_list` does not change the existing method checksums. The immutable
+`0.8.0-alpha.6` API 6 Swift projection otherwise passes all 64 signature checks and then fails to
+decode even an ordinary structured error. Removing both API 6 probe symbols makes that projection
+fail at symbol resolution, before the changed error layout is read. Changing only the version
+returned by the old probe would not protect generated consumers.
+
+API `8` replaces `binding_api_version_v7()` with `binding_api_version_v8()` to reject stale
+callback-result layouts before callbacks execute. As with the earlier record changes, an unchanged
+method checksum is not evidence that the nested result record remains compatible.
+
+In current unreleased source, every operation is available through `execute(request)`, and
+`MermanOperationRequestV4.options_json` owns the generic operation's options. Named methods such as
+`render_svg`, `render_drawing_list`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
 `layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
 catalog. An unavailable operation returns a structured missing-capability error instead of a
 transport-specific stub result.
@@ -102,16 +126,17 @@ reference cycle.
 
 ## Build Profiles
 
-`merman-uniffi` has no default features. The default Python and Apple prebuilt SKU selects
-analysis, ASCII, SVG, and both Cytoscape and ELK layouts. It omits PNG, JPEG, PDF, RaTeX math, and
+`merman-uniffi` has no default features. The current unreleased Python and Apple profiles select
+analysis, ASCII, SVG, DrawingList, and both Cytoscape and ELK layouts; immutable alpha.6 artifacts
+use the earlier profile without DrawingList. Both generations omit PNG, JPEG, PDF, RaTeX math, and
 the binding-owned `native-runtime` aggregate. `binding-generation` is only for foreign-language
 generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 ```
 
-Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
+Custom artifacts can select `analysis`, `ascii`, `svg`, `drawing-list`, `png`, `jpeg`, `pdf`,
 `layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
 clock, time-zone, and random behavior is required; UniFFI does not expose partial adapter feature sets.
 `png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
@@ -124,7 +149,7 @@ The repository ships a Python package layout. Generate it from the exact cdylib 
 packaged:
 
 ```bash
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation \
   --example generate_python_package -- \
   --cdylib target/native-distribution/libmerman_uniffi.dylib \
@@ -193,6 +218,11 @@ contract.
   admission arrays or schema-2 output-plan encoding. Older prerelease wrappers must also be fully
   regenerated; do not pair source generated for one API version with a library whose runtime catalog
   reports another.
+- Move API 6 projections and native libraries together to API 7 before consuming DrawingList error
+  details. Replace `binding_api_version_v6()` with `binding_api_version_v7()` in host code.
+- For current source, regenerate again for API 8 and replace the probe with
+  `binding_api_version_v8()`. Host callbacks return `MermanNormalLineMetrics` for protocol-2 normal
+  line measurement, or decline the operation to use the complete fallback pair.
 
 ## Verification
 
@@ -203,3 +233,15 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The binding smoke builds a library, generates foreign-language source from its embedded UniFFI
 metadata, and exercises the public API. Apple CI additionally rebuilds its XCFramework, compiles
 the Swift package and smoke, and rejects a changed checked-in Swift projection.
+
+After building a source library, verify the immutable API 6 consumer is rejected before error
+decoding (the fixed release commit must be available in the local Git history):
+
+```bash
+python3 crates/merman-uniffi/tests/verify_api6_consumer.py --library target/debug/libmerman_uniffi.dylib
+```
+
+Use the platform's cdylib filename. The regression checks all published API 6 checksums against the
+library. On macOS it also compiles the original released Swift projection and requires a link
+failure at the removed API 6 probe; a still-compatible library instead demonstrates the old
+consumer's initialization and error decoding before failing the regression.

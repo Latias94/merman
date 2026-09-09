@@ -29,6 +29,13 @@ fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     ))
 }
 
+/// Converts a State label to plain text only when its Markdown/HTML fragment has no visual
+/// children or inline styling that DrawingList v1 would otherwise have to flatten.
+pub(crate) fn state_plain_text_label(text: &str) -> Option<String> {
+    let fragment = state_label_xhtml(text);
+    simple_xhtml_text(&fragment).map(|plain| plain.into_owned())
+}
+
 fn escape_xml_attribute(value: &str) -> String {
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
     let mut out = String::with_capacity(decoded.len());

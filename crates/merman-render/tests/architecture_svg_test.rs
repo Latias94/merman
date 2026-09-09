@@ -251,6 +251,12 @@ fn arrow_transform_after_edge(svg: &str, edge_id: &str) -> String {
         .unwrap_or_else(|| panic!("missing arrow transform after edge {edge_id}"))
 }
 
+fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str, context: &str) -> f64 {
+    node.attribute(name)
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("invalid {name} for {context}"))
+}
+
 fn service_translate(svg: &str, service_id: &str) -> (f64, f64) {
     let pattern = format!(
         r#"id="{}"[^>]*\btransform="translate\(([^,\s]+)[,\s]+([^)]+)\)""#,
@@ -272,24 +278,16 @@ fn service_translate(svg: &str, service_id: &str) -> (f64, f64) {
 }
 
 fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
-    let pattern = format!(
-        r#"id="{}"[^>]*\bx="([^"]+)"[^>]*\by="([^"]+)"[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)""#,
-        regex::escape(group_id)
-    );
-    let re = Regex::new(&pattern).expect("valid regex");
-    let caps = re
-        .captures(svg)
+    let document = roxmltree::Document::parse(svg).expect("Architecture SVG is XML");
+    let group = document
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("id") == Some(group_id))
         .unwrap_or_else(|| panic!("missing group rect for {group_id}"));
-    let parse = |idx: usize, label: &str| {
-        caps.get(idx)
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or_else(|| panic!("invalid {label} for {group_id}"))
-    };
     (
-        parse(1, "x"),
-        parse(2, "y"),
-        parse(3, "width"),
-        parse(4, "height"),
+        numeric_attribute(group, "x", group_id),
+        numeric_attribute(group, "y", group_id),
+        numeric_attribute(group, "width", group_id),
+        numeric_attribute(group, "height", group_id),
     )
 }
 

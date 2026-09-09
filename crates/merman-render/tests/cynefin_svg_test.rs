@@ -136,8 +136,13 @@ complex
     );
 
     assert_eq!(layout.items[0].width, 120.0);
-    assert!(
-        svg.contains(r#"#cynefin-test{font-family:"Fira Code",monospace;"#),
-        "global font family should be emitted by the common Mermaid CSS: {svg}"
-    );
+    // Canonical CSS projects resolved public text styles rather than replaying a root theme.
+    for class in ["cynefinDomainLabel", "cynefinItemText", "cynefinSubtitle"] {
+        assert!(
+            svg.contains(&format!(
+                r#"#cynefin-test .{class}{{font-family:"Fira Code",monospace;"#
+            )),
+            "configured font must reach the painted {class} style"
+        );
+    }
 }

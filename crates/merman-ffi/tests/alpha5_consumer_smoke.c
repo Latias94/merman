@@ -3,7 +3,8 @@
  *
  * Keep these declarations frozen to the alpha.5 MermanNativeApi prefix.  Do
  * not include the current generated header here: the point of this test is to
- * compile a consumer that has never heard of the alpha.6 appended slots.
+ * compile a consumer that has never heard of the alpha.6 appended operation
+ * and function slots.
  */
 
 #include <stddef.h>
@@ -107,7 +108,6 @@ int merman_alpha5_consumer_smoke(MermanNativeGetApiFn discover) {
     static const char digest[] = MERMAN_NATIVE_API_MINIMUM_PREFIX_LAYOUT_DIGEST;
     MermanNativeApiRequest request = {0};
     MermanNativeApi api = {0};
-    MermanNativeResult result = {0};
 
     request.struct_size = (uint32_t)sizeof(request);
     request.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
@@ -130,6 +130,7 @@ int merman_alpha5_consumer_smoke(MermanNativeGetApiFn discover) {
         return 3;
     }
 
+    MermanNativeResult result = {0};
     result.struct_size = (uint32_t)sizeof(result);
     if (api.runtime_catalog(&result) != MERMAN_NATIVE_STATUS_OK) {
         return 4;

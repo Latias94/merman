@@ -2,15 +2,39 @@ use super::*;
 use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
 impl<'a> PresentationTheme<'a> {
+    pub(crate) fn pie_drawing(&self) -> PieDrawingTheme {
+        let task_text_dark_color = self.raw.color("taskTextDarkColor", "black");
+        PieDrawingTheme {
+            font_family_css: self.common.font_family_css.clone(),
+            slice_stroke_color: self.raw.css_value("pieStrokeColor", "black"),
+            slice_stroke_width: self.raw.css_value("pieStrokeWidth", "2px"),
+            slice_opacity: self.raw.css_value("pieOpacity", "0.7"),
+            outer_stroke_color: self.raw.css_value("pieOuterStrokeColor", "black"),
+            outer_stroke_width: self.raw.css_value("pieOuterStrokeWidth", "2px"),
+            title_text_size: self.raw.css_value("pieTitleTextSize", "25px"),
+            title_text_color: self
+                .raw
+                .color("pieTitleTextColor", task_text_dark_color.as_str()),
+            section_text_size: self.raw.css_value("pieSectionTextSize", "17px"),
+            section_text_color: self
+                .raw
+                .color("pieSectionTextColor", self.common.text_color.as_str()),
+            legend_text_size: self.raw.css_value("pieLegendTextSize", "17px"),
+            legend_text_color: self
+                .raw
+                .color("pieLegendTextColor", task_text_dark_color.as_str()),
+        }
+    }
+
     pub(crate) fn xychart(&self) -> XyChartTheme {
         let background = self
             .raw
             .optional_nested_color("xyChart", "backgroundColor")
             .or_else(|| self.raw.optional_color("background"))
             .unwrap_or_else(|| "white".to_string());
-        let primary_text = self
-            .raw
-            .optional_color("primaryTextColor")
+        let configured_primary_text = self.raw.optional_color("primaryTextColor");
+        let primary_text = configured_primary_text
+            .clone()
             .unwrap_or_else(|| "#131300".to_string());
 
         XyChartTheme {
@@ -19,6 +43,11 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("xyChart", "titleColor")
                 .unwrap_or_else(|| primary_text.clone()),
+            data_label_color: self
+                .raw
+                .optional_nested_color("xyChart", "dataLabelColor")
+                .or(configured_primary_text)
+                .unwrap_or_else(|| "black".to_string()),
             legend_text_color: self
                 .raw
                 .optional_nested_color("xyChart", "legendTextColor")
@@ -473,6 +502,10 @@ impl<'a> PresentationTheme<'a> {
             .collect();
 
         TimelineTheme {
+            font_family: self.common.font_family_css.clone(),
+            font_size_px: self.common.font_size_px,
+            text_color: self.common.text_color.clone(),
+            line_color: self.common.line_color.clone(),
             is_redux_theme: theme_name.contains("redux"),
             is_dark_theme: theme_name.contains("dark"),
             is_color_theme: theme_name.contains("color"),
@@ -683,6 +716,21 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_value("dropShadow")
                 .unwrap_or_else(|| "none".to_string()),
+        }
+    }
+
+    pub(crate) fn state_drawing(&self) -> StateDrawingTheme {
+        let theme = self.state_diagram();
+        StateDrawingTheme {
+            state_bkg: theme.state_bkg,
+            state_border: theme.state_border,
+            state_label_color: theme.state_label_color,
+            special_state_color: theme.special_state_color,
+            transition_color: theme.transition_color,
+            transition_label_color: theme.transition_label_color,
+            marker_fill: theme.common.line_color,
+            edge_label_background: theme.edge_label_background,
+            stroke_width: theme.stroke_width,
         }
     }
 }

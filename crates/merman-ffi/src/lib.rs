@@ -8,10 +8,11 @@
 
 use merman::OperationControl;
 use merman_bindings_core::{
-    BindingDiagnosticErrorDetails, BindingEngine, BindingEngineAdmission,
-    BindingEngineAdmissionError, BindingEngineAdmissionMode, BindingEngineServices, BindingError,
-    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
-    BindingResourceErrorDetails, BindingStatus, OperationKey, ValidatedArtifactContract,
+    BindingDiagnosticErrorDetails, BindingDrawingListErrorDetails, BindingEngine,
+    BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingErrorKind, BindingIconRegistryErrorDetails,
+    BindingOperationRequest, BindingResourceErrorDetails, BindingStatus, OperationKey,
+    ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -51,6 +52,7 @@ struct NativeFailureDetails {
     resource: Option<BindingResourceErrorDetails>,
     diagnostic: Option<BindingDiagnosticErrorDetails>,
     icon_registry: Option<BindingIconRegistryErrorDetails>,
+    drawing_list: Option<BindingDrawingListErrorDetails>,
     cancellation: Option<NativeCancellationDetails>,
 }
 
@@ -381,6 +383,9 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
                 serde_json::json!(icon_registry),
             );
         }
+        if let Some(drawing_list) = failure_details.drawing_list.as_ref() {
+            details.insert("drawing_list".to_string(), serde_json::json!(drawing_list));
+        }
         if let Some(cancellation) = failure_details.cancellation {
             details.insert(
                 "cancellation".to_string(),
@@ -430,6 +435,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
     let resource = error.resource_details();
     let diagnostic = error.diagnostic_details().cloned();
     let icon_registry = error.icon_registry_details().cloned();
+    let drawing_list = error.drawing_list_details().cloned();
     let cancellation = error
         .cancellation_details()
         .map(|details| NativeCancellationDetails {
@@ -446,12 +452,14 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
     if resource.is_some()
         || diagnostic.is_some()
         || icon_registry.is_some()
+        || drawing_list.is_some()
         || cancellation.is_some()
     {
         failure.details = Some(Box::new(NativeFailureDetails {
             resource,
             diagnostic,
             icon_registry,
+            drawing_list,
             cancellation,
         }));
     }
@@ -1013,9 +1021,7 @@ fn defer_first_status_only_failure(
     }
 }
 
-unsafe fn read_engine_services_config(
-    config: *const MermanNativeEngineServicesConfig,
-) -> Result<MermanNativeEngineServicesConfig, NativeFailure> {
+unsafe fn read_engine_services_config<T>(config: *const T) -> Result<T, NativeFailure> {
     if config.is_null() {
         return Err(NativeFailure::new(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
@@ -1023,11 +1029,108 @@ unsafe fn read_engine_services_config(
         ));
     }
     validate_pointer_alignment(config, "config")?;
-    validate_struct_size::<MermanNativeEngineServicesConfig>(
-        unsafe { read_record_struct_size(config) },
-        "config",
-    )?;
+    validate_struct_size::<T>(unsafe { read_record_struct_size(config) }, "config")?;
     Ok(unsafe { ptr::read(config) })
+}
+
+#[derive(Clone, Copy)]
+#[cfg_attr(
+    not(feature = "svg"),
+    allow(
+        dead_code,
+        reason = "non-SVG artifacts reject callbacks before invocation"
+    )
+)]
+enum NativeTextMeasureCallback {
+    V1(MermanNativeTextMeasureCallback),
+    V2(MermanNativeTextMeasureCallbackV2),
+}
+
+#[derive(Clone, Copy)]
+enum NativeEngineConfig {
+    V1(MermanNativeEngineConfig),
+    V2(MermanNativeEngineConfigV2),
+}
+
+impl NativeEngineConfig {
+    fn validate_size(self) -> Result<(), NativeFailure> {
+        match self {
+            Self::V1(config) => validate_struct_size::<MermanNativeEngineConfig>(
+                config.struct_size,
+                "config.engine_config",
+            ),
+            Self::V2(config) => validate_struct_size::<MermanNativeEngineConfigV2>(
+                config.struct_size,
+                "config.engine_config",
+            ),
+        }
+    }
+
+    fn options_json(self) -> MermanNativeSlice {
+        match self {
+            Self::V1(config) => config.options_json,
+            Self::V2(config) => config.options_json,
+        }
+    }
+
+    fn callback(self) -> Option<NativeTextMeasureCallback> {
+        match self {
+            Self::V1(config) => config.text_measure.map(NativeTextMeasureCallback::V1),
+            Self::V2(config) => config.text_measure.map(NativeTextMeasureCallback::V2),
+        }
+    }
+
+    fn user_data(self) -> *mut std::ffi::c_void {
+        match self {
+            Self::V1(config) => config.text_measure_user_data,
+            Self::V2(config) => config.text_measure_user_data,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum NativeServicesConfigPointer {
+    V1(*const MermanNativeEngineServicesConfig),
+    V2(*const MermanNativeEngineServicesConfigV2),
+}
+
+struct NativeServicesConfig {
+    engine_config: NativeEngineConfig,
+    icon_packs: *const MermanNativeIconPack,
+    icon_pack_count: usize,
+}
+
+impl NativeServicesConfigPointer {
+    fn storage(self) -> (*const u8, usize) {
+        match self {
+            Self::V1(config) => (config.cast(), size_of::<MermanNativeEngineServicesConfig>()),
+            Self::V2(config) => (
+                config.cast(),
+                size_of::<MermanNativeEngineServicesConfigV2>(),
+            ),
+        }
+    }
+
+    unsafe fn read(self) -> Result<NativeServicesConfig, NativeFailure> {
+        Ok(match self {
+            Self::V1(config) => {
+                let config = unsafe { read_engine_services_config(config) }?;
+                NativeServicesConfig {
+                    engine_config: NativeEngineConfig::V1(config.engine_config),
+                    icon_packs: config.icon_packs,
+                    icon_pack_count: config.icon_pack_count,
+                }
+            }
+            Self::V2(config) => {
+                let config = unsafe { read_engine_services_config(config) }?;
+                NativeServicesConfig {
+                    engine_config: NativeEngineConfig::V2(config.engine_config),
+                    icon_packs: config.icon_packs,
+                    icon_pack_count: config.icon_pack_count,
+                }
+            }
+        })
+    }
 }
 
 struct NativeOperationRequest<'a> {
@@ -1171,7 +1274,7 @@ fn execute_with_engine<T>(
 #[cfg(feature = "svg")]
 #[derive(Clone)]
 struct NativeHostTextMeasurer {
-    callback: MermanNativeTextMeasureCallback,
+    callback: NativeTextMeasureCallback,
     user_data: usize,
     admission: Arc<BindingEngineAdmission>,
 }
@@ -1182,7 +1285,7 @@ impl NativeHostTextMeasurer {
     const DEFAULT_FONT_WEIGHT: &'static [u8] = b"normal";
 
     fn new(
-        callback: MermanNativeTextMeasureCallback,
+        callback: NativeTextMeasureCallback,
         user_data: *mut std::ffi::c_void,
         admission: Arc<BindingEngineAdmission>,
     ) -> Self {
@@ -1197,6 +1300,14 @@ impl NativeHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> HostMeasurementResult {
+        // The published protocol-1 record cannot carry the protocol-2 paired result.
+        // Decline before calling foreign code; the operation records whole-pair fallback.
+        if matches!(self.callback, NativeTextMeasureCallback::V1(_))
+            && request.operation
+                == merman_bindings_core::TextMeasurementOperation::NormalLineMetrics
+        {
+            return Ok(None);
+        }
         let transport = merman_bindings_core::host_text_measurement_transport_fields(request);
         let style = request.style;
         let max_width = request.max_width;
@@ -1213,7 +1324,10 @@ impl NativeHostTextMeasurer {
             .unwrap_or(Self::DEFAULT_FONT_STYLE);
         let native_request = MermanNativeTextMeasureRequest {
             struct_size: native_struct_size::<MermanNativeTextMeasureRequest>(),
-            text_measurement_protocol_version: MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+            text_measurement_protocol_version: match self.callback {
+                NativeTextMeasureCallback::V1(_) => MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+                NativeTextMeasureCallback::V2(_) => MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION,
+            },
             text: borrowed_slice(request.text.as_bytes()),
             font_family: borrowed_slice(font_family),
             font_size: style.font_size,
@@ -1230,8 +1344,8 @@ impl NativeHostTextMeasurer {
             phase: transport.phase,
             operation: transport.operation,
         };
-        let mut native_result = MermanNativeTextMeasureResult {
-            struct_size: native_struct_size::<MermanNativeTextMeasureResult>(),
+        let mut native_result = MermanNativeTextMeasureResultV2 {
+            struct_size: native_struct_size::<MermanNativeTextMeasureResultV2>(),
             handled: 0,
             has_raw_width: 0,
             result_kind: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS,
@@ -1242,6 +1356,9 @@ impl NativeHostTextMeasurer {
             bbox_right: 0.0,
             raw_width: 0.0,
             line_count: 0,
+            // A handled paired result must initialize both fields, not inherit plausible zeros.
+            line_height: f64::NAN,
+            baseline_offset: f64::NAN,
         };
         let _callback = self
             .admission
@@ -1250,12 +1367,46 @@ impl NativeHostTextMeasurer {
             .map_err(|failure| {
                 merman_bindings_core::HostTextMeasurementError::new(failure.message)
             })?;
-        let status = unsafe {
-            (self.callback)(
-                &native_request,
-                &mut native_result,
-                self.user_data as *mut std::ffi::c_void,
-            )
+        let user_data = self.user_data as *mut std::ffi::c_void;
+        let (status, expected_result_size) = match self.callback {
+            NativeTextMeasureCallback::V1(callback) => {
+                let mut legacy = MermanNativeTextMeasureResult {
+                    struct_size: native_struct_size::<MermanNativeTextMeasureResult>(),
+                    handled: 0,
+                    has_raw_width: 0,
+                    result_kind: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS,
+                    width: 0.0,
+                    height: 0.0,
+                    length: 0.0,
+                    bbox_left: 0.0,
+                    bbox_right: 0.0,
+                    raw_width: 0.0,
+                    line_count: 0,
+                };
+                let status = unsafe { callback(&native_request, &mut legacy, user_data) };
+                native_result = MermanNativeTextMeasureResultV2 {
+                    struct_size: legacy.struct_size,
+                    handled: legacy.handled,
+                    has_raw_width: legacy.has_raw_width,
+                    result_kind: legacy.result_kind,
+                    width: legacy.width,
+                    height: legacy.height,
+                    length: legacy.length,
+                    bbox_left: legacy.bbox_left,
+                    bbox_right: legacy.bbox_right,
+                    raw_width: legacy.raw_width,
+                    line_count: legacy.line_count,
+                    ..native_result
+                };
+                (
+                    status,
+                    native_struct_size::<MermanNativeTextMeasureResult>(),
+                )
+            }
+            NativeTextMeasureCallback::V2(callback) => (
+                unsafe { callback(&native_request, &mut native_result, user_data) },
+                native_struct_size::<MermanNativeTextMeasureResultV2>(),
+            ),
         };
         if !merman_native_status_is_known(status) {
             return Err(
@@ -1269,11 +1420,7 @@ impl NativeHostTextMeasurer {
                 "host text-measure callback returned an error status",
             ));
         }
-        if validate_struct_size::<MermanNativeTextMeasureResult>(
-            native_result.struct_size,
-            "host text-measure result",
-        )
-        .is_err()
+        if native_result.struct_size != expected_result_size
             || native_result.handled > 1
             || native_result.has_raw_width > 1
         {
@@ -1307,6 +1454,12 @@ impl NativeHostTextMeasurer {
             bbox_left: extents.then_some(native_result.bbox_left),
             bbox_right: extents.then_some(native_result.bbox_right),
             raw_width: (native_result.has_raw_width != 0).then_some(native_result.raw_width),
+            normal_line_metrics: matches!(kind, Some(ResultKind::NormalLineMetrics)).then_some(
+                merman_bindings_core::NormalLineMetrics {
+                    line_height: native_result.line_height,
+                    baseline_offset: native_result.baseline_offset,
+                },
+            ),
         };
         merman_bindings_core::decode_host_text_measurement(request, record).map(Some)
     }
@@ -1440,6 +1593,7 @@ unsafe fn get_native_api_impl(
             operation_control_cancel: Some(native_operation_control_cancel),
             operation_control_release: Some(native_operation_control_release),
             execute_collect_controlled: Some(native_execute_collect_controlled),
+            engine_new_with_services_v2: Some(native_engine_new_with_services_v2),
         };
         let initialized_size = MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES
             .iter()
@@ -1679,7 +1833,11 @@ unsafe fn engine_new_impl(
     let outcome = (|| {
         let options_json =
             unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
-        let state = create_native_engine_state(config, options_json, BindingEngineServices::new())?;
+        let state = create_native_engine_state(
+            NativeEngineConfig::V1(config),
+            options_json,
+            BindingEngineServices::new(),
+        )?;
         unsafe { publish_native_engine_result(state, out_engine, out_result, "engine-new") }
     })();
 
@@ -1698,17 +1856,37 @@ unsafe extern "C" fn native_engine_new_with_services(
 ) -> MermanNativeStatus {
     unsafe {
         result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
-            engine_new_with_services_impl(config, out_engine, out_result)
+            engine_new_with_services_impl(
+                NativeServicesConfigPointer::V1(config),
+                out_engine,
+                out_result,
+            )
+        })
+    }
+}
+
+unsafe extern "C" fn native_engine_new_with_services_v2(
+    config: *const MermanNativeEngineServicesConfigV2,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus {
+    unsafe {
+        result_status_boundary(out_result, MERMAN_NATIVE_OPERATION_NONE, || {
+            engine_new_with_services_impl(
+                NativeServicesConfigPointer::V2(config),
+                out_engine,
+                out_result,
+            )
         })
     }
 }
 
 unsafe fn engine_new_with_services_impl(
-    config: *const MermanNativeEngineServicesConfig,
+    config: NativeServicesConfigPointer,
     out_engine: *mut MermanNativeEngineToken,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus {
-    let config_ptr = config;
+    let (config_ptr, config_storage_len) = config.storage();
     if let Err(failure) = unsafe { result_is_writable(out_result) } {
         return failure.status;
     }
@@ -1734,16 +1912,16 @@ unsafe fn engine_new_with_services_impl(
             "out_result",
         )?;
         validate_disjoint_storage(
-            config.cast::<u8>(),
-            size_of::<MermanNativeEngineServicesConfig>(),
+            config_ptr,
+            config_storage_len,
             "config",
             out_engine.cast::<u8>(),
             out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
-            config.cast::<u8>(),
-            size_of::<MermanNativeEngineServicesConfig>(),
+            config_ptr,
+            config_storage_len,
             "config",
             out_result.cast::<u8>(),
             size_of::<MermanNativeResult>(),
@@ -1759,7 +1937,7 @@ unsafe fn engine_new_with_services_impl(
         early_output_failure = Some(failure);
     }
 
-    let config = match unsafe { read_engine_services_config(config_ptr) } {
+    let config = match unsafe { config.read() } {
         Ok(config) => config,
         Err(failure) => return failure.status,
     };
@@ -1767,24 +1945,24 @@ unsafe fn engine_new_with_services_impl(
 
     let options_storage_validation = (|| {
         validate_disjoint_storage(
-            config_ptr.cast::<u8>(),
-            size_of::<MermanNativeEngineServicesConfig>(),
+            config_ptr,
+            config_storage_len,
             "config",
-            engine_config.options_json.data,
-            engine_config.options_json.len,
+            engine_config.options_json().data,
+            engine_config.options_json().len,
             "config.engine_config.options_json",
         )?;
         validate_disjoint_storage(
-            engine_config.options_json.data,
-            engine_config.options_json.len,
+            engine_config.options_json().data,
+            engine_config.options_json().len,
             "config.engine_config.options_json",
             out_engine.cast::<u8>(),
             out_engine_storage_len,
             "out_engine",
         )?;
         validate_disjoint_storage(
-            engine_config.options_json.data,
-            engine_config.options_json.len,
+            engine_config.options_json().data,
+            engine_config.options_json().len,
             "config.engine_config.options_json",
             out_result.cast::<u8>(),
             size_of::<MermanNativeResult>(),
@@ -1795,14 +1973,11 @@ unsafe fn engine_new_with_services_impl(
         return failure.status;
     }
     let mut deferred_failure = None;
-    if let Err(failure) = validate_struct_size::<MermanNativeEngineConfig>(
-        engine_config.struct_size,
-        "config.engine_config",
-    ) {
+    if let Err(failure) = engine_config.validate_size() {
         defer_first_failure(&mut deferred_failure, failure);
     }
     if let Err(failure) = validate_native_slice_shape(
-        engine_config.options_json,
+        engine_config.options_json(),
         "config.engine_config.options_json",
     ) {
         defer_first_failure(&mut deferred_failure, failure);
@@ -1813,16 +1988,16 @@ unsafe fn engine_new_with_services_impl(
             config.icon_packs,
             config.icon_pack_count,
             "config.icon_packs",
-            config_ptr.cast::<u8>(),
-            size_of::<MermanNativeEngineServicesConfig>(),
+            config_ptr,
+            config_storage_len,
             "config",
         )?;
         validate_declared_record_array_disjoint(
             config.icon_packs,
             config.icon_pack_count,
             "config.icon_packs",
-            engine_config.options_json.data,
-            engine_config.options_json.len,
+            engine_config.options_json().data,
+            engine_config.options_json().len,
             "config.engine_config.options_json",
         )?;
         validate_declared_record_array_disjoint(
@@ -1924,8 +2099,8 @@ unsafe fn engine_new_with_services_impl(
                 ] {
                     let slice_storage_validation = (|| {
                         validate_disjoint_storage(
-                            config_ptr.cast::<u8>(),
-                            size_of::<MermanNativeEngineServicesConfig>(),
+                            config_ptr,
+                            config_storage_len,
                             "config",
                             slice.data,
                             slice.len,
@@ -2052,7 +2227,7 @@ unsafe fn engine_new_with_services_impl(
         );
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
-    if engine_config.text_measure.is_none() && !engine_config.text_measure_user_data.is_null() {
+    if engine_config.callback().is_none() && !engine_config.user_data().is_null() {
         let failure = NativeFailure::new(
             MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
             "config.engine_config.text_measure_user_data must be null when text_measure is null",
@@ -2063,7 +2238,7 @@ unsafe fn engine_new_with_services_impl(
     let outcome = (|| {
         let options_json = unsafe {
             native_slice_bytes(
-                engine_config.options_json,
+                engine_config.options_json(),
                 "config.engine_config.options_json",
             )
         }?;
@@ -2167,30 +2342,27 @@ fn native_icon_pack_count_limit_failure(actual: usize) -> NativeFailure {
 }
 
 fn create_native_engine_state(
-    config: MermanNativeEngineConfig,
+    config: NativeEngineConfig,
     options_json: &[u8],
     mut services: BindingEngineServices,
 ) -> Result<Arc<NativeEngineState>, NativeFailure> {
-    let admission = BindingEngineAdmission::new(if config.text_measure.is_some() {
+    let admission = BindingEngineAdmission::new(if config.callback().is_some() {
         BindingEngineAdmissionMode::HostCallback
     } else {
         BindingEngineAdmissionMode::Concurrent
     });
 
     #[cfg(feature = "svg")]
-    if let Some(callback) = config.text_measure {
-        let measurer = NativeHostTextMeasurer::new(
-            callback,
-            config.text_measure_user_data,
-            Arc::clone(&admission),
-        );
+    if let Some(callback) = config.callback() {
+        let measurer =
+            NativeHostTextMeasurer::new(callback, config.user_data(), Arc::clone(&admission));
         services = services.with_host_text_measurer(Arc::new(measurer));
     }
 
     #[cfg(not(feature = "svg"))]
     {
         let _ = &mut services;
-        if config.text_measure.is_some() {
+        if config.callback().is_some() {
             return Err(NativeFailure::missing_capability(
                 "svg",
                 "host text measurement requires an artifact with the svg capability",
@@ -2607,6 +2779,7 @@ mod tests {
             operation_control_cancel: None,
             operation_control_release: None,
             execute_collect_controlled: None,
+            engine_new_with_services_v2: None,
         }
     }
 
@@ -2748,6 +2921,39 @@ mod tests {
     }
 
     #[test]
+    fn native_error_json_preserves_structured_drawing_list_details() {
+        for (status, expected_status, category, family, reason) in [
+            (
+                BindingStatus::UnsupportedOperation,
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+                "unavailable",
+                Some("flowchart".to_string()),
+                Some("unsupported effect: 阴影".to_string()),
+            ),
+            (
+                BindingStatus::InvalidArgument,
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+                "contract",
+                None,
+                None,
+            ),
+        ] {
+            let details = BindingDrawingListErrorDetails::new(category, family, reason);
+            let expected = serde_json::to_value(&details).expect("DrawingList details JSON");
+            let error =
+                BindingError::new(status, "DrawingList failed").with_drawing_list_details(details);
+            let failure = native_failure_from_binding(error);
+            let payload: serde_json::Value =
+                serde_json::from_slice(&native_error_json(&failure)).expect("native error JSON");
+
+            assert_eq!(payload["details"]["drawing_list"], expected);
+            assert_eq!(payload["message"], "DrawingList failed");
+            assert_eq!(payload["kind"], "generic");
+            assert_eq!(failure.status, expected_status);
+        }
+    }
+
+    #[test]
     fn native_error_json_preserves_structured_diagnostic_details() {
         let error = BindingError::new(BindingStatus::ParseError, "invalid edge")
             .with_diagnostic_details(
@@ -2877,6 +3083,222 @@ mod tests {
     }
 
     #[cfg(feature = "svg")]
+    #[test]
+    fn protocol_one_callback_declines_normal_metrics_before_foreign_dispatch() {
+        let mut context = CountingTextMeasureContext {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let admission = BindingEngineAdmission::new(BindingEngineAdmissionMode::HostCallback);
+        let _operation = admission.enter_operation().expect("operation admission");
+        let host = NativeHostTextMeasurer::new(
+            NativeTextMeasureCallback::V1(counting_text_measure_callback),
+            (&mut context as *mut CountingTextMeasureContext).cast(),
+            admission,
+        );
+        let style = merman_bindings_core::TextStyle::default();
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+            phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+            text: "中文",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+        };
+        assert!(host.measure_host(request).unwrap().is_none());
+        assert_eq!(context.calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert!(
+            host.measure_host(merman_bindings_core::HostTextMeasurementRequest {
+                operation: merman_bindings_core::TextMeasurementOperation::Measure,
+                ..request
+            })
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(context.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
+    }
+
+    fn native_services_config_v2() -> MermanNativeEngineServicesConfigV2 {
+        MermanNativeEngineServicesConfigV2 {
+            struct_size: native_struct_size::<MermanNativeEngineServicesConfigV2>(),
+            engine_config: MermanNativeEngineConfigV2 {
+                struct_size: native_struct_size::<MermanNativeEngineConfigV2>(),
+                options_json: borrowed_slice(b""),
+                text_measure: None,
+                text_measure_user_data: ptr::null_mut(),
+            },
+            icon_packs: ptr::null(),
+            icon_pack_count: 0,
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    struct V2TextMeasureContext {
+        token: MermanNativeEngineToken,
+        calls: usize,
+        close_status: MermanNativeStatus,
+        incomplete: std::cell::Cell<bool>,
+    }
+
+    #[cfg(feature = "svg")]
+    unsafe extern "C" fn text_measure_v2_callback(
+        request: *const MermanNativeTextMeasureRequest,
+        result: *mut MermanNativeTextMeasureResultV2,
+        context: *mut std::ffi::c_void,
+    ) -> MermanNativeStatus {
+        let request = unsafe { &*request };
+        let result = unsafe { &mut *result };
+        let context = unsafe { &mut *context.cast::<V2TextMeasureContext>() };
+        context.calls += 1;
+        context.close_status = unsafe { native_engine_try_close(context.token) };
+        if request.text_measurement_protocol_version != 2 {
+            return MERMAN_NATIVE_STATUS_CALLBACK_ERROR;
+        }
+        if request.operation == MERMAN_TEXT_MEASUREMENT_OPERATION_NORMAL_LINE_METRICS {
+            let text = unsafe { std::slice::from_raw_parts(request.text.data, request.text.len) };
+            if text != "中文".as_bytes() || request.line_height != 0.0 {
+                return MERMAN_NATIVE_STATUS_CALLBACK_ERROR;
+            }
+            result.handled = 1;
+            result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_NORMAL_LINE_METRICS;
+            result.line_height = 28.0;
+            if !context.incomplete.get() {
+                result.baseline_offset = 21.0;
+            }
+        }
+        MERMAN_NATIVE_STATUS_OK
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn services_v2_preserves_callback_admission_and_atomic_normal_metrics() {
+        let api = api_table();
+        let mut context = V2TextMeasureContext {
+            token: 0,
+            calls: 0,
+            close_status: 0,
+            incomplete: std::cell::Cell::new(false),
+        };
+        let mut config = native_services_config_v2();
+        config.engine_config.text_measure = Some(text_measure_v2_callback);
+        config.engine_config.text_measure_user_data =
+            (&mut context as *mut V2TextMeasureContext).cast();
+        let mut token = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services_v2.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            context.calls, 0,
+            "construction must not invoke the callback"
+        );
+        context.token = token;
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        // The real constructor installs this callback for ordinary render operations too.
+        let request = native_request(MERMAN_NATIVE_OPERATION_SVG, b"flowchart TD\nA[Hello]");
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert!(context.calls > 0);
+        assert_eq!(context.close_status, MERMAN_NATIVE_STATUS_REENTRANT_CALL);
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let state = acquire_engine(token).unwrap();
+        let operation = state.admission.enter_operation().unwrap();
+        let host = NativeHostTextMeasurer::new(
+            NativeTextMeasureCallback::V2(text_measure_v2_callback),
+            config.engine_config.text_measure_user_data,
+            Arc::clone(&state.admission),
+        );
+        let style = merman_bindings_core::TextStyle::default();
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+            phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+            text: "中文",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+        };
+        let value = host.measure_host(request).unwrap().unwrap();
+        let merman_bindings_core::HostTextMeasurement::NormalLineMetrics(value) = value else {
+            panic!("expected the atomic result pair");
+        };
+        assert_eq!(value.line_height, 28.0);
+        assert_eq!(value.baseline_offset, 21.0);
+        assert_eq!(context.close_status, MERMAN_NATIVE_STATUS_REENTRANT_CALL);
+        context.incomplete.set(true);
+        assert!(
+            host.measure_host(request).is_err(),
+            "an omitted baseline must not become zero"
+        );
+        drop(operation);
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[test]
+    fn services_v2_rejects_invalid_config_without_publishing_an_engine() {
+        let api = api_table();
+        for case in 0..3 {
+            let mut config = native_services_config_v2();
+            match case {
+                0 => config.struct_size -= 1,
+                1 => config.engine_config.struct_size -= 1,
+                _ => config.engine_config.text_measure_user_data = ptr::dangling_mut::<u8>().cast(),
+            }
+            let mut token = 0;
+            let mut result = native_result();
+            assert_eq!(
+                unsafe {
+                    api.engine_new_with_services_v2.unwrap()(&config, &mut token, &mut result)
+                },
+                MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+            );
+            assert_eq!(token, 0);
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
+        let mut config = native_services_config_v2();
+        let mut result = native_result();
+        // The output aliases the actual V2 outer record, not a converted local view.
+        let token = (&mut config.icon_pack_count as *mut usize).cast::<MermanNativeEngineToken>();
+        assert_eq!(
+            unsafe { api.engine_new_with_services_v2.unwrap()(&config, token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(result.allocation_token, 0);
+        assert_eq!(config.icon_pack_count, 0);
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn services_v2_requires_svg_for_host_callbacks() {
+        unsafe extern "C" fn callback(
+            _: *const MermanNativeTextMeasureRequest,
+            _: *mut MermanNativeTextMeasureResultV2,
+            _: *mut std::ffi::c_void,
+        ) -> MermanNativeStatus {
+            MERMAN_NATIVE_STATUS_CALLBACK_ERROR
+        }
+        let api = api_table();
+        let mut config = native_services_config_v2();
+        config.engine_config.text_measure = Some(callback);
+        let mut token = 0;
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.engine_new_with_services_v2.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_eq!(token, 0);
+        assert_eq!(result_json(&result)["capability_id"], "svg");
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[cfg(feature = "svg")]
     unsafe extern "C" fn reentrant_text_measure_callback(
         _request: *const MermanNativeTextMeasureRequest,
         out_result: *mut MermanNativeTextMeasureResult,
@@ -3002,6 +3424,7 @@ mod tests {
         assert!(api.operation_control_cancel.is_some());
         assert!(api.operation_control_release.is_some());
         assert!(api.execute_collect_controlled.is_some());
+        assert!(api.engine_new_with_services_v2.is_some());
     }
 
     #[test]
@@ -3076,7 +3499,7 @@ mod tests {
         );
         assert!(MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE < native_struct_size::<MermanNativeApi>());
         assert_eq!(
-            MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+            MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE,
             native_struct_size::<MermanNativeApi>()
         );
         assert!(buffer.api.metadata_collect.is_some());
@@ -3111,8 +3534,26 @@ mod tests {
                 MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
                 MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
                 MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+                MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE,
             ]
         );
+
+        let mut partial = ExtendedApiBuffer {
+            api: empty_api(),
+            suffix: [0xa5; 32],
+        };
+        partial.api.struct_size = MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE - 1;
+        assert_eq!(
+            unsafe { merman_get_native_api(&request, &mut partial.api) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        assert_eq!(
+            partial.api.struct_size,
+            MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE
+        );
+        assert!(partial.api.execute_collect_controlled.is_some());
+        assert!(partial.api.engine_new_with_services_v2.is_none());
+        assert_eq!(partial.suffix, [0xa5; 32]);
 
         // The returned table size is itself safe input capacity for rediscovery.
         buffer.api.struct_size = MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE;

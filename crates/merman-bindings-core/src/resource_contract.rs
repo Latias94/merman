@@ -246,6 +246,7 @@ pub(crate) enum BindingResourceScope {
     DocumentAnalysis,
     Model,
     Ascii,
+    DrawingList,
     Layout,
     Svg,
     Png,
@@ -271,6 +272,7 @@ impl BindingResourceScope {
             }
             Self::Model => input.is_some(),
             Self::Ascii => input.is_some() || ascii,
+            Self::DrawingList => input.is_some() || render,
             Self::Layout => input.is_some() || stable_id == "max_layout_work_units",
             Self::Svg => input.is_some() || render,
             Self::Png => {
@@ -297,6 +299,7 @@ impl BindingResourceScope {
             Self::DocumentAnalysis => "host-document analysis",
             Self::Model => "semantic-model",
             Self::Ascii => "ASCII render",
+            Self::DrawingList => "DrawingList render",
             Self::Layout => "layout",
             Self::Svg => "SVG render",
             Self::Png => "PNG export",

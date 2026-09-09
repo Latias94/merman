@@ -1772,7 +1772,7 @@ fn extract_c4_relation_parent(
             if pending_edge.is_some() {
                 return Err(SemanticLabelError::AmbiguousRelationEdge);
             }
-            pending_edge = Some(semantic_relation_edge_evidence(node)?);
+            pending_edge = Some(c4_relation_edge_evidence(node)?);
             current_relation = None;
             continue;
         }
@@ -1831,7 +1831,7 @@ fn insert_c4_relation_evidence(
     let sample = SemanticLabelEvidence {
         geometry: world_text_geometry(node, &text)?,
         descendant_geometry: collect_descendant_label_geometry(node)?,
-        presentation: semantic_label_presentation(node, &text)?,
+        presentation: c4_label_presentation(node, &text)?,
         associated_edge,
         text,
     };
@@ -1851,6 +1851,206 @@ fn semantic_label_presentation(
         &["x", "y", "transform"],
         &["width", "height", "transform"],
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum C4PresentationKind {
+    Label,
+    Edge,
+}
+
+fn c4_label_presentation(
+    node: roxmltree::Node<'_, '_>,
+    text: &str,
+) -> Result<SemanticLabelPresentation, SemanticLabelError> {
+    Ok(normalize_c4_presentation(
+        semantic_label_presentation(node, text)?,
+        C4PresentationKind::Label,
+    ))
+}
+
+fn normalize_c4_presentation(
+    mut presentation: SemanticLabelPresentation,
+    kind: C4PresentationKind,
+) -> SemanticLabelPresentation {
+    // C4's canonical serializer adds structural semantic groups around the same visual text and
+    // route. Their transforms and presentation effects are already captured separately, so the
+    // bare ancestor tag count is not visual evidence.
+    presentation
+        .element_structure
+        .retain(|entry| !entry.starts_with("ancestor["));
+    presentation.class_tokens.retain(|entry| {
+        entry.rsplit_once('@').is_none_or(|(_, token)| {
+            !matches!(
+                token,
+                "merman-semantic" | "semantic-document" | "semantic-edge"
+            )
+        })
+    });
+
+    presentation.attributes = presentation
+        .attributes
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let (_, property) = key.rsplit_once('@')?;
+            let canonical_metadata = match kind {
+                C4PresentationKind::Label => {
+                    matches!(
+                        property,
+                        "data-merman-bounds" | "data-merman-text-obligation"
+                    )
+                }
+                C4PresentationKind::Edge => property == "data-merman-resource",
+            };
+            if canonical_metadata
+                || (property == "direction" && value.eq_ignore_ascii_case("auto"))
+                || (property == "font-style" && value.eq_ignore_ascii_case("normal"))
+                || (property == "dy" && css_number_is_zero(&value))
+                || (kind == C4PresentationKind::Edge
+                    && matches!(
+                        (property, value.as_str()),
+                        ("fill-rule", "nonzero")
+                            | ("stroke-linecap", "butt")
+                            | ("stroke-linejoin", "miter")
+                            | ("stroke-miterlimit", "4")
+                    ))
+            {
+                return None;
+            }
+            let value = normalize_c4_presentation_value(property, &value);
+            Some((key, value))
+        })
+        .collect();
+
+    presentation.inline_style = presentation
+        .inline_style
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let (_, property) = key.rsplit_once('@')?;
+            if (property == "font-style" && value.eq_ignore_ascii_case("normal"))
+                || (property == "direction" && value.eq_ignore_ascii_case("auto"))
+            {
+                return None;
+            }
+            let value = normalize_c4_presentation_value(property, &value);
+            Some((key, value))
+        })
+        .collect();
+
+    if kind == C4PresentationKind::Edge {
+        fold_equivalent_root_style(&mut presentation, "fill");
+    }
+
+    presentation
+}
+
+fn css_number_is_zero(value: &str) -> bool {
+    value
+        .trim()
+        .parse::<f64>()
+        .is_ok_and(|number| number == 0.0)
+}
+
+fn normalize_c4_presentation_value(property: &str, value: &str) -> String {
+    let (value, important) = split_css_important(value);
+    let normalized = match property {
+        "color" | "fill" | "stroke" => merman_core::theme_color::ThemeColor::parse(value)
+            .map(|color| {
+                let rgba = color.rgba_channels();
+                format!(
+                    "rgba({},{},{},{})",
+                    rgba.red, rgba.green, rgba.blue, rgba.alpha
+                )
+            })
+            .unwrap_or_else(|_| value.to_string()),
+        "font-family" => normalize_font_family_list(value),
+        "font-weight" if value.eq_ignore_ascii_case("normal") => "400".to_string(),
+        "font-weight" if value.eq_ignore_ascii_case("bold") => "700".to_string(),
+        _ => value.to_string(),
+    };
+    if important {
+        format!("{normalized}!important")
+    } else {
+        normalized
+    }
+}
+
+fn split_css_important(value: &str) -> (&str, bool) {
+    let value = value.trim();
+    const IMPORTANT: &str = "!important";
+    if value.len() >= IMPORTANT.len()
+        && value[value.len() - IMPORTANT.len()..].eq_ignore_ascii_case(IMPORTANT)
+    {
+        (value[..value.len() - IMPORTANT.len()].trim_end(), true)
+    } else {
+        (value, false)
+    }
+}
+
+fn normalize_font_family_list(value: &str) -> String {
+    let mut families = Vec::new();
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        match quote {
+            Some(expected) if character == expected => quote = None,
+            Some(_) => {}
+            None if matches!(character, '\'' | '"') => quote = Some(character),
+            None if character == ',' => {
+                families.push(normalize_font_family_name(&value[start..index]));
+                start = index + character.len_utf8();
+            }
+            None => {}
+        }
+    }
+    families.push(normalize_font_family_name(&value[start..]));
+    serde_json::to_string(&families)
+        .expect("normalized font-family list must serialize as a JSON array")
+}
+
+fn normalize_font_family_name(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        // CSS quoted family names are strings: whitespace inside the quotes is significant.
+        // Unquoted family names are identifier sequences whose separating whitespace is not.
+        return value[1..value.len() - 1].to_string();
+    }
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn fold_equivalent_root_style(presentation: &mut SemanticLabelPresentation, property: &str) {
+    let key = format!("root@{property}");
+    let matching = presentation
+        .inline_style
+        .iter()
+        .enumerate()
+        .filter(|(_, (candidate, _))| candidate == &key)
+        .map(|(index, (_, value))| (index, value.clone()))
+        .collect::<Vec<_>>();
+    let [(index, value)] = matching.as_slice() else {
+        return;
+    };
+    if presentation
+        .attributes
+        .get(&key)
+        .is_some_and(|attribute| attribute != value)
+    {
+        return;
+    }
+    presentation.attributes.insert(key, value.clone());
+    presentation.inline_style.remove(*index);
 }
 
 fn collect_descendant_label_geometry(
@@ -1926,6 +2126,46 @@ fn semantic_relation_edge_evidence(
             attributes,
         },
     })
+}
+
+fn c4_relation_edge_evidence(
+    node: roxmltree::Node<'_, '_>,
+) -> Result<SemanticRelationEdgeEvidence, SemanticLabelError> {
+    let sibling_marker = |suffix: &str| {
+        node.next_siblings()
+            .filter(roxmltree::Node::is_element)
+            .take_while(|sibling| !sibling.has_tag_name("text"))
+            .any(|sibling| {
+                sibling.has_tag_name("polygon")
+                    && sibling
+                        .attribute("data-merman-resource")
+                        .is_some_and(|resource| resource.ends_with(suffix))
+            })
+    };
+    let marker_attribute = |name: &str| {
+        node.attribute(name)
+            .is_some_and(|value| !value.trim().is_empty() && !value.eq_ignore_ascii_case("none"))
+    };
+    let has_marker_start = marker_attribute("marker-start") || sibling_marker(".marker.start");
+    let has_marker_end = marker_attribute("marker-end") || sibling_marker(".marker.end");
+    let mut evidence = semantic_relation_edge_evidence(node)?;
+    evidence.presentation =
+        normalize_c4_presentation(evidence.presentation, C4PresentationKind::Edge);
+    evidence.presentation.attributes.remove("root@marker-start");
+    evidence.presentation.attributes.remove("root@marker-end");
+    if has_marker_start {
+        evidence.presentation.attributes.insert(
+            "root@semantic-marker-start".to_string(),
+            "present".to_string(),
+        );
+    }
+    if has_marker_end {
+        evidence.presentation.attributes.insert(
+            "root@semantic-marker-end".to_string(),
+            "present".to_string(),
+        );
+    }
+    Ok(evidence)
 }
 
 fn semantic_world_relation_edge_evidence(
@@ -4251,7 +4491,11 @@ mod tests {
             .unwrap()
             .unwrap();
 
-            assert!(outcome.issues.is_empty());
+            assert!(
+                outcome.issues.is_empty(),
+                "unexpected C4 semantic label issues at {dom_decimals} decimals: {:#?}",
+                outcome.issues
+            );
             assert_eq!(outcome.evidence.compared_samples, 5);
             assert_eq!(outcome.evidence.accepted_residuals, 5);
         }
@@ -4315,11 +4559,27 @@ mod tests {
             "2: Calls isAuthorized() on",
             1,
         );
-        let changed_style = local.replacen("fill=\"red\"", "fill=\"blue\"", 1);
+        let changed_style = replace_attribute_before(
+            &local,
+            "2: Calls isAuthenticated() on",
+            &["text"],
+            "fill",
+            "#0000ff",
+        );
         let changed_child_style = local.replace(
             "alignment-baseline=\"mathematical\"",
             "alignment-baseline=\"hanging\"",
         );
+        let font_tag = opening_tag_before(&local, "2: Calls isAuthenticated() on", &["text"]);
+        let original_font_tag = &local[font_tag.clone()];
+        let changed_font_tag = original_font_tag.replace(
+            r#"font-family: &quot;Open Sans&quot;, sans-serif;"#,
+            r#"font-family: &quot;Open Sans,sans-serif&quot;;"#,
+        );
+        let mut changed_font_family = local.clone();
+        changed_font_family.replace_range(font_tag, &changed_font_tag);
+        assert_ne!(changed_style, local);
+        assert_ne!(changed_font_family, local);
 
         let text_outcome = compare_registered_semantic_labels(
             "c4",
@@ -4351,6 +4611,16 @@ mod tests {
         )
         .unwrap()
         .unwrap();
+        let font_family_outcome = compare_registered_semantic_labels(
+            "c4",
+            C4_DYNAMIC_LABEL_FIXTURE,
+            &source,
+            &upstream,
+            &changed_font_family,
+            3,
+        )
+        .unwrap()
+        .unwrap();
 
         assert!(
             text_outcome
@@ -4366,6 +4636,12 @@ mod tests {
         );
         assert!(
             child_style_outcome
+                .issues
+                .iter()
+                .any(|issue| issue.contains("explicit label presentation differs"))
+        );
+        assert!(
+            font_family_outcome
                 .issues
                 .iter()
                 .any(|issue| issue.contains("explicit label presentation differs"))
@@ -4417,7 +4693,9 @@ mod tests {
             path_outcome
                 .issues
                 .iter()
-                .any(|issue| { issue.contains("without an exact residual contract") })
+                .any(|issue| { issue.contains("without an exact residual contract") }),
+            "unexpected C4 path mutation issues: {:#?}",
+            path_outcome.issues
         );
         assert!(
             stroke_outcome
@@ -4562,6 +4840,26 @@ mod tests {
         assert!(
             parse_inline_style_declarations("undefined;;;other", "ER edge").is_err(),
             "only the exact pinned Mermaid sentinel may bypass CSS declaration parsing"
+        );
+    }
+
+    #[test]
+    fn c4_font_family_normalization_preserves_family_boundaries() {
+        assert_eq!(
+            normalize_font_family_list(r#""Open Sans", sans-serif"#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""Open  Sans", sans-serif"#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""Open Sans,sans-serif""#),
+            normalize_font_family_list("Open Sans,sans-serif")
+        );
+        assert_ne!(
+            normalize_font_family_list(r#""A,B", serif"#),
+            normalize_font_family_list("A, B, serif")
         );
     }
 

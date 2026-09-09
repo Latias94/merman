@@ -6,7 +6,6 @@ use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::name::{NamespaceResolver, ResolveResult};
 use quick_xml::reader::NsReader;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write as _;
 use std::mem::size_of;
 use std::ops::Range;
 use std::sync::Arc;
@@ -153,6 +152,10 @@ impl ValidatedIconBody {
         self.source.len()
     }
 
+    pub(super) fn source(&self) -> &str {
+        &self.source
+    }
+
     pub(super) const fn element_count(&self) -> usize {
         self.element_count
     }
@@ -181,12 +184,8 @@ impl ValidatedIconBody {
         for edit in &self.edits {
             let range = edit.range();
             output.push_str(&self.source[source_offset..range.start]);
-            write!(
-                output,
-                "{SCOPED_ID_PREFIX}{scope_hash:016x}{}",
-                edit.id_index()
-            )
-            .map_err(|_| arithmetic_error(self.pack_index, "icon ID scoping failed"))?;
+            write_scoped_id(&mut output, scope_hash, edit.id_index())
+                .map_err(|_| arithmetic_error(self.pack_index, "icon ID scoping failed"))?;
             source_offset = range.end;
         }
         output.push_str(&self.source[source_offset..]);
@@ -1843,12 +1842,8 @@ fn write_scoped_range(
             ));
         }
         output.push_str(&source[source_offset..edit_range.start]);
-        write!(
-            output,
-            "{SCOPED_ID_PREFIX}{scope_hash:016x}{}",
-            edit.id_index()
-        )
-        .map_err(|_| arithmetic_error(pack_index, "icon ID scoping failed"))?;
+        write_scoped_id(output, scope_hash, edit.id_index())
+            .map_err(|_| arithmetic_error(pack_index, "icon ID scoping failed"))?;
         source_offset = edit_range.end;
         *edit_index += 1;
     }
@@ -1878,7 +1873,15 @@ fn skip_edits_through(
     Ok(())
 }
 
-fn scoped_id_len(index: usize) -> usize {
+pub(super) fn write_scoped_id(
+    output: &mut impl std::fmt::Write,
+    scope_hash: u64,
+    index: usize,
+) -> std::fmt::Result {
+    write!(output, "{SCOPED_ID_PREFIX}{scope_hash:016x}{index}")
+}
+
+pub(super) fn scoped_id_len(index: usize) -> usize {
     SCOPED_ID_PREFIX.len() + SCOPED_ID_HASH_HEX_LEN + decimal_digits(index)
 }
 

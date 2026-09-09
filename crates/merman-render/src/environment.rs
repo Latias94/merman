@@ -4,7 +4,7 @@ use crate::math::MathRenderer;
 use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, NormalLineMetrics, TextMeasurer, TextMetrics, TextStyle, WrapMode,
     append_text_width_em, estimate_text_width_em, is_html_collapsible_ascii_whitespace,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
@@ -781,6 +781,7 @@ pub struct HostTextMeasurementRequest<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum HostTextMeasurement {
+    NormalLineMetrics(NormalLineMetrics),
     Metrics(TextMetrics),
     Length(f64),
     HorizontalExtents {
@@ -948,6 +949,15 @@ impl CancelledTextMeasurement for TextMetrics {
     }
 }
 
+impl CancelledTextMeasurement for NormalLineMetrics {
+    fn cancelled() -> Self {
+        Self {
+            line_height: 0.0,
+            baseline_offset: 0.0,
+        }
+    }
+}
+
 impl CancelledTextMeasurement for (TextMetrics, Option<f64>) {
     fn cancelled() -> Self {
         (TextMetrics::cancelled(), None)
@@ -980,7 +990,8 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::MermaidCalculateTextDimensions
             | TextMeasurementOperation::SimpleBBoxHeight => TextMeasurementPhase::SvgBBox,
             TextMeasurementOperation::CanvasMeasureTextWidth => TextMeasurementPhase::Layout,
-            TextMeasurementOperation::WrapProbeBBoxWidth => TextMeasurementPhase::Wrap,
+            TextMeasurementOperation::WrapProbeBBoxWidth
+            | TextMeasurementOperation::NormalLineMetrics => TextMeasurementPhase::Wrap,
             TextMeasurementOperation::Wrapped | TextMeasurementOperation::WrappedWithRawWidth => {
                 TextMeasurementPhase::Wrap
             }
@@ -1096,6 +1107,23 @@ impl RoutedTextMeasurer<'_> {
 }
 
 impl TextMeasurer for RoutedTextMeasurer<'_> {
+    fn measure_normal_line_metrics(&self, text: &str, style: &TextStyle) -> NormalLineMetrics {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::NormalLineMetrics,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            |result| match result {
+                HostTextMeasurement::NormalLineMetrics(metrics) => Some(metrics),
+                _ => None,
+            },
+            |profile| profile.measure_normal_line_metrics(text, style),
+        )
+    }
+
     fn cancellation_requested(&self) -> bool {
         self.controlled_operation_phase
             .is_some_and(|phase| self.work_meter.checkpoint(phase).is_err())
@@ -1217,6 +1245,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_raw_text_bbox_width_px(text, style),
+        )
+    }
+
+    fn measure_svg_normal_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_normal_text_bbox_width_px(text, style),
         )
     }
 
@@ -1450,6 +1492,7 @@ pub fn validate_host_text_measurement(
     measurement: &HostTextMeasurement,
 ) -> Result<(), HostTextMeasurementError> {
     let result_kind = match measurement {
+        HostTextMeasurement::NormalLineMetrics(_) => TextMeasurementResultKind::NormalLineMetrics,
         HostTextMeasurement::Metrics(_) => TextMeasurementResultKind::Metrics,
         HostTextMeasurement::Length(_) => TextMeasurementResultKind::Length,
         HostTextMeasurement::HorizontalExtents { .. } => {
@@ -1470,6 +1513,11 @@ pub fn validate_host_text_measurement(
     }
 
     let valid = match measurement {
+        HostTextMeasurement::NormalLineMetrics(metrics) => {
+            metrics.line_height.is_finite()
+                && metrics.line_height >= 0.0
+                && metrics.baseline_offset.is_finite()
+        }
         HostTextMeasurement::Metrics(metrics) => valid_metrics(request, metrics),
         HostTextMeasurement::Length(value) => {
             value.is_finite() && (request.operation.accepts_signed_length() || *value >= 0.0)
@@ -1905,6 +1953,7 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "normal-line-metrics"),
             ]
         );
     }
@@ -1985,9 +2034,17 @@ mod tests {
             metrics: metrics(10.0),
             raw_width: Some(11.0),
         };
+        let valid_normal = HostTextMeasurement::NormalLineMetrics(NormalLineMetrics {
+            line_height: 28.0,
+            baseline_offset: 21.0,
+        });
 
         for operation in TextMeasurementOperation::ALL {
             let required = operation.required_result_kind();
+            assert_eq!(
+                validate_host_text_measurement(&request(operation), &valid_normal).is_ok(),
+                required == TextMeasurementResultKind::NormalLineMetrics,
+            );
             assert_eq!(
                 validate_host_text_measurement(&request(operation), &valid_metrics_value).is_ok(),
                 required == TextMeasurementResultKind::Metrics,
@@ -2793,6 +2850,7 @@ mod tests {
 
     #[derive(Clone)]
     enum HostOutcome {
+        Normal(NormalLineMetrics),
         Measured(TextMetrics),
         Length(f64),
         Missing,
@@ -2809,6 +2867,9 @@ mod tests {
         fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
             self.calls.fetch_add(1, Ordering::Relaxed);
             match self.outcome {
+                HostOutcome::Normal(metrics) => {
+                    Ok(Some(HostTextMeasurement::NormalLineMetrics(metrics)))
+                }
                 HostOutcome::Measured(metrics) => Ok(Some(HostTextMeasurement::Metrics(metrics))),
                 HostOutcome::Length(length) => Ok(Some(HostTextMeasurement::Length(length))),
                 HostOutcome::Missing => Ok(None),
@@ -2823,6 +2884,17 @@ mod tests {
     struct CountingFallback(Arc<AtomicUsize>);
 
     impl TextMeasurer for CountingFallback {
+        fn measure_normal_line_metrics(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> NormalLineMetrics {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            NormalLineMetrics {
+                line_height: 31.0,
+                baseline_offset: 22.0,
+            }
+        }
         fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
             self.0.fetch_add(1, Ordering::Relaxed);
             metrics(41.0)
@@ -2852,6 +2924,7 @@ mod tests {
             [
                 TextMeasurementPhase::Layout,
                 TextMeasurementPhase::ComputedLength,
+                TextMeasurementPhase::Wrap,
             ],
             fallback,
         )
@@ -2910,6 +2983,82 @@ mod tests {
             session.checkpoint(OperationPhase::Layout),
             Err(crate::Error::Cancelled(_))
         ));
+    }
+
+    #[test]
+    fn normal_line_metrics_route_and_fallback_are_atomic() {
+        let host_pair = NormalLineMetrics {
+            line_height: 28.0,
+            baseline_offset: 21.0,
+        };
+        for (outcome, reason) in [
+            (HostOutcome::Normal(host_pair), None),
+            (
+                HostOutcome::Normal(NormalLineMetrics {
+                    line_height: 28.0,
+                    baseline_offset: f64::NAN,
+                }),
+                Some(HostFallbackReason::Invalid),
+            ),
+            (
+                HostOutcome::Normal(NormalLineMetrics {
+                    line_height: -1.0,
+                    baseline_offset: 21.0,
+                }),
+                Some(HostFallbackReason::Invalid),
+            ),
+            (HostOutcome::Length(28.0), Some(HostFallbackReason::Invalid)),
+            (HostOutcome::Missing, Some(HostFallbackReason::Missing)),
+            (HostOutcome::Error, Some(HostFallbackReason::Error)),
+        ] {
+            let host_calls = Arc::new(AtomicUsize::new(0));
+            let fallback_calls = Arc::new(AtomicUsize::new(0));
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(host_policy(outcome, &host_calls, &fallback_calls))
+                .begin_session()
+                .unwrap();
+            let measured = session
+                .text_measurer(TextMeasurementPhase::Layout)
+                .measure_normal_line_metrics("中文 👩‍💻", &TextStyle::default());
+            assert_eq!(
+                measured,
+                if reason.is_some() {
+                    NormalLineMetrics {
+                        line_height: 31.0,
+                        baseline_offset: 22.0,
+                    }
+                } else {
+                    host_pair
+                }
+            );
+            assert_eq!(host_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                fallback_calls.load(Ordering::Relaxed),
+                usize::from(reason.is_some())
+            );
+            let report = session.text_measurement_report();
+            assert_eq!(report.entries().len(), 1);
+            assert_eq!(report.entries()[0].provenance().fallback_reason, reason);
+            assert_eq!(
+                report.entries()[0].provenance().operation,
+                TextMeasurementOperation::NormalLineMetrics
+            );
+            assert_eq!(
+                report.entries()[0].provenance().phase,
+                TextMeasurementPhase::Wrap
+            );
+        }
+        let style = TextStyle {
+            font_size: 20.0,
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            DeterministicTextMeasurer::default().measure_normal_line_metrics("Hg", &style),
+            NormalLineMetrics {
+                line_height: 24.0,
+                baseline_offset: 18.0
+            }
+        );
     }
 
     #[test]

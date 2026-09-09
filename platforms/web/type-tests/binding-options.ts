@@ -1,6 +1,10 @@
 import { withResourceOptions } from "../src/runtime-core.js";
 import type { BindingDiagnosticErrorDetails } from "../src/public-catalog.js";
 import type {
+  BindingDrawingListErrorDetails,
+  BindingErrorPayload,
+} from "../src/index.js";
+import type {
   AsciiBindingOptions,
   CommonBindingOptions,
   EditorBindingOptions,
@@ -20,6 +24,32 @@ const asciiDiagnostic: BindingDiagnosticErrorDetails = {
   fallback_reason: null,
 };
 asciiDiagnostic.actual_width;
+
+const drawingListDetails: BindingDrawingListErrorDetails = {
+  category: "unavailable",
+  family: "pie",
+  reason: null,
+};
+const drawingListError: BindingErrorPayload = {
+  version: 1,
+  ok: false,
+  code: 1,
+  code_name: "UNSUPPORTED_OPERATION",
+  kind: "generic",
+  capability_id: null,
+  details: { drawing_list: drawingListDetails },
+  message: "DrawingList does not support this family",
+};
+const drawingListCategory: string | undefined =
+  drawingListError.details?.drawing_list?.category;
+const drawingListReason: string | null | undefined =
+  drawingListError.details?.drawing_list?.reason;
+void drawingListCategory;
+void drawingListReason;
+
+// @ts-expect-error DrawingList error families are nullable strings, not numbers.
+const invalidDrawingListFamily = { category: "limit", family: 1, reason: null } satisfies BindingDrawingListErrorDetails;
+void invalidDrawingListFamily;
 
 const resources: ResourceOptions = { profile: "interactive" };
 const editorResources: EditorResourceOptions = {

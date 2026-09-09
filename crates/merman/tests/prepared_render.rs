@@ -1,6 +1,9 @@
 #![cfg(feature = "svg")]
 
-use merman::svg::{LayoutOptions, RenderFamilyKind, SvgRenderOptions};
+use merman::svg::{
+    LayoutOptions, RenderFamilyKind, SvgRenderOptions, SvgSerializationBridgeReason,
+    SvgSerializationRoute,
+};
 use merman::{
     OperationControl, OperationExecutionPath, RenderOutput, RenderRequest, Renderer, SvgRequest,
 };
@@ -29,12 +32,39 @@ fn render_svg(renderer: &Renderer, source: &str, request: SvgRequest) -> merman:
 
 #[test]
 fn completed_svg_evidence_records_the_canonical_execution_path() {
-    let output = render_svg(&Renderer::new(), "info", svg_request("info-evidence"));
+    let output = render_svg(
+        &Renderer::new(),
+        "packet-beta\n0-7: \"Header\"",
+        svg_request("packet-evidence"),
+    );
     assert_eq!(
         output.evidence().execution_path(),
         OperationExecutionPath::Renderer
     );
     assert_eq!(output.evidence().measurement_routes().len(), 4);
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::CanonicalDocument
+    );
+}
+
+#[test]
+fn completed_svg_evidence_records_a_legacy_bridge_reason() {
+    let output = render_svg(
+        &Renderer::new(),
+        "flowchart TD\nA --> B\n",
+        svg_request("bridge-reason"),
+    );
+    assert_eq!(
+        output.serialization_route(),
+        SvgSerializationRoute::LegacyBridge
+    );
+    assert_eq!(
+        output.serialization_bridge_reason(),
+        Some(&SvgSerializationBridgeReason::LegacyFamily {
+            family: RenderFamilyKind::Flowchart,
+        })
+    );
 }
 
 #[test]
@@ -154,9 +184,26 @@ Second: second,after first,2ms
     let second = render_svg(&second_renderer, source, svg_request("gantt-time"));
 
     fn today_line(svg: &str) -> &str {
-        let start = svg.find(r#"<g class="today"><line"#).expect("today marker");
-        let end = svg[start..].find("/>").expect("today marker end") + start + 2;
-        &svg[start..end]
+        let document = roxmltree::Document::parse(svg).expect("valid Gantt SVG");
+        let marker = document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && (node.attribute("data-merman-resource") == Some("gantt.today.line")
+                        || (node.tag_name().name() == "line"
+                            && node.attribute("class").is_some_and(|classes| {
+                                classes.split_whitespace().any(|class| class == "today")
+                            })
+                            && node.ancestors().any(|ancestor| {
+                                ancestor.is_element()
+                                    && ancestor.tag_name().name() == "g"
+                                    && ancestor.attribute("class").is_some_and(|classes| {
+                                        classes.split_whitespace().any(|class| class == "today")
+                                    })
+                            })))
+            })
+            .expect("today marker");
+        &svg[marker.range()]
     }
 
     assert_ne!(today_line(first.svg()), today_line(second.svg()));

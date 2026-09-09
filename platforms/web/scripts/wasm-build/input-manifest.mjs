@@ -26,6 +26,7 @@ const ROOT_FILE_INPUTS = [
   "rust-toolchain",
   "rust-toolchain.toml",
   "contracts/abi/text-measurement-v1.json",
+  "contracts/abi/text-measurement-v2.json",
   "capabilities/artifact-profiles-v1.json",
   "capabilities/feature-surface-v1.json",
   "platforms/web/scripts/build-wasm.mjs",

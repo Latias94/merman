@@ -20,7 +20,7 @@ exclude = [
 
 [package.metadata.merman]
 artifact-profile-required = true
-fixed-capabilities = ["svg"]
+fixed-capabilities = ["drawing-list", "svg"]
 wasm-inputs = ["assets/zenuml"]
 
 [features]
@@ -50,6 +50,7 @@ libm.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
+merman-display-list.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }

@@ -30,6 +30,7 @@ mod class;
 mod css;
 mod curve;
 mod cynefin;
+mod document;
 mod edge_label_geometry;
 mod emitted_bounds;
 mod er;
@@ -46,6 +47,7 @@ mod label;
 mod layout_debug;
 mod markers;
 mod mindmap;
+mod output;
 mod packet;
 mod path_bounds;
 mod pie;
@@ -75,13 +77,12 @@ use css::{
     requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
-pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
-    mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
-}
 
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
+
+pub(crate) use document::render_document_svg;
 use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
 use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect};
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
@@ -368,14 +369,17 @@ pub(crate) fn normalize_svg_render_options(
     let diagram_id = request
         .diagram_id
         .as_deref()
-        .map(|raw| plan_svg_diagram_id_sanitization(raw, session))
-        .transpose()?
-        .map(|plan| materialize_svg_diagram_id(plan, session))
+        .map(|raw| normalize_render_diagram_id(raw, session))
         .transpose()?;
     Ok(SvgRenderOptions {
         viewbox_padding: request.viewbox_padding,
         diagram_id,
     })
+}
+
+/// Shared instance identity for source-seeded geometry and SVG DOM ownership.
+pub(crate) fn normalize_render_diagram_id(raw: &str, session: &RenderSession) -> Result<String> {
+    materialize_svg_diagram_id(plan_svg_diagram_id_sanitization(raw, session)?, session)
 }
 
 /// A point captured while diagnosing one flowchart edge route.
@@ -460,6 +464,11 @@ pub struct SvgDebugOptions {
     pub include_cluster_debug_markers: bool,
     pub include_edge_id_labels: bool,
     pub include_timing_diagnostics: bool,
+    /// Include SVG-to-DrawingList diagnostic attributes on projected elements.
+    ///
+    /// This does not alter source DOM IDs, accessibility, navigation, or drawing commands.
+    /// Compact projections may merge commands and need not expose an attribute for every item.
+    pub include_drawing_list_metadata: bool,
     /// Optional caller-owned trace collection request.
     ///
     /// Use [`SvgDebugOptions::with_flowchart_edge_trace`] to construct a non-empty request. The
@@ -477,6 +486,7 @@ impl Default for SvgDebugOptions {
             include_cluster_debug_markers: false,
             include_edge_id_labels: false,
             include_timing_diagnostics: false,
+            include_drawing_list_metadata: false,
             flowchart_edge_trace: None,
         }
     }
@@ -709,16 +719,7 @@ impl<'a> SvgExecution<'a> {
         configured_seed: f64,
         owner_domain: &str,
     ) -> roughr::core::RoughRandomness {
-        let resolved_seed = if configured_seed == 0.0 {
-            self.seed() as f64
-        } else {
-            configured_seed
-        };
-        let operation = self.session.operation_context();
-        roughr::core::RoughRandomness::new(
-            roughr::core::RoughJsSeed::new(resolved_seed),
-            roughr::core::RoughMathRandom::new(operation.derive_u64(owner_domain, 0)),
-        )
+        crate::rough_geometry::operation_randomness(self.session, configured_seed, owner_domain)
     }
 
     pub(crate) fn timing(&self) -> timing::RenderTiming {

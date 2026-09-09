@@ -146,6 +146,13 @@ The request includes:
 
 The stable operation mapping is:
 
+Protocol 1 retains operations 0–18 and result kinds 0–3. Current unreleased Rust, UniFFI API 8,
+Android, Web, and C services V2 projections add protocol-2 operation 19 and result kind 4. The published C callback
+record remains protocol 1 and is never sent operation 19; it declines that request before crossing
+the foreign boundary. Select `engine_new_with_services_v2` with its independently named V2 config
+and callback records to handle protocol 2. The current Flutter wrapper uses this V2 entry point
+and requires its complete table prefix; the old C callback signature is unchanged.
+
 | Code | Operation | Expected result kind |
 | ---: | --- | --- |
 | 0 | `measure` | `metrics` |
@@ -167,11 +174,20 @@ The stable operation mapping is:
 | 16 | `canvas-measure-text-width` | `length` |
 | 17 | `create-text-middle-bbox-y-offset` | `length` (signed) |
 | 18 | `raw-bbox-height` | `length` |
+| 19 | `normal-line-metrics` (protocol 2) | `normal-line-metrics` |
 
 The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
 `horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
 optional `raw_width`). The C ABI carries their numeric codes 0 through 3 in `result_kind`; UniFFI
 uses `MermanTextMeasurementResultKind`; Web uses the `kind` discriminant.
+
+Protocol 2 adds `normal-line-metrics` (code 4), containing finite `line_height` (non-negative) and
+`baseline_offset` (signed, alphabetic baseline relative to the line-box top). Both values describe
+the actual requested text and style. UniFFI carries them in optional `MermanNormalLineMetrics`;
+Web carries them as fields on the tagged result. Both are required for a handled normal-line
+result. Invalid, unavailable, or failed measurement falls back as a whole pair, never field by
+field. The request's `line_height=0` means that an explicit line-height hint is inapplicable:
+measure CSS `line-height: normal`, not a zero-height line. Its `white_space` is `normal`.
 
 The callback returns `handled=1` with the exact result kind required by `operation`, or `handled=0`
 to let Merman fall back for that single request. Operation 14,

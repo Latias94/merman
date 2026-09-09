@@ -331,6 +331,7 @@ impl BindingEngine {
                 }
             }
             crate::OperationKey::Svg
+            | crate::OperationKey::DrawingListJson
             | crate::OperationKey::SvgPlanJson
             | crate::OperationKey::Png
             | crate::OperationKey::Jpeg
@@ -345,6 +346,9 @@ impl BindingEngine {
                     let output = match operation.key() {
                         crate::OperationKey::Svg => render
                             .render_svg(source, control.clone())
+                            .map(BindingOperationOutput::plain),
+                        crate::OperationKey::DrawingListJson => render
+                            .render_drawing_list(source, control.clone())
                             .map(BindingOperationOutput::plain),
                         crate::OperationKey::SvgPlanJson => render
                             .svg_plan_json(source, control.clone())
@@ -399,6 +403,9 @@ impl BindingEngine {
                         crate::OperationKey::Svg => {
                             Err(common::feature_required_error("SVG rendering", "svg"))
                         }
+                        crate::OperationKey::DrawingListJson => Err(
+                            common::feature_required_error("DrawingList rendering", "svg"),
+                        ),
                         crate::OperationKey::SvgPlanJson => Err(common::feature_required_error(
                             "SVG capability planning",
                             "svg",
@@ -438,6 +445,13 @@ impl BindingEngine {
         self.execute_data(crate::BindingOperationRequest::new("svg", source))
     }
 
+    pub fn render_drawing_list(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        self.execute_data(crate::BindingOperationRequest::new(
+            "drawing-list-json",
+            source,
+        ))
+    }
+
     pub(crate) fn render_svg_data(
         &self,
         source: &[u8],
@@ -452,6 +466,35 @@ impl BindingEngine {
         {
             let _ = (source, control);
             Err(common::feature_required_error("SVG rendering", "svg"))
+        }
+    }
+
+    pub(crate) fn render_drawing_list_data(
+        &self,
+        source: &[u8],
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        #[cfg(all(feature = "svg", feature = "drawing-list"))]
+        {
+            self.render.render_drawing_list(source, control)
+        }
+
+        #[cfg(all(feature = "svg", not(feature = "drawing-list")))]
+        {
+            let _ = (source, control);
+            Err(common::feature_required_error(
+                "DrawingList rendering",
+                "drawing-list",
+            ))
+        }
+
+        #[cfg(not(feature = "svg"))]
+        {
+            let _ = (source, control);
+            Err(common::feature_required_error(
+                "DrawingList rendering",
+                "svg",
+            ))
         }
     }
 

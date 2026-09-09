@@ -708,7 +708,19 @@ impl OperationWorkMeter {
     }
 
     pub(crate) fn preflight(&self, additional: usize) -> Result<(), OperationWorkError> {
-        let phase = OperationPhase::Layout;
+        self.preflight_at(additional, OperationPhase::Layout)
+    }
+
+    /// Checks a prospective work charge at an explicit operation phase without consuming it.
+    ///
+    /// Post-layout builders use this while materializing a bounded candidate. The completed
+    /// candidate remains responsible for the single authoritative charge, so an early preflight
+    /// cannot double-count work during an incremental migration.
+    pub(crate) fn preflight_at(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(phase)?;
         if additional == 0 {
             return Ok(());
@@ -730,7 +742,19 @@ impl OperationWorkMeter {
 
     /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
     pub(crate) fn charge(&self, additional: usize) -> Result<(), OperationWorkError> {
-        let phase = OperationPhase::Layout;
+        self.charge_at(additional, OperationPhase::Layout)
+    }
+
+    /// Charges work atomically at an explicit operation phase.
+    ///
+    /// DrawingList construction happens after layout, so it uses the same established work
+    /// ceiling with an `Emit` phase instead of pretending that the cost belongs to a second
+    /// layout pass. A rejected charge leaves cumulative usage unchanged.
+    pub(crate) fn charge_at(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+    ) -> Result<(), OperationWorkError> {
         self.resource_checkpoint(phase)?;
         if additional == 0 {
             return Ok(());
@@ -894,6 +918,31 @@ impl OperationWorkMeter {
     ) -> OperationWorkError {
         let actual = error.actual;
         self.terminate_resource_error(error, operation_phase, 0, actual)
+    }
+
+    pub(crate) fn terminate_document_limit(
+        &self,
+        id: &'static str,
+        actual: usize,
+        maximum: usize,
+    ) -> OperationWorkError {
+        let terminal = self
+            .control
+            .terminate_resource_limit(OperationResourceLimitExceeded {
+                id,
+                phase: OperationPhase::Emit,
+                resource_phase: "drawing-list-validation",
+                limit: saturating_u64(maximum),
+                consumed: 0,
+                requested: saturating_u64(actual),
+                // Protocol limits are supplied separately, not inherited from a render profile.
+                provenance: OperationResourceProvenance::new(
+                    OperationResourceDomain::Render,
+                    None,
+                    [],
+                ),
+            });
+        self.map_terminal_error(terminal)
     }
 
     pub(crate) fn terminate_svg_byte_count_overflow(
@@ -1736,6 +1785,50 @@ mod tests {
             .map(str::len)
             .sum::<usize>();
         assert!(complexity.label_bytes >= required);
+    }
+
+    #[test]
+    fn zenuml_complexity_includes_participant_and_body_comments() {
+        let plain = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\n@Actor A\nA.m()\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let commented = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                concat!(
+                    "zenuml\n",
+                    "// participant note\n",
+                    "@Actor A\n",
+                    "A.m() {\n",
+                    "  // body note\n",
+                    "  B.work()\n",
+                    "  // close note\n",
+                    "}\n",
+                ),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Zenuml(plain_model) = plain.model() else {
+            panic!("expected plain ZenUML model");
+        };
+        let RenderSemanticModel::Zenuml(commented_model) = commented.model() else {
+            panic!("expected commented ZenUML model");
+        };
+
+        let without_comments = ZenumlComplexity::from_model(plain_model);
+        let with_comments = ZenumlComplexity::from_model(commented_model);
+        let comment_bytes = [" participant note ", " body note ", " close note "]
+            .into_iter()
+            .map(str::len)
+            .sum::<usize>();
+        assert!(
+            with_comments.label_bytes >= without_comments.label_bytes + comment_bytes,
+            "participant and body comments must contribute to the model budget"
+        );
     }
 
     #[test]

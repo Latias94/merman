@@ -19,6 +19,7 @@ closure. Feature names describe compile-time inputs; the generated runtime catal
 recipe, and bundled notices describe the resulting artifact.
 
 - `svg` enables SVG rendering through the main Merman facade.
+- `drawing-list` enables validated renderer-neutral DrawingList v1 JSON and implies the shared SVG render/layout foundation.
 - `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `layout-cytoscape` and `layout-elk` enable their named SVG layout engines.
@@ -57,7 +58,7 @@ let request = BindingOperationRequest::new("document-analysis-json", source)
     .with_options_json(options_json);
 ```
 
-Operation results expose typed schema-1 metadata and retain the exact original metadata JSON. Known raster and PDF plans are typed, while future output-plan kinds decode as an open `Unknown` variant without discarding their JSON. `operation_metadata_contract()` and `binding_operation_expectations()` are the stable generator inputs for language projections and the descriptor-derived 13-operation test matrix. `xtask gen-binding-contract` materializes both the Node projection and the language-neutral fixture under `fixtures/bindings/generated/`; transports consume those generated values instead of maintaining parallel operation or metadata vocabularies.
+Operation results expose typed schema-1 metadata and retain the exact original metadata JSON. Known raster and PDF plans are typed, while future output-plan kinds decode as an open `Unknown` variant without discarding their JSON. `operation_metadata_contract()` and `binding_operation_expectations()` are the stable generator inputs for language projections and the descriptor-derived operation test matrix. `xtask gen-binding-contract` materializes both the Node projection and the language-neutral fixture under `fixtures/bindings/generated/`; transports consume those generated values instead of maintaining parallel operation or metadata vocabularies.
 
 When `ascii` is enabled, the ASCII output plan is adapted from `merman-ascii::AsciiOutput::metadata()`.
 The CLI's report JSON is the same metadata payload plus the exact text projection from

@@ -2,51 +2,9 @@ use super::*;
 use crate::wardley::{
     WardleyAnnotationsBoxLayout, WardleyArrowLayout, WardleyCircleLayout, WardleyDiagramLayout,
     WardleyDominantBaseline, WardleyFontWeight, WardleyLineLayout, WardleyNodeShapeLayout,
-    WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout,
+    WardleySourceOverlayLayout, WardleyTextAnchor, WardleyTextLayout, WardleyTheme,
 };
 use merman_core::diagrams::wardley::WardleyDiagramRenderModel;
-
-struct WardleyTheme {
-    background_color: String,
-    axis_color: String,
-    axis_text_color: String,
-    grid_color: String,
-    component_fill: String,
-    component_stroke: String,
-    component_label_color: String,
-    link_stroke: String,
-    evolution_stroke: String,
-}
-
-impl WardleyTheme {
-    fn from_config(config: &serde_json::Value) -> Self {
-        let nested = |key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
-                .unwrap_or_else(|| fallback.to_string())
-        };
-        let nested_or_root = |key, root_key, fallback: &str| {
-            config_string(config, &["themeVariables", "wardley", key])
-                .or_else(|| config_string(config, &["themeVariables", root_key]))
-                .unwrap_or_else(|| fallback.to_string())
-        };
-
-        Self {
-            background_color: nested_or_root("backgroundColor", "background", "#fff"),
-            axis_color: nested("axisColor", "#000"),
-            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
-            grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
-            component_fill: nested("componentFill", "#fff"),
-            component_stroke: nested("componentStroke", "#000"),
-            component_label_color: nested_or_root(
-                "componentLabelColor",
-                "primaryTextColor",
-                "#222",
-            ),
-            link_stroke: nested("linkStroke", "#000"),
-            evolution_stroke: nested("evolutionStroke", "#dc3545"),
-        }
-    }
-}
 
 fn text_anchor(anchor: WardleyTextAnchor) -> &'static str {
     match anchor {

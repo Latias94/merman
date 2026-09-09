@@ -182,7 +182,7 @@ SEMANTIC_CLAIMS = (
     ClosureClaim(
         claim_id="svg-basic-excludes-optional-engines-and-products",
         profile_id="rust-svg-basic",
-        required_packages=("merman", "merman-core", "merman-render"),
+        required_packages=("merman", "merman-core", "merman-display-list", "merman-render"),
         forbidden_packages=(
             "chrono",
             "getrandom",

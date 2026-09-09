@@ -96,6 +96,7 @@ export {
   layoutObject,
   parseJson,
   parseObject,
+  renderDrawingList,
   renderSvg,
   renderSvgElement,
   renderSvgToElement,

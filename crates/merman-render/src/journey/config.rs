@@ -77,6 +77,16 @@ impl<'a> JourneyConfigView<'a> {
     pub(crate) fn render_settings(&self) -> JourneyRenderSettings {
         JourneyRenderSettings {
             task_text_style: self.task_text_style(),
+            text_placement: match self
+                .journey_config
+                .get("textPlacement")
+                .and_then(Value::as_str)
+            {
+                None | Some("fo") => JourneyTextPlacement::HtmlTable,
+                Some("old") => JourneyTextPlacement::LegacyText,
+                Some(_) => JourneyTextPlacement::Tspan,
+            },
+            section_colours: config_string_vec(self.journey_config, &["sectionColours"]),
             title_font_size: config_string(self.journey_config, &["titleFontSize"])
                 .unwrap_or_else(|| DEFAULT_TITLE_FONT_SIZE.to_string()),
             title_font_family: config_string(self.journey_config, &["titleFontFamily"])
@@ -154,8 +164,17 @@ pub(crate) struct JourneyLayoutSettings {
     pub(crate) use_max_width: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JourneyTextPlacement {
+    HtmlTable,
+    LegacyText,
+    Tspan,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct JourneyRenderSettings {
+    pub(crate) text_placement: JourneyTextPlacement,
+    pub(crate) section_colours: Vec<String>,
     pub(crate) task_text_style: TextStyle,
     pub(crate) title_font_size: String,
     pub(crate) title_font_family: String,

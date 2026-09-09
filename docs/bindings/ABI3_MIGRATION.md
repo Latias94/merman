@@ -1,8 +1,11 @@
 # Native ABI 3 Migration
 
-The `0.8.0-alpha.3` packages used native ABI 2. Current source uses native ABI 3 and intentionally
-does not preserve ABI 2 or prerelease ABI 3 consumer compatibility. Rebuild every C, C++, Dart FFI,
-or custom native host against the generated headers from the same Merman release.
+The `0.8.0-alpha.3` packages used native ABI 2. The published alpha.5 and immutable alpha.6
+packages use native ABI 3, and current unreleased source remains on ABI 3. ABI 3 keeps its
+minimum-prefix layout stable when new operation codes are appended, but a release-matched generated
+header is still required for the complete operation catalog a host intends to call. Rebuild every C,
+C++, Dart FFI, or custom native host against the generated headers from the same Merman release or
+source revision; do not call an operation that an older header does not declare.
 
 ## Required Host Changes
 
@@ -14,8 +17,9 @@ or custom native host against the generated headers from the same Merman release
 4. Require every function in the release-matched table. The descriptor-selected minimum prefix
    ends at `engine_new_with_services` (slot `6`); the current table appends
    `operation_control_new`, `operation_control_cancel`, and `operation_control_release` at slots
-   `7`, `8`, and `9`, followed by `execute_collect_controlled` at slot `10`. Require the complete
-   `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE` instead of treating the minimum
+   `7`, `8`, and `9`, followed by `execute_collect_controlled` at slot `10` and
+   `engine_new_with_services_v2` at slot `11`. Require the complete
+   `MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE` instead of treating the minimum
    prefix as the complete current table.
 5. Fully zero-initialize `MermanNativeResult` with `MERMAN_NATIVE_RESULT_INIT` before every
    producing call.
@@ -39,10 +43,13 @@ or custom native host against the generated headers from the same Merman release
 `minimum_prefix_layout_digest` is the discovery compatibility key. `full_descriptor_digest`
 identifies the complete release descriptor, while `capability_catalog_digest` identifies the
 loaded artifact's callable feature surface. Release-matched hosts should validate the complete
-table they were generated against; partial historical tables are not a supported consumer target.
-The minimum prefix deliberately remains stable through slot `6`; the generated operation-control
-and controlled-execute prefix macros describe the appended slot boundaries without changing that
-compatibility digest.
+table they were generated against; partial historical tables may pass discovery when their
+minimum prefix remains compatible, but they must not call operations absent from that table. The
+minimum prefix deliberately remains stable through slot `6` and operation code `13`; the
+post-alpha.6 `drawing-list-json` operation is an additive catalog entry and does not change this
+compatibility digest. It is not present in the immutable `v0.8.0-alpha.6` artifacts. The generated
+operation-control and controlled-execute prefix macros describe the appended slot boundaries
+without changing that digest.
 
 ## Record, Result, And Service Rules
 

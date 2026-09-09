@@ -4,6 +4,16 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advanced the direct UniFFI binding API to `7` for optional `MermanDrawingListErrorDetails` on `MermanError.Binding`. Replace `bindingApiVersionV6()` with `bindingApiVersionV7()` and regenerate Swift together with its matching XCFramework. The removed API 6 probe rejects stale consumers before they decode the changed error layout, including errors without DrawingList details.
+
+### Added
+
+- Added `renderDrawingList(source:optionsJson:)` to both `Merman` and `MermanEngine`. The generated Swift contract and default XCFramework now discover and execute the versioned `drawing-list-json` operation, including caller-selected vector/raster policy and protocol limits through Options JSON.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching XCFramework archive and checksum were attached to the GitHub Release on 2026-09-04.

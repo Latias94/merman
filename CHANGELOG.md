@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Highlights
+
+- Added DrawingList v1, a versioned renderer-neutral output for Compose, Flutter, Canvas, Skia, ImGui-style, and other native graphics hosts that need resolved Mermaid geometry, paint, text obligations, and interaction metadata without embedding an SVG interpreter. Thanks @darriousliu for #114.
+- Moved SVG and DrawingList toward one canonical render-document boundary: every render family now has a direct DrawingList adapter. SVG switches to that document only after the family passes the full upstream-shaped DOM, accessibility, root, and effect gate; families awaiting admission retain an explicit, auditable bridge during migration.
+
+### Added
+
+- Added the discoverable `drawing-list-json` operation and `drawing-list` capability across Rust, C ABI, Apple/Python UniFFI, Flutter, Android, Node.js, and Web/WASM. Successful operations return `application/vnd.merman.drawing-list+json;version=1`; unavailable capabilities and unsupported effects remain structured failures.
+- Added a self-contained DrawingList contract with ordered paint commands, path/image/font/gradient/pattern resources, host-text and glyph obligations, semantic groups, links, accessibility metadata, explicit vector/raster policy, deterministic canonical JSON, and document-wide command/resource/path/text/asset/pixel/nesting limits.
+- Added host-integration and family/effect coverage documentation so native renderer authors can distinguish supported vector commands, bounded fallback obligations, structured errors, and remaining protocol-evolution work.
+
+### Changed
+
+- SVG-to-DrawingList diagnostic attributes are now opt-in through Rust's `SvgDebugOptions.include_drawing_list_metadata`. Production output preserves source DOM identities, accessibility, links, and drawing references without duplicating public document metadata.
+- The Rust facade now exposes DrawingList behind its own `drawing-list` feature; the default `complete-svg` aggregate includes it, while custom artifacts can advertise SVG without claiming DrawingList support.
+- SVG results now expose whether serialization used the canonical document or an explicit legacy bridge, including a structured reason for diagnostic requests, not-yet-migrated families, and effects that the portable contract cannot honestly represent.
+- Default native binding, Node.js, and applicable Web render profiles now compile and advertise DrawingList alongside their existing SVG surface; generated contracts and package APIs derive the operation from the shared capability authority.
+
+### Fixed
+
+- Hardened DrawingList decoding and canonicalization with cumulative asset and path budgets, combined LIFO nesting validation, bounded serialization, stable nested extension ordering, strict numeric/schema boundaries, and linear resource lookup instead of adversarial repeated scans.
+- Made DrawingList raster resources fail closed: v1 now admits only fully validated static PNG payloads, verifies dimensions and alpha/fallback metadata, applies caller image/font byte budgets before materializing Base64 payloads, and stops before decoding an image that would exceed the document-wide pixel budget.
+- Unified navigation URI policy across SVG and DrawingList, fixed duplicate authored Kanban IDs across parent sections, and preserved canonical SVG behavior for ER metadata/markers, Wardley baselines and markers, gradients, transformed clips, scoped resource IDs, and degenerate marker geometry.
+- Rejected unresolved theme CSS and non-portable visual effects instead of returning a DrawingList whose appearance silently differs from the corresponding Mermaid rendering.
+
+### Known limitations
+
+- Every family has direct DrawingList output, but most SVG serializers still use the explicit legacy bridge while their family-specific DOM parity work continues. Native math, generic filters, rich HTML labels, authoritative root-background semantics, and ordered multi-link annotations remain explicit fallback/error or future-protocol work rather than silently degraded output.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 Alpha.6 is a deliberately breaking prerelease and the first 0.8 release aligned with Mermaid `11.17.2`. It unifies operation control across Rust and first-party bindings, expands terminal and editor workflows, and brings the native, Web, Node.js, Flutter, Python, Apple, Android, and Typst surfaces onto explicit contracts. The workspace crates and CLI/LSP archives are published from immutable tag `v0.8.0-alpha.6`; Web, Node.js, Flutter, Python, Apple, Android, and Typst remain independent publication tracks whose availability must be checked separately. See the [alpha.5 to alpha.6 upgrade guide](docs/release/ALPHA5_TO_ALPHA6_UPGRADE_GUIDE.md).

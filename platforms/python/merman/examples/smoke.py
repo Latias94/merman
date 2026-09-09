@@ -1,3 +1,5 @@
+import json
+
 import merman
 
 
@@ -21,7 +23,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 def main() -> None:
     api = merman.Merman()
-    require(api.binding_api_version_v6() == 6, "unexpected UniFFI binding API version")
+    require(api.binding_api_version_v8() == 8, "unexpected UniFFI binding API version")
 
     registry = merman.MermanIconRegistry.from_packs(
         [
@@ -73,6 +75,25 @@ def main() -> None:
     require(measurer.calls > 0, "host text measurer was not called")
     require("Hello" in engine.render_ascii(BASIC_SOURCE, None), "ASCII smoke failed")
     require(engine.analyze_json(BASIC_SOURCE, None), "analysis smoke failed")
+    drawing_list_result = engine.execute(
+        merman.MermanOperationRequestV4(
+            operation_id="drawing-list-json",
+            source="info",
+            uri=None,
+            options_json=None,
+            control=None,
+        )
+    )
+    drawing_list = json.loads(drawing_list_result.data.decode("utf-8"))
+    require(
+        drawing_list_result.media_type
+        == "application/vnd.merman.drawing-list+json;version=1"
+        and drawing_list.get("version") == 1
+        and drawing_list.get("coordinate_system") == "logical_pixels_y_down"
+        and isinstance(drawing_list.get("commands"), list)
+        and len(drawing_list["commands"]) > 0,
+        "DrawingList smoke failed",
+    )
 
     for capability_id, operation in (
         ("png", lambda: engine.render_png(SOURCE, None)),

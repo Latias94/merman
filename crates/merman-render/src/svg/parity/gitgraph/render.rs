@@ -118,6 +118,17 @@ fn gitgraph_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> GitGr
 where
     I: Copy + std::fmt::Display,
 {
+    gitgraph_css_with_options(diagram_id, effective_config, true)
+}
+
+fn gitgraph_css_with_options<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    include_label_gradient_rules: bool,
+) -> GitGraphCss
+where
+    I: Copy + std::fmt::Display,
+{
     let id = diagram_id;
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
@@ -252,7 +263,7 @@ where
                         i,
                         node_border
                     );
-                    if use_gradient {
+                    if use_gradient && include_label_gradient_rules {
                         for label_i in 0..theme_color_limit {
                             let _ = write!(
                                 &mut out,
@@ -502,6 +513,20 @@ where
         commit_label_font_size_px,
         tag_label_font_size_px,
     }
+}
+
+/// Returns the source-backed GitGraph stylesheet for the canonical document serializer.
+///
+/// The canonical path owns geometry and paint in the DrawingList.  Reusing this stylesheet keeps
+/// the Mermaid-facing class/theme vocabulary stable without making CSS a second geometry source.
+pub(crate) fn canonical_gitgraph_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> String {
+    // Canonical DrawingList paths carry the resolved paint directly.  Keeping the legacy
+    // `.labelN { stroke: url(#...-gradient) }` rules here would override each label's own
+    // document-space gradient resource in CSS and collapse all labels back to the first one.
+    gitgraph_css_with_options(diagram_id, effective_config, false).css
 }
 
 fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {

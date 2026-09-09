@@ -58,6 +58,13 @@ data class MermanIconRegistryErrorDetails(
     val registrationName: String?,
 )
 
+/** Renderer-neutral failure context, independent of the stable binding status vocabulary. */
+data class MermanDrawingListErrorDetails(
+    val category: String,
+    val family: String?,
+    val reason: String?,
+)
+
 data class MermanCancelledDetails(
     val reason: String,
     val phase: String,
@@ -107,6 +114,8 @@ class MermanException private constructor(
         payload?.let(::parseDiagnosticDetails) ?: localDiagnosticDetails
     val iconRegistryDetails: MermanIconRegistryErrorDetails? =
         payload?.let(::parseIconRegistryDetails) ?: localIconRegistryDetails
+    val drawingListDetails: MermanDrawingListErrorDetails? =
+        payload?.let(::parseDrawingListDetails)
     val cancellationDetails: MermanCancelledDetails? =
         payload?.let(::parseCancellationDetails)
 
@@ -259,6 +268,7 @@ class MermanException private constructor(
             val hasResource = details?.has("resource") == true
             val hasDiagnostic = details?.has("diagnostic") == true
             val hasIconRegistry = details?.has("icon_registry") == true
+            val hasDrawingList = details?.has("drawing_list") == true
             val hasCancellation = details?.has("cancellation") == true
             if (hasResource && parseResourceDetails(payload) == null) {
                 return false
@@ -267,6 +277,9 @@ class MermanException private constructor(
                 return false
             }
             if (hasIconRegistry && parseIconRegistryDetails(payload) == null) {
+                return false
+            }
+            if (hasDrawingList && parseDrawingListDetails(payload) == null) {
                 return false
             }
             if (hasCancellation && parseCancellationDetails(payload) == null) {
@@ -287,7 +300,8 @@ class MermanException private constructor(
                     hasCancellation &&
                     !hasResource &&
                     !hasDiagnostic &&
-                    !hasIconRegistry
+                    !hasIconRegistry &&
+                    !hasDrawingList
             } else {
                 !hasCancellation
             }
@@ -464,6 +478,23 @@ class MermanException private constructor(
                 }
                 MermanIconRegistryErrorDetails(kindId, packIndex, registrationName)
             }.getOrNull()
+
+        private fun parseDrawingListDetails(payload: JSONObject): MermanDrawingListErrorDetails? {
+            val drawingList = payload.optJSONObject("details")?.optJSONObject("drawing_list")
+                ?: return null
+            val category = drawingList.strictNonEmptyString("category") ?: return null
+            val family = if (drawingList.has("family") && !drawingList.isNull("family")) {
+                drawingList.strictString("family") ?: return null
+            } else {
+                null
+            }
+            val reason = if (drawingList.has("reason") && !drawingList.isNull("reason")) {
+                drawingList.strictString("reason") ?: return null
+            } else {
+                null
+            }
+            return MermanDrawingListErrorDetails(category, family, reason)
+        }
 
         private fun parseCancellationDetails(payload: JSONObject): MermanCancelledDetails? =
             runCatching {

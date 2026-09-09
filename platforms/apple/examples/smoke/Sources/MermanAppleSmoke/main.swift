@@ -5,7 +5,7 @@ import Merman
 struct MermanAppleSmoke {
     static func main() throws {
         let client = Merman()
-        guard client.bindingApiVersionV6() == 6 else {
+        guard client.bindingApiVersionV8() == 8 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
         let iconPack = MermanIconPack(
@@ -34,6 +34,25 @@ struct MermanAppleSmoke {
         guard !(try engine.analyzeJson(source: basicSource, optionsJson: nil)).isEmpty else {
             throw SmokeError.failed("analysis smoke failed")
         }
+        let drawingListResult = try engine.execute(
+            request: MermanOperationRequestV4(
+                operationId: "drawing-list-json",
+                source: "info",
+                uri: nil,
+                optionsJson: nil,
+                control: nil
+            )
+        )
+        let drawingList = try JSONSerialization.jsonObject(with: drawingListResult.data)
+        guard drawingListResult.mediaType ==
+                "application/vnd.merman.drawing-list+json;version=1",
+              let document = drawingList as? [String: Any],
+              document["version"] as? Int == 1,
+              document["coordinate_system"] as? String == "logical_pixels_y_down",
+              let commands = document["commands"] as? [Any],
+              !commands.isEmpty else {
+            throw SmokeError.failed("DrawingList smoke failed")
+        }
         try requireMissingCapability("png") {
             _ = try engine.renderPng(source: basicSource, optionsJson: nil)
         }
@@ -58,7 +77,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, resource, _, _, _, _):
+            case let .Binding(_, codeName, _, _, resource, _, _, _, _, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
                       resource?.cause == "ceiling",
                       resource?.limitId == "max_source_bytes",
@@ -83,7 +102,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("expired operation deadline did not cancel the request")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, _, _, _, cancellation, _):
+            case let .Binding(_, codeName, _, _, _, _, _, cancellation, _, _):
                 guard codeName == "MERMAN_CANCELLED",
                       cancellation?.reason == "deadline_exceeded",
                       cancellation?.phase == "admission" else {
@@ -107,7 +126,7 @@ private func requireMissingCapability(
         try operation()
     } catch let error as MermanError {
         switch error {
-        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _, _):
+        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _, _, _):
             guard kind == .missingCapability, actualCapabilityId == capabilityId else {
                 throw SmokeError.failed(
                     "\(capabilityId) failure lost its missing-capability contract"

@@ -51,6 +51,7 @@ const analysisMetadataRuntimeExportNames = ["lintRuleCatalog"];
 const analysisMetadataWasmExportNames = ["lintRuleCatalog"];
 
 const renderRuntimeExportNames = [
+  "renderDrawingList",
   "renderSvg",
   "svgPlanJson",
   "renderSvgWithTextMeasurer",
@@ -64,6 +65,7 @@ const renderRuntimeExportNames = [
 ];
 
 const renderWasmExportNames = [
+  "renderDrawingList",
   "renderSvg",
   "svgPlanJson",
   "renderSvgWithTextMeasurer",

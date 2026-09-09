@@ -6,14 +6,22 @@
   "binding_result_payload_version": 1,
   "artifact": {
     "capability_ids": [
+      "drawing-list",
       "layout-cytoscape",
       "layout-elk",
       "svg"
     ],
     "output_ids": [
+      "drawing-list",
       "svg"
     ],
     "output_contracts": [
+      {
+        "id": "drawing-list",
+        "media_type": "application/vnd.merman.drawing-list+json;version=1",
+        "system_fonts": null,
+        "embedded_images": null
+      },
       {
         "id": "svg",
         "media_type": "image/svg+xml",
@@ -23,6 +31,7 @@
     ],
     "system_adapter_ids": [],
     "operation_ids": [
+      "drawing-list-json",
       "layout-json",
       "semantic-json",
       "svg",
@@ -35,6 +44,7 @@
       "supported-themes"
     ],
     "option_group_ids": [
+      "drawing_list",
       "environment",
       "fixed_local_offset_minutes",
       "fixed_today",

@@ -4,6 +4,17 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advanced the direct UniFFI binding API from released API `6` to `8` for optional `drawing_list` error details and paired normal-line host metrics. Replace the old version probe with `binding_api_version_v8()` and regenerate the complete Python package with its matching native library; API 6 and intermediate API 7 projections cannot decode the changed records safely.
+
+### Added
+
+- Added `render_drawing_list(source, options_json)` to both `Merman` and `MermanEngine`. Generated Python bindings and the default wheel profile now discover and execute validated DrawingList v1 JSON with caller-selected policy and limits.
+- Added `MermanNormalLineMetrics` for the protocol-2 `normal-line-metrics` callback operation. Hosts return line height and alphabetic baseline offset together, or decline the operation to use the renderer's complete fallback pair.
+
 ## [0.8.0a6] - 2026-09-02
 
 This section describes alpha.6, published to PyPI on 2026-09-04 with matching macOS arm64, manylinux x86_64, and Windows x86_64 wheels.

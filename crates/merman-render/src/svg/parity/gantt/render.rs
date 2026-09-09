@@ -1,16 +1,8 @@
 use super::super::*;
+use crate::gantt::{GanttSvgTransformOrigins, scale_time as gantt_scale_time_round};
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
-
-fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
-    if max_ms <= min_ms {
-        // D3 scaleTime returns the midpoint of the range for degenerate domains.
-        return (range / 2.0).round();
-    }
-    let t = (ms - min_ms) as f64 / (max_ms - min_ms) as f64;
-    (t * range).round()
-}
 
 fn fmt_allow_nan(v: f64) -> String {
     if v.is_nan() {
@@ -181,16 +173,13 @@ pub(crate) fn render_gantt_diagram_svg_model(
         _ => (0, 0),
     };
     let range = (w - layout.left_padding - layout.right_padding).max(1.0);
-    let gap = layout.bar_height + layout.bar_gap;
     // Mermaid's Gantt renderer assigns this custom attribute before the final SVG cleanup.
     // Loose security skips DOMPurify, while every sanitized mode removes the attribute.
     let preserve_task_text_height = effective_config
         .get("securityLevel")
         .and_then(serde_json::Value::as_str)
         == Some("loose");
-    let local_time_zone = options.local_time_zone();
-    let min_day_start_ms = crate::gantt::start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
-    let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
+    let transform_origins = GanttSvgTransformOrigins::new(layout, options.local_time_zone());
 
     // Exclude layer (drawn before the grid in Mermaid).
     if layout.has_excludes_layer {
@@ -199,25 +188,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         } else {
             out.push_str("<g>");
             for (i, r) in layout.excludes.iter().enumerate() {
-                // Mermaid's gantt exclude rectangles use a slightly unintuitive origin:
-                //
-                // - `x`/`width` are based on `startOf('day')` / `endOf('day')`
-                // - `transform-origin` uses the raw `dayjs(minTime)` time-of-day offset:
-                //   `timeScale(d.start) + sidePad + 0.5*(timeScale(d.end)-timeScale(d.start))`
-                //
-                // This matters when date-only inputs are parsed with a timezone-derived offset
-                // (e.g. `YYYY-MM-DD` treated as UTC midnight and shifted when rendered locally).
-                let start_day_start_ms = crate::gantt::start_of_day_ms(r.start_ms, local_time_zone)
-                    .unwrap_or(r.start_ms);
-                let end_day_start_ms =
-                    crate::gantt::start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
-                let start_raw_ms = start_day_start_ms.saturating_add(min_in_day_offset_ms);
-                let end_raw_ms = end_day_start_ms.saturating_add(min_in_day_offset_ms);
-
-                let start_x = gantt_scale_time_round(start_raw_ms, min_ms, max_ms, range);
-                let end_x = gantt_scale_time_round(end_raw_ms, min_ms, max_ms, range);
-                let cx = start_x + layout.left_padding + 0.5 * (end_x - start_x);
-                let cy = (i as f64) * gap + 0.5 * h;
+                let (cx, cy) = transform_origins.exclude(i, r);
 
                 let _ = write!(
                     &mut out,
@@ -236,7 +207,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         }
     }
 
-    let bottom_axis_y = h - layout.top_padding;
+    let bottom_axis_y = layout.bottom_axis_y();
     render_gantt_axis_group(&mut out, layout, &layout.bottom_ticks, bottom_axis_y, true);
 
     if layout.top_axis {
@@ -283,10 +254,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         out.push_str("<g>");
 
         for (_idx, t) in &tasks_in_draw_order {
-            let start_x = gantt_scale_time_round(t.start_ms, min_ms, max_ms, range);
-            let end_x = gantt_scale_time_round(t.end_ms, min_ms, max_ms, range);
-            let center_x = start_x + layout.left_padding + 0.5 * (end_x - start_x);
-            let center_y = (t.order as f64) * gap + layout.top_padding + 0.5 * layout.bar_height;
+            let (center_x, center_y) = transform_origins.task(t);
             let origin = format!(
                 "{}px {}px",
                 fmt_allow_nan(center_x),

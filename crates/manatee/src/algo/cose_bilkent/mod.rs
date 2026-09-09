@@ -1383,15 +1383,18 @@ impl SimGraph {
                 cooling_cycle += 1.0;
 
                 // cooling schedule 3 (see upstream comment in `CoSELayout.tick`)
-                let numerator = (100.0 * (initial_cooling_factor - final_temperature)).ln();
-                let denominator = max_cooling_cycle.ln().max(1e-9);
+                // Host implementations of log/pow can differ by a few ULPs, and the iterative
+                // layout amplifies those differences. Keep the schedule on the same pure Rust
+                // math implementation as the radial seed above.
+                let numerator = libm::log(100.0 * (initial_cooling_factor - final_temperature));
+                let denominator = libm::log(max_cooling_cycle).max(1e-9);
                 let power = numerator / denominator;
                 let cooling_adjuster = match layout_quality {
                     0 => cooling_cycle,
                     1 => cooling_cycle / 3.0,
                     _ => 1.0,
                 };
-                let schedule = cooling_cycle.powf(power) / 100.0 * cooling_adjuster;
+                let schedule = libm::pow(cooling_cycle, power) / 100.0 * cooling_adjuster;
                 cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
             }
 

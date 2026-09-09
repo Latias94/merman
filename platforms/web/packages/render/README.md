@@ -1,10 +1,14 @@
 # @mermanjs/web-render
 
-Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts plus math support,
+Render Mermaid diagrams to SVG or renderer-neutral DrawingList JSON in a browser with Cytoscape and ELK layouts plus math support,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
 This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
 matter.
+
+The `alpha` tag currently resolves to immutable `0.8.0-alpha.6`, which does not include DrawingList.
+The DrawingList API below requires a package built from current unreleased source or a later
+matching release.
 
 ## Quick start
 
@@ -25,6 +29,8 @@ renderSvgToElement(target, `flowchart TD
 ```
 
 Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+In current unreleased source, use `renderDrawingList()` when a Canvas, WebGL, or other graphics host
+wants resolved drawing instructions without an SVG interpreter.
 
 ## Runtime and resources
 

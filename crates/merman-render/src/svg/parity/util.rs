@@ -439,6 +439,24 @@ pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> Str
     out
 }
 
+pub(super) fn json_stringify_display_points(points: &[merman_display_list::Point]) -> String {
+    let mut out = String::new();
+    let mut buf = ryu_js::Buffer::new();
+    out.push('[');
+    for (index, point) in points.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str(r#"{"x":"#);
+        out.push_str(js_number_to_string(point.x, &mut buf));
+        out.push_str(r#","y":"#);
+        out.push_str(js_number_to_string(point.y, &mut buf));
+        out.push('}');
+    }
+    out.push(']');
+    out
+}
+
 pub(super) fn json_stringify_points_into(
     out: &mut String,
     points: &[crate::model::LayoutPoint],
@@ -571,7 +589,23 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
         }
 
         let decoded = decode_mermaid_entities_for_render_text(self.0);
-        let text = decoded.as_ref();
+        escape_xml_raw_display(decoded.as_ref()).fmt(f)
+    }
+}
+
+/// Escapes final text content without interpreting Mermaid or HTML entity spellings.
+pub(super) fn escape_xml_raw_display(text: &str) -> EscapeXmlRawDisplay<'_> {
+    EscapeXmlRawDisplay(text)
+}
+
+pub(super) struct EscapeXmlRawDisplay<'a>(&'a str);
+
+impl std::fmt::Display for EscapeXmlRawDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self.0;
+        if xml_raw_text_is_plain_ascii(text) {
+            return f.write_str(text);
+        }
         let mut start = 0usize;
         for (i, ch) in text.char_indices() {
             let replacement = if ch == '>' && text[..i].ends_with("]]") {

@@ -36,9 +36,25 @@ fn is_safe_css_declaration_value(value: &str) -> bool {
         return false;
     }
 
-    value
-        .chars()
-        .all(|ch| !ch.is_control() && !matches!(ch, '<' | '>' | '{' | '}' | ';' | '@'))
+    let mut quote = None;
+    for ch in value.chars() {
+        if ch.is_control() || matches!(ch, '<' | '>' | '{' | '}') {
+            return false;
+        }
+        if let Some(delimiter) = quote {
+            if ch == '\\' {
+                return false;
+            }
+            if ch == delimiter {
+                quote = None;
+            }
+        } else if matches!(ch, '\'' | '"') {
+            quote = Some(ch);
+        } else if matches!(ch, ';' | '@') {
+            return false;
+        }
+    }
+    quote.is_none()
 }
 
 pub(crate) fn is_label_style_key(key: &str) -> bool {
@@ -85,6 +101,12 @@ pub(crate) fn parse_css_font_size_px(raw: &str, inherited_px: f64) -> Option<f64
     if let Some(v) = lower.strip_suffix("em") {
         return parse_positive_f64(v).map(|scale| inherited_px * scale);
     }
+    if let Some(v) = lower.strip_suffix("ex") {
+        // CSS `ex` is the x-height of the current font.  The renderer-neutral seam has no font
+        // rasterizer at this layer, so use the same stable half-em approximation as Mermaid's
+        // deterministic measurement profile.
+        return parse_positive_f64(v).map(|scale| inherited_px * scale * 0.5);
+    }
 
     match lower.as_str() {
         "xx-small" => Some(inherited_px * 0.6),
@@ -118,6 +140,10 @@ mod tests {
         assert_eq!(
             parse_safe_style_decl("font-family: \"IBM Plex Sans\", Arial, sans-serif"),
             Some(("font-family", "\"IBM Plex Sans\", Arial, sans-serif"))
+        );
+        assert_eq!(
+            parse_safe_style_decl("font-family: \"A;B\""),
+            Some(("font-family", "\"A;B\""))
         );
         assert_eq!(
             parse_safe_style_decl("stroke-dasharray: 5,5"),

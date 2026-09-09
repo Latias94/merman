@@ -123,6 +123,13 @@ xychart
     assert!(layout.show_data_label);
     assert!(layout.show_data_label_outside_bar);
     assert_eq!(layout.label_data, vec!["73"]);
+    assert!(layout.drawables.iter().any(|drawable| matches!(
+        drawable,
+        XyChartDrawableElem::BarDataLabel { data, .. }
+            if data.len() == 1
+                && data[0].text == "73"
+                && data[0].vertical_pos == "auto"
+    )));
 }
 
 #[test]
@@ -220,6 +227,7 @@ xychart
     assert!(!disabled.drawables.iter().any(|drawable| match drawable {
         XyChartDrawableElem::Rect { group_texts, .. }
         | XyChartDrawableElem::Text { group_texts, .. }
+        | XyChartDrawableElem::BarDataLabel { group_texts, .. }
         | XyChartDrawableElem::Path { group_texts, .. } => {
             group_texts.first().is_some_and(|group| group == "legend")
         }

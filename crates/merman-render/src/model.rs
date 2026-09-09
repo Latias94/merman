@@ -476,6 +476,12 @@ pub enum XyChartDrawableElem {
         group_texts: Vec<String>,
         data: Vec<XyChartTextData>,
     },
+    #[serde(rename = "barDataLabel")]
+    BarDataLabel {
+        #[serde(rename = "groupTexts")]
+        group_texts: Vec<String>,
+        data: Vec<XyChartTextData>,
+    },
     #[serde(rename = "path")]
     Path {
         #[serde(rename = "groupTexts")]
@@ -1523,6 +1529,13 @@ pub struct GanttDiagramLayout {
     pub title: Option<String>,
     pub title_x: f64,
     pub title_y: f64,
+}
+
+impl GanttDiagramLayout {
+    /// Mermaid's `makeGrid` fixes the bottom inset at 50px, independently of `topPadding`.
+    pub(crate) fn bottom_axis_y(&self) -> f64 {
+        self.height - 50.0
+    }
 }
 
 #[derive(Debug, Clone)]

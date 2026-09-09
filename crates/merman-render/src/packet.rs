@@ -7,6 +7,26 @@ mod config;
 
 pub(crate) use config::PacketConfigView;
 
+pub(crate) const PACKET_FONT_FAMILY_CSS: &str = r#""trebuchet ms",verdana,arial,sans-serif"#;
+
+pub(crate) fn packet_title<'a>(
+    semantic_title: Option<&'a str>,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    semantic_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        })
+}
+
+pub(crate) fn packet_title_y(layout: &PacketDiagramLayout) -> f64 {
+    layout.height - (layout.row_height + layout.padding_y) / 2.0
+}
+
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,
     diagram_title: Option<&str>,
@@ -21,13 +41,7 @@ pub(crate) fn layout_packet_diagram_typed(
         })?;
 
     let total_row_height = cfg.row_height + cfg.padding_y;
-    let title_from_semantic = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty());
-    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    let has_title = title_from_semantic.or(title_from_meta).is_some();
+    let has_title = packet_title(model.title.as_deref(), diagram_title).is_some();
 
     let words_count = model.packet.len();
     let svg_height = total_row_height * ((words_count + 1) as f64)

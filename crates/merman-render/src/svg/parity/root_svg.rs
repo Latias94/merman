@@ -1,3 +1,4 @@
+use super::output::SvgBuffer;
 use super::*;
 use crate::family::RenderFamilyKind;
 use std::ops::Range;
@@ -262,12 +263,10 @@ impl<'a> RootDiagramId<'a> {
         }
     }
 
-    fn write_escaped(self, out: &mut String) {
+    fn write_escaped(self, out: &mut impl SvgBuffer) -> Result<()> {
         match self {
-            Self::Projected(diagram_id) => {
-                let _ = write!(out, "{diagram_id}");
-            }
-            Self::Raw(diagram_id) => escape_attr_into(out, diagram_id),
+            Self::Projected(diagram_id) => out.append_fmt(format_args!("{diagram_id}")),
+            Self::Raw(diagram_id) => output::escape_attr(out, diagram_id),
         }
     }
 }
@@ -483,6 +482,7 @@ impl<'a> RootViewportContext<'a> {
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
         );
+        let tracked_ranges = tracked_ranges?;
         let view_box_range = tracked_ranges.view_box.ok_or_else(|| Error::InvalidModel {
             message: "deferred SVG root is missing its viewBox placeholder".to_string(),
         })?;
@@ -597,7 +597,7 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn write_open(
         &self,
-        out: &mut String,
+        out: &mut impl SvgBuffer,
         spec: RootViewportSpec,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
@@ -615,11 +615,11 @@ impl<'a> RootViewportContext<'a> {
 
     pub(super) fn write_plan(
         &self,
-        out: &mut String,
+        out: &mut impl SvgBuffer,
         plan: &RootViewportPlan,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
-        self.require_empty_document(out)?;
+        self.require_empty_document(out.as_str())?;
         if plan.family != self.family
             || plan.diagram_id != self.diagram_id.as_str()
             || chrome.diagram_id != self.diagram_id
@@ -662,12 +662,12 @@ impl<'a> RootViewportContext<'a> {
                 trailing_newline: chrome.dom.trailing_newline,
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
-        );
+        )?;
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.as_str().to_string(),
             state: RootDocumentState::Ready {
-                root_open: out.clone(),
+                root_open: out.as_str().to_string(),
             },
         })
     }
@@ -967,23 +967,23 @@ impl<'a> SvgRootAttributeValue<'a> {
         }
     }
 
-    fn write_escaped(self, out: &mut String) -> Option<Range<usize>> {
+    fn write_escaped(self, out: &mut impl SvgBuffer) -> Result<Option<Range<usize>>> {
         match self {
             Self::Plain(value) => {
-                escape_attr_into(out, value);
-                None
+                output::escape_attr(out, value)?;
+                Ok(None)
             }
             Self::Tracked {
                 prefix,
                 value,
                 suffix,
             } => {
-                escape_attr_into(out, prefix);
+                output::escape_attr(out, prefix)?;
                 let start = out.len();
-                escape_attr_into(out, value);
+                output::escape_attr(out, value)?;
                 let end = out.len();
-                escape_attr_into(out, suffix);
-                Some(start..end)
+                output::escape_attr(out, suffix)?;
+                Ok(Some(start..end))
             }
         }
     }
@@ -1025,19 +1025,22 @@ struct SvgRootAttrs<'a> {
 }
 
 fn push_svg_root_attribute(
-    out: &mut String,
+    out: &mut impl SvgBuffer,
     name: &str,
     value: SvgRootAttributeValue<'_>,
-) -> Option<Range<usize>> {
-    out.push(' ');
-    out.push_str(name);
-    out.push_str(r#"=""#);
-    let tracked_range = value.write_escaped(out);
-    out.push('"');
-    tracked_range
+) -> Result<Option<Range<usize>>> {
+    out.append_char(' ')?;
+    out.append(name)?;
+    out.append(r#"=""#)?;
+    let tracked_range = value.write_escaped(out)?;
+    out.append_char('"')?;
+    Ok(tracked_range)
 }
 
-fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrackedRanges {
+fn push_svg_root_open(
+    out: &mut impl SvgBuffer,
+    attrs: SvgRootAttrs<'_>,
+) -> Result<SvgRootTrackedRanges> {
     let SvgRootAttrs {
         diagram_id,
         class,
@@ -1064,45 +1067,45 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
     // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
     let mut deferred_height_after_class: Option<&str> = None;
     let mut tracked_ranges = SvgRootTrackedRanges::default();
-    out.push_str(r#"<svg id=""#);
-    diagram_id.write_escaped(out);
+    out.append(r#"<svg id=""#)?;
+    diagram_id.write_escaped(out)?;
     let responsive_height_attr = matches!(width, SvgRootWidth::Percent100)
         .then_some(height_attr)
         .flatten();
     match width {
         SvgRootWidth::None => {
-            out.push_str(r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#);
+            out.append(r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#)?;
         }
         SvgRootWidth::Percent100 => {
-            out.push_str(
+            out.append(
                 r#"" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-            );
+            )?;
         }
         SvgRootWidth::Fixed(w) => {
-            out.push_str(r#"" width=""#);
-            escape_attr_into(out, w);
-            out.push('"');
+            out.append(r#"" width=""#)?;
+            output::escape_attr(out, w)?;
+            out.append_char('"')?;
             match fixed_height_placement {
                 SvgRootFixedHeightPlacement::BeforeXmlns => {
-                    out.push_str(r#" height=""#);
-                    escape_attr_into(out, height_attr.unwrap_or("0"));
-                    out.push('"');
-                    out.push_str(
+                    out.append(r#" height=""#)?;
+                    output::escape_attr(out, height_attr.unwrap_or("0"))?;
+                    out.append_char('"')?;
+                    out.append(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-                    );
+                    )?;
                 }
                 SvgRootFixedHeightPlacement::AfterXmlns => {
-                    out.push_str(
+                    out.append(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-                    );
-                    out.push_str(r#" height=""#);
-                    escape_attr_into(out, height_attr.unwrap_or("0"));
-                    out.push('"');
+                    )?;
+                    out.append(r#" height=""#)?;
+                    output::escape_attr(out, height_attr.unwrap_or("0"))?;
+                    out.append_char('"')?;
                 }
                 SvgRootFixedHeightPlacement::AfterClass => {
-                    out.push_str(
+                    out.append(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-                    );
+                    )?;
                     deferred_height_after_class = Some(height_attr.unwrap_or("0"));
                 }
             }
@@ -1110,97 +1113,97 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
     }
 
     if let Some(class) = class {
-        out.push_str(r#" class=""#);
-        escape_attr_into(out, class);
-        out.push('"');
+        out.append(r#" class=""#)?;
+        output::escape_attr(out, class)?;
+        out.append_char('"')?;
     }
     if let Some(h) = deferred_height_after_class.take() {
-        out.push_str(r#" height=""#);
-        escape_attr_into(out, h);
-        out.push('"');
+        out.append(r#" height=""#)?;
+        output::escape_attr(out, h)?;
+        out.append_char('"')?;
     }
     match style_viewbox_order {
         SvgRootStyleViewBoxOrder::StyleThenViewBox => {
             if style_placement == RootStylePlacement::Viewport
                 && let Some(style_attr) = style_attr
             {
-                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
+                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr)?;
             }
             if let Some(viewbox_attr) = viewbox_attr {
-                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr);
+                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr)?;
             }
         }
         SvgRootStyleViewBoxOrder::ViewBoxThenStyle => {
             if let Some(viewbox_attr) = viewbox_attr {
-                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr);
+                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr)?;
             }
             if style_placement == RootStylePlacement::Viewport
                 && let Some(style_attr) = style_attr
             {
-                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
+                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr)?;
             }
         }
     }
     if responsive_height_placement == RootResponsiveHeightPlacement::BeforeExtraAttrs
         && let Some(height_attr) = responsive_height_attr
     {
-        out.push_str(r#" height=""#);
-        escape_attr_into(out, height_attr);
-        out.push('"');
+        out.append(r#" height=""#)?;
+        output::escape_attr(out, height_attr)?;
+        out.append_char('"')?;
     }
     for (k, v) in extra_attrs {
-        out.push(' ');
-        out.push_str(k);
-        out.push_str(r#"=""#);
-        escape_attr_into(out, v);
-        out.push('"');
+        out.append_char(' ')?;
+        out.append(k)?;
+        out.append(r#"=""#)?;
+        output::escape_attr(out, v)?;
+        out.append_char('"')?;
     }
     if responsive_height_placement == RootResponsiveHeightPlacement::AfterExtraAttrs
         && let Some(height_attr) = responsive_height_attr
     {
-        out.push_str(r#" height=""#);
-        escape_attr_into(out, height_attr);
-        out.push('"');
+        out.append(r#" height=""#)?;
+        output::escape_attr(out, height_attr)?;
+        out.append_char('"')?;
     }
 
-    out.push_str(r#" role="graphics-document document" aria-roledescription=""#);
-    escape_attr_into(out, aria_roledescription);
-    out.push('"');
+    out.append(r#" role="graphics-document document" aria-roledescription=""#)?;
+    output::escape_attr(out, aria_roledescription)?;
+    out.append_char('"')?;
     if style_placement == RootStylePlacement::AfterRoleDescription
         && let Some(style_attr) = style_attr
     {
-        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
+        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr)?;
     }
     for (k, v) in after_roledescription_attrs {
-        out.push(' ');
-        out.push_str(k);
-        out.push_str(r#"=""#);
-        escape_attr_into(out, v);
-        out.push('"');
+        out.append_char(' ')?;
+        out.append(k)?;
+        out.append(r#"=""#)?;
+        output::escape_attr(out, v)?;
+        out.append_char('"')?;
     }
     match aria_attr_order {
         SvgRootAriaAttrOrder::DescribedbyThenLabelledby => {
             if let Some(v) = aria_describedby {
-                out.push_str(r#" aria-describedby=""#);
-                escape_attr_into(out, v);
-                out.push('"');
+                out.append(r#" aria-describedby=""#)?;
+                output::escape_attr(out, v)?;
+                out.append_char('"')?;
             }
             if let Some(v) = aria_labelledby {
-                out.push_str(r#" aria-labelledby=""#);
-                escape_attr_into(out, v);
-                out.push('"');
+                out.append(r#" aria-labelledby=""#)?;
+                output::escape_attr(out, v)?;
+                out.append_char('"')?;
             }
         }
         SvgRootAriaAttrOrder::LabelledbyThenDescribedby => {
             if let Some(v) = aria_labelledby {
-                out.push_str(r#" aria-labelledby=""#);
-                escape_attr_into(out, v);
-                out.push('"');
+                out.append(r#" aria-labelledby=""#)?;
+                output::escape_attr(out, v)?;
+                out.append_char('"')?;
             }
             if let Some(v) = aria_describedby {
-                out.push_str(r#" aria-describedby=""#);
-                escape_attr_into(out, v);
-                out.push('"');
+                out.append(r#" aria-describedby=""#)?;
+                output::escape_attr(out, v)?;
+                out.append_char('"')?;
             }
         }
     }
@@ -1208,21 +1211,21 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrack
     if style_placement == RootStylePlacement::Tail
         && let Some(style_attr) = style_attr
     {
-        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
+        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr)?;
     }
     for (k, v) in tail_attrs {
-        out.push(' ');
-        out.push_str(k);
-        out.push_str(r#"=""#);
-        escape_attr_into(out, v);
-        out.push('"');
+        out.append_char(' ')?;
+        out.append(k)?;
+        out.append(r#"=""#)?;
+        output::escape_attr(out, v)?;
+        out.append_char('"')?;
     }
 
-    out.push('>');
+    out.append_char('>')?;
     if trailing_newline {
-        out.push('\n');
+        out.append_char('\n')?;
     }
-    tracked_ranges
+    Ok(tracked_ranges)
 }
 
 #[cfg(test)]

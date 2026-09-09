@@ -27,6 +27,7 @@ void main() {
   projectsSvgPlanOperationFromGeneratedAbi();
   requiresSdkUpgradeForUnknownCatalogOperation();
   preservesTypedRuntimeOutputContracts();
+  acceptsDistinctOutputAndOperationIds();
   preservesCompleteRuntimeResourceContract();
   acceptsInvariantOnlyCatalog();
   acceptsAdditiveRuntimeCatalogFields();
@@ -46,6 +47,7 @@ void main() {
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
+  decodesDrawingListNativeErrors();
   rejectsInconsistentNativeErrorRelations();
   acceptsFutureNativeCancellationPhases();
   rejectsMalformedNativeDiagnosticDetails();
@@ -261,6 +263,10 @@ void projectsCurrentAbi3TableBoundaries() {
         native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE == 9 &&
         native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED == 10,
     'operation-control functions and controlled execution must retain their appended ABI 3 slots',
+  );
+  _expect(
+    native.MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES_V2 == 11,
+    'protocol-2 services must append without moving existing slots',
   );
   _expect(
     native.MERMAN_NATIVE_STATUS_BUSY == 16 &&
@@ -1148,6 +1154,20 @@ void preservesTypedRuntimeOutputContracts() {
   );
 }
 
+void acceptsDistinctOutputAndOperationIds() {
+  final catalog = _catalog(
+    capabilityIds: const ['drawing-list', 'svg'],
+    outputIds: const ['drawing-list', 'svg'],
+    operationIds: const ['drawing-list-json', 'semantic-json', 'svg'],
+  );
+  final validated = MermanRuntimeCatalog.fromJson(catalog);
+  _expect(
+    validated.supportsOutput('drawing-list') &&
+        validated.supportsOperation('drawing-list-json'),
+    'logical output IDs may be produced by a differently named operation',
+  );
+}
+
 void acceptsAdditiveRuntimeCatalogFields() {
   final catalog = _catalogWithExportOutput();
   catalog['future_root'] = true;
@@ -1569,6 +1589,28 @@ void rejectsMalformedResourceDescriptors() {
 }
 
 void textMeasurementFactoriesRejectMalformedValues() {
+  final normal = MermanTextMeasureResult.normalLineMetrics(
+    lineHeight: 28,
+    baselineOffset: 21,
+  );
+  _expect(
+    normal.resultKind == MermanTextMeasurementResultKind.normalLineMetrics &&
+        normal.normalLineHeight == 28 &&
+        normal.normalBaselineOffset == 21,
+    'normal line metrics must preserve the complete pair',
+  );
+  _expectThrows<RangeError>(() {
+    MermanTextMeasureResult.normalLineMetrics(
+      lineHeight: -1,
+      baselineOffset: 21,
+    );
+  });
+  _expectThrows<ArgumentError>(() {
+    MermanTextMeasureResult.normalLineMetrics(
+      lineHeight: 28,
+      baselineOffset: double.nan,
+    );
+  });
   _expectThrows<RangeError>(() {
     MermanTextMeasureResult.metrics(width: 1, height: 1, lineCount: 0);
   });
@@ -1873,6 +1915,71 @@ void decodesMachineReadableNativeErrors() {
   );
 }
 
+void decodesDrawingListNativeErrors() {
+  MermanException decode(int status, String statusName, Object? details) =>
+      MermanException.fromNative(
+        status,
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode({
+              'version': 1,
+              'ok': false,
+              'status': status,
+              'status_name': statusName,
+              'kind': 'generic',
+              'capability_id': null,
+              'details': {'drawing_list': details},
+              'message': 'DrawingList failed',
+            }),
+          ),
+        ),
+      );
+  final unavailable = decode(
+    native.MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION,
+    'unsupported-operation',
+    {
+      'category': 'unavailable',
+      'family': 'flowchart',
+      'reason': 'unsupported effect: 阴影',
+    },
+  );
+  _expect(
+    unavailable is MermanUnsupportedOperationException &&
+        unavailable.drawingListDetails?.category == 'unavailable' &&
+        unavailable.drawingListDetails?.family == 'flowchart' &&
+        unavailable.drawingListDetails?.reason == 'unsupported effect: 阴影',
+    'DrawingList details must survive the typed unsupported-operation exception',
+  );
+  final contract = decode(
+    native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+    'invalid-argument',
+    {'category': 'contract', 'family': null, 'reason': null},
+  );
+  _expect(
+    contract.code == native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT &&
+        contract.drawingListDetails?.category == 'contract' &&
+        contract.drawingListDetails?.family == null &&
+        contract.drawingListDetails?.reason == null,
+    'DrawingList contract context must retain nullable fields',
+  );
+  for (final details in [
+    null,
+    {'category': '', 'family': null, 'reason': null},
+    {'category': 'render', 'family': 7, 'reason': null},
+    {'category': 'render', 'family': null, 'reason': false},
+  ]) {
+    _expect(
+      decode(
+            native.MERMAN_NATIVE_STATUS_RENDER_ERROR,
+            'render-error',
+            details,
+          ).codeName ==
+          'DART_NATIVE_CONTRACT_ERROR',
+      'malformed DrawingList details must not silently disappear',
+    );
+  }
+}
+
 void rejectsInconsistentNativeErrorRelations() {
   Map<String, Object?> cancellationEnvelope({
     int? status,
@@ -1929,6 +2036,15 @@ void rejectsInconsistentNativeErrorRelations() {
       },
     ),
     cancellationEnvelope(status: native.MERMAN_NATIVE_STATUS_PARSE_ERROR),
+    cancellationEnvelope(
+      additionalDetails: {
+        'drawing_list': {
+          'category': 'render',
+          'family': null,
+          'reason': 'failed',
+        },
+      },
+    ),
     cancellationEnvelope(statusName: 'parse-error'),
     cancellationEnvelope(reason: 'bogus'),
     cancellationEnvelope(phase: 'future phase'),
@@ -2290,7 +2406,7 @@ Map<String, Object?> _catalog({
       'operation_ids': operationIds,
       'system_adapter_ids': systemAdapterIds,
       'text_measurement': usesSvgPipeline
-          ? {'protocol_version': 1, 'provider_ids': providers}
+          ? {'protocol_version': 2, 'provider_ids': providers}
           : null,
     },
     'option_group_ids': optionGroupIds,

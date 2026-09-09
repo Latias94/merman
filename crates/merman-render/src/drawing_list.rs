@@ -1,0 +1,1293 @@
+//! Canonical renderer output shared by non-SVG targets and SVG-specific adapters.
+//!
+//! The public [`merman_display_list`] document is intentionally only one projection of this
+//! internal value. SVG-only structure stays beside it so a native host never has to understand
+//! DOM details, while the SVG serializer can continue to preserve Mermaid's source-backed shape.
+
+#[cfg(feature = "layout-cytoscape")]
+mod architecture;
+mod block;
+mod builder;
+mod c4;
+mod class;
+mod cynefin;
+mod er;
+mod eventmodeling;
+mod flowchart;
+mod gantt;
+mod gitgraph;
+mod icon_asset;
+pub(crate) use icon_asset::{
+    AssetScope, AssetScopeKind, AssetStylePlacement, AssetStyleProperties, AssetStyleProperty,
+};
+mod info;
+mod ishikawa;
+mod journey;
+mod kanban;
+mod mindmap;
+mod packet;
+mod pie;
+mod quadrantchart;
+mod radar;
+mod railroad;
+mod requirement;
+mod sankey;
+mod sequence;
+mod state;
+mod support;
+mod timeline;
+mod tree_view;
+mod treemap;
+mod venn;
+mod wardley;
+mod xychart;
+mod zenuml;
+
+use crate::environment::RenderSession;
+use crate::family::{BuiltinFamilyArtifact, RenderFamilyKind};
+use crate::model::{ErrorDiagramLayout, LayoutPoint};
+use crate::portable_font::{PortableFontFamilies, PortableFontFamilyError};
+use crate::{Error, Result};
+use merman_core::OperationPhase;
+use merman_core::ParseMetadata;
+use merman_core::theme_color::{ColorChannel, ThemeColor};
+use merman_display_list::{
+    Color, DrawingCommand, DrawingListDocument, DrawingListLimits, DrawingListPolicy, FillRule,
+    FontDescriptor, FontStyle, LineCap, LineJoin, MeasurementProvenance, Paint, PathSegment,
+    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, StrokeStyle, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextPaintOrder, TextRun, TextStyle, Viewport,
+};
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
+use svgtypes::{PathParser, PathSegment as SvgPathSegment};
+
+#[cfg(feature = "layout-cytoscape")]
+use architecture::ArchitectureSvgBody;
+use flowchart::{FlowchartSvgBody, build_flowchart_document, build_swimlane_document};
+use zenuml::ZenumlSvgBody;
+
+use self::builder::DrawingListBuilder;
+
+/// Output-target admission policy, separate from document correctness.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DocumentBudget {
+    DrawingList(DrawingListLimits),
+    SvgOperation,
+}
+
+impl From<DrawingListLimits> for DocumentBudget {
+    fn from(limits: DrawingListLimits) -> Self {
+        Self::DrawingList(limits)
+    }
+}
+
+impl DocumentBudget {
+    fn check_footprint(
+        self,
+        footprint: &merman_display_list::DrawingListFootprint,
+        session: &RenderSession,
+    ) -> Result<()> {
+        if let Self::DrawingList(limits) = self {
+            footprint.check_limits(&limits).map_err(|error| {
+                operation_document_error(Error::DrawingListContract(error), session)
+            })?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate(
+        self,
+        document: &DrawingListDocument,
+        session: &RenderSession,
+    ) -> Result<()> {
+        document.validate_with_control(|event| {
+            session.checkpoint(OperationPhase::Emit)?;
+            match self {
+                Self::DrawingList(limits) => {
+                    limits.admit_validation_event(event).map_err(|error| {
+                        operation_document_error(Error::DrawingListContract(error), session)
+                    })
+                }
+                Self::SvgOperation => {
+                    if let merman_display_list::ValidationEvent::ResourceCount {
+                        resource,
+                        actual,
+                    } = event
+                    {
+                        // A category count is a lower-bound preflight, not a second charge. The
+                        // complete footprint is charged once, after validation and before encoding.
+                        let units = match resource {
+                            "text_bytes" | "font_bytes" | "image_bytes" | "image_pixels"
+                            | "fallback_pixels" => actual.div_ceil(1024),
+                            "commands"
+                            | "resources"
+                            | "fallbacks"
+                            | "path_segments"
+                            | "stroke_dash_entries"
+                            | "nesting_depth"
+                            | "glyphs" => actual,
+                            _ => {
+                                return Err(Error::DrawingListContract(
+                                    merman_display_list::DrawingListError::InvalidDocument(
+                                        "unknown validation resource category".into(),
+                                    ),
+                                ));
+                            }
+                        };
+                        let units = usize::try_from(units).map_err(|_| {
+                            Error::DrawingListContract(
+                                merman_display_list::DrawingListError::InvalidDocument(
+                                    "validation work count overflows usize".into(),
+                                ),
+                            )
+                        })?;
+                        session
+                            .work_meter()
+                            .preflight_at(units, OperationPhase::Emit)?;
+                    }
+                    Ok(())
+                }
+            }
+        })
+    }
+}
+
+/// The private SVG projection kept beside the public renderer-neutral document.
+#[derive(Debug, Clone)]
+pub(crate) struct SvgStructureSidecar {
+    pub(crate) family: RenderFamilyKind,
+    pub(crate) body: SvgStructureBody,
+}
+
+impl SvgStructureSidecar {
+    /// Returns the stable Mermaid-like diagram role used by the SVG root.
+    pub(crate) fn diagram_type(&self) -> &'static str {
+        self.family.as_str()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum SvgStructureBody {
+    Error(ErrorSvgBody),
+    Flowchart(FlowchartSvgBody),
+    Swimlane(SwimlaneSvgBody),
+    Class(ClassSvgBody),
+    C4(C4SvgBody),
+    Er(ErSvgBody),
+    Info(InfoSvgBody),
+    Ishikawa(IshikawaSvgBody),
+    Journey(JourneySvgBody),
+    Kanban(KanbanSvgBody),
+    Mindmap(MindmapSvgBody),
+    Packet(PacketSvgBody),
+    Pie(PieSvgBody),
+    QuadrantChart(QuadrantChartSvgBody),
+    Radar(RadarSvgBody),
+    Railroad(RailroadSvgBody),
+    Requirement(RequirementSvgBody),
+    Sankey(SankeySvgBody),
+    Sequence(SequenceSvgBody),
+    State(StateSvgBody),
+    Treemap(TreemapSvgBody),
+    TreeView(TreeViewSvgBody),
+    Venn(VennSvgBody),
+    XyChart(XyChartSvgBody),
+    EventModeling(EventModelingSvgBody),
+    Cynefin(CynefinSvgBody),
+    Gantt(GanttSvgBody),
+    GitGraph(GitGraphSvgBody),
+    Timeline(TimelineSvgBody),
+    Wardley(WardleySvgBody),
+    Block(BlockSvgBody),
+    #[cfg(feature = "layout-cytoscape")]
+    Architecture(ArchitectureSvgBody),
+    Zenuml(ZenumlSvgBody),
+}
+
+/// A complete canonical render document.
+#[derive(Debug, Clone)]
+pub(crate) struct RenderDocument {
+    pub(crate) public: DrawingListDocument,
+    pub(crate) svg: SvgStructureSidecar,
+}
+
+impl RenderDocument {
+    /// Applies target admission and charges shared document work once per encoding.
+    pub(crate) fn admit_serialization(
+        &self,
+        budget: impl Into<DocumentBudget>,
+        session: &RenderSession,
+    ) -> Result<()> {
+        session.checkpoint(OperationPhase::Emit)?;
+        let footprint = self
+            .public
+            .footprint()
+            .map_err(Error::DrawingListContract)?;
+        // Reject cumulative protocol limits before charging an unreturnable candidate.
+        budget.into().check_footprint(&footprint, session)?;
+        let units = footprint.work_units().map_err(Error::DrawingListContract)?;
+        session
+            .work_meter()
+            .charge_at(units, OperationPhase::Emit)?;
+        session.checkpoint(OperationPhase::Emit)
+    }
+
+    pub(crate) fn into_public(self) -> DrawingListDocument {
+        let SvgStructureSidecar { family, body } = &self.svg;
+        debug_assert!(match (family, body) {
+            (RenderFamilyKind::Error, SvgStructureBody::Error(error)) => {
+                error.max_width_px.is_finite() && error.max_width_px > 0.0
+            }
+            (RenderFamilyKind::Flowchart, SvgStructureBody::Flowchart(flowchart)) => {
+                !flowchart.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Swimlane, SvgStructureBody::Swimlane(swimlane)) => {
+                !swimlane.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Class, SvgStructureBody::Class(class)) => {
+                !class.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::C4, SvgStructureBody::C4(c4)) => {
+                !c4.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Er, SvgStructureBody::Er(er)) => {
+                !er.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Info, SvgStructureBody::Info(_)) => true,
+            (RenderFamilyKind::Ishikawa, SvgStructureBody::Ishikawa(ishikawa)) => {
+                !ishikawa.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Journey, SvgStructureBody::Journey(journey)) => {
+                !journey.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Kanban, SvgStructureBody::Kanban(kanban)) => {
+                !kanban.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Mindmap, SvgStructureBody::Mindmap(mindmap)) => {
+                !mindmap.nodes.is_empty()
+            }
+            (RenderFamilyKind::Packet, SvgStructureBody::Packet(packet)) => {
+                !packet.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Pie, SvgStructureBody::Pie(pie)) => !pie.diagram_type.is_empty(),
+            (RenderFamilyKind::QuadrantChart, SvgStructureBody::QuadrantChart(quadrantchart)) =>
+                !quadrantchart.diagram_type.is_empty(),
+            (RenderFamilyKind::Radar, SvgStructureBody::Radar(radar)) => {
+                !radar.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Railroad, SvgStructureBody::Railroad(railroad)) => {
+                !railroad.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Requirement, SvgStructureBody::Requirement(requirement)) => {
+                !requirement.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Sankey, SvgStructureBody::Sankey(sankey)) => {
+                !sankey.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Sequence, SvgStructureBody::Sequence(sequence)) => {
+                !sequence.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::State, SvgStructureBody::State(state)) => {
+                !state.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Treemap, SvgStructureBody::Treemap(treemap)) => {
+                !treemap.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::TreeView, SvgStructureBody::TreeView(tree_view)) => {
+                !tree_view.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Venn, SvgStructureBody::Venn(venn)) => {
+                !venn.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::XyChart, SvgStructureBody::XyChart(xychart)) => {
+                !xychart.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::EventModeling, SvgStructureBody::EventModeling(eventmodeling)) => {
+                !eventmodeling.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Cynefin, SvgStructureBody::Cynefin(cynefin)) => {
+                !cynefin.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Gantt, SvgStructureBody::Gantt(gantt)) => {
+                !gantt.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::GitGraph, SvgStructureBody::GitGraph(gitgraph)) => {
+                !gitgraph.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Timeline, SvgStructureBody::Timeline(timeline)) => {
+                !timeline.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Wardley, SvgStructureBody::Wardley(wardley)) => {
+                !wardley.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Block, SvgStructureBody::Block(block)) => {
+                !block.diagram_type.is_empty()
+            }
+            #[cfg(feature = "layout-cytoscape")]
+            (RenderFamilyKind::Architecture, SvgStructureBody::Architecture(architecture)) => {
+                !architecture.diagram_type.is_empty()
+            }
+            (RenderFamilyKind::Zenuml, SvgStructureBody::Zenuml(zenuml)) => {
+                !zenuml.diagram_type.is_empty()
+            }
+            _ => false,
+        });
+        self.public
+    }
+}
+
+/// SVG-only root sizing retained beside the renderer-neutral Error document.
+///
+/// `max_width_px` is a typed SVG host-policy input, not drawing geometry or portable protocol
+/// state. Keeping it in the private sidecar prevents browser responsiveness from leaking into the
+/// public DrawingList contract.
+#[derive(Debug, Clone)]
+pub(crate) struct ErrorSvgBody {
+    pub(crate) max_width_px: f64,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Mindmap document.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgBody {
+    pub(crate) use_max_width: bool,
+    pub(crate) label_max_width: f64,
+    pub(crate) nodes: BTreeMap<String, MindmapSvgNode>,
+    pub(crate) edges: BTreeMap<String, MindmapSvgEdge>,
+}
+
+/// Browser-only structure for one Mindmap node.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgNode {
+    pub(crate) dom_id: String,
+    pub(crate) class: String,
+    pub(crate) look: String,
+    pub(crate) origin: Point,
+    pub(crate) shape: String,
+    pub(crate) label_source: String,
+}
+
+/// Browser-only structure for one Mindmap edge.
+#[derive(Debug, Clone)]
+pub(crate) struct MindmapSvgEdge {
+    pub(crate) dom_id: String,
+    pub(crate) class: String,
+    pub(crate) look: String,
+    pub(crate) data_id: String,
+    pub(crate) points: Vec<Point>,
+}
+
+/// Info's SVG family marker; version text lives only in the public command stream.
+#[derive(Debug, Clone)]
+pub(crate) struct InfoSvgBody;
+
+/// SVG-only metadata retained beside the public Ishikawa document.
+#[derive(Debug, Clone)]
+pub(crate) struct IshikawaSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) font_size: f64,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Journey document.
+#[derive(Debug, Clone)]
+pub(crate) struct JourneySvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) expose_accessibility_title: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Kanban document.
+#[derive(Debug, Clone)]
+pub(crate) struct KanbanSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) look: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) ticket_links: BTreeMap<String, Option<String>>,
+}
+
+/// SVG-only metadata retained beside the public Pie document.
+#[derive(Debug, Clone)]
+pub(crate) struct PieSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the public Packet document.
+#[derive(Debug, Clone)]
+pub(crate) struct PacketSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) expose_accessibility_title: bool,
+}
+
+/// SVG-only metadata retained beside the public QuadrantChart document.
+#[derive(Debug, Clone)]
+pub(crate) struct QuadrantChartSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    /// Attribute spelling is reusable only when equivalent to the current public paint.
+    pub(crate) path_paint: BTreeMap<String, QuadrantPaintSpelling>,
+    pub(crate) text_fill: BTreeMap<usize, String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct QuadrantPaintSpelling {
+    pub(crate) fill: Option<String>,
+    pub(crate) stroke: Option<String>,
+    /// Inert without a public stroke; otherwise reusable only for the same public width.
+    pub(crate) stroke_width: Option<String>,
+}
+
+/// SVG-only metadata retained beside the public Radar document.
+#[derive(Debug, Clone)]
+pub(crate) struct RadarSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+}
+
+/// SVG-only metadata retained beside the public Railroad document.
+#[derive(Debug, Clone)]
+pub(crate) struct RailroadSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Requirement document.
+#[derive(Debug, Clone)]
+pub(crate) struct RequirementSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) semantic_looks: BTreeMap<String, String>,
+    pub(crate) semantic_color_ids: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the public Sankey document.
+#[derive(Debug, Clone)]
+pub(crate) struct SankeySvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    /// DOM-only decomposition of the public baseline into SVG y + dy; never an extra offset.
+    pub(crate) label_dy_em: f64,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Sequence document.
+#[derive(Debug, Clone)]
+pub(crate) struct SequenceSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the public State document.
+#[derive(Debug, Clone)]
+pub(crate) struct StateSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) semantic_looks: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the public Treemap document.
+#[derive(Debug, Clone)]
+pub(crate) struct TreemapSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the public TreeView document.
+#[derive(Debug, Clone)]
+pub(crate) struct TreeViewSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    /// Coordinate representation only; SVG must compensate against the current public matrix.
+    pub(crate) asset_view_boxes: BTreeMap<String, merman_display_list::Rect>,
+    pub(crate) assets: icon_asset::AssetStructure,
+}
+
+/// SVG-only metadata retained beside the public Venn document.
+#[derive(Debug, Clone)]
+pub(crate) struct VennSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) semantic_data_sets: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the public XYChart document.
+#[derive(Debug, Clone)]
+pub(crate) struct XyChartSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral EventModeling document.
+#[derive(Debug, Clone)]
+pub(crate) struct EventModelingSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Cynefin document.
+#[derive(Debug, Clone)]
+pub(crate) struct CynefinSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) expose_accessibility_title: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Gantt document.
+#[derive(Debug, Clone)]
+pub(crate) struct GanttSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) expose_accessibility_title: bool,
+    /// Non-visual source DOM attribute retained only by the trusted SVG profile.
+    pub(crate) task_text_height_attribute: Option<f64>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    /// SVG matrix representation bases only; the public command transform owns all geometry.
+    pub(crate) path_transform_bases: BTreeMap<String, Point>,
+    /// Source radius attributes, usable only when their clamped shape matches the public path.
+    pub(crate) task_radius_attributes: BTreeMap<String, Point>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral GitGraph document.
+#[derive(Debug, Clone)]
+pub(crate) struct GitGraphSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Timeline document.
+#[derive(Debug, Clone)]
+pub(crate) struct TimelineSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Wardley document.
+#[derive(Debug, Clone)]
+pub(crate) struct WardleySvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) acc_title: Option<String>,
+    pub(crate) acc_description: Option<String>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Block document.
+#[derive(Debug, Clone)]
+pub(crate) struct BlockSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) class_defs:
+        indexmap::IndexMap<String, merman_core::diagrams::block::BlockClassDefRenderModel>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) label_max_widths: BTreeMap<String, f64>,
+    pub(crate) label_inline_styles: BTreeMap<String, Vec<String>>,
+    pub(crate) label_data_ids: BTreeMap<String, String>,
+    pub(crate) path_inline_properties: BTreeMap<String, Vec<BlockInlinePathProperty>>,
+    pub(crate) edge_metadata: BTreeMap<String, BlockEdgeSvgMetadata>,
+}
+
+/// Path properties whose source declaration must retain Mermaid's inline CSS precedence.
+///
+/// Paint properties read their resolved value from the canonical [`PathStyle`] and graphics state.
+/// `BackgroundColor` retains a non-paint SVG compatibility declaration: CSS background color does
+/// not replace an SVG shape's fill, but Mermaid still preserves the declaration in the DOM.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BlockInlinePathProperty {
+    BackgroundColor(String),
+    Fill,
+    Stroke,
+    StrokeWidth,
+    StrokeDashArray,
+    StrokeDashOffset,
+    StrokeLineCap,
+    StrokeLineJoin,
+    StrokeMiterLimit,
+    FillRule,
+    Opacity,
+    FillOpacity,
+    StrokeOpacity,
+}
+
+/// SVG-only relationship metadata retained for the Block edge path contract.
+#[derive(Debug, Clone)]
+pub(crate) struct BlockEdgeSvgMetadata {
+    pub(crate) source_id: String,
+    pub(crate) points: Vec<LayoutPoint>,
+}
+
+/// SVG-only metadata retained beside the public renderer-neutral Swimlane document.
+#[derive(Debug, Clone)]
+pub(crate) struct SwimlaneSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral Class document.
+#[derive(Debug, Clone)]
+pub(crate) struct ClassSvgBody {
+    pub(crate) diagram_type: String,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral C4 document.
+#[derive(Debug, Clone)]
+pub(crate) struct C4SvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) acc_title: Option<String>,
+    pub(crate) acc_description: Option<String>,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+}
+
+/// SVG-only metadata retained beside the renderer-neutral ER document.
+#[derive(Debug, Clone)]
+pub(crate) struct ErSvgBody {
+    pub(crate) diagram_type: String,
+    pub(crate) use_max_width: bool,
+    pub(crate) data_look: String,
+    pub(crate) relationship_html_labels: bool,
+    pub(crate) entity_html_labels: bool,
+    pub(crate) semantic_classes: BTreeMap<String, String>,
+    pub(crate) path_classes: BTreeMap<String, String>,
+    pub(crate) text_classes: BTreeMap<String, String>,
+    pub(crate) dom_ids: BTreeMap<String, String>,
+    pub(crate) edge_metadata: BTreeMap<String, ErEdgeSvgMetadata>,
+    pub(crate) marker_types: BTreeSet<String>,
+}
+
+/// SVG-only relationship metadata retained for the ER edge path contract.
+#[derive(Debug, Clone)]
+pub(crate) struct ErEdgeSvgMetadata {
+    pub(crate) dom_id: String,
+    pub(crate) data_points: String,
+    pub(crate) start_marker: Option<String>,
+    pub(crate) end_marker: Option<String>,
+}
+
+pub(crate) const ERROR_ICON_PATHS: [&str; 6] = [
+    "m411.313,123.313c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32-9.375,9.375-20.688-20.688c-12.484-12.5-32.766-12.5-45.25,0l-16,16c-1.261,1.261-2.304,2.648-3.31,4.051-21.739-8.561-45.324-13.426-70.065-13.426-105.867,0-192,86.133-192,192s86.133,192 192,192 192-86.133 192-192c0-24.741-4.864-48.327-13.426-70.065 1.402-1.007 2.79-2.049 4.051-3.31l16-16c12.5-12.492 12.5-32.758 0-45.25l-20.688-20.688 9.375-9.375 32.001-31.999zm-219.313,100.687c-52.938,0-96,43.063-96,96 0,8.836-7.164,16-16,16s-16-7.164-16-16c0-70.578 57.422-128 128-128 8.836,0 16,7.164,16,16s-7.164,16-16,16z",
+    "m459.02,148.98c-6.25-6.25-16.375-6.25-22.625,0s-6.25,16.375 0,22.625l16,16c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688 6.25-6.25 6.25-16.375 0-22.625l-16.001-16z",
+    "m340.395,75.605c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688 6.25-6.25 6.25-16.375 0-22.625l-16-16c-6.25-6.25-16.375-6.25-22.625,0s-6.25,16.375 0,22.625l15.999,16z",
+    "m400,64c8.844,0 16-7.164 16-16v-32c0-8.836-7.156-16-16-16-8.844,0-16,7.164-16,16v32c0,8.836 7.156,16 16,16z",
+    "m496,96.586h-32c-8.844,0-16,7.164-16,16 0,8.836 7.156,16 16,16h32c8.844,0 16-7.164 16-16 0-8.836-7.156-16-16-16z",
+    "m436.98,75.605c3.125,3.125 7.219,4.688 11.313,4.688 4.094,0 8.188-1.563 11.313-4.688l32-32c6.25-6.25 6.25-16.375 0-22.625s-16.375-6.25-22.625,0l-32,32c-6.251,6.25-6.251,16.375-0.001,22.625z",
+];
+
+impl ErrorSvgBody {
+    pub(crate) fn new() -> Self {
+        Self {
+            max_width_px: 512.0,
+        }
+    }
+
+    pub(crate) fn with_max_width(mut self, max_width_px: f64) -> Self {
+        self.max_width_px = max_width_px;
+        self
+    }
+
+    /// Writes the source-backed body shape used by the existing SVG parity renderer.
+    pub(crate) fn write_into(&self, out: &mut String) {
+        let version_text = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
+        out.push_str(r#"<g/>"#);
+        out.push_str(r#"<g>"#);
+        for path in ERROR_ICON_PATHS {
+            let _ = write!(out, r#"<path class="error-icon" d="{path}"/>"#);
+        }
+        out.push_str(
+            r#"<text class="error-text" x="1440" y="250" font-size="150px" style="text-anchor: middle;">Syntax error in text</text>"#,
+        );
+        let _ = write!(
+            out,
+            r#"<text class="error-text" x="1250" y="400" font-size="100px" style="text-anchor: middle;">{}</text>"#,
+            version_text
+        );
+        out.push_str(r#"</g>"#);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn build_for_family(
+    family: &BuiltinFamilyArtifact,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    limits: impl Into<DocumentBudget>,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    build_for_family_with_diagram_id(family, metadata, policy, limits, None, session)
+}
+
+/// The identity is normalized at the target boundary, before any geometry is constructed.
+pub(crate) fn build_for_family_with_diagram_id(
+    family: &BuiltinFamilyArtifact,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    limits: impl Into<DocumentBudget>,
+    diagram_id: Option<&str>,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    let limits = limits.into();
+    let family_kind = family.kind();
+    if metadata
+        .effective_config
+        .as_value()
+        .get("themeCSS")
+        .and_then(Value::as_str)
+        .is_some_and(|css| !css.trim().is_empty())
+    {
+        return Err(Error::DrawingListUnavailable {
+            family: family_kind.as_str().to_string(),
+            reason: format!(
+                "visual effect `themeCSS` is an unresolved SVG cascade input for {} DrawingList output",
+                family_kind.as_str()
+            ),
+        });
+    }
+
+    let result = match family {
+        BuiltinFamilyArtifact::Error(pair) => {
+            build_error_document(pair.layout(), metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Flowchart(artifact) => {
+            build_flowchart_document(artifact, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Swimlane(artifact) => {
+            build_swimlane_document(artifact, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Class(pair) => {
+            class::build_class_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::C4(pair) => {
+            c4::build_c4_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Er(pair) => {
+            er::build_er_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Info(pair) => {
+            info::build_info_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Ishikawa(pair) => {
+            ishikawa::build_ishikawa_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Journey(pair) => {
+            journey::build_journey_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Kanban(pair) => {
+            kanban::build_kanban_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Mindmap(pair) => {
+            mindmap::build_mindmap_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Packet(pair) => {
+            packet::build_packet_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Pie(pair) => {
+            pie::build_pie_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::QuadrantChart(pair) => {
+            quadrantchart::build_quadrantchart_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Radar(pair) => {
+            radar::build_radar_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Railroad(pair) => {
+            railroad::build_railroad_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Requirement(pair) => {
+            requirement::build_requirement_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Sankey(pair) => {
+            sankey::build_sankey_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Sequence(pair) => {
+            sequence::build_sequence_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::State(pair) => {
+            state::build_state_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Treemap(pair) => {
+            treemap::build_treemap_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::TreeView(pair) => {
+            tree_view::build_tree_view_document(pair, metadata, policy, limits, diagram_id, session)
+        }
+        BuiltinFamilyArtifact::Venn(pair) => {
+            venn::build_venn_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::XyChart(pair) => {
+            xychart::build_xychart_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::EventModeling(pair) => {
+            eventmodeling::build_eventmodeling_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Cynefin(pair) => {
+            cynefin::build_cynefin_document(pair, metadata, policy, limits, diagram_id, session)
+        }
+        BuiltinFamilyArtifact::Gantt(pair) => {
+            gantt::build_gantt_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::GitGraph(pair) => {
+            gitgraph::build_gitgraph_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Timeline(pair) => {
+            timeline::build_timeline_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Wardley(pair) => {
+            wardley::build_wardley_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Block(pair) => {
+            block::build_block_document(pair, metadata, policy, limits, session)
+        }
+        #[cfg(feature = "layout-cytoscape")]
+        BuiltinFamilyArtifact::Architecture(pair) => {
+            architecture::build_architecture_document(pair, metadata, policy, limits, session)
+        }
+        BuiltinFamilyArtifact::Zenuml(pair) => {
+            zenuml::build_zenuml_document(pair, metadata, policy, limits, session)
+        }
+    };
+    result.map_err(|error| operation_document_error(error, session))
+}
+
+pub(crate) fn operation_document_error(error: Error, session: &RenderSession) -> Error {
+    if let Error::DrawingListContract(
+        ref protocol_error @ merman_display_list::DrawingListError::ResourceLimit {
+            resource,
+            actual,
+            maximum,
+        },
+    ) = error
+    {
+        return session
+            .work_meter()
+            .terminate_document_limit(
+                protocol_error.limit_id().unwrap_or(resource),
+                actual,
+                maximum,
+            )
+            .into();
+    }
+    error
+}
+
+fn build_error_document(
+    layout: &ErrorDiagramLayout,
+    metadata: &ParseMetadata,
+    policy: DrawingListPolicy,
+    limits: impl Into<DocumentBudget>,
+    session: &RenderSession,
+) -> Result<RenderDocument> {
+    session.checkpoint(OperationPhase::Emit)?;
+    let background = error_theme_color(
+        metadata.effective_config.as_value(),
+        "errorBkgColor",
+        "#552222",
+    )?;
+    let text_color = error_theme_color(
+        metadata.effective_config.as_value(),
+        "errorTextColor",
+        "#552222",
+    )?;
+    let font = FontDescriptor {
+        families: error_font_families(metadata.effective_config.as_value())?,
+        weight: 400,
+        style: FontStyle::Normal,
+        postscript_name: None,
+        resource: None,
+    };
+    let body = ErrorSvgBody::new().with_max_width(layout.max_width_px);
+    let version_text = format!("mermaid version {}", crate::error::UPSTREAM_MERMAID_VERSION);
+
+    let mut builder = DrawingListBuilder::new(policy, limits, session);
+    builder.push_semantic(SemanticAnnotation {
+        id: "error.document".to_string(),
+        role: SemanticRole::Document,
+        title: Some("Syntax error in text".to_string()),
+        description: Some(version_text.clone()),
+        link: None,
+    })?;
+    builder.push_control(DrawingCommand::Save)?;
+    builder.push_control(DrawingCommand::BeginSemanticGroup {
+        semantic_id: "error.document".to_string(),
+    })?;
+    for (index, path_data) in ERROR_ICON_PATHS.iter().enumerate() {
+        session.checkpoint(OperationPhase::Emit)?;
+        let id = ResourceId::new(format!("error.icon.{index}"));
+        builder.draw_path(
+            id,
+            parse_svg_path(path_data)?,
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: Some(Paint::solid(background)),
+                stroke: None,
+            },
+        )?;
+    }
+    builder.draw_host_text("Syntax error in text", |text| {
+        error_text_run(
+            text,
+            Point::new(1440.0, 250.0),
+            Rect::new(0.0, 100.0, layout.viewbox_width, 180.0),
+            150.0,
+            &font,
+            text_color,
+        )
+    })?;
+    builder.draw_host_text(&version_text, |text| {
+        error_text_run(
+            text,
+            Point::new(1250.0, 400.0),
+            Rect::new(0.0, 300.0, layout.viewbox_width, 130.0),
+            100.0,
+            &font,
+            text_color,
+        )
+    })?;
+    builder.push_control(DrawingCommand::EndSemanticGroup)?;
+    builder.push_control(DrawingCommand::Restore)?;
+
+    let document = builder.finish(
+        Viewport::new(Rect::new(
+            0.0,
+            0.0,
+            layout.viewbox_width,
+            layout.viewbox_height,
+        )),
+        BTreeMap::new(),
+    )?;
+
+    Ok(RenderDocument {
+        public: document,
+        svg: SvgStructureSidecar {
+            family: RenderFamilyKind::Error,
+            body: SvgStructureBody::Error(body),
+        },
+    })
+}
+
+fn error_text_run(
+    text: String,
+    origin: Point,
+    bounds: Rect,
+    font_size: f64,
+    font: &FontDescriptor,
+    fill: Color,
+) -> TextRun {
+    TextRun {
+        text,
+        origin,
+        bounds,
+        style: TextStyle {
+            font: font.clone(),
+            font_size,
+            letter_spacing: 0.0,
+            line_height: font_size,
+            fill: Paint::solid(fill),
+            stroke: Some(StrokeStyle {
+                paint: Paint::solid(fill),
+                width: 1.0,
+                dash_array: Vec::new(),
+                dash_offset: 0.0,
+                line_cap: LineCap::Butt,
+                line_join: LineJoin::Miter,
+                miter_limit: 4.0,
+            }),
+            paint_order: TextPaintOrder::FillThenStroke,
+        },
+        anchor: TextAnchor::Middle,
+        baseline: TextBaseline::Alphabetic,
+        direction: TextDirection::Auto,
+        language: None,
+        obligation: TextObligation::HostText {
+            measurement: MeasurementProvenance::DeterministicFallback {
+                profile: "error-fixed-text".to_string(),
+            },
+        },
+    }
+}
+
+pub(crate) fn error_theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
+    theme_color(config, key, fallback).map_err(|error| match error {
+        Error::InvalidModel { message } => Error::DrawingListUnavailable {
+            family: RenderFamilyKind::Error.as_str().to_string(),
+            reason: format!(
+                "visual effect `{key}` requires CSS color resolution that DrawingList cannot preserve: {message}"
+            ),
+        },
+        other => other,
+    })
+}
+
+pub(crate) fn error_font_families(config: &Value) -> Result<Vec<String>> {
+    let raw = config
+        .get("themeVariables")
+        .and_then(|variables| variables.get("fontFamily"))
+        .and_then(Value::as_str)
+        .or_else(|| config.get("fontFamily").and_then(Value::as_str))
+        .unwrap_or(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS);
+    parse_font_families_for(raw, RenderFamilyKind::Error)
+}
+
+pub(crate) fn theme_color(config: &Value, key: &str, fallback: &str) -> Result<Color> {
+    let value = config
+        .get("themeVariables")
+        .and_then(|variables| variables.get(key))
+        .and_then(Value::as_str)
+        .unwrap_or(fallback);
+    let parsed = ThemeColor::parse(value).map_err(|error| Error::InvalidModel {
+        message: format!("DrawingList cannot resolve theme color {key}: {error}"),
+    })?;
+    let rgb_channel =
+        |kind: ColorChannel| -> u8 { parsed.channel(kind).round().clamp(0.0, 255.0) as u8 };
+    let alpha = (parsed.channel(ColorChannel::Alpha) * 255.0)
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    Ok(Color::rgba(
+        rgb_channel(ColorChannel::Red),
+        rgb_channel(ColorChannel::Green),
+        rgb_channel(ColorChannel::Blue),
+        alpha,
+    ))
+}
+
+pub(crate) fn parse_font_families_for(
+    value: impl AsRef<str>,
+    family: RenderFamilyKind,
+) -> Result<Vec<String>> {
+    PortableFontFamilies::parse(value.as_ref())
+        .map(PortableFontFamilies::into_vec)
+        .map_err(|error| portable_font_unavailable(family, error))
+}
+
+fn portable_font_unavailable(family: RenderFamilyKind, error: PortableFontFamilyError) -> Error {
+    Error::DrawingListUnavailable {
+        family: family.as_str().to_string(),
+        reason: format!(
+            "visual effect `fontFamily` {error} and cannot be preserved by renderer-neutral host text"
+        ),
+    }
+}
+
+pub(crate) fn parse_svg_path(data: &str) -> Result<Vec<PathSegment>> {
+    let mut output = Vec::new();
+    write_svg_path(data, &mut |segment| {
+        output
+            .try_reserve(1)
+            .map_err(|_| Error::DrawingListAllocationFailed {
+                collection: "source SVG path segments",
+            })?;
+        output.push(segment);
+        Ok(())
+    })?;
+    Ok(output)
+}
+
+/// Lower source-asset geometry directly into a bounded builder's segment sink.
+pub(crate) fn write_svg_path(
+    data: &str,
+    emit: &mut dyn FnMut(PathSegment) -> Result<()>,
+) -> Result<()> {
+    let mut cursor = PathCursor::default();
+    for segment in PathParser::from(data) {
+        let segment = segment.map_err(|error| Error::InvalidModel {
+            message: format!("invalid source-backed SVG path: {error}"),
+        })?;
+        match segment {
+            SvgPathSegment::MoveTo { abs, x, y } => {
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.subpath_start = to;
+                cursor.reset_controls();
+                emit(PathSegment::MoveTo { to })?;
+            }
+            SvgPathSegment::LineTo { abs, x, y } => {
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.reset_controls();
+                emit(PathSegment::LineTo { to })?;
+            }
+            SvgPathSegment::HorizontalLineTo { abs, x } => {
+                let to = Point::new(if abs { x } else { cursor.current.x + x }, cursor.current.y);
+                cursor.current = to;
+                cursor.reset_controls();
+                emit(PathSegment::LineTo { to })?;
+            }
+            SvgPathSegment::VerticalLineTo { abs, y } => {
+                let to = Point::new(cursor.current.x, if abs { y } else { cursor.current.y + y });
+                cursor.current = to;
+                cursor.reset_controls();
+                emit(PathSegment::LineTo { to })?;
+            }
+            SvgPathSegment::CurveTo {
+                abs,
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => {
+                let control1 = cursor.point(abs, x1, y1);
+                let control2 = cursor.point(abs, x2, y2);
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.cubic_control = Some(control2);
+                cursor.quadratic_control = None;
+                emit(PathSegment::CubicTo {
+                    control1,
+                    control2,
+                    to,
+                })?;
+            }
+            SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
+                let control1 = cursor
+                    .cubic_control
+                    .map_or(cursor.current, |previous| reflect(previous, cursor.current));
+                let control2 = cursor.point(abs, x2, y2);
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.cubic_control = Some(control2);
+                cursor.quadratic_control = None;
+                emit(PathSegment::CubicTo {
+                    control1,
+                    control2,
+                    to,
+                })?;
+            }
+            SvgPathSegment::Quadratic { abs, x1, y1, x, y } => {
+                let control = cursor.point(abs, x1, y1);
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.cubic_control = None;
+                cursor.quadratic_control = Some(control);
+                emit(PathSegment::QuadTo { control, to })?;
+            }
+            SvgPathSegment::SmoothQuadratic { abs, x, y } => {
+                let control = cursor
+                    .quadratic_control
+                    .map_or(cursor.current, |previous| reflect(previous, cursor.current));
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.cubic_control = None;
+                cursor.quadratic_control = Some(control);
+                emit(PathSegment::QuadTo { control, to })?;
+            }
+            SvgPathSegment::EllipticalArc {
+                abs,
+                rx,
+                ry,
+                x_axis_rotation,
+                large_arc,
+                sweep,
+                x,
+                y,
+            } => {
+                let to = cursor.point(abs, x, y);
+                cursor.current = to;
+                cursor.reset_controls();
+                emit(PathSegment::ArcTo {
+                    radius_x: rx,
+                    radius_y: ry,
+                    x_axis_rotation_degrees: x_axis_rotation,
+                    large_arc,
+                    sweep_clockwise: sweep,
+                    to,
+                })?;
+            }
+            SvgPathSegment::ClosePath { .. } => {
+                cursor.current = cursor.subpath_start;
+                cursor.reset_controls();
+                emit(PathSegment::Close)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct PathCursor {
+    current: Point,
+    subpath_start: Point,
+    cubic_control: Option<Point>,
+    quadratic_control: Option<Point>,
+}
+
+impl Default for PathCursor {
+    fn default() -> Self {
+        Self {
+            current: Point::new(0.0, 0.0),
+            subpath_start: Point::new(0.0, 0.0),
+            cubic_control: None,
+            quadratic_control: None,
+        }
+    }
+}
+
+impl PathCursor {
+    fn point(&self, absolute: bool, x: f64, y: f64) -> Point {
+        if absolute {
+            Point::new(x, y)
+        } else {
+            Point::new(self.current.x + x, self.current.y + y)
+        }
+    }
+
+    fn reset_controls(&mut self) {
+        self.cubic_control = None;
+        self.quadratic_control = None;
+    }
+}
+
+fn reflect(control: Point, around: Point) -> Point {
+    Point::new(2.0 * around.x - control.x, 2.0 * around.y - control.y)
+}

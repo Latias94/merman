@@ -15,7 +15,7 @@ internal val MERMAN_RUNTIME_CATALOG_FIELD_IDENTIFIER_REGEX =
 
 internal const val MERMAN_BINDING_CONTRACT_OPTIONS_SCHEMA_VERSION: Int = 2
 internal const val MERMAN_OPERATION_METADATA_SCHEMA_VERSION: Int = 1
-internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 1
+internal const val MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: Int = 2
 
 internal data class MermanBindingCapabilitySpec(
     val id: String,
@@ -78,6 +78,7 @@ internal object MermanBindingOperationId {
     internal const val ASCII: String = "ascii"
     internal const val DOCUMENT_ANALYSIS_FACTS_JSON: String = "document-analysis-facts-json"
     internal const val DOCUMENT_ANALYSIS_JSON: String = "document-analysis-json"
+    internal const val DRAWING_LIST_JSON: String = "drawing-list-json"
     internal const val JPEG: String = "jpeg"
     internal const val LAYOUT_JSON: String = "layout-json"
     internal const val PDF: String = "pdf"
@@ -100,6 +101,7 @@ internal object MermanBindingMetadataId {
 internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilitySpec> = listOf(
     MermanBindingCapabilitySpec("analysis", listOf()),
     MermanBindingCapabilitySpec("ascii", listOf()),
+    MermanBindingCapabilitySpec("drawing-list", listOf("svg")),
     MermanBindingCapabilitySpec("editor", listOf()),
     MermanBindingCapabilitySpec("icons", listOf()),
     MermanBindingCapabilitySpec("jpeg", listOf()),
@@ -136,6 +138,7 @@ internal val MERMAN_REQUIRED_PAYLOAD_SCHEMA_VERSIONS: Map<String, Int> = mapOf(
 
 internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionGroupSpec> = listOf(
     MermanBindingOptionGroupSpec("ascii", false, setOf("ascii"), false),
+    MermanBindingOptionGroupSpec("drawing_list", false, setOf("drawing-list"), false),
     MermanBindingOptionGroupSpec("environment", false, setOf(), true),
     MermanBindingOptionGroupSpec("fixed_local_offset_minutes", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_today", true, setOf(), false),
@@ -174,6 +177,7 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
     MermanBindingOperationExpectation("ascii", "ascii", "text/plain; charset=utf-8", 1, false, "ascii"),
     MermanBindingOperationExpectation("document-analysis-facts-json", null, "application/json", 1, true, "analysis"),
     MermanBindingOperationExpectation("document-analysis-json", null, "application/json", 1, true, "analysis"),
+    MermanBindingOperationExpectation("drawing-list-json", "drawing-list", "application/vnd.merman.drawing-list+json;version=1", 1, false, "drawing-list"),
     MermanBindingOperationExpectation("jpeg", "jpeg", "image/jpeg", 1, false, "jpeg"),
     MermanBindingOperationExpectation("layout-json", null, "application/json", 1, false, "svg"),
     MermanBindingOperationExpectation("pdf", "pdf", "application/pdf", 1, false, "pdf"),
@@ -185,15 +189,16 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
 )
 
 internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(
-    capabilityIds = listOf("analysis", "ascii", "layout-cytoscape", "layout-elk", "svg"),
-    outputIds = listOf("ascii", "svg"),
+    capabilityIds = listOf("analysis", "ascii", "drawing-list", "layout-cytoscape", "layout-elk", "svg"),
+    outputIds = listOf("ascii", "drawing-list", "svg"),
     systemAdapterIds = listOf(),
-    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "layout-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
+    operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "document-analysis-facts-json", "document-analysis-json", "drawing-list-json", "layout-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),
     metadataIds = listOf("ascii-capabilities", "diagram-family-capabilities", "lint-rule-catalog", "presentation-catalog", "supported-diagrams", "supported-themes"),
 )
 
 internal val MERMAN_ANDROID_OUTPUT_CONTRACT_JSON_BY_ID: Map<String, String> = mapOf(
     "ascii" to "{\"id\":\"ascii\",\"media_type\":\"text/plain; charset=utf-8\",\"system_fonts\":null,\"embedded_images\":null}",
+    "drawing-list" to "{\"id\":\"drawing-list\",\"media_type\":\"application/vnd.merman.drawing-list+json;version=1\",\"system_fonts\":null,\"embedded_images\":null}",
     "svg" to "{\"id\":\"svg\",\"media_type\":\"image/svg+xml\",\"system_fonts\":null,\"embedded_images\":null}",
 )
 

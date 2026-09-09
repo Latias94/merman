@@ -1073,6 +1073,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-display-list"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "base64",
+ "png",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "merman-elk-layered"
 version = "0.8.0-alpha.6"
 dependencies = [
@@ -1143,6 +1154,7 @@ dependencies = [
  "libm",
  "manatee",
  "merman-core",
+ "merman-display-list",
  "merman-layout-elk",
  "pulldown-cmark",
  "quick-xml",

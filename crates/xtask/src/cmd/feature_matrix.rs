@@ -85,6 +85,10 @@ fn wasm_transport_packages() -> impl Iterator<Item = &'static str> {
 }
 
 fn complete_svg_features() -> impl Iterator<Item = &'static str> {
+    ["drawing-list", "layout-cytoscape", "math", "svg"].into_iter()
+}
+
+fn rustdoc_complete_svg_features() -> impl Iterator<Item = &'static str> {
     ["layout-cytoscape", "math", "svg"].into_iter()
 }
 
@@ -106,6 +110,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
+            "drawing-list",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -120,6 +125,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         dependency: "merman",
         features: &[
             "ascii",
+            "drawing-list",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -153,6 +159,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
+            "drawing-list",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -168,6 +175,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
+            "drawing-list",
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
@@ -183,6 +191,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
         features: &[
             "analysis",
             "ascii",
+            "drawing-list",
             "layout-cytoscape",
             "layout-elk",
             "math",
@@ -738,9 +747,12 @@ impl FeatureGraph {
         }
 
         let rustdoc_complete_svg = direct_feature_members(rustdoc, "complete-svg")?;
-        if rustdoc_complete_svg != expected_complete_svg {
+        let expected_rustdoc_complete_svg = rustdoc_complete_svg_features()
+            .map(|feature| feature.to_string())
+            .collect::<BTreeSet<_>>();
+        if rustdoc_complete_svg != expected_rustdoc_complete_svg {
             return Err(matrix_error(format!(
-                "{}: merman-rustdoc `complete-svg` must contain exactly {expected_complete_svg:?}; found {rustdoc_complete_svg:?}",
+                "{}: merman-rustdoc `complete-svg` must contain exactly {expected_rustdoc_complete_svg:?}; found {rustdoc_complete_svg:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -949,6 +961,11 @@ impl FeatureGraph {
             ("merman-core", Vec::new(), "core-base"),
             ("merman", Vec::new(), "facade-base"),
             ("merman", vec!["svg".to_string()], "facade-svg"),
+            (
+                "merman",
+                vec!["drawing-list".to_string()],
+                "facade-drawing-list",
+            ),
             ("merman-lsp", Vec::new(), "lsp-library"),
             ("merman-lsp", vec!["stdio".to_string()], "lsp-stdio"),
         ] {
@@ -1332,7 +1349,10 @@ mod tests {
                 "merman",
                 &[
                     ("default", &["complete-svg"]),
-                    ("complete-svg", &["svg", "layout-cytoscape", "math"]),
+                    (
+                        "complete-svg",
+                        &["svg", "drawing-list", "layout-cytoscape", "math"],
+                    ),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
@@ -1497,7 +1517,7 @@ mod tests {
         );
         assert_eq!(
             complete_svg_features().collect::<Vec<_>>(),
-            vec!["layout-cytoscape", "math", "svg"]
+            vec!["drawing-list", "layout-cytoscape", "math", "svg"]
         );
         assert_eq!(
             complete_svg_elk_features().collect::<Vec<_>>(),

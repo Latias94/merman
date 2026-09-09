@@ -170,6 +170,19 @@ class MermanIconRegistryErrorDetails {
   final String? registrationName;
 }
 
+/// Renderer-neutral failure context, independent of the stable status vocabulary.
+class MermanDrawingListErrorDetails {
+  const MermanDrawingListErrorDetails({
+    required this.category,
+    required this.family,
+    required this.reason,
+  });
+
+  final String category;
+  final String? family;
+  final String? reason;
+}
+
 /// Stable details attached to a cooperative operation cancellation.
 class MermanCancellationErrorDetails {
   const MermanCancellationErrorDetails({
@@ -229,6 +242,7 @@ class MermanException implements Exception {
     this.resourceDetails,
     this.diagnosticDetails,
     this.iconRegistryDetails,
+    this.drawingListDetails,
     this.cancellationDetails,
   });
 
@@ -241,6 +255,7 @@ class MermanException implements Exception {
   final MermanResourceErrorDetails? resourceDetails;
   final MermanDiagnosticErrorDetails? diagnosticDetails;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
+  final MermanDrawingListErrorDetails? drawingListDetails;
   final MermanCancellationErrorDetails? cancellationDetails;
 
   factory MermanException.contract(String message) => MermanException(
@@ -267,6 +282,7 @@ class MermanException implements Exception {
     MermanResourceErrorDetails? resourceDetails;
     MermanDiagnosticErrorDetails? diagnosticDetails;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
+    MermanDrawingListErrorDetails? drawingListDetails;
     MermanCancellationErrorDetails? cancellationDetails;
     if (metadata.isNotEmpty) {
       try {
@@ -299,6 +315,10 @@ class MermanException implements Exception {
             iconRegistryDetails = _parseIconRegistryErrorDetails(iconRegistry)!;
           }
           final cancellation = details['cancellation'];
+          final drawingList = details['drawing_list'];
+          if (drawingList is Map) {
+            drawingListDetails = _parseDrawingListErrorDetails(drawingList)!;
+          }
           if (cancellation is Map) {
             cancellationDetails = _parseCancellationErrorDetails(cancellation)!;
           }
@@ -320,6 +340,7 @@ class MermanException implements Exception {
           codeName: codeName,
           message: message,
           diagnosticDetails: diagnosticDetails,
+          drawingListDetails: drawingListDetails,
         );
       }
       if (kind == MermanErrorKind.missingCapability && capabilityId != null) {
@@ -329,6 +350,7 @@ class MermanException implements Exception {
           message: message,
           capabilityId: capabilityId,
           diagnosticDetails: diagnosticDetails,
+          drawingListDetails: drawingListDetails,
         );
       }
       return MermanUnsupportedOperationException(
@@ -338,6 +360,7 @@ class MermanException implements Exception {
         kind: kind,
         capabilityId: capabilityId,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_REENTRANT_CALL) {
@@ -346,6 +369,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_BUSY) {
@@ -354,6 +378,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        drawingListDetails: drawingListDetails,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_CANCELLED &&
@@ -376,6 +401,7 @@ class MermanException implements Exception {
       resourceDetails: resourceDetails,
       diagnosticDetails: diagnosticDetails,
       iconRegistryDetails: iconRegistryDetails,
+      drawingListDetails: drawingListDetails,
       cancellationDetails: cancellationDetails,
     );
   }
@@ -479,12 +505,20 @@ String? _validateNativeErrorEnvelope(
         return '`details.cancellation` is invalid';
       }
     }
+    if (details.containsKey('drawing_list')) {
+      final drawingList = details['drawing_list'];
+      if (drawingList is! Map ||
+          _parseDrawingListErrorDetails(drawingList) == null) {
+        return '`details.drawing_list` is invalid';
+      }
+    }
   }
 
   final hasCancellation = details?.containsKey('cancellation') ?? false;
   final hasResource = details?.containsKey('resource') ?? false;
   final hasDiagnostic = details?.containsKey('diagnostic') ?? false;
   final hasIconRegistry = details?.containsKey('icon_registry') ?? false;
+  final hasDrawingList = details?.containsKey('drawing_list') ?? false;
   if (hasResource &&
       (status != native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED ||
           kind != MermanErrorKind.generic)) {
@@ -504,7 +538,8 @@ String? _validateNativeErrorEnvelope(
         !hasCancellation ||
         hasResource ||
         hasDiagnostic ||
-        hasIconRegistry) {
+        hasIconRegistry ||
+        hasDrawingList) {
       return 'cancellation is not a disjoint generic terminal';
     }
   } else if (hasCancellation) {
@@ -666,6 +701,25 @@ MermanIconRegistryErrorDetails? _parseIconRegistryErrorDetails(
   );
 }
 
+MermanDrawingListErrorDetails? _parseDrawingListErrorDetails(
+  Map<Object?, Object?> drawingList,
+) {
+  final category = drawingList['category'];
+  final family = drawingList['family'];
+  final reason = drawingList['reason'];
+  if (category is! String ||
+      category.isEmpty ||
+      (family != null && family is! String) ||
+      (reason != null && reason is! String)) {
+    return null;
+  }
+  return MermanDrawingListErrorDetails(
+    category: category,
+    family: family as String?,
+    reason: reason as String?,
+  );
+}
+
 const _nativeCancellationReasons = {'requested', 'deadline_exceeded'};
 final _nativeCancellationPhasePattern = RegExp(r'^[a-z][a-z0-9_-]{0,63}$');
 
@@ -722,6 +776,7 @@ class MermanReentrantCallException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(kind: MermanErrorKind.reentrantCall);
 }
 
@@ -732,6 +787,7 @@ class MermanBusyException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(kind: MermanErrorKind.busy);
 }
 
@@ -755,6 +811,7 @@ class MermanUnsupportedOperationException extends MermanException {
     super.kind,
     super.capabilityId,
     super.diagnosticDetails,
+    super.drawingListDetails,
   });
 }
 
@@ -766,6 +823,7 @@ class MermanUnknownOperationException
     required String codeName,
     required String message,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(
          code: code,
          codeName: codeName,
@@ -783,6 +841,7 @@ class MermanMissingCapabilityException
     required String message,
     required String capabilityId,
     super.diagnosticDetails,
+    super.drawingListDetails,
   }) : super(
          code: code,
          codeName: codeName,
@@ -1325,7 +1384,7 @@ class MermanTextMeasureRequest {
       operationCode = request.operation,
       operation = MermanTextMeasurementOperation.fromCode(request.operation) {
     if (request.text_measurement_protocol_version !=
-        native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION) {
+        native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION) {
       throw MermanException.contract(
         'unsupported text-measurement protocol '
         '${request.text_measurement_protocol_version}',
@@ -1362,7 +1421,22 @@ class MermanTextMeasureResult {
     this.bboxLeft,
     this.bboxRight,
     this.rawWidth,
+    this.normalLineHeight,
+    this.normalBaselineOffset,
   });
+
+  factory MermanTextMeasureResult.normalLineMetrics({
+    required double lineHeight,
+    required double baselineOffset,
+  }) {
+    _requireNonNegativeFinite(lineHeight, 'lineHeight');
+    _requireFinite(baselineOffset, 'baselineOffset');
+    return MermanTextMeasureResult._(
+      resultKind: MermanTextMeasurementResultKind.normalLineMetrics,
+      normalLineHeight: lineHeight,
+      normalBaselineOffset: baselineOffset,
+    );
+  }
 
   factory MermanTextMeasureResult.metrics({
     required double width,
@@ -1434,6 +1508,8 @@ class MermanTextMeasureResult {
   final double? bboxLeft;
   final double? bboxRight;
   final double? rawWidth;
+  final double? normalLineHeight;
+  final double? normalBaselineOffset;
 }
 
 /// Host callback invoked synchronously while native rendering measures text.
@@ -1868,10 +1944,24 @@ class MermanRuntimeCatalog {
       capabilitySet,
       outputIds.toSet(),
     );
+    // Output IDs are logical artifact names and do not have to match the operation
+    // ID that produces them (for example, `drawing-list` is produced by
+    // `drawing-list-json`).  Enforce the relation for output IDs known to this
+    // SDK; leave future open-string outputs to the corresponding future operation
+    // metadata so an additive catalog remains forward-compatible.
+    final knownOutputIds = <String>{
+      for (final expectation in mermanBindingOperationExpectations)
+        if (expectation.outputId != null) expectation.outputId!,
+    };
     for (final outputId in outputIds) {
-      if (!operationIds.contains(outputId)) {
+      if (!knownOutputIds.contains(outputId)) continue;
+      final producedByOperation = operationIds.any(
+        (operationId) =>
+            _operationExpectationById[operationId]?.outputId == outputId,
+      );
+      if (!producedByOperation) {
         throw MermanException.contract(
-          'runtime output `$outputId` must also be a callable operation',
+          'runtime output `$outputId` has no callable producing operation',
         );
       }
     }
@@ -1905,9 +1995,9 @@ class MermanRuntimeCatalog {
         'provider_ids',
       }, 'runtime text measurement');
       if (_requiredInt(textMeasurementMap, 'protocol_version') !=
-          native.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION) {
+          mermanTextMeasurementProtocolVersion) {
         throw MermanException.contract(
-          'text measurement protocol version does not match the generated native header',
+          'text measurement protocol version does not match the generated vocabulary',
         );
       }
       providers.addAll(
@@ -2269,6 +2359,13 @@ class Merman {
   String renderSvg(String source, {String? optionsJson}) =>
       execute(MermanOperation.svg, source, optionsJson: optionsJson).utf8Text;
 
+  /// Returns the renderer-neutral DrawingList v1 JSON document.
+  String renderDrawingList(String source, {String? optionsJson}) => execute(
+    MermanOperation.drawingListJson,
+    source,
+    optionsJson: optionsJson,
+  ).utf8Text;
+
   Uint8List renderPng(String source, {String? optionsJson}) =>
       renderPngResult(source, optionsJson: optionsJson).bytes;
 
@@ -2514,6 +2611,13 @@ class MermanEngine {
   String renderSvg(String source, {String? optionsJson}) =>
       execute(MermanOperation.svg, source, optionsJson: optionsJson).utf8Text;
 
+  /// Returns the renderer-neutral DrawingList v1 JSON document.
+  String renderDrawingList(String source, {String? optionsJson}) => execute(
+    MermanOperation.drawingListJson,
+    source,
+    optionsJson: optionsJson,
+  ).utf8Text;
+
   Uint8List renderPng(String source, {String? optionsJson}) =>
       renderPngResult(source, optionsJson: optionsJson).bytes;
 
@@ -2672,7 +2776,7 @@ class _NativeApi {
     executeCollectControlled,
     required native.DartMermanNativeResultFreeFnFunction resultFree,
     required native.DartMermanNativeMetadataCollectFnFunction metadataCollect,
-    required native.DartMermanNativeEngineNewWithServicesFnFunction
+    required native.DartMermanNativeEngineNewWithServicesV2FnFunction
     engineNewWithServices,
     required native.DartMermanNativeOperationControlNewFnFunction
     operationControlNew,
@@ -2699,7 +2803,7 @@ class _NativeApi {
   _executeCollectControlled;
   final native.DartMermanNativeResultFreeFnFunction _resultFree;
   final native.DartMermanNativeMetadataCollectFnFunction _metadataCollect;
-  final native.DartMermanNativeEngineNewWithServicesFnFunction
+  final native.DartMermanNativeEngineNewWithServicesV2FnFunction
   _engineNewWithServices;
   final native.DartMermanNativeOperationControlNewFnFunction
   _operationControlNew;
@@ -2779,8 +2883,8 @@ class _NativeApi {
       _requireFunctionPointer(table.result_free, 'result_free');
       _requireFunctionPointer(table.metadata_collect, 'metadata_collect');
       _requireFunctionPointer(
-        table.engine_new_with_services,
-        'engine_new_with_services',
+        table.engine_new_with_services_v2,
+        'engine_new_with_services_v2',
       );
       _requireFunctionPointer(
         table.operation_control_new,
@@ -2818,9 +2922,9 @@ class _NativeApi {
             .asFunction<native.DartMermanNativeResultFreeFnFunction>(),
         metadataCollect: table.metadata_collect
             .asFunction<native.DartMermanNativeMetadataCollectFnFunction>(),
-        engineNewWithServices: table.engine_new_with_services
+        engineNewWithServices: table.engine_new_with_services_v2
             .asFunction<
-              native.DartMermanNativeEngineNewWithServicesFnFunction
+              native.DartMermanNativeEngineNewWithServicesV2FnFunction
             >(),
         operationControlNew: table.operation_control_new
             .asFunction<native.DartMermanNativeOperationControlNewFnFunction>(),
@@ -2902,7 +3006,7 @@ class _NativeApi {
     runtimeCatalog.requireEngineServices(services);
     final iconPacks =
         services.iconPackSet?._encodedPacks ?? const <_EncodedMermanIconPack>[];
-    ffi.Pointer<native.MermanNativeEngineServicesConfig>? servicesConfig;
+    ffi.Pointer<native.MermanNativeEngineServicesConfigV2>? servicesConfig;
     ffi.Pointer<native.MermanNativeEngineToken>? token;
     _NativeResult? result;
     _NativeAllocationScope? allocations;
@@ -2910,7 +3014,7 @@ class _NativeApi {
     _TextMeasurementRegistration? registration;
     var unownedToken = 0;
     try {
-      servicesConfig = calloc<native.MermanNativeEngineServicesConfig>();
+      servicesConfig = calloc<native.MermanNativeEngineServicesConfigV2>();
       token = calloc<native.MermanNativeEngineToken>();
       result = _NativeResult.allocate(_resultFree);
       allocations = _NativeAllocationScope();
@@ -2921,7 +3025,7 @@ class _NativeApi {
           ? null
           : _TextMeasurementRegistration.create(services.textMeasurer!);
       servicesConfig.ref.struct_size = ffi
-          .sizeOf<native.MermanNativeEngineServicesConfig>();
+          .sizeOf<native.MermanNativeEngineServicesConfigV2>();
       _initializeEngineConfig(
         servicesConfig.ref.engine_config,
         optionsJson,
@@ -3292,14 +3396,14 @@ class _TextMeasurementRegistration {
   static final Map<int, MermanTextMeasurer> _measurers = {};
 
   final ffi.Pointer<ffi.Uint8> _key;
-  final ffi.NativeCallable<native.MermanNativeTextMeasureCallbackFunction>
+  final ffi.NativeCallable<native.MermanNativeTextMeasureCallbackV2Function>
   _callback;
   bool _disposed = false;
 
   ffi.Pointer<ffi.Void> get userData => _key.cast<ffi.Void>();
 
   ffi.Pointer<
-    ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>
+    ffi.NativeFunction<native.MermanNativeTextMeasureCallbackV2Function>
   >
   get nativeFunction => _callback.nativeFunction;
 
@@ -3309,7 +3413,7 @@ class _TextMeasurementRegistration {
     try {
       final callback =
           ffi.NativeCallable<
-            native.MermanNativeTextMeasureCallbackFunction
+            native.MermanNativeTextMeasureCallbackV2Function
           >.isolateLocal(
             _invoke,
             exceptionalReturn: native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR,
@@ -3324,14 +3428,14 @@ class _TextMeasurementRegistration {
 
   static int _invoke(
     ffi.Pointer<native.MermanNativeTextMeasureRequest> request,
-    ffi.Pointer<native.MermanNativeTextMeasureResult> outResult,
+    ffi.Pointer<native.MermanNativeTextMeasureResultV2> outResult,
     ffi.Pointer<ffi.Void> userData,
   ) {
     if (request.address == 0 || outResult.address == 0) {
       return native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR;
     }
     final output = outResult.ref;
-    output.struct_size = ffi.sizeOf<native.MermanNativeTextMeasureResult>();
+    output.struct_size = ffi.sizeOf<native.MermanNativeTextMeasureResultV2>();
     output.handled = 0;
     output.has_raw_width = 0;
     output.result_kind = native.MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
@@ -3342,6 +3446,8 @@ class _TextMeasurementRegistration {
     output.bbox_right = 0;
     output.raw_width = 0;
     output.line_count = 0;
+    output.line_height = double.nan;
+    output.baseline_offset = double.nan;
 
     final measurer = _measurers[userData.address];
     if (measurer == null) {
@@ -3362,6 +3468,8 @@ class _TextMeasurementRegistration {
       output.bbox_right = result.bboxRight ?? 0;
       output.raw_width = result.rawWidth ?? 0;
       output.line_count = result.lineCount;
+      output.line_height = result.normalLineHeight ?? double.nan;
+      output.baseline_offset = result.normalBaselineOffset ?? double.nan;
       return native.MERMAN_NATIVE_STATUS_OK;
     } catch (_) {
       return native.MERMAN_NATIVE_STATUS_CALLBACK_ERROR;
@@ -3590,12 +3698,12 @@ final class UnpublishedEngineQuarantineTestHarness {
 }
 
 void _initializeEngineConfig(
-  native.MermanNativeEngineConfig config,
+  native.MermanNativeEngineConfigV2 config,
   String? optionsJson,
   _TextMeasurementRegistration? registration,
   _NativeAllocationScope allocations,
 ) {
-  config.struct_size = ffi.sizeOf<native.MermanNativeEngineConfig>();
+  config.struct_size = ffi.sizeOf<native.MermanNativeEngineConfigV2>();
   _writeSlice(
     config.options_json,
     optionsJson == null ? const <int>[] : utf8.encode(optionsJson),
@@ -3605,7 +3713,7 @@ void _initializeEngineConfig(
       registration?.nativeFunction ??
       ffi.nullptr
           .cast<
-            ffi.NativeFunction<native.MermanNativeTextMeasureCallbackFunction>
+            ffi.NativeFunction<native.MermanNativeTextMeasureCallbackV2Function>
           >();
   config.text_measure_user_data =
       registration?.userData ?? ffi.nullptr.cast<ffi.Void>();

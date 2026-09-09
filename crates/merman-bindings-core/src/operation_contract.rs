@@ -273,7 +273,7 @@ impl BindingUnavailableOperationExpectation {
     }
 }
 
-/// One descriptor-derived row in the shared 13-operation expectation matrix.
+/// One descriptor-derived row in the shared operation expectation matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct BindingOperationExpectation {
@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn shared_expectation_matrix_covers_every_descriptor_operation() {
         let rows = binding_operation_expectations();
-        assert_eq!(rows.len(), 13);
+        assert_eq!(rows.len(), 14);
         for (row, operation) in rows.iter().zip(BindingOperationKind::all()) {
             assert_eq!(row.operation_id(), operation.operation_id());
             assert_eq!(
@@ -470,7 +470,7 @@ mod tests {
 
         let matrix: serde_json::Value =
             serde_json::from_slice(&binding_operation_expectations_json().unwrap()).unwrap();
-        assert_eq!(matrix.as_array().unwrap().len(), 13);
+        assert_eq!(matrix.as_array().unwrap().len(), 14);
         assert_eq!(matrix[0]["operation_id"], "analysis-facts-json");
         let png = matrix
             .as_array()
@@ -481,6 +481,6 @@ mod tests {
         assert_eq!(png["output_id"], "png");
         assert_eq!(png["availability_capability_id"], "png");
         assert_eq!(png["compiled_prerequisite_ids"], serde_json::json!(["svg"]));
-        assert_eq!(matrix[12]["operation_id"], "validation-json");
+        assert_eq!(matrix[13]["operation_id"], "validation-json");
     }
 }

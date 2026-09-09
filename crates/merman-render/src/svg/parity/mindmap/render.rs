@@ -2,25 +2,12 @@ use super::super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
-#[derive(Debug, Clone, Copy)]
-enum MindmapPathNumberFormat {
-    D3Path,
-    JsNumber,
-}
-
-fn mindmap_path_number(v: f64, number_format: MindmapPathNumberFormat) -> String {
-    match number_format {
-        MindmapPathNumberFormat::D3Path => fmt_path(v),
-        MindmapPathNumberFormat::JsNumber => fmt_string(v),
-    }
-}
-
-fn mindmap_cloud_path_d(w: f64, h: f64, number_format: MindmapPathNumberFormat) -> String {
+fn mindmap_cloud_path_d(w: f64, h: f64) -> String {
     let r1 = 0.15 * w;
     let r2 = 0.25 * w;
     let r3 = 0.35 * w;
     let r4 = 0.2 * w;
-    let n = |v| mindmap_path_number(v, number_format);
+    let n = fmt_path;
 
     format!(
         "M0 0 a{r1},{r1} 0 0,1 {w25},{wn10} a{r3},{r3} 1 0,1 {w40},{wn10} a{r2},{r2} 1 0,1 {w35},{w20} a{r1},{r1} 1 0,1 {w15},{h35} a{r4},{r4} 1 0,1 {wn15},{h65} a{r2},{r1} 1 0,1 {wn25},{w15} a{r3},{r3} 1 0,1 {wn50},0 a{r1},{r1} 1 0,1 {wn25},{wn15} a{r1},{r1} 1 0,1 {wn10},{hn35} a{r4},{r4} 1 0,1 {w10},{hn65} H0 V0 Z",
@@ -45,20 +32,9 @@ fn mindmap_cloud_path_d(w: f64, h: f64, number_format: MindmapPathNumberFormat) 
     )
 }
 
-pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
-    let d = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::JsNumber);
-    let pb = svg_path_bounds_from_d(&d)?;
-    Some((pb.max_x - pb.min_x, pb.max_y - pb.min_y))
-}
-
-fn mindmap_bang_path_d(
-    w_base: f64,
-    effective_w: f64,
-    effective_h: f64,
-    number_format: MindmapPathNumberFormat,
-) -> String {
+fn mindmap_bang_path_d(w_base: f64, effective_w: f64, effective_h: f64) -> String {
     let r = 0.15 * w_base;
-    let n = |v| mindmap_path_number(v, number_format);
+    let n = fmt_path;
 
     format!(
         "M0 0 a{r},{r} 1 0,0 {w25},{hn10} a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},{h10} a{r},{r} 1 0,0 {w15},{h33} a{r08},{r08} 1 0,0 0,{h34} a{r},{r} 1 0,0 {wn15},{h33} a{r},{r} 1 0,0 {wn25},{h15} a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},{hn15} a{r},{r} 1 0,0 {wn10},{hn33} a{r08},{r08} 1 0,0 0,{hn34} a{r},{r} 1 0,0 {w10},{hn33} H0 V0 Z",
@@ -79,38 +55,6 @@ fn mindmap_bang_path_d(
         h34 = n(effective_h * 0.34),
         hn34 = n(-effective_h * 0.34),
     )
-}
-
-fn include_mindmap_rect_bounds(
-    bounds: &mut Option<Bounds>,
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-) {
-    if let Some(cur) = bounds.as_mut() {
-        cur.min_x = cur.min_x.min(min_x);
-        cur.min_y = cur.min_y.min(min_y);
-        cur.max_x = cur.max_x.max(max_x);
-        cur.max_y = cur.max_y.max(max_y);
-    } else {
-        *bounds = Some(Bounds {
-            min_x,
-            min_y,
-            max_x,
-            max_y,
-        });
-    }
-}
-
-fn include_mindmap_node_rect_bounds(bounds: &mut Option<Bounds>, n: &LayoutNode) {
-    include_mindmap_rect_bounds(
-        bounds,
-        n.x - n.width / 2.0,
-        n.y - n.height / 2.0,
-        n.x + n.width / 2.0,
-        n.y + n.height / 2.0,
-    );
 }
 
 fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
@@ -140,98 +84,46 @@ fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
     None
 }
 
-fn include_mindmap_path_bounds(
-    bounds: &mut Option<Bounds>,
-    d: &str,
-    translate_x: f64,
-    translate_y: f64,
-) -> bool {
-    let Some(pb) = svg_path_bounds_from_d(d) else {
-        return false;
-    };
-    include_mindmap_rect_bounds(
-        bounds,
-        pb.min_x + translate_x,
-        pb.min_y + translate_y,
-        pb.max_x + translate_x,
-        pb.max_y + translate_y,
-    );
-    true
-}
-
-fn mindmap_viewport_bounds_from_layout(
-    layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
-) -> Option<Bounds> {
-    let mut layout_nodes: std::collections::BTreeMap<&str, &LayoutNode> =
-        std::collections::BTreeMap::new();
-    for n in &layout.nodes {
-        layout_nodes.insert(n.id.as_str(), n);
+pub(crate) fn mindmap_label_xhtml(
+    text: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) -> Result<String> {
+    fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
+        let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+        let html_out = crate::text::replace_fontawesome_icons(&html_out);
+        let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
+        let html_out = html_out
+            .replace("<br>", "<br />")
+            .replace("<br/>", "<br />");
+        // Mermaid inserts the sanitized fragment without trimming it. This is observable for
+        // indented-code labels once the 200px container switches to `break-spaces`: a trailing
+        // indentation-only source line still owns a browser line box.
+        single_image_paragraph_inner(&html_out)
+            .map(str::to_string)
+            .unwrap_or(html_out)
     }
 
-    let mut bounds: Option<Bounds> = None;
-    for n in &model.nodes {
-        let Some(ln) = layout_nodes.get(n.id.as_str()) else {
-            continue;
-        };
-
-        let padding = n.padding.max(0.0);
-        let half_padding = padding / 2.0;
-        match n.shape.as_str() {
-            "cloud" => {
-                let bbox_w = ln
-                    .label_width
-                    .unwrap_or_else(|| (ln.width - 2.0 * half_padding).max(1.0));
-                let bbox_h = ln
-                    .label_height
-                    .unwrap_or_else(|| (ln.height - 2.0 * half_padding).max(1.0));
-                let w = (bbox_w + 2.0 * half_padding).max(1.0);
-                let h = (bbox_h + 2.0 * half_padding).max(1.0);
-                let d = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::JsNumber);
-                if !include_mindmap_path_bounds(&mut bounds, &d, ln.x - w / 2.0, ln.y - h / 2.0) {
-                    include_mindmap_node_rect_bounds(&mut bounds, ln);
-                }
-                include_mindmap_rect_bounds(
-                    &mut bounds,
-                    ln.x - bbox_w / 2.0,
-                    ln.y - bbox_h / 2.0,
-                    ln.x + bbox_w / 2.0,
-                    ln.y + bbox_h / 2.0,
-                );
-            }
-            "bang" => {
-                let w = ln.width.max(1.0);
-                let h = ln.height.max(1.0);
-                let bbox_w = ln
-                    .label_width
-                    .unwrap_or_else(|| (w - 10.0 * half_padding).max(1.0));
-                let bbox_h = ln
-                    .label_height
-                    .unwrap_or_else(|| (h - 8.0 * half_padding).max(1.0));
-                let w_base = bbox_w + 10.0 * half_padding;
-                let d = mindmap_bang_path_d(w_base, w, h, MindmapPathNumberFormat::JsNumber);
-                if !include_mindmap_path_bounds(&mut bounds, &d, ln.x - w / 2.0, ln.y - h / 2.0) {
-                    include_mindmap_node_rect_bounds(&mut bounds, ln);
-                }
-                include_mindmap_rect_bounds(
-                    &mut bounds,
-                    ln.x - bbox_w / 2.0,
-                    ln.y - bbox_h / 2.0,
-                    ln.x + bbox_w / 2.0,
-                    ln.y + bbox_h / 2.0,
-                );
-            }
-            _ => include_mindmap_node_rect_bounds(&mut bounds, ln),
-        }
+    fn escape_amp_preserving_entities(raw: &str) -> String {
+        crate::xml::normalize_html_entities_for_xml(raw).into_owned()
     }
 
-    for e in &layout.edges {
-        for p in &e.points {
-            include_mindmap_rect_bounds(&mut bounds, p.x, p.y, p.x, p.y);
-        }
+    if crate::math::contains_delimited_math(text) {
+        let html = math_renderer
+            .and_then(|renderer| renderer.render_html_label(text, config))
+            .ok_or_else(|| Error::MissingCapability {
+                capability: crate::RenderCapability::Math,
+                diagram_type: "mindmap".to_string(),
+            })?;
+        let html = merman_core::sanitize::sanitize_text(&html, config)
+            .replace("<br>", "<br />")
+            .replace("<br/>", "<br />");
+        Ok(escape_amp_preserving_entities(&html))
+    } else {
+        let html = markdown_to_sanitized_xhtml(text, config);
+        let html = decode_mermaid_entities_for_render_text(&html);
+        Ok(escape_amp_preserving_entities(html.as_ref()))
     }
-
-    bounds
 }
 
 fn mindmap_model_look(model_look: &str, config: &merman_core::MermaidConfig) -> String {
@@ -283,7 +175,7 @@ fn mindmap_normalize_section_classes(classes: &str) -> String {
         .join(" ")
 }
 
-fn mindmap_gradient_defs(
+pub(crate) fn mindmap_gradient_defs(
     diagram_id: impl std::fmt::Display,
     effective_config: &serde_json::Value,
 ) -> String {
@@ -309,7 +201,7 @@ fn mindmap_gradient_defs(
     )
 }
 
-fn push_mindmap_shadow_defs(
+pub(crate) fn push_mindmap_shadow_defs(
     out: &mut String,
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
@@ -327,7 +219,33 @@ fn push_mindmap_shadow_defs(
     );
 }
 
-fn mindmap_css(
+pub(crate) fn push_mindmap_marker_defs(
+    out: &mut String,
+    diagram_id: impl Copy + std::fmt::Display,
+) {
+    let _ = write!(
+        out,
+        r#"<marker id="{id}_mindmap-pointEnd" class="marker mindmap" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id
+    );
+    let _ = write!(
+        out,
+        r#"<marker id="{id}_mindmap-pointStart" class="marker mindmap" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id
+    );
+    let _ = write!(
+        out,
+        r#"<marker id="{id}_mindmap-pointEnd-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id
+    );
+    let _ = write!(
+        out,
+        r#"<marker id="{id}_mindmap-pointStart-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id
+    );
+}
+
+pub(crate) fn canonical_mindmap_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
 ) -> String {
@@ -707,41 +625,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             out.push_str("px; text-align: center;");
         }
         out.push_str(r#""><span class="nodeLabel markdown-node-label">"#);
-        fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
-            let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-            let html_out = html_out
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />");
-            // Mermaid inserts the sanitized fragment without trimming it. This is observable for
-            // indented-code labels once the 200px container switches to `break-spaces`: a trailing
-            // indentation-only source line still owns a browser line box.
-            single_image_paragraph_inner(&html_out)
-                .map(str::to_string)
-                .unwrap_or(html_out)
-        }
-
-        fn escape_amp_preserving_entities(raw: &str) -> String {
-            crate::xml::normalize_html_entities_for_xml(raw).into_owned()
-        }
-
-        if crate::math::contains_delimited_math(text) {
-            let html = math_renderer
-                .and_then(|renderer| renderer.render_html_label(text, config))
-                .ok_or_else(|| Error::MissingCapability {
-                    capability: crate::RenderCapability::Math,
-                    diagram_type: "mindmap".to_string(),
-                })?;
-            let html = merman_core::sanitize::sanitize_text(&html, config)
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />");
-            out.push_str(&escape_amp_preserving_entities(&html));
-        } else {
-            let html = markdown_to_sanitized_xhtml(text, config);
-            let html = decode_mermaid_entities_for_render_text(&html);
-            out.push_str(&escape_amp_preserving_entities(html.as_ref()));
-        }
+        out.push_str(&mindmap_label_xhtml(text, config, math_renderer)?);
 
         out.push_str("</span></div></foreignObject></g>");
         Ok(())
@@ -770,9 +654,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     let _g_viewbox = timing.section(&mut timings.viewbox);
 
-    let padding = 10.0;
+    let padding = config_f64(config.as_value(), &["mindmap", "padding"])
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(10.0);
+    let use_max_width = config_bool(config.as_value(), &["mindmap", "useMaxWidth"]).unwrap_or(true);
     let viewport_bounds =
-        mindmap_viewport_bounds_from_layout(layout, model).or_else(|| layout.bounds.clone());
+        crate::mindmap::mindmap_visual_bounds(layout, model).or_else(|| layout.bounds.clone());
     let (vx, vy, vw, vh) = viewport_bounds
         .as_ref()
         .map(|b| {
@@ -787,9 +674,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
-    let root_spec = root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-        vx, vy, vw, vh,
-    ))
+    let root_spec = root_svg::RootViewportSpec::mermaid(
+        root_svg::DiagramBounds::from_view_box(vx, vy, vw, vh),
+        use_max_width,
+    )
     .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vw));
 
     drop(_g_viewbox);
@@ -812,31 +700,11 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 },
             )?;
     options.checkpoint_emit()?;
-    let css = mindmap_css(diagram_id, config.as_value());
+    let css = canonical_mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
     out.push_str("<g>");
-
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{id}_mindmap-pointEnd" class="marker mindmap" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{id}_mindmap-pointStart" class="marker mindmap" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{id}_mindmap-pointEnd-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id
-    );
-    let _ = write!(
-        &mut out,
-        r#"<marker id="{id}_mindmap-pointStart-margin" class="marker mindmap" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"/></marker>"#,
-        id = diagram_id
-    );
+    push_mindmap_marker_defs(&mut out, diagram_id);
     options.checkpoint_emit()?;
 
     out.push_str(r#"<g class="subgraphs"/>"#);
@@ -1089,7 +957,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 let w = (bbox_w + 2.0 * half_padding).max(1.0);
                 let h = (bbox_h + 2.0 * half_padding).max(1.0);
 
-                let cloud_path = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::D3Path);
+                let cloud_path = mindmap_cloud_path_d(w, h);
 
                 let _ = write!(
                     &mut out,
@@ -1161,12 +1029,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 let effective_w = w.max(1.0);
                 let effective_h = h.max(1.0);
 
-                let bang_path = mindmap_bang_path_d(
-                    w_base,
-                    effective_w,
-                    effective_h,
-                    MindmapPathNumberFormat::D3Path,
-                );
+                let bang_path = mindmap_bang_path_d(w_base, effective_w, effective_h);
 
                 let _ = write!(
                     &mut out,
@@ -1286,7 +1149,7 @@ mod tests {
             }
         });
 
-        let css = mindmap_css("mm", &cfg);
+        let css = canonical_mindmap_css("mm", &cfg);
 
         assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
         assert!(css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
@@ -1346,7 +1209,7 @@ mod tests {
         };
 
         let layout_bounds = layout.bounds.as_ref().expect("layout bounds");
-        let bounds = mindmap_viewport_bounds_from_layout(&layout, &model).expect("bounds");
+        let bounds = crate::mindmap::mindmap_visual_bounds(&layout, &model).expect("bounds");
 
         assert!(bounds.min_x < layout_bounds.min_x);
         assert!(bounds.min_y < layout_bounds.min_y);

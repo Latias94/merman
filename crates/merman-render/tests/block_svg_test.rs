@@ -23,6 +23,16 @@ fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String
     .expect("svg render ok")
 }
 
+#[test]
+fn block_zero_length_marker_uses_the_explicit_legacy_svg_bridge() {
+    let svg = render_block_svg_from_text("block-beta\n  A --> A\n");
+
+    assert!(
+        svg.contains(r#"marker-end="url(#merman_block-pointEnd)""#),
+        "the SVG target should preserve Mermaid's marker for a degenerate edge: {svg}"
+    );
+}
+
 fn try_render_block_svg_from_text_with_engine(
     engine: &Engine,
     text: &str,
@@ -56,7 +66,24 @@ fn try_render_block_svg_from_text_with_engine_and_policy(
 }
 
 fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
-    let transform = node.attribute("transform").expect("node transform");
+    let Some(transform) = node.attribute("transform") else {
+        let circle = node
+            .descendants()
+            .find(|child| child.has_tag_name("circle"))
+            .expect("node transform or absolute circle geometry");
+        return (
+            circle
+                .attribute("cx")
+                .expect("circle center x")
+                .parse()
+                .expect("numeric circle center x"),
+            circle
+                .attribute("cy")
+                .expect("circle center y")
+                .parse()
+                .expect("numeric circle center y"),
+        );
+    };
     let captures = Regex::new(
         r"^translate\(\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$",
     )
@@ -72,7 +99,7 @@ fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
 fn path_start(path: roxmltree::Node<'_, '_>) -> (f64, f64) {
     let d = path.attribute("d").expect("path data");
     let captures =
-        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))")
+        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))(?:\s*,\s*|\s+)(-?(?:\d+(?:\.\d*)?|\.\d+))")
             .expect("valid path regex")
             .captures(d)
             .expect("path starts with an absolute move");
@@ -279,9 +306,86 @@ fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
 "#,
     );
 
-    assert!(svg.contains("color: rgb(248, 255, 235); display: table-cell;"));
-    assert!(svg.contains("color: rgba(128, 144, 160, 0.502); display: table-cell;"));
-    assert!(svg.contains("color: var(--MyColor); display: table-cell;"));
+    assert!(svg.contains("color: rgb(248, 255, 235) !important; display: table-cell;"));
+    assert!(svg.contains("color: rgba(128, 144, 160, 0.502) !important; display: table-cell;"));
+    assert!(svg.contains("color: var(--MyColor) !important; display: table-cell;"));
+}
+
+#[test]
+#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
+fn block_svg_serializes_box_opacity_once_without_fading_the_label() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  style A fill:#112233,stroke:#445566,color:#778899,opacity:0.5,fill-opacity:0.4,stroke-opacity:0.2
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("Block node DOM identity");
+    assert!(node.attribute("class").is_some_and(|class| {
+        class
+            .split_ascii_whitespace()
+            .any(|token| token == "flowchart-label")
+    }));
+    let shape = node
+        .children()
+        .find(|child| child.has_tag_name("rect"))
+        .expect("Block node shape");
+
+    assert_eq!(shape.attribute("opacity"), Some("0.5"));
+    assert_eq!(shape.attribute("fill"), Some("#112233"));
+    assert_eq!(shape.attribute("stroke"), Some("#445566"));
+    assert_eq!(shape.attribute("fill-opacity"), Some("0.4"));
+    assert_eq!(shape.attribute("stroke-opacity"), Some("0.2"));
+    let inline_style = shape
+        .attribute("style")
+        .expect("authored Block style keeps inline precedence");
+    for declaration in [
+        "fill:#112233 !important",
+        "stroke:#445566 !important",
+        "opacity:0.5 !important",
+        "fill-opacity:0.4 !important",
+        "stroke-opacity:0.2 !important",
+    ] {
+        assert!(
+            inline_style.split(';').any(|actual| actual == declaration),
+            "missing canonical inline declaration {declaration:?} in {inline_style:?}"
+        );
+    }
+    assert_eq!(
+        node.descendants()
+            .filter_map(|descendant| descendant.attribute("opacity"))
+            .collect::<Vec<_>>(),
+        vec!["0.5"]
+    );
+}
+
+#[test]
+#[ignore = "canonical SVG migration is not yet admitted by the full upstream DOM gate"]
+fn block_svg_preserves_background_color_without_turning_it_into_fill() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  style A background-color:#ff0000
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let shape = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .and_then(|node| node.children().find(|child| child.has_tag_name("rect")))
+        .expect("Block node shape");
+
+    assert_ne!(shape.attribute("fill"), Some("#ff0000"));
+    assert!(
+        shape
+            .attribute("style")
+            .is_some_and(|style| style.contains("background-color:#ff0000 !important")),
+        "the non-paint CSS declaration should remain available to DOM consumers: {svg}"
+    );
 }
 
 #[test]
@@ -308,6 +412,69 @@ fn block_svg_applies_class_definitions_to_assigned_nodes() {
     assert!(
         svg.contains(r#"#merman .back&gt;*{fill:#969!important;stroke:#333!important;}"#),
         "expected the back class definition to style Block shapes: {svg}"
+    );
+}
+
+#[test]
+fn block_svg_compiles_class_styles_in_node_assignment_order() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"]
+  classDef first opacity:0.2
+  classDef second opacity:0.5
+  class A second
+  class A first
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let node = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("Block node DOM identity");
+    assert_eq!(
+        node.attribute("class"),
+        Some("node second first flowchart-label")
+    );
+
+    let shape = node
+        .children()
+        .find(|child| child.has_tag_name("rect"))
+        .expect("Block node shape");
+    assert!(
+        shape.attribute("style").is_some_and(|style| style
+            .split(';')
+            .any(|declaration| { declaration.trim() == "opacity:0.2 !important" })),
+        "the last assigned class should win in Mermaid's compiled shape style: {svg}"
+    );
+
+    let label = node
+        .children()
+        .find(|child| {
+            child.has_tag_name("g")
+                && child.attribute("class").is_some_and(|class| {
+                    class.split_ascii_whitespace().any(|token| token == "label")
+                })
+        })
+        .expect("Block HTML label group");
+    assert!(
+        !label
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("opacity")
+    );
+    let span = label
+        .descendants()
+        .find(|descendant| descendant.has_tag_name("span"))
+        .expect("Block HTML label span");
+    assert!(
+        !span
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("opacity")
+    );
+    assert!(
+        svg.contains(r#"#merman .second span{opacity:0.5!important;}"#),
+        "the HTML label should continue to receive class opacity from the stylesheet: {svg}"
     );
 }
 

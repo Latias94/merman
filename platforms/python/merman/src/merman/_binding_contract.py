@@ -16,6 +16,10 @@ CAPABILITY_SPECS = (
         "implication_ids": (),
     },
     {
+        "id": "drawing-list",
+        "implication_ids": ("svg",),
+    },
+    {
         "id": "editor",
         "implication_ids": (),
     },
@@ -126,6 +130,12 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "drawing-list-json",
+        "availability_capability_id": "drawing-list",
+        "output_id": "drawing-list",
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "jpeg",
         "availability_capability_id": "jpeg",
         "output_id": "jpeg",
@@ -207,6 +217,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "id": "ascii",
         "always_available": False,
         "any_capability_ids": ("ascii",),
+        "requires_svg_pipeline": False,
+    },
+    {
+        "id": "drawing_list",
+        "always_available": False,
+        "any_capability_ids": ("drawing-list",),
         "requires_svg_pipeline": False,
     },
     {

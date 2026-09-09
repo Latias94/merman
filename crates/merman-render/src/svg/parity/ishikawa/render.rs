@@ -40,7 +40,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = ishikawa_css(layout, effective_config);
+    let css = ishikawa_css(layout.font_size, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str(r#"<g/><g class="ishikawa">"#);
     options.checkpoint_emit()?;
@@ -73,9 +73,15 @@ fn push_classic_diagram(
     diagram_id: SvgDiagramId<'_>,
     options: &SvgExecution<'_>,
 ) -> Result<()> {
+    let arrow_viewbox_width = crate::ishikawa::ISHIKAWA_ARROW_VIEWBOX_WIDTH;
+    let arrow_viewbox_height = crate::ishikawa::ISHIKAWA_ARROW_VIEWBOX_HEIGHT;
+    let arrow_marker_width = crate::ishikawa::ISHIKAWA_ARROW_MARKER_WIDTH;
+    let arrow_marker_height = crate::ishikawa::ISHIKAWA_ARROW_MARKER_HEIGHT;
+    let arrow_ref_x = crate::ishikawa::ISHIKAWA_ARROW_REF_X;
+    let arrow_ref_y = crate::ishikawa::ISHIKAWA_ARROW_REF_Y;
     let _ = write!(
         out,
-        r#"<defs><marker id="ishikawa-arrow-{diagram_id}" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
+        r#"<defs><marker id="ishikawa-arrow-{diagram_id}" viewBox="0 0 {arrow_viewbox_width} {arrow_viewbox_height}" refX="{arrow_ref_x}" refY="{arrow_ref_y}" markerWidth="{arrow_marker_width}" markerHeight="{arrow_marker_height}" orient="auto"><path d="M {arrow_viewbox_width} 0 L {arrow_ref_x} {arrow_ref_y} L {arrow_viewbox_width} {arrow_viewbox_height} Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
     options.checkpoint_emit()?;
 
@@ -459,26 +465,35 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
     out.push_str("</text>");
 }
 
-fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
+pub(super) fn ishikawa_css(font_size_px: f64, effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).ishikawa();
     let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
         .render_settings()
         .font_size_css
-        .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
+        .unwrap_or_else(|| format!("{}px", fmt_string(font_size_px)));
+    let line_width = crate::ishikawa::ishikawa_line_stroke_width("ishikawa-spine");
+    let sub_branch_width = crate::ishikawa::ishikawa_line_stroke_width("ishikawa-sub-branch");
+    let head_font_size = crate::ishikawa::ISHIKAWA_HEAD_LABEL_FONT_SIZE;
+    let head_font_weight = crate::ishikawa::ISHIKAWA_HEAD_LABEL_FONT_WEIGHT;
+    let middle_anchor = crate::ishikawa::IshikawaTextAnchor::Middle.as_svg();
+    let end_anchor = crate::ishikawa::IshikawaTextAnchor::End.as_svg();
+    let middle_baseline = crate::ishikawa::IshikawaTextBaseline::Middle.as_svg();
+    let alphabetic_baseline = crate::ishikawa::IshikawaTextBaseline::Alphabetic.as_svg();
+    let hanging_baseline = crate::ishikawa::IshikawaTextBaseline::Hanging.as_svg();
 
     format!(
-        ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
-.ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
+        ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: {line_width}; fill: none; }}\
+.ishikawa .ishikawa-sub-branch {{ stroke-width: {sub_branch_width}; }}\
 .ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
-.ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
+.ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: {line_width}; }}\
+.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: {line_width}; }}\
 .ishikawa text {{ font-family: {font_family}; font-size: {font_size}; fill: {text_color}; }}\
-.ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}\
-.ishikawa .ishikawa-label {{ text-anchor: end; }}\
-.ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
-.ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}",
+.ishikawa .ishikawa-head-label {{ font-weight: {head_font_weight}; text-anchor: {middle_anchor}; dominant-baseline: {middle_baseline}; font-size: {head_font_size}px; }}\
+.ishikawa .ishikawa-label {{ text-anchor: {end_anchor}; }}\
+.ishikawa .ishikawa-label.cause {{ text-anchor: {middle_anchor}; dominant-baseline: {middle_baseline}; }}\
+.ishikawa .ishikawa-label.align {{ text-anchor: {end_anchor}; dominant-baseline: {middle_baseline}; }}\
+.ishikawa .ishikawa-label.up {{ dominant-baseline: {alphabetic_baseline}; }}\
+.ishikawa .ishikawa-label.down {{ dominant-baseline: {hanging_baseline}; }}",
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
         font_family = theme.font_family,

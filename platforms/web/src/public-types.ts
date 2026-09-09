@@ -51,6 +51,27 @@ export interface RenderEnvironmentOptions {
   math_renderer?: "none" | "ratex";
 }
 
+export interface DrawingListLimitsOptions {
+  max_serialized_bytes?: number;
+  max_commands?: number;
+  max_resources?: number;
+  max_path_segments?: number;
+  max_stroke_dash_entries?: number;
+  max_image_bytes?: number;
+  max_image_pixels?: number;
+  max_fallback_pixels?: number;
+  max_font_bytes?: number;
+  max_nesting_depth?: number;
+  max_fallbacks?: number;
+  max_text_bytes?: number;
+  max_glyphs?: number;
+}
+
+export interface DrawingListOptions {
+  policy?: "allow_raster_subtree" | "vector_only";
+  limits?: DrawingListLimitsOptions;
+}
+
 /**
  * Current capabilities and policies exposed by the loaded browser artifact.
  *
@@ -394,6 +415,7 @@ interface SvgBindingFields {
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
+  drawing_list?: DrawingListOptions;
 }
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
@@ -452,11 +474,19 @@ export interface HostTextUnhandledResult {
   handled: false;
 }
 
+export interface HostTextNormalLineMetricsResult {
+  handled?: true;
+  kind: "normal-line-metrics";
+  line_height: number;
+  baseline_offset: number;
+}
+
 export type HostTextMeasureResult =
   | HostTextMetricsResult
   | HostTextLengthResult
   | HostTextHorizontalExtentsResult
   | HostTextWrappedWithRawWidthResult
+  | HostTextNormalLineMetricsResult
   | HostTextUnhandledResult;
 
 export type HostTextMeasurer = (
@@ -954,6 +984,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
   EditorSession?: WasmEditorSessionConstructor;
   transportApiVersion: () => number;
   packageVersion: () => string;
+  renderDrawingList: (source: string, optionsJson?: string | null) => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
   svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (

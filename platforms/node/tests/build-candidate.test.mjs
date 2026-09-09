@@ -108,12 +108,13 @@ test("candidate runtime outputs follow explicit binding operation ownership", ()
   const contract = resolveCandidateRuntimeContract();
 
   assert.deepEqual(contract.operationIds, [
+    "drawing-list-json",
     "layout-json",
     "semantic-json",
     "svg",
     "svg-plan-json",
   ]);
-  assert.deepEqual(contract.outputIds, ["svg"]);
+  assert.deepEqual(contract.outputIds, ["drawing-list", "svg"]);
 });
 
 test("merman-node forwards every candidate capability leaf without a private aggregate", async () => {

@@ -4,8 +4,11 @@ This page documents the current development source. Registry channels publish in
 verify the exact package version and provenance before copying an install command; workspace path
 snippets are for source-tree development.
 
+No immutable `0.8.0-alpha.6` artifact includes DrawingList. DrawingList entries on this page
+describe current unreleased source; use a source build now or a later matching release package.
+
 Choose Merman by the operation you need, not by Mermaid diagram family or implementation
-dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
+dependency. Every parser-capable build uses the same Mermaid 11.17.2 language model, detector,
 configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
 user-visible capabilities, output backends, or host adapters.
 
@@ -29,6 +32,7 @@ The public capability leaves are:
 | Capability | Meaning | Global semantic implication |
 | --- | --- | --- |
 | `svg` | SVG rendering | None |
+| `drawing-list` | Renderer-neutral DrawingList v1 JSON | Implies `svg` because it shares the render/layout foundation |
 | `analysis` | Diagnostics, validation, and semantic analysis | None |
 | `editor` | Parser-backed editor intelligence | None |
 | `ascii` | Terminal text output | None |
@@ -46,10 +50,11 @@ their public workflow requires them. Those owner-specific compile combinations d
 global capability implications.
 
 The repository-wide result aggregate is `complete-svg`, exposed by the `merman` facade and the
-`merman-rustdoc` integration crate. It means `svg + layout-cytoscape + math`; it deliberately does
-not include the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk` aggregate
-when that closure is intended and its notices/provenance will accompany the artifact. Neither
-aggregate includes system adapters, analysis, ASCII, or binary exports.
+`merman-rustdoc` integration crate. In the facade it includes SVG, DrawingList, Cytoscape, and
+math; the Rustdoc crate has no DrawingList API and keeps its SVG-specific closure. Neither
+aggregate includes the optional EPL-2.0 ELK implementation. Add the explicit `complete-svg-elk`
+aggregate when that closure is intended and its notices/provenance will accompany the artifact.
+Neither aggregate includes system adapters, analysis, ASCII, or binary exports.
 
 Native binding crates (`merman-bindings-core`, `merman-ffi`, `merman-uniffi`, and the internal
 `merman-android-jni` transport) additionally expose the owner-local `native-runtime` feature. It
@@ -69,7 +74,8 @@ select their own direct leaf set instead.
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
-| Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
+| Renderer-neutral DrawingList in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["drawing-list"]` |
+| Full SVG and DrawingList semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
 | Full SVG semantics plus ELK | `merman` | `default-features = false, features = ["complete-svg-elk"]` |
 | Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
@@ -86,10 +92,11 @@ select their own direct leaf set instead.
 | Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
 | Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
-Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
-loader plus one exact-version N-API platform package and uses the deterministic static-SVG recipe:
-SVG and both layout backends, but not math, analysis, ASCII, or binary export. Browser WASM is not
-a supported Node transport or fallback.
+Node/SSG users can select the experimental `@mermanjs/node` alpha package. The published alpha.6
+recipe installs a small loader plus one exact-version N-API platform package and provides SVG with
+both layout backends, but not DrawingList, math, analysis, ASCII, or binary export. Current
+unreleased Node profiles additionally provide DrawingList. Browser WASM is not a supported Node
+transport or fallback.
 
 ## Rust examples
 
@@ -288,8 +295,8 @@ Browser package names are the user-facing selection mechanism:
 
 | Package | Compiled workflow | Status |
 | --- | --- | --- |
-| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
-| `@mermanjs/web-render` | SVG, Cytoscape, ELK, and math | Complete SVG-only package |
+| `@mermanjs/web` | SVG, DrawingList, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
+| `@mermanjs/web-render` | SVG, DrawingList, Cytoscape, ELK, and math | Complete rendering package |
 | `@mermanjs/web-analysis` | Analysis | Slim package |
 | `@mermanjs/web-editor` | Analysis and editor | Slim package |
 | `@mermanjs/web-ascii` | ASCII | Slim package |
@@ -301,6 +308,9 @@ Install the complete browser package and render after initializing its single WA
 ```sh
 npm install @mermanjs/web@alpha
 ```
+
+This command currently installs immutable alpha.6 packages without DrawingList. Build the current
+source or use a later matching release before calling `renderDrawingList()`.
 
 ```ts
 import { initMerman, renderSvg } from "@mermanjs/web";
@@ -322,16 +332,18 @@ engine = merman.MermanEngine(None, None)
 svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
 
-The default Android, Apple, Python, and Flutter native packages include SVG, both supported layout
-engines, ASCII, analysis, validation, and document analysis. They omit math, PNG, JPEG, PDF, and
-native runtime adapters to reduce distributed binary size. Because these are prebuilt ELK artifacts,
-their package-specific notices and source provenance are part of the release contract. Their
-generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
-missing-capability errors before exposing optional output choices.
+The immutable alpha.6 Android, Apple, Python, and Flutter native packages include SVG, both
+supported layout engines, ASCII, analysis, validation, and document analysis, but not DrawingList.
+Current unreleased default profiles additionally include DrawingList. Both generations omit math,
+PNG, JPEG, PDF, and native runtime adapters to reduce distributed binary size. Because these are
+prebuilt ELK artifacts, their package-specific notices and source provenance are part of the
+release contract. Inspect the runtime catalog and handle typed missing-capability errors before
+exposing optional output choices.
 
-Flutter's current published baseline uses `flutter pub add 'merman:^0.8.0-alpha.5'` and `Merman.open()`. The workspace source candidate is `0.8.0-alpha.6`; do not present that candidate as a pub.dev installation until its registry evidence exists. Android consumes the
-matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
-transport API 1 rather than C ABI 3. Apple consumes the matching
+Flutter's current published baseline uses `flutter pub add 'merman:0.8.0-alpha.6'` and
+`Merman.open()`. Development against post-alpha.6 source requires a release-matched local source
+build. Android consumes the matching alpha.6 release AAR through `implementation(files(...))`; its
+Kotlin surface is direct JNI transport API 2 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
 artifact profile. The [Flutter](../platforms/flutter/README.md),
 [Android](../platforms/android/README.md), [Apple](../platforms/apple/README.md), and

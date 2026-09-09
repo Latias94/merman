@@ -69,6 +69,59 @@ struct Dimension {
 
 type Point = merman_core::geom::Point;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XyChartTextAnchor {
+    Start,
+    Middle,
+    End,
+}
+
+impl XyChartTextAnchor {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+            Self::End => "end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XyChartTextBaseline {
+    Alphabetic,
+    Hanging,
+    Middle,
+    TextBeforeEdge,
+}
+
+impl XyChartTextBaseline {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Alphabetic => "auto",
+            Self::Hanging => "hanging",
+            Self::Middle => "middle",
+            Self::TextBeforeEdge => "text-before-edge",
+        }
+    }
+}
+
+pub(crate) fn xychart_text_anchor(horizontal_pos: &str) -> XyChartTextAnchor {
+    match horizontal_pos {
+        "left" => XyChartTextAnchor::Start,
+        "right" => XyChartTextAnchor::End,
+        _ => XyChartTextAnchor::Middle,
+    }
+}
+
+pub(crate) fn xychart_text_baseline(vertical_pos: &str) -> XyChartTextBaseline {
+    match vertical_pos {
+        "auto" => XyChartTextBaseline::Alphabetic,
+        "hanging" => XyChartTextBaseline::Hanging,
+        "top" => XyChartTextBaseline::TextBeforeEdge,
+        _ => XyChartTextBaseline::Middle,
+    }
+}
+
 fn pt(x: f64, y: f64) -> Point {
     merman_core::geom::point(x, y)
 }
@@ -227,6 +280,183 @@ fn single_text_height(text: &str, font_size: f64, measurer: &dyn TextMeasurer) -
 const LEGEND_MARKER_TO_FONT_RATIO: f64 = 0.75;
 const LEGEND_ITEM_SPACING_TO_FONT_RATIO: f64 = 0.5;
 const LEGEND_MARKER_SPACING_TO_FONT_RATIO: f64 = 0.35;
+const BAR_DATA_LABEL_CHAR_WIDTH_FACTOR: f64 = 0.7;
+const BAR_DATA_LABEL_INSET_PX: f64 = 10.0;
+
+/// Mermaid uses JavaScript's `String#length` for XYChart bar labels, which counts UTF-16 code
+/// units rather than Unicode scalar values.
+fn javascript_string_length(text: &str) -> f64 {
+    text.encode_utf16().count() as f64
+}
+
+/// Computes Mermaid's one-pixel decrement result without iterating once per pixel.
+fn font_size_after_unit_decrements(initial: f64, maximum_that_fits: f64) -> f64 {
+    if !(initial.is_finite() && initial > 0.0) || maximum_that_fits.is_nan() {
+        return 0.0;
+    }
+    if maximum_that_fits >= initial {
+        return initial;
+    }
+    if maximum_that_fits <= 0.0 {
+        return 0.0;
+    }
+
+    let decrements = (initial - maximum_that_fits).ceil();
+    let candidate = initial - decrements;
+    if candidate.is_finite() && candidate > 0.0 {
+        candidate
+    } else {
+        0.0
+    }
+}
+
+fn horizontal_bar_label_font_size(item_width: f64, label: &str, initial: f64) -> f64 {
+    let denominator = javascript_string_length(label) * BAR_DATA_LABEL_CHAR_WIDTH_FACTOR;
+    let maximum_that_fits = if denominator > 0.0 {
+        (item_width - BAR_DATA_LABEL_INSET_PX) / denominator
+    } else {
+        f64::INFINITY
+    };
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
+fn vertical_bar_label_font_size(
+    item_width: f64,
+    item_height: f64,
+    label: &str,
+    initial: f64,
+) -> f64 {
+    let denominator = javascript_string_length(label) * BAR_DATA_LABEL_CHAR_WIDTH_FACTOR;
+    let horizontal_maximum = if denominator > 0.0 {
+        item_width / denominator
+    } else {
+        f64::INFINITY
+    };
+    let maximum_that_fits = horizontal_maximum.min(item_height - BAR_DATA_LABEL_INSET_PX);
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
+fn bar_data_labels(
+    rects: &[XyChartRectData],
+    label_data: &[String],
+    chart_orientation: &str,
+    show_outside: bool,
+    fill: &str,
+) -> Vec<XyChartTextData> {
+    let valid_items = rects
+        .iter()
+        .zip(label_data)
+        .filter(|(rect, _)| rect.width > 0.0 && rect.height > 0.0)
+        .collect::<Vec<_>>();
+    if valid_items.is_empty() {
+        return Vec::new();
+    }
+
+    if chart_orientation == "horizontal" {
+        let uniform_font_size = valid_items
+            .iter()
+            .map(|(rect, label)| {
+                horizontal_bar_label_font_size(
+                    rect.width,
+                    label,
+                    rect.height * BAR_DATA_LABEL_CHAR_WIDTH_FACTOR,
+                )
+            })
+            .fold(f64::INFINITY, f64::min)
+            .floor()
+            .max(0.0);
+        valid_items
+            .into_iter()
+            .map(|(rect, label)| XyChartTextData {
+                text: label.clone(),
+                x: if show_outside {
+                    rect.x + rect.width + BAR_DATA_LABEL_INSET_PX
+                } else {
+                    rect.x + rect.width - BAR_DATA_LABEL_INSET_PX
+                },
+                y: rect.y + rect.height / 2.0,
+                fill: fill.to_string(),
+                font_size: uniform_font_size,
+                rotation: 0.0,
+                vertical_pos: "middle".to_string(),
+                horizontal_pos: if show_outside { "left" } else { "right" }.to_string(),
+            })
+            .collect()
+    } else {
+        let uniform_font_size = valid_items
+            .iter()
+            .map(|(rect, label)| {
+                let denominator =
+                    javascript_string_length(label) * BAR_DATA_LABEL_CHAR_WIDTH_FACTOR;
+                let initial = if denominator > 0.0 {
+                    rect.width / denominator
+                } else {
+                    0.0
+                };
+                vertical_bar_label_font_size(rect.width, rect.height, label, initial)
+            })
+            .fold(f64::INFINITY, f64::min)
+            .floor()
+            .max(0.0);
+        valid_items
+            .into_iter()
+            .map(|(rect, label)| XyChartTextData {
+                text: label.clone(),
+                x: rect.x + rect.width / 2.0,
+                y: if show_outside {
+                    rect.y - BAR_DATA_LABEL_INSET_PX
+                } else {
+                    rect.y + BAR_DATA_LABEL_INSET_PX
+                },
+                fill: fill.to_string(),
+                font_size: uniform_font_size,
+                rotation: 0.0,
+                vertical_pos: if show_outside { "auto" } else { "hanging" }.to_string(),
+                horizontal_pos: "center".to_string(),
+            })
+            .collect()
+    }
+}
+
+fn materialize_bar_data_labels(
+    drawables: Vec<XyChartDrawableElem>,
+    label_data: &[String],
+    chart_orientation: &str,
+    show_outside: bool,
+    fill: &str,
+) -> Result<Vec<XyChartDrawableElem>> {
+    let mut materialized = Vec::with_capacity(drawables.len().saturating_mul(2));
+    for drawable in drawables {
+        match drawable {
+            XyChartDrawableElem::Rect { group_texts, data } => {
+                if data.len() > label_data.len() {
+                    return Err(Error::InvalidModel {
+                        message: format!(
+                            "xychart rectangle group `{}` has {} items but only {} data labels",
+                            group_texts.join("."),
+                            data.len(),
+                            label_data.len(),
+                        ),
+                    });
+                }
+                let labels =
+                    bar_data_labels(&data, label_data, chart_orientation, show_outside, fill);
+                materialized.push(XyChartDrawableElem::Rect {
+                    group_texts: group_texts.clone(),
+                    data,
+                });
+                if !labels.is_empty() {
+                    materialized.push(XyChartDrawableElem::BarDataLabel {
+                        group_texts,
+                        data: labels,
+                    });
+                }
+            }
+            other => materialized.push(other),
+        }
+    }
+    Ok(materialized)
+}
 
 fn calculate_legend_space(
     plots: &[(usize, &XyChartPlotRenderModel)],
@@ -1497,6 +1727,18 @@ pub(crate) fn layout_xychart_diagram_typed(
         Vec::new()
     };
 
+    let drawables = if chart_cfg.show_data_label {
+        materialize_bar_data_labels(
+            drawables,
+            &label_data,
+            &chart_cfg.chart_orientation,
+            chart_cfg.show_data_label_outside_bar,
+            &theme_cfg.data_label_color,
+        )?
+    } else {
+        drawables
+    };
+
     Ok(XyChartDiagramLayout {
         width: chart_cfg.width,
         height: chart_cfg.height,
@@ -1507,4 +1749,81 @@ pub(crate) fn layout_xychart_diagram_typed(
         label_data,
         drawables,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
+        let mut font_size = initial;
+        while font_size > maximum_that_fits && font_size > 0.0 {
+            font_size -= 1.0;
+        }
+        font_size
+    }
+
+    #[test]
+    fn closed_form_font_sizing_matches_mermaid_for_normal_dimensions() {
+        for (initial, maximum_that_fits) in [(10.2, 8.0), (10.0, 8.8), (8.0, 8.0), (0.5, 0.0)] {
+            assert_eq!(
+                font_size_after_unit_decrements(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+                upstream_decrement(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+            );
+        }
+    }
+
+    #[test]
+    fn huge_finite_bar_dimensions_complete_without_a_decrement_loop() {
+        let font_size = horizontal_bar_label_font_size(1e308, "123", 7e307);
+
+        assert!(font_size.is_finite());
+        assert!(font_size > 0.0);
+    }
+
+    #[test]
+    fn bar_label_length_uses_javascript_utf16_code_units() {
+        assert_eq!(javascript_string_length("A"), 1.0);
+        assert_eq!(javascript_string_length("\u{1F469}\u{200D}\u{1F4BB}"), 5.0);
+    }
+
+    #[test]
+    fn bar_data_labels_reject_missing_values_instead_of_dropping_rectangles() {
+        let error = materialize_bar_data_labels(
+            vec![XyChartDrawableElem::Rect {
+                group_texts: vec!["plot".to_string(), "bar-plot-0".to_string()],
+                data: vec![
+                    XyChartRectData {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                        fill: "black".to_string(),
+                        stroke_fill: "black".to_string(),
+                        stroke_width: 0.0,
+                    },
+                    XyChartRectData {
+                        x: 10.0,
+                        y: 0.0,
+                        width: 10.0,
+                        height: 10.0,
+                        fill: "black".to_string(),
+                        stroke_fill: "black".to_string(),
+                        stroke_width: 0.0,
+                    },
+                ],
+            }],
+            &["1".to_string()],
+            "vertical",
+            false,
+            "black",
+        )
+        .expect_err("missing labels must be reported");
+
+        assert!(matches!(error, Error::InvalidModel { .. }));
+    }
 }

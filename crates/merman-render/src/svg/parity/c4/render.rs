@@ -1,5 +1,7 @@
 use super::super::*;
-use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView};
+use crate::c4::{
+    C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView, C4PaintItem, c4_paint_order,
+};
 use merman_core::diagrams::c4::{
     C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
 };
@@ -9,112 +11,7 @@ type C4SvgModelRel = C4RelRenderModel;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum C4PaintItem {
-    Shape(usize),
-    Boundary(usize),
-}
-
-#[derive(Debug, Clone, Copy)]
-enum C4PaintVisit {
-    EnterBoundary(usize),
-    PaintBoundary(usize),
-}
-
-fn c4_paint_order(layout: &crate::model::C4DiagramLayout) -> Result<Vec<C4PaintItem>> {
-    let mut shapes_by_parent: std::collections::HashMap<&str, Vec<usize>> =
-        std::collections::HashMap::new();
-    for (index, shape) in layout.shapes.iter().enumerate() {
-        shapes_by_parent
-            .entry(shape.parent_boundary.as_str())
-            .or_default()
-            .push(index);
-    }
-
-    let mut boundaries_by_parent: std::collections::HashMap<&str, Vec<usize>> =
-        std::collections::HashMap::new();
-    for (index, boundary) in layout.boundaries.iter().enumerate() {
-        boundaries_by_parent
-            .entry(boundary.parent_boundary.as_str())
-            .or_default()
-            .push(index);
-    }
-
-    let mut global_boundaries = layout
-        .boundaries
-        .iter()
-        .enumerate()
-        .filter_map(|(index, boundary)| (boundary.alias == "global").then_some(index));
-    let Some(global_boundary) = global_boundaries.next() else {
-        return Err(crate::Error::InvalidModel {
-            message: "c4: expected the implicit global boundary while painting".to_string(),
-        });
-    };
-    if global_boundaries.next().is_some() {
-        return Err(crate::Error::InvalidModel {
-            message: "c4: expected exactly one implicit global boundary while painting".to_string(),
-        });
-    }
-
-    let mut order = Vec::with_capacity(layout.shapes.len() + layout.boundaries.len() - 1);
-    let mut painted_shapes = vec![false; layout.shapes.len()];
-    let mut visited_boundaries = vec![false; layout.boundaries.len()];
-    let mut stack = vec![C4PaintVisit::EnterBoundary(global_boundary)];
-
-    while let Some(visit) = stack.pop() {
-        match visit {
-            C4PaintVisit::EnterBoundary(index) => {
-                if std::mem::replace(&mut visited_boundaries[index], true) {
-                    return Err(crate::Error::InvalidModel {
-                        message: format!(
-                            "c4: boundary {} is reachable more than once while painting",
-                            layout.boundaries[index].alias
-                        ),
-                    });
-                }
-
-                let boundary = &layout.boundaries[index];
-                if boundary.alias != "global" {
-                    stack.push(C4PaintVisit::PaintBoundary(index));
-                }
-                if let Some(children) = boundaries_by_parent.get(boundary.alias.as_str()) {
-                    stack.extend(
-                        children
-                            .iter()
-                            .rev()
-                            .copied()
-                            .map(C4PaintVisit::EnterBoundary),
-                    );
-                }
-                if let Some(shapes) = shapes_by_parent.get(boundary.alias.as_str()) {
-                    for &shape_index in shapes {
-                        painted_shapes[shape_index] = true;
-                        order.push(C4PaintItem::Shape(shape_index));
-                    }
-                }
-            }
-            C4PaintVisit::PaintBoundary(index) => {
-                order.push(C4PaintItem::Boundary(index));
-            }
-        }
-    }
-
-    if visited_boundaries.iter().any(|visited| !visited) {
-        return Err(crate::Error::InvalidModel {
-            message: "c4: found an orphaned or cyclic boundary while painting".to_string(),
-        });
-    }
-    if painted_shapes.iter().any(|painted| !painted) {
-        return Err(crate::Error::InvalidModel {
-            message: "c4: found a shape outside the global boundary tree while painting"
-                .to_string(),
-        });
-    }
-
-    Ok(order)
-}
-
-fn c4_css(
+pub(in crate::svg::parity) fn c4_css(
     diagram_id: impl std::fmt::Display + Copy,
     effective_config: &serde_json::Value,
 ) -> String {

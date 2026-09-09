@@ -9,22 +9,6 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    fn dominant_baseline(horizontal_pos: &str) -> &'static str {
-        if horizontal_pos == "top" {
-            "hanging"
-        } else {
-            "middle"
-        }
-    }
-
-    fn text_anchor(vertical_pos: &str) -> &'static str {
-        if vertical_pos == "left" {
-            "start"
-        } else {
-            "middle"
-        }
-    }
-
     fn transform(x: f64, y: f64, rotation: f64) -> String {
         format!(
             "translate({}, {}) rotate({})",
@@ -123,8 +107,8 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
             fill = escape_xml(&q.text.fill),
             font_size = fmt(q.text.font_size),
-            dom = dominant_baseline(&q.text.horizontal_pos),
-            anchor = text_anchor(&q.text.vertical_pos),
+            dom = crate::quadrantchart::quadrant_text_baseline(&q.text.horizontal_pos).as_svg(),
+            anchor = crate::quadrantchart::quadrant_text_anchor(&q.text.vertical_pos).as_svg(),
             transform = escape_xml(&transform(q.text.x, q.text.y, q.text.rotation)),
             text = escape_xml(&q.text.text),
         );
@@ -167,8 +151,8 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
             fill = escape_xml(&p.text.fill),
             font_size = fmt(p.text.font_size),
-            dom = dominant_baseline(&p.text.horizontal_pos),
-            anchor = text_anchor(&p.text.vertical_pos),
+            dom = crate::quadrantchart::quadrant_text_baseline(&p.text.horizontal_pos).as_svg(),
+            anchor = crate::quadrantchart::quadrant_text_anchor(&p.text.vertical_pos).as_svg(),
             transform = escape_xml(&transform(p.text.x, p.text.y, p.text.rotation)),
             text = escape_xml(&p.text.text),
         );
@@ -185,8 +169,8 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
             fill = escape_xml(&t.fill),
             font_size = fmt(t.font_size),
-            dom = dominant_baseline(&t.horizontal_pos),
-            anchor = text_anchor(&t.vertical_pos),
+            dom = crate::quadrantchart::quadrant_text_baseline(&t.horizontal_pos).as_svg(),
+            anchor = crate::quadrantchart::quadrant_text_anchor(&t.vertical_pos).as_svg(),
             transform = escape_xml(&transform(t.x, t.y, t.rotation)),
             text = escape_xml(&t.text),
         );
@@ -202,8 +186,8 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
             fill = escape_xml(&t.fill),
             font_size = fmt(t.font_size),
-            dom = dominant_baseline(&t.horizontal_pos),
-            anchor = text_anchor(&t.vertical_pos),
+            dom = crate::quadrantchart::quadrant_text_baseline(&t.horizontal_pos).as_svg(),
+            anchor = crate::quadrantchart::quadrant_text_anchor(&t.vertical_pos).as_svg(),
             transform = escape_xml(&transform(t.x, t.y, t.rotation)),
             text = escape_xml(&t.text),
         );

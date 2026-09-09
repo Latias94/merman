@@ -6,6 +6,7 @@ use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
+pub(crate) const PIE_TITLE_Y: f64 = -200.0;
 
 mod config;
 
@@ -74,27 +75,64 @@ fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     (x, y)
 }
 
-fn fmt_number(v: f64) -> String {
-    if !v.is_finite() {
-        return "0".to_string();
+pub(crate) fn pie_css_px(value: &str) -> Option<f64> {
+    let value = value.trim().trim_end_matches(';').trim();
+    let value = value
+        .strip_suffix("!important")
+        .map(str::trim)
+        .unwrap_or(value);
+    let (numeric, scale) = if let Some(numeric) = value.strip_suffix("px") {
+        (numeric.trim(), 1.0)
+    } else if let Some(numeric) = value.strip_suffix("pt") {
+        (numeric.trim(), 4.0 / 3.0)
+    } else {
+        (value, 1.0)
+    };
+    let value = numeric.parse::<f64>().ok()? * scale;
+    (value.is_finite() && value >= 0.0).then_some(value)
+}
+
+pub(crate) fn pie_legend_text(label: &str, value: f64, show_data: bool) -> String {
+    if !show_data {
+        return label.to_string();
     }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
-    }
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
-    }
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
+    let value = if value.is_finite() {
+        let mut value = value;
+        if value == -0.0 {
+            value = 0.0;
         }
-        if s.ends_with('.') {
-            s.pop();
-        }
-    }
-    if s == "-0" { "0".to_string() } else { s }
+        let mut buffer = ryu_js::Buffer::new();
+        buffer.format_finite(value).to_string()
+    } else if value.is_nan() {
+        "NaN".to_string()
+    } else if value.is_sign_negative() {
+        "-Infinity".to_string()
+    } else {
+        "Infinity".to_string()
+    };
+    format!("{label} [{value}]")
+}
+
+pub(crate) fn pie_content_offset(
+    layout: &PieDiagramLayout,
+    legend_position: PieLegendPosition,
+) -> (f64, f64) {
+    let viewport_width = layout
+        .bounds
+        .as_ref()
+        .map(|bounds| (bounds.max_x - bounds.min_x).max(1.0))
+        .unwrap_or(450.0);
+    let x = if legend_position == PieLegendPosition::Left {
+        (viewport_width - 490.0).max(0.0)
+    } else {
+        0.0
+    };
+    let y = if legend_position == PieLegendPosition::Top {
+        layout.legend_step_y * ((layout.legend_items.len() as f64) + 1.0)
+    } else {
+        0.0
+    };
+    (x, y)
 }
 
 pub(crate) fn layout_pie_diagram_typed(
@@ -218,25 +256,26 @@ pub(crate) fn layout_pie_diagram_typed(
         });
     }
 
+    let theme = crate::theme::PresentationTheme::new(effective_config).pie_drawing();
     let legend_style = TextStyle {
-        font_family: None,
-        font_size: 17.0,
+        font_family: Some(theme.font_family_css.clone()),
+        font_size: pie_css_px(&theme.legend_text_size)
+            .filter(|size| *size > 0.0)
+            .unwrap_or(17.0),
         font_weight: None,
         font_style: None,
     };
     let title_style = TextStyle {
-        font_family: None,
-        font_size: 25.0,
+        font_family: Some(theme.font_family_css),
+        font_size: pie_css_px(&theme.title_text_size)
+            .filter(|size| *size > 0.0)
+            .unwrap_or(25.0),
         font_weight: None,
         font_style: None,
     };
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
-        let label = if model.show_data {
-            format!("{} [{}]", sec.label, fmt_number(sec.value))
-        } else {
-            sec.label.clone()
-        };
+        let label = pie_legend_text(&sec.label, sec.value, model.show_data);
         let trimmed = label.trim_end();
         // Mermaid 11.16 measures pie legend text via a single SVG `<text>` node's
         // `getBoundingClientRect().width`.
@@ -360,6 +399,15 @@ mod tests {
     fn pie_legend_geometry_constants_match_mermaid() {
         assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
         assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+    }
+
+    #[test]
+    fn pie_show_data_uses_the_same_js_number_text_for_layout_and_rendering() {
+        assert_eq!(
+            super::pie_legend_text("Value", 1.234_567_89, true),
+            "Value [1.23456789]"
+        );
+        assert_eq!(super::pie_legend_text("Value", 1.0, false), "Value");
     }
 
     #[test]

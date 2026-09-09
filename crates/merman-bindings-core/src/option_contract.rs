@@ -39,6 +39,7 @@ impl BindingOptionGroupSpec {
 #[non_exhaustive]
 pub enum BindingOptionGroupKey {
     Ascii,
+    DrawingList,
     Environment,
     FixedLocalOffsetMinutes,
     FixedToday,
@@ -59,6 +60,7 @@ pub enum BindingOptionGroupKey {
 impl BindingOptionGroupKey {
     pub const ALL: &'static [Self] = &[
         Self::Ascii,
+        Self::DrawingList,
         Self::Environment,
         Self::FixedLocalOffsetMinutes,
         Self::FixedToday,
@@ -80,6 +82,7 @@ impl BindingOptionGroupKey {
     pub const fn id(self) -> &'static str {
         match self {
             Self::Ascii => "ascii",
+            Self::DrawingList => "drawing_list",
             Self::Environment => "environment",
             Self::FixedLocalOffsetMinutes => "fixed_local_offset_minutes",
             Self::FixedToday => "fixed_today",
@@ -102,21 +105,22 @@ impl BindingOptionGroupKey {
     pub const fn spec(self) -> &'static BindingOptionGroupSpec {
         match self {
             Self::Ascii => &OPTION_GROUP_SPECS[0],
-            Self::Environment => &OPTION_GROUP_SPECS[1],
-            Self::FixedLocalOffsetMinutes => &OPTION_GROUP_SPECS[2],
-            Self::FixedToday => &OPTION_GROUP_SPECS[3],
-            Self::Jpeg => &OPTION_GROUP_SPECS[4],
-            Self::Layout => &OPTION_GROUP_SPECS[5],
-            Self::Lint => &OPTION_GROUP_SPECS[6],
-            Self::Parse => &OPTION_GROUP_SPECS[7],
-            Self::Pdf => &OPTION_GROUP_SPECS[8],
-            Self::Presentation => &OPTION_GROUP_SPECS[9],
-            Self::Raster => &OPTION_GROUP_SPECS[10],
-            Self::Resources => &OPTION_GROUP_SPECS[11],
-            Self::RuntimePolicy => &OPTION_GROUP_SPECS[12],
-            Self::SiteConfig => &OPTION_GROUP_SPECS[13],
-            Self::Svg => &OPTION_GROUP_SPECS[14],
-            Self::Version => &OPTION_GROUP_SPECS[15],
+            Self::DrawingList => &OPTION_GROUP_SPECS[1],
+            Self::Environment => &OPTION_GROUP_SPECS[2],
+            Self::FixedLocalOffsetMinutes => &OPTION_GROUP_SPECS[3],
+            Self::FixedToday => &OPTION_GROUP_SPECS[4],
+            Self::Jpeg => &OPTION_GROUP_SPECS[5],
+            Self::Layout => &OPTION_GROUP_SPECS[6],
+            Self::Lint => &OPTION_GROUP_SPECS[7],
+            Self::Parse => &OPTION_GROUP_SPECS[8],
+            Self::Pdf => &OPTION_GROUP_SPECS[9],
+            Self::Presentation => &OPTION_GROUP_SPECS[10],
+            Self::Raster => &OPTION_GROUP_SPECS[11],
+            Self::Resources => &OPTION_GROUP_SPECS[12],
+            Self::RuntimePolicy => &OPTION_GROUP_SPECS[13],
+            Self::SiteConfig => &OPTION_GROUP_SPECS[14],
+            Self::Svg => &OPTION_GROUP_SPECS[15],
+            Self::Version => &OPTION_GROUP_SPECS[16],
         }
     }
 
@@ -143,6 +147,12 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
         key: BindingOptionGroupKey::Ascii,
         always_available: false,
         any_capabilities: &[CapabilityKey::Ascii],
+        requires_svg_pipeline: false,
+    },
+    BindingOptionGroupSpec {
+        key: BindingOptionGroupKey::DrawingList,
+        always_available: false,
+        any_capabilities: &[CapabilityKey::DrawingList],
         requires_svg_pipeline: false,
     },
     BindingOptionGroupSpec {

@@ -744,14 +744,6 @@ where
     Ok(out)
 }
 
-fn pie_theme_option(
-    effective_config: &serde_json::Value,
-    key: &str,
-    default_value: &str,
-) -> String {
-    SvgTheme::new(effective_config).css_value(key, default_value)
-}
-
 pub(super) struct PieCss {
     info: InfoCssValues,
     pie_stroke_color: String,
@@ -770,34 +762,21 @@ pub(super) struct PieCss {
 impl PieCss {
     pub(super) fn new(effective_config: &serde_json::Value) -> Self {
         let info = InfoCssValues::new(effective_config, InfoCssFontSizeSource::ThemeThenTopLevel);
-        let theme = SvgTheme::new(effective_config);
-        let task_text_dark_color = theme.color("taskTextDarkColor", "black");
-        let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());
-        let pie_section_text_color = theme.color("pieSectionTextColor", info.text_color.as_str());
-        let pie_legend_text_color =
-            theme.color("pieLegendTextColor", task_text_dark_color.as_str());
+        let theme = PresentationTheme::new(effective_config).pie_drawing();
 
         Self {
             info,
-            pie_stroke_color: pie_theme_option(effective_config, "pieStrokeColor", "black"),
-            pie_stroke_width: pie_theme_option(effective_config, "pieStrokeWidth", "2px"),
-            pie_opacity: pie_theme_option(effective_config, "pieOpacity", "0.7"),
-            pie_outer_stroke_color: pie_theme_option(
-                effective_config,
-                "pieOuterStrokeColor",
-                "black",
-            ),
-            pie_outer_stroke_width: pie_theme_option(
-                effective_config,
-                "pieOuterStrokeWidth",
-                "2px",
-            ),
-            pie_title_text_size: pie_theme_option(effective_config, "pieTitleTextSize", "25px"),
-            pie_title_text_color,
-            pie_section_text_size: pie_theme_option(effective_config, "pieSectionTextSize", "17px"),
-            pie_section_text_color,
-            pie_legend_text_size: pie_theme_option(effective_config, "pieLegendTextSize", "17px"),
-            pie_legend_text_color,
+            pie_stroke_color: theme.slice_stroke_color,
+            pie_stroke_width: theme.slice_stroke_width,
+            pie_opacity: theme.slice_opacity,
+            pie_outer_stroke_color: theme.outer_stroke_color,
+            pie_outer_stroke_width: theme.outer_stroke_width,
+            pie_title_text_size: theme.title_text_size,
+            pie_title_text_color: theme.title_text_color,
+            pie_section_text_size: theme.section_text_size,
+            pie_section_text_color: theme.section_text_color,
+            pie_legend_text_size: theme.legend_text_size,
+            pie_legend_text_color: theme.legend_text_color,
         }
     }
 
@@ -850,21 +829,19 @@ where
     // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = diagram_id;
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let theme = crate::sankey::SankeyDrawingTheme::new(effective_config);
     let mut out = parts.css_prefix;
-    let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
-        .unwrap_or_else(|| "#fff".to_string());
     let _ = write!(
         &mut out,
         r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
         id,
-        parts.font_family,
+        theme.font_family_css,
         id,
-        parts.font_family,
+        theme.font_family_css,
         id,
-        label_background,
+        theme.label_background,
         id,
-        parts.text_color,
+        theme.text_color,
         id,
         id
     );

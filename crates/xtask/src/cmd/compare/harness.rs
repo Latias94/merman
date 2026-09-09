@@ -7,6 +7,7 @@ use std::fs;
 use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const ACCEPTED_BROWSER_TEXT_LAYOUT_RESIDUAL_PREFIX: &str =
@@ -323,6 +324,8 @@ impl RenderOperationContract {
 pub(crate) struct ObservedRenderOperations {
     expected: RenderOperationContract,
     observed: bool,
+    canonical_svg_outputs: usize,
+    legacy_svg_outputs: usize,
 }
 
 #[derive(Debug)]
@@ -352,6 +355,8 @@ impl ObservedRenderOperations {
         Ok(Self {
             expected: RenderOperationContract::from_environment(environment)?,
             observed: false,
+            canonical_svg_outputs: 0,
+            legacy_svg_outputs: 0,
         })
     }
 
@@ -375,7 +380,32 @@ impl ObservedRenderOperations {
         })
     }
 
+    pub(crate) fn observe_svg(
+        &mut self,
+        diagram: &str,
+        fixture: &str,
+        output: &merman::SvgOutput,
+    ) -> Result<ObservedRenderEvidence, String> {
+        // Report every observed output, including a bridge rejected by the admission gate.
+        // A successful legacy DOM comparison is not canonical migration evidence.
+        match output.serialization_route() {
+            merman::svg::SvgSerializationRoute::CanonicalDocument => {
+                self.canonical_svg_outputs += 1
+            }
+            merman::svg::SvgSerializationRoute::LegacyBridge => self.legacy_svg_outputs += 1,
+            // The route contract below rejects unknown future variants.
+            _ => {}
+        }
+        validate_svg_serialization_route(diagram, fixture, output)?;
+        self.observe(fixture, output.evidence())
+    }
+
     pub(crate) fn write_report(&self, report: &mut String) {
+        let _ = writeln!(
+            report,
+            "- SVG serialization routes (observed outputs, including rejected routes): canonical-document=`{}` legacy-bridge=`{}`",
+            self.canonical_svg_outputs, self.legacy_svg_outputs,
+        );
         if !self.observed {
             let _ = writeln!(report, "- Render operation: `not-observed`");
             return;
@@ -411,6 +441,80 @@ impl ObservedRenderOperations {
     pub(crate) const fn has_observation(&self) -> bool {
         self.observed
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpectedSvgSerialization {
+    Canonical,
+    LegacyBridge,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SvgFamilyCoverageMatrix {
+    families: Vec<SvgFamilyCoverageRow>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SvgFamilyCoverageRow {
+    id: String,
+    svg_serializer: String,
+}
+
+fn validate_svg_serialization_route(
+    diagram: &str,
+    fixture: &str,
+    output: &merman::SvgOutput,
+) -> Result<(), String> {
+    let family_id = output.family_kind().as_str();
+    let expected = expected_svg_serialization(family_id)?;
+    match (expected, output.serialization_route()) {
+        (
+            ExpectedSvgSerialization::Canonical,
+            merman::svg::SvgSerializationRoute::CanonicalDocument,
+        ) if output.serialization_bridge_reason().is_none() => Ok(()),
+        (
+            ExpectedSvgSerialization::LegacyBridge,
+            merman::svg::SvgSerializationRoute::LegacyBridge,
+        ) if output.serialization_bridge_reason().is_some() => Ok(()),
+        (expected, actual) => Err(format!(
+            "SVG route evidence for {diagram}/{fixture} rendered as {family_id} expected {expected:?}, found {actual:?} with reason {:?}",
+            output.serialization_bridge_reason()
+        )),
+    }
+}
+
+fn expected_svg_serialization(family_id: &str) -> Result<ExpectedSvgSerialization, String> {
+    static COVERAGE: OnceLock<Result<Vec<(String, ExpectedSvgSerialization)>, String>> =
+        OnceLock::new();
+    let coverage = COVERAGE.get_or_init(|| {
+        let matrix: SvgFamilyCoverageMatrix = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/drawing-list/v1/family-coverage.json"
+        )))
+        .map_err(|error| format!("invalid DrawingList family coverage fixture: {error}"))?;
+        matrix
+            .families
+            .into_iter()
+            .map(|row| {
+                let serialization = match row.svg_serializer.as_str() {
+                    "canonical" => ExpectedSvgSerialization::Canonical,
+                    "legacy-bridge" => ExpectedSvgSerialization::LegacyBridge,
+                    other => {
+                        return Err(format!(
+                            "unknown SVG serializer status {other:?} for {}",
+                            row.id
+                        ));
+                    }
+                };
+                Ok((row.id, serialization))
+            })
+            .collect()
+    });
+    let coverage = coverage.as_ref().map_err(Clone::clone)?;
+    coverage
+        .iter()
+        .find_map(|(id, serialization)| (id == family_id).then_some(*serialization))
+        .ok_or_else(|| format!("DrawingList family coverage has no row for {family_id}"))
 }
 
 #[derive(Debug)]
@@ -1163,9 +1267,10 @@ pub(crate) fn run_canonical_svg_compare(
                 .evidence()
                 .required_capabilities()
                 .contains(&merman::svg::RenderCapability::Math);
-            let render_evidence = state
-                .observed_operations
-                .observe(input.stem, rendered.evidence())?;
+            let render_evidence =
+                state
+                    .observed_operations
+                    .observe_svg(fact.diagram, input.stem, &rendered)?;
             let local_svg = rendered.svg().to_owned();
             let mut fixture_notes = Vec::new();
             let browser_measured_math = if let Some(evidence) = finish_math_evidence(
@@ -2779,6 +2884,56 @@ mod tests {
             ),
         )
         .expect("Info render should succeed")
+    }
+
+    #[test]
+    fn svg_route_evidence_uses_rendered_family_instead_of_fixture_suite() {
+        let renderer = merman::Renderer::new()
+            .with_engine(super::super::svg_compare_engine())
+            .with_parse_options(ParsePolicy::Lenient.options());
+        let output = render_source_svg(
+            &renderer,
+            "packet\nstart: \"Block name\"",
+            svg_request(
+                merman::SvgEnvironment::deterministic(),
+                super::super::svg_compare_layout_opts(),
+                Some("packet-error-route".to_string()),
+            ),
+        )
+        .expect("invalid Packet syntax should render the Error family");
+
+        assert_eq!(output.family_kind(), merman::svg::RenderFamilyKind::Error);
+        validate_svg_serialization_route("packet", "invalid-packet", &output)
+            .expect("route evidence should follow the rendered Error family");
+    }
+
+    #[test]
+    fn svg_report_distinguishes_canonical_and_legacy_outputs() {
+        let environment = merman::SvgEnvironment::deterministic();
+        let mut operations = ObservedRenderOperations::from_environment(&environment).unwrap();
+        let canonical = render_info_for_evidence("canonical-info");
+        operations
+            .observe_svg("info", "canonical-info", &canonical)
+            .unwrap();
+        let legacy = render_source_svg(
+            &merman::Renderer::new().with_engine(super::super::svg_compare_engine()),
+            "sequenceDiagram\nA->>B: Hello\n",
+            svg_request(
+                environment,
+                super::super::svg_compare_layout_opts(),
+                Some("legacy-sequence".into()),
+            ),
+        )
+        .unwrap();
+        operations
+            .observe_svg("sequence", "legacy-sequence", &legacy)
+            .unwrap();
+        let mut report = String::new();
+        operations.write_report(&mut report);
+        assert!(
+            report.contains("canonical-document=`1` legacy-bridge=`1`"),
+            "{report}"
+        );
     }
 
     #[test]

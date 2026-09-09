@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64_or, config_font_family_css};
+use crate::config::{config_bool, config_f64_or, config_font_family_css, config_string};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::wardley::{
@@ -18,6 +18,50 @@ const DEFAULT_LABEL_FONT_SIZE: f64 = 10.0;
 const DEFAULT_SHOW_GRID: bool = false;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_STAGES: [&str; 4] = ["Genesis", "Custom Built", "Product", "Commodity"];
+
+/// Resolved Wardley presentation roles shared by SVG and renderer-neutral targets.
+#[derive(Debug, Clone)]
+pub(crate) struct WardleyTheme {
+    pub(crate) background_color: String,
+    pub(crate) axis_color: String,
+    pub(crate) axis_text_color: String,
+    pub(crate) grid_color: String,
+    pub(crate) component_fill: String,
+    pub(crate) component_stroke: String,
+    pub(crate) component_label_color: String,
+    pub(crate) link_stroke: String,
+    pub(crate) evolution_stroke: String,
+}
+
+impl WardleyTheme {
+    pub(crate) fn from_config(config: &Value) -> Self {
+        let nested = |key, fallback: &str| {
+            config_string(config, &["themeVariables", "wardley", key])
+                .unwrap_or_else(|| fallback.to_string())
+        };
+        let nested_or_root = |key, root_key, fallback: &str| {
+            config_string(config, &["themeVariables", "wardley", key])
+                .or_else(|| config_string(config, &["themeVariables", root_key]))
+                .unwrap_or_else(|| fallback.to_string())
+        };
+
+        Self {
+            background_color: nested_or_root("backgroundColor", "background", "#fff"),
+            axis_color: nested("axisColor", "#000"),
+            axis_text_color: nested_or_root("axisTextColor", "primaryTextColor", "#222"),
+            grid_color: nested("gridColor", "rgba(100, 100, 100, 0.2)"),
+            component_fill: nested("componentFill", "#fff"),
+            component_stroke: nested("componentStroke", "#000"),
+            component_label_color: nested_or_root(
+                "componentLabelColor",
+                "primaryTextColor",
+                "#222",
+            ),
+            link_stroke: nested("linkStroke", "#000"),
+            evolution_stroke: nested("evolutionStroke", "#dc3545"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct WardleySettings {

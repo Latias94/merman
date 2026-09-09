@@ -4,6 +4,10 @@ This guide describes the supported package and artifact choices. It is not a liv
 database; verify a specific version at its owning registry or GitHub Release before recommending an
 installation command.
 
+No immutable `0.8.0-alpha.6` artifact includes DrawingList. DrawingList rows below describe current
+unreleased source profiles; use a source build or wait for a later matching release before relying
+on that capability.
+
 ## Choose A Surface
 
 | Need | Entry point | Delivery |
@@ -17,7 +21,7 @@ installation command.
 | Checked Rustdoc fragments with no consumer renderer dependency | `merman-cli rustdoc` | GitHub Release archive or crates.io authoring tool |
 | One-step Rustdoc Mermaid attributes | `merman-rustdoc` | crates.io |
 | Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
-| Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
+| Native Node.js / static-site SVG rendering; DrawingList in the current unreleased profile | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
 | Android host integration | `io.merman:merman-android` | GitHub Release AAR |
@@ -29,14 +33,16 @@ installation command.
 Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
 publication; this repository only validates the external formula after a stable release.
 
-Android, Apple, Python, and Flutter share one default prebuilt native capability SKU: SVG, semantic
-and layout operations, both supported layout engines, ASCII, analysis, validation, and document
-analysis. Math, PNG, JPEG, PDF, and native runtime adapters remain available to custom source
-builds but are not bundled in the default packages. These platform artifacts intentionally include
-ELK and therefore ship under an artifact-specific notice closure; they are not equivalent to the
-default `merman` Cargo feature. The C ABI crate has no default features, so custom embedders can
-select semantic-only, SVG-only, export-capable, or complete builds. LSP remains a separate
-executable product and is not linked into any native binding artifact.
+Current unreleased Android, Apple, Python, and Flutter profiles share one default native capability
+SKU: SVG, DrawingList, semantic and layout operations, both supported layout engines, ASCII,
+analysis, validation, and document analysis. Their immutable alpha.6 artifacts retain the earlier
+SKU without DrawingList. Math, PNG, JPEG, PDF, and native runtime adapters remain available to
+custom source builds but are not bundled in the default packages. These platform artifacts
+intentionally include ELK and therefore ship under an artifact-specific notice closure; they are
+not equivalent to the default `merman` Cargo feature. The C ABI crate has no default features, so
+custom embedders can select semantic-only, SVG-only, DrawingList-capable, export-capable, or
+complete builds. LSP remains a separate executable product and is not linked into any native
+binding artifact.
 
 ## Rustdoc Documentation
 
@@ -132,11 +138,11 @@ package exports only `.` and contains exactly one owned WASM artifact at
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts, and math. |
+| `@mermanjs/web` | `web-full` | Complete browser SDK: SVG, DrawingList, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts, and math. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | Public complete SVG-only renderer with Cytoscape, ELK, and math. |
+| `@mermanjs/web-render` | `web-render` | Public SVG and DrawingList renderer with Cytoscape, ELK, and math. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
@@ -153,13 +159,13 @@ provide cross-package transactions, so the root package is deliberately publishe
 
 ## Compatibility And Migration Notes
 
-Current release semantics are intentionally explicit:
+Current source and profile semantics are intentionally explicit:
 
 - Cargo features describe positive capabilities; the source of truth for an exact shipped artifact
   is the artifact profile catalog, not historical `full`, `tiny`, or per-diagram feature aliases.
-  The Rust facade keeps the result-named `complete-svg` convenience aggregate (`svg`, Cytoscape,
-  and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles select direct
-  leaf features when they need an artifact-specific closure.
+  The Rust facade keeps the result-named `complete-svg` convenience aggregate (SVG, DrawingList,
+  Cytoscape, and math) plus an explicit `complete-svg-elk` opt-in. Products and release profiles
+  select direct leaf features when they need an artifact-specific closure.
 - Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.
@@ -174,12 +180,13 @@ Current release semantics are intentionally explicit:
 
 ## Native Prebuilt SKU Policy
 
-Python, Apple, Android, and Flutter releases ship the same default native prebuilt SKU through
-surface-owned transports. Its direct features are `analysis`, `ascii`, `layout-cytoscape`,
-`layout-elk`, and `svg`; its outputs are ASCII and SVG. It omits math, binary export, and native
-runtime adapters to keep common downloads materially smaller. The generated wrappers still expose
-the complete operation vocabulary, while runtime discovery and typed missing-capability errors
-describe the loaded artifact precisely.
+Current unreleased Python, Apple, Android, and Flutter profiles select the same default native SKU
+through surface-owned transports. Its direct features are `analysis`, `ascii`, `drawing-list`,
+`layout-cytoscape`, `layout-elk`, and `svg`; its outputs are ASCII, DrawingList, and SVG. The
+immutable alpha.6 artifacts use the prior SKU without DrawingList. Both generations omit math,
+binary export, and native runtime adapters to keep common downloads materially smaller. Generated
+wrappers and runtime discovery describe the exact release-matched operation vocabulary and loaded
+artifact capabilities.
 
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
@@ -192,10 +199,10 @@ differ:
 
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
-| Android, Apple, Python, Flutter | analysis, ASCII, SVG, Cytoscape, ELK | Shared default native prebuilt SKU. |
+| Current unreleased Android, Apple, Python, Flutter profiles | analysis, ASCII, DrawingList, SVG, Cytoscape, ELK | Shared default native SKU; immutable alpha.6 omits DrawingList. |
 | Typst | analysis, SVG, Cytoscape, ELK | Matches the five-function Typst ABI; no callable ASCII or binary-export operation, and no admitted math backend. |
-| Node alpha package group | SVG, Cytoscape, ELK | Matches the deterministic static-SVG interface; specialist capabilities remain out of the prebuilt download. |
-| Browser packages | package-specific | `web-full` and `web-render` keep math, while dedicated packages own analysis, editor, and ASCII workflows. |
+| Current unreleased Node profile | DrawingList, SVG, Cytoscape, ELK | Immutable alpha.6 omits DrawingList; specialist capabilities remain out of the prebuilt download. |
+| Current unreleased browser profiles | package-specific | `web-full` and `web-render` include DrawingList and math, while dedicated packages own analysis, editor, and ASCII workflows; immutable alpha.6 omits DrawingList. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 
 Do not add another prebuilt matrix solely because another source closure compiles. A proposed SKU
@@ -242,17 +249,17 @@ must cover every exact Web and Typst artifact profile once, with no legacy featu
 or stale profiles. Compare only artifacts with the same profile and target; browser and Typst
 transports deliberately have different closures.
 
-The 2026-08-03 complete-SVG admission refresh measured the final `web-render` npm WASM against the
+The 2026-09-06 DrawingList admission refresh measured the final `web-render` npm WASM against the
 capability-superset `web-full` artifact produced by the same wasm-pack toolchain:
 
 | Artifact profile | Raw | Stripped | Gzip | Brotli |
 | --- | ---: | ---: | ---: | ---: |
-| `web-full` | 12,584,849 | 12,584,626 | 4,787,991 | 3,406,733 |
-| `web-render` | 11,844,334 | 11,844,111 | 4,500,248 | 3,195,427 |
+| `web-full` | 13,438,836 | 13,438,559 | 5,016,864 | 3,721,511 |
+| `web-render` | 11,491,360 | 11,491,083 | 4,350,034 | 3,223,967 |
 
-Removing analysis, ASCII, and editor saves 5.88% by stripped bytes and 6.20% by Brotli. The package
-is admitted because it establishes the complete SVG-only capability contract, not because it meets
-the 15% threshold used for workflow-specific slim packages. Do not weaken `web-render` to basic SVG
-under the same package identity: it would no longer be capability-equivalent. A future basic-SVG
-package needs a separate workflow and at least a 15% measured reduction against its declared
-comparison artifact before release admission is considered.
+Removing analysis, ASCII, and editor saves 14.49% by stripped bytes and 13.37% by Brotli. The
+package is admitted because it establishes the complete SVG plus DrawingList rendering contract,
+not because it meets the 15% threshold used for workflow-specific slim packages. Do not weaken
+`web-render` to basic SVG under the same package identity: it would no longer be
+capability-equivalent. A future basic-SVG package needs a separate workflow and at least a 15%
+measured reduction against its declared comparison artifact before release admission is considered.

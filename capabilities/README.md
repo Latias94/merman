@@ -46,24 +46,29 @@ Artifact profiles describe compiled components, not every package that redistrib
 
 ## Default Native Prebuilt SKU
 
-The Android, Apple, Python, and Flutter artifact profiles select one shared default native
-capability set:
+The current unreleased Android, Apple, Python, and Flutter artifact profiles select one shared
+default native capability set:
 
 ```text
-analysis,ascii,layout-cytoscape,layout-elk,svg
+analysis,ascii,drawing-list,layout-cytoscape,layout-elk,svg
 ```
 
-Those prebuilt packages omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their generated
-language APIs retain the complete operation vocabulary; the loaded runtime catalog reports the
-actual subset, and an unavailable valid operation returns a typed `missing-capability` error.
-Custom source builds may select any valid direct leaves. The `c-abi-native` profile remains a
-complete host reference build for ABI verification rather than a downloadable default package.
+Artifacts built from those profiles omit `math`, `png`, `jpeg`, `pdf`, and `native-runtime`. Their
+generated language APIs retain the complete operation vocabulary; the loaded runtime catalog
+reports the actual subset, and an unavailable valid operation returns a typed `missing-capability`
+error. Custom source builds may select any valid direct leaves. The `c-abi-native` profile remains
+a complete host reference build for ABI verification rather than a downloadable default package.
 See [ADR-0079](../docs/adr/0079-default-native-prebuilt-capability-sku.md) for the product decision.
 
+No immutable `0.8.0-alpha.6` artifact includes DrawingList. The capability set above applies to
+artifacts built from current unreleased profiles and becomes an installable package surface only in
+a later matching release.
+
 Other cross-language artifacts are interface-shaped rather than forced into that native SKU.
-Typst publishes SVG plus canonical analysis and both layout backends. The private Node candidates
-compile SVG plus both layout backends only. Browser WASM keeps package-specific full and slim
-profiles because npm package identity is its capability-selection mechanism.
+Typst publishes SVG plus canonical analysis and both layout backends. Current unreleased Node
+candidates compile SVG, DrawingList, and both layout backends. Browser WASM keeps package-specific
+profiles because npm package identity is its capability-selection mechanism; current unreleased
+full-SDK and render-only profiles expose both SVG and DrawingList output.
 
 The verifier does not parse README prose, plan text, or private symbol names. User documentation is reviewed and example-tested where useful, but prose is not a release authority. Generated reference tables may have freshness checks because their source is structured machine data.
 

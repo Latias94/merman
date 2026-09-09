@@ -10,7 +10,7 @@ use merman_render::environment::{
 };
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::text::{NormalLineMetrics, TextMetrics, WrapMode};
 
 #[derive(Debug, Clone, Copy)]
 enum HostOutcome {
@@ -134,6 +134,12 @@ fn valid_measurement(
     };
 
     match request.operation.required_result_kind() {
+        TextMeasurementResultKind::NormalLineMetrics => {
+            HostTextMeasurement::NormalLineMetrics(NormalLineMetrics {
+                line_height: 20.0 + state_delta,
+                baseline_offset: 16.0 + state_delta,
+            })
+        }
         TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
         TextMeasurementResultKind::Length => {
             let length = match request.operation {

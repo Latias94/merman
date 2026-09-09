@@ -17,6 +17,112 @@ const BONE_BASE: f64 = 60.0;
 const BONE_PER_CHILD: f64 = 5.0;
 const COS_A: f64 = 0.139_173_100_960_065_47;
 const SIN_A: f64 = 0.990_268_068_741_570_4;
+pub(crate) const ISHIKAWA_LINE_STROKE_WIDTH: f64 = 2.0;
+pub(crate) const ISHIKAWA_SUB_BRANCH_STROKE_WIDTH: f64 = 1.0;
+pub(crate) const ISHIKAWA_HEAD_LABEL_FONT_SIZE: f64 = 14.0;
+pub(crate) const ISHIKAWA_HEAD_LABEL_FONT_WEIGHT: u16 = 600;
+pub(crate) const ISHIKAWA_ARROW_VIEWBOX_WIDTH: f64 = 10.0;
+pub(crate) const ISHIKAWA_ARROW_VIEWBOX_HEIGHT: f64 = 10.0;
+pub(crate) const ISHIKAWA_ARROW_MARKER_WIDTH: f64 = 6.0;
+pub(crate) const ISHIKAWA_ARROW_MARKER_HEIGHT: f64 = 6.0;
+pub(crate) const ISHIKAWA_ARROW_REF_X: f64 = 0.0;
+pub(crate) const ISHIKAWA_ARROW_REF_Y: f64 = 5.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IshikawaTextAnchor {
+    Start,
+    Middle,
+    End,
+}
+
+impl IshikawaTextAnchor {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+            Self::End => "end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IshikawaTextBaseline {
+    Alphabetic,
+    Hanging,
+    Middle,
+}
+
+impl IshikawaTextBaseline {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Alphabetic => "baseline",
+            Self::Hanging => "hanging",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct IshikawaTextPresentation {
+    pub(crate) anchor: IshikawaTextAnchor,
+    pub(crate) baseline: IshikawaTextBaseline,
+    pub(crate) font_size: f64,
+    pub(crate) font_weight: u16,
+}
+
+pub(crate) fn ishikawa_text_presentation(
+    class_name: &str,
+    attribute_anchor: &str,
+    font_size: f64,
+) -> IshikawaTextPresentation {
+    let has_class = |expected: &str| class_name.split_whitespace().any(|class| class == expected);
+    let mut presentation = IshikawaTextPresentation {
+        anchor: match attribute_anchor {
+            "middle" => IshikawaTextAnchor::Middle,
+            "end" => IshikawaTextAnchor::End,
+            _ => IshikawaTextAnchor::Start,
+        },
+        baseline: IshikawaTextBaseline::Alphabetic,
+        font_size,
+        font_weight: 400,
+    };
+
+    if has_class("ishikawa-head-label") {
+        presentation.anchor = IshikawaTextAnchor::Middle;
+        presentation.baseline = IshikawaTextBaseline::Middle;
+        presentation.font_size = ISHIKAWA_HEAD_LABEL_FONT_SIZE;
+        presentation.font_weight = ISHIKAWA_HEAD_LABEL_FONT_WEIGHT;
+    }
+    if has_class("ishikawa-label") {
+        presentation.anchor = IshikawaTextAnchor::End;
+    }
+    if has_class("cause") {
+        presentation.anchor = IshikawaTextAnchor::Middle;
+        presentation.baseline = IshikawaTextBaseline::Middle;
+    }
+    if has_class("align") {
+        presentation.anchor = IshikawaTextAnchor::End;
+        presentation.baseline = IshikawaTextBaseline::Middle;
+    }
+    if has_class("up") {
+        presentation.baseline = IshikawaTextBaseline::Alphabetic;
+    }
+    if has_class("down") {
+        presentation.baseline = IshikawaTextBaseline::Hanging;
+    }
+    presentation
+}
+
+pub(crate) fn ishikawa_line_stroke_width(class_name: &str) -> f64 {
+    if class_name
+        .split_whitespace()
+        .any(|class| class == "ishikawa-sub-branch")
+    {
+        ISHIKAWA_SUB_BRANCH_STROKE_WIDTH
+    } else {
+        ISHIKAWA_LINE_STROKE_WIDTH
+    }
+}
 
 mod config;
 
@@ -628,17 +734,12 @@ fn text_layout(
 }
 
 fn ishikawa_text_measure_style(class_name: &str, font_size: f64) -> TextStyle {
-    if class_name == "ishikawa-head-label" {
-        TextStyle {
-            font_size: 14.0,
-            font_weight: Some("600".to_string()),
-            ..Default::default()
-        }
-    } else {
-        TextStyle {
-            font_size,
-            ..Default::default()
-        }
+    let presentation = ishikawa_text_presentation(class_name, "start", font_size);
+    TextStyle {
+        font_size: presentation.font_size,
+        font_weight: (presentation.font_weight != 400)
+            .then(|| presentation.font_weight.to_string()),
+        ..Default::default()
     }
 }
 

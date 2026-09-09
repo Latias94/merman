@@ -1,4 +1,5 @@
 mod error;
+mod geometry;
 mod ingest;
 mod limits;
 mod lookup;
@@ -13,6 +14,7 @@ pub use limits::{
 };
 pub use pack::IconPack;
 
+pub(crate) use geometry::IconGeometryPlan;
 use ingest::{BuildUsage, ParsedPack, ResolvedIcon};
 use limits::IconRegistryBuildLimits;
 use merman_core::OperationPhase;
@@ -30,9 +32,29 @@ const ICON_ID_SCOPE_CHECKPOINT_BYTES: usize = 4 * 1024;
 /// Callers cannot provide an arbitrary string: the scope must first pass through the controlled
 /// prefix builder, which charges and checkpoints every scanned byte before icon materialization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::svg) struct IconIdScope(u64);
+pub(crate) struct IconIdScope(u64);
 
 impl IconIdScope {
+    pub(crate) fn tree_view(
+        diagram_id: &str,
+        node_id: &str,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        IconIdScopePrefix::from_parts(&["tree-view-", diagram_id, "-"], work_meter)?
+            .scope_parts(&[node_id], work_meter)
+    }
+
+    /// Formats one admitted identity without charging the scope scan a second time.
+    pub(crate) fn scoped_id(self, index: usize) -> crate::Result<String> {
+        let mut output = String::new();
+        output
+            .try_reserve_exact(xml::scoped_id_len(index))
+            .map_err(|_| crate::Error::icon_processing("icon ID allocation failed"))?;
+        xml::write_scoped_id(&mut output, self.hash(), index)
+            .map_err(|_| crate::Error::icon_processing("icon ID formatting failed"))?;
+        Ok(output)
+    }
+
     pub(super) const fn hash(self) -> u64 {
         self.0
     }
@@ -261,6 +283,14 @@ pub struct IconRegistry {
     inner: Arc<IconRegistryInner>,
 }
 
+/// Borrowed, structurally validated Iconify asset, not sanitized output or a portability claim.
+/// Consumers must reject unsupported/security-sensitive asset effects and apply operation limits.
+pub(crate) struct ResolvedIconAsset<'a> {
+    pub(crate) body: &'a str,
+    pub(crate) element_count: usize,
+    pub(crate) geometry: IconGeometryPlan,
+}
+
 impl fmt::Debug for IconRegistry {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -287,6 +317,27 @@ impl IconRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.inner.icons.is_empty()
+    }
+
+    pub(crate) fn resolve_asset(
+        &self,
+        icon_name: &str,
+        fallback_prefix: Option<&str>,
+    ) -> crate::Result<Option<ResolvedIconAsset<'_>>> {
+        let Some(key) = lookup::resolve_icon_key(icon_name, fallback_prefix) else {
+            return Ok(None);
+        };
+        self.inner
+            .icons
+            .get(&key)
+            .map(|icon| {
+                Ok(ResolvedIconAsset {
+                    body: icon.body.source(),
+                    element_count: icon.body.element_count(),
+                    geometry: IconGeometryPlan::new(icon)?,
+                })
+            })
+            .transpose()
     }
 
     pub(in crate::svg) fn render_icon(
@@ -372,6 +423,49 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
     #[test]
+    fn resolved_assets_share_lookup_alias_geometry_and_borrowed_source() {
+        let registry = IconRegistry::from_packs([IconPack::new(
+            br#"{
+            "prefix":"test", "width":20, "height":10,
+            "icons":{"shape":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10Z\"/>"}},
+            "aliases":{"turned":{"parent":"shape","rotate":1}}
+        }"#,
+        )])
+        .unwrap();
+        let base = registry.resolve_asset("test:shape", None).unwrap().unwrap();
+        let alias = registry
+            .resolve_asset("test-turned", None)
+            .unwrap()
+            .unwrap();
+        let provider = registry
+            .resolve_asset("@host:test:turned", None)
+            .unwrap()
+            .unwrap();
+        let fallback = registry
+            .resolve_asset("turned", Some("test"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(base.body, "<path fill=\"currentColor\" d=\"M0 0H20V10Z\"/>");
+        assert_eq!(base.body.as_ptr(), alias.body.as_ptr());
+        assert_eq!(base.element_count, 1);
+        assert_eq!((alias.geometry.width, alias.geometry.height), (10.0, 20.0));
+        assert_eq!(alias.geometry, provider.geometry);
+        assert_eq!(alias.geometry, fallback.geometry);
+        assert!(
+            registry
+                .resolve_asset("test:missing", None)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            registry
+                .resolve_asset(" turned", Some("test"))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
     fn incremental_icon_scope_preserves_the_legacy_concatenated_hash() {
         assert_eq!(
             icon_id_scope_for_test("diagram-a").hash(),
@@ -402,6 +496,37 @@ mod tests {
             work_meter.used(),
             diagram_id.len() + "-flowchart-icon-".len() + "node-a".len() + "node-b".len()
         );
+    }
+
+    #[test]
+    fn tree_view_scope_preserves_node_identity_and_charges_once() {
+        for (diagram_id, node_id) in [
+            ("treeView", "0"),
+            ("diagram-a", "-1"),
+            ("diagram-b", "-9223372036854775808"),
+        ] {
+            let textual_scope = format!("tree-view-{diagram_id}-{node_id}");
+            let work_meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, textual_scope.len())
+                    .unwrap(),
+            );
+            let scope = IconIdScope::tree_view(diagram_id, node_id, &work_meter).unwrap();
+            assert_eq!(scope, icon_id_scope_for_test(&textual_scope));
+            assert_eq!(work_meter.used(), textual_scope.len());
+            for index in [0, 9, 10, usize::MAX] {
+                let id = scope.scoped_id(index).unwrap();
+                assert_eq!(id.len(), xml::scoped_id_len(index));
+                assert_eq!(work_meter.used(), textual_scope.len());
+            }
+        }
+    }
+
+    #[test]
+    fn scoped_id_preserves_fixed_width_hash_and_decimal_suffix() {
+        let scope = icon_id_scope_for_test("diagram-a");
+        assert_eq!(scope.scoped_id(0).unwrap(), "IconifyIdb5cb5676c39329100");
+        assert_eq!(scope.scoped_id(10).unwrap(), "IconifyIdb5cb5676c393291010");
     }
 
     #[test]

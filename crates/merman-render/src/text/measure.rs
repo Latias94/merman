@@ -9,7 +9,7 @@
 //! [`crate::environment::HostTextMeasurer`] instead; the environment's phase policy owns their
 //! deterministic fallback and records its provenance.
 
-use super::{TextMetrics, TextStyle, WrapMode};
+use super::{NormalLineMetrics, TextMetrics, TextStyle, WrapMode};
 
 pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 
@@ -66,6 +66,15 @@ pub trait TextMeasurer {
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
+
+    /// Measures the normal line height and alphabetic baseline for the actual single-line text.
+    ///
+    /// This is not SVG glyph bounds or an explicit CSS line-height. Hosts must return both
+    /// metrics from the same measurement. The default is a font-agnostic 1.2em compatibility
+    /// line box with a 0.8em ascent and symmetric leading, not browser font measurement.
+    fn measure_normal_line_metrics(&self, _text: &str, style: &TextStyle) -> NormalLineMetrics {
+        NormalLineMetrics::deterministic(style.font_size, 0.0)
+    }
 
     /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the
     /// baseline).
@@ -132,6 +141,15 @@ pub trait TextMeasurer {
     /// directly and does not inherit `drawSimpleText(...)`-specific behavior.
     fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.measure_svg_simple_text_bbox_width_px(text, style)
+    }
+
+    /// Measures a direct SVG text node with default XML whitespace collapsing.
+    ///
+    /// This is an explicit layout intent, separate from raw callers that use CSS white-space:pre.
+    /// The built-in profile implements the collapse. Custom DOM measurers keep receiving the
+    /// original text through the existing raw-bbox operation and own their DOM measurement.
+    fn measure_svg_normal_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_raw_text_bbox_width_px(text, style)
     }
 
     /// Measures raw SVG `<text>.getBBox().height` for direct text content.

@@ -239,6 +239,215 @@
           ]
         },
         {
+          "type": "barDataLabel",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "text": "5000",
+              "x": 147.028,
+              "y": 109.7,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "6000",
+              "x": 221.795,
+              "y": 129.837,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "7500",
+              "x": 333.946,
+              "y": 149.974,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "8200",
+              "x": 386.284,
+              "y": 170.111,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "9500",
+              "x": 483.481,
+              "y": 190.247,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "10500",
+              "x": 558.249,
+              "y": 210.384,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "11000",
+              "x": 595.632,
+              "y": 230.521,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "10200",
+              "x": 535.819,
+              "y": 250.658,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "9200",
+              "x": 461.051,
+              "y": 270.795,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "8500",
+              "x": 408.714,
+              "y": 290.932,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "7000",
+              "x": 296.563,
+              "y": 311.068,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "6000",
+              "x": 221.795,
+              "y": 331.205,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "8000",
+              "x": 371.33,
+              "y": 351.342,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "10000",
+              "x": 520.865,
+              "y": 371.479,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "5000",
+              "x": 147.028,
+              "y": 391.616,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "7600",
+              "x": 341.423,
+              "y": 411.753,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "4999",
+              "x": 146.953,
+              "y": 431.889,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "11000",
+              "x": 595.632,
+              "y": 452.026,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "5000",
+              "x": 147.028,
+              "y": 472.163,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            },
+            {
+              "text": "6000",
+              "x": 221.795,
+              "y": 492.3,
+              "fill": "#131300",
+              "fontSize": 10.0,
+              "rotation": 0.0,
+              "verticalPos": "middle",
+              "horizontalPos": "right"
+            }
+          ]
+        },
+        {
           "type": "path",
           "groupTexts": [
             "left-axis",

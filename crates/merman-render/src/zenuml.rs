@@ -45,7 +45,7 @@ const DIVIDER_HEIGHT: f64 = 40.0;
 const SVG_CONTENT_BOTTOM_SPACE: f64 = 13.0;
 const RETURN_BOTTOM_SPACE: f64 = 46.0;
 const MESSAGE_LABEL_PADDING: f64 = 10.0;
-const DEFAULT_STARTER: &str = "_STARTER_";
+pub(crate) const DEFAULT_STARTER: &str = "_STARTER_";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1765,7 +1765,7 @@ fn collect_participant_names(statements: &[ZenumlStatement], names: &mut HashSet
 }
 
 fn layout_groups(participants: &[ZenumlParticipantLayout], height: f64) -> Vec<ZenumlGroupLayout> {
-    let mut grouped: HashMap<&str, Vec<&ZenumlParticipantLayout>> = HashMap::new();
+    let mut grouped: BTreeMap<&str, Vec<&ZenumlParticipantLayout>> = BTreeMap::new();
     for participant in participants {
         if let Some(group_id) = participant.group_id.as_deref() {
             grouped.entry(group_id).or_default().push(participant);

@@ -4,6 +4,52 @@ pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
     r#""trebuchet ms",verdana,arial,sans-serif"#;
 pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
+pub(crate) fn parse_js_float_prefix(text: &str) -> Option<f64> {
+    let text = crate::text::trim_start_ecmascript_whitespace(text);
+    let bytes = text.as_bytes();
+    let mut index = 0;
+
+    if matches!(bytes.first(), Some(b'+' | b'-')) {
+        index += 1;
+    }
+
+    let integer_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let mut has_digits = index > integer_start;
+
+    if bytes.get(index) == Some(&b'.') {
+        index += 1;
+        let fraction_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        has_digits |= index > fraction_start;
+    }
+
+    if !has_digits {
+        return None;
+    }
+
+    let mut end = index;
+    if matches!(bytes.get(index), Some(b'e' | b'E')) {
+        let mut exponent_index = index + 1;
+        if matches!(bytes.get(exponent_index), Some(b'+' | b'-')) {
+            exponent_index += 1;
+        }
+        let exponent_start = exponent_index;
+        while bytes.get(exponent_index).is_some_and(u8::is_ascii_digit) {
+            exponent_index += 1;
+        }
+        if exponent_index > exponent_start {
+            end = exponent_index;
+        }
+    }
+
+    text[..end].parse::<f64>().ok()
+}
+
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut cur = cfg;
     for key in path {
@@ -140,17 +186,35 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
 }
 
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {
-    let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
+    font_family_css(config_font_family_css_raw(cfg))
+}
+
+/// Returns the configured font-family spelling without applying the SVG-only sanitizer or its
+/// default fallback. Renderer-neutral adapters use this accessor so an unsupported CSS value can
+/// become an explicit capability error instead of silently turning into the default font.
+pub(crate) fn config_font_family_css_raw(cfg: &Value) -> String {
+    config_string(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-    font_family_css(font_family)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
+}
+
+/// Returns the unsanitized root-first font-family value used by families whose Mermaid renderer
+/// gives the legacy top-level option precedence over `themeVariables.fontFamily`.
+pub(crate) fn config_font_family_css_root_first_raw(cfg: &Value) -> String {
+    config_string(cfg, &["fontFamily"])
+        .or_else(|| config_string(cfg, &["themeVariables", "fontFamily"]))
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
 }
 
 pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
-    let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
+    font_family_css(config_font_family_or_first_array_css_raw(cfg))
+}
+
+/// Array-aware counterpart to [`config_font_family_css_raw`].
+pub(crate) fn config_font_family_or_first_array_css_raw(cfg: &Value) -> String {
+    config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
-        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
-    font_family_css(font_family)
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string())
 }
 
 fn font_family_css(font_family: String) -> String {

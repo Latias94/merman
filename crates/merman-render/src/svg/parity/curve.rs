@@ -198,6 +198,216 @@ fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cub
     }
 }
 
+pub(in crate::svg::parity) fn drawing_path_segments_d(
+    segments: &[merman_display_list::PathSegment],
+) -> String {
+    let mut out = String::with_capacity(segments.len().saturating_mul(48));
+    // String's formatting sink cannot reject a write.
+    let _ = write_drawing_path_segments(&mut out, segments, |out, value| {
+        fmt_path_into(out, value);
+        Ok(())
+    });
+    out
+}
+
+/// Serializes typed geometry with Mermaid's ordinary JavaScript-number spelling rather than
+/// D3-path's three-decimal projection. Pie's hand-built arc strings use this form upstream.
+pub(in crate::svg::parity) fn drawing_path_segments_d_unrounded(
+    segments: &[merman_display_list::PathSegment],
+) -> impl std::fmt::Display + '_ {
+    UnroundedDrawingPath(segments)
+}
+
+struct UnroundedDrawingPath<'a>(&'a [merman_display_list::PathSegment]);
+
+impl std::fmt::Display for UnroundedDrawingPath<'_> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write_drawing_path_segments(out, self.0, |out, value| write!(out, "{}", fmt(value)))
+    }
+}
+
+fn write_drawing_path_segments<W: std::fmt::Write>(
+    out: &mut W,
+    segments: &[merman_display_list::PathSegment],
+    mut write_number: impl FnMut(&mut W, f64) -> std::fmt::Result,
+) -> std::fmt::Result {
+    use merman_display_list::PathSegment;
+
+    fn write_point<W: std::fmt::Write>(
+        out: &mut W,
+        command: char,
+        point: merman_display_list::Point,
+        write_number: &mut impl FnMut(&mut W, f64) -> std::fmt::Result,
+    ) -> std::fmt::Result {
+        out.write_char(command)?;
+        write_number(out, point.x)?;
+        out.write_char(',')?;
+        write_number(out, point.y)
+    }
+
+    for segment in segments {
+        match *segment {
+            PathSegment::MoveTo { to } => write_point(out, 'M', to, &mut write_number)?,
+            PathSegment::LineTo { to } => write_point(out, 'L', to, &mut write_number)?,
+            PathSegment::QuadTo { control, to } => {
+                out.write_char('Q')?;
+                write_number(out, control.x)?;
+                out.write_char(',')?;
+                write_number(out, control.y)?;
+                out.write_char(' ')?;
+                write_number(out, to.x)?;
+                out.write_char(',')?;
+                write_number(out, to.y)?;
+            }
+            PathSegment::CubicTo {
+                control1,
+                control2,
+                to,
+            } => {
+                out.write_char('C')?;
+                for (index, value) in [control1.x, control1.y, control2.x, control2.y, to.x, to.y]
+                    .into_iter()
+                    .enumerate()
+                {
+                    if index > 0 {
+                        out.write_char(',')?;
+                    }
+                    write_number(out, value)?;
+                }
+            }
+            PathSegment::ArcTo {
+                radius_x,
+                radius_y,
+                x_axis_rotation_degrees,
+                large_arc,
+                sweep_clockwise,
+                to,
+            } => {
+                out.write_char('A')?;
+                for value in [radius_x, radius_y, x_axis_rotation_degrees] {
+                    write_number(out, value)?;
+                    out.write_char(',')?;
+                }
+                out.write_char(if large_arc { '1' } else { '0' })?;
+                out.write_char(',')?;
+                out.write_char(if sweep_clockwise { '1' } else { '0' })?;
+                out.write_char(',')?;
+                write_number(out, to.x)?;
+                out.write_char(',')?;
+                write_number(out, to.y)?;
+            }
+            PathSegment::Close => out.write_char('Z')?,
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod drawing_path_tests {
+    use super::*;
+    use merman_display_list::{PathSegment, Point};
+
+    #[test]
+    fn drawing_path_number_modes_preserve_segment_spelling() {
+        let segments = [
+            PathSegment::MoveTo {
+                to: Point {
+                    x: 1.23456,
+                    y: -0.0,
+                },
+            },
+            PathSegment::LineTo {
+                to: Point { x: 3.0, y: 4.0 },
+            },
+            PathSegment::QuadTo {
+                control: Point { x: 5.0, y: 6.0 },
+                to: Point { x: 7.0, y: 8.0 },
+            },
+            PathSegment::CubicTo {
+                control1: Point { x: 9.0, y: 10.0 },
+                control2: Point { x: 11.0, y: 12.0 },
+                to: Point { x: 13.0, y: 14.0 },
+            },
+            PathSegment::ArcTo {
+                radius_x: 15.0,
+                radius_y: 16.0,
+                x_axis_rotation_degrees: 17.0,
+                large_arc: true,
+                sweep_clockwise: false,
+                to: Point { x: 18.0, y: 19.0 },
+            },
+            PathSegment::Close,
+        ];
+        assert_eq!(
+            drawing_path_segments_d_unrounded(&segments).to_string(),
+            "M1.23456,0L3,4Q5,6 7,8C9,10,11,12,13,14A15,16,17,1,0,18,19Z"
+        );
+        assert_eq!(
+            drawing_path_segments_d(&segments),
+            "M1.235,0L3,4Q5,6 7,8C9,10,11,12,13,14A15,16,17,1,0,18,19Z"
+        );
+    }
+
+    #[test]
+    fn unrounded_drawing_path_preserves_ordinary_number_normalization() {
+        for value in [
+            -0.0,
+            1e-10,
+            1.0000001,
+            -1.23456789,
+            51.248178375505404,
+            1e20,
+            f64::INFINITY,
+            f64::NAN,
+        ] {
+            let segments = [PathSegment::MoveTo {
+                to: Point { x: value, y: value },
+            }];
+            let mut expected = String::from("M");
+            fmt_into(&mut expected, value);
+            expected.push(',');
+            fmt_into(&mut expected, value);
+            assert_eq!(
+                drawing_path_segments_d_unrounded(&segments).to_string(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn unrounded_drawing_path_stops_at_the_first_rejected_piece() {
+        #[derive(Default)]
+        struct RejectSecondWrite {
+            calls: usize,
+            accepted: String,
+        }
+
+        impl std::fmt::Write for RejectSecondWrite {
+            fn write_str(&mut self, piece: &str) -> std::fmt::Result {
+                self.calls += 1;
+                if self.calls >= 2 {
+                    return Err(std::fmt::Error);
+                }
+                self.accepted.push_str(piece);
+                Ok(())
+            }
+        }
+
+        let segments = [
+            PathSegment::MoveTo {
+                to: Point { x: 1.23456, y: 2.0 },
+            },
+            PathSegment::LineTo {
+                to: Point { x: 3.0, y: 4.0 },
+            },
+        ];
+        let mut sink = RejectSecondWrite::default();
+        assert!(write!(sink, "{}", drawing_path_segments_d_unrounded(&segments)).is_err());
+        assert_eq!(sink.accepted, "M");
+        assert_eq!(sink.calls, 2);
+    }
+}
+
 pub(super) fn curve_monotone_path_d_and_bounds(
     points: &[LayoutPoint],
     swap_xy: bool,
@@ -486,14 +696,6 @@ pub(super) fn curve_linear_path_d(points: &[LayoutPoint]) -> String {
     curve_linear_path_d_impl(points, None)
 }
 
-pub(super) fn curve_linear_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
-    let d = curve_linear_path_d_impl(points, Some(&mut b));
-    (d, b.bounds)
-}
-
 fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
     let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
@@ -514,94 +716,6 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
             PathPoint::from_layout(p),
         );
     }
-    out
-}
-
-pub(super) fn curve_rounded_path_d_and_bounds(
-    points: &[LayoutPoint],
-    radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
-) -> (String, Option<SvgPathBounds>) {
-    (
-        curve_rounded_path_d_impl(points, radius, compact_corners, rounded_corner_mask),
-        None,
-    )
-}
-
-fn curve_rounded_path_d_impl(
-    points: &[LayoutPoint],
-    radius: f64,
-    compact_corners: bool,
-    rounded_corner_mask: Option<&[bool]>,
-) -> String {
-    if points.len() < 2 {
-        return String::new();
-    }
-
-    let mut out = String::with_capacity(points.len().saturating_mul(48));
-    let epsilon = 1e-5;
-
-    for (idx, curr) in points.iter().enumerate() {
-        if idx == 0 {
-            emit_cmd_pair_no_bounds(&mut out, 'M', PathPoint::from_layout(curr));
-            continue;
-        }
-        if idx + 1 == points.len() {
-            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
-            continue;
-        }
-
-        let prev = &points[idx - 1];
-        let next = &points[idx + 1];
-        if rounded_corner_mask.is_some_and(|mask| mask.get(idx) == Some(&false)) {
-            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
-            continue;
-        }
-
-        let dx1 = curr.x - prev.x;
-        let dy1 = curr.y - prev.y;
-        let dx2 = next.x - curr.x;
-        let dy2 = next.y - curr.y;
-        let len1 = dx1.hypot(dy1);
-        let len2 = dx2.hypot(dy2);
-        if len1 < epsilon || len2 < epsilon {
-            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
-            continue;
-        }
-
-        let nx1 = dx1 / len1;
-        let ny1 = dy1 / len1;
-        let nx2 = dx2 / len2;
-        let ny2 = dy2 / len2;
-        let dot = (nx1 * nx2 + ny1 * ny2).clamp(-1.0, 1.0);
-        let angle = dot.acos();
-        if angle < epsilon || (std::f64::consts::PI - angle).abs() < epsilon {
-            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
-            continue;
-        }
-
-        let mermaid_cut = radius / (angle / 2.0).sin();
-        let radius_cut = if compact_corners {
-            mermaid_cut.min(radius * (angle / 2.0).tan())
-        } else {
-            mermaid_cut
-        };
-        let cut_len = radius_cut.min(len1 / 2.0).min(len2 / 2.0);
-        let start = PathPoint::new(curr.x - nx1 * cut_len, curr.y - ny1 * cut_len);
-        let end = PathPoint::new(curr.x + nx2 * cut_len, curr.y + ny2 * cut_len);
-
-        emit_cmd_pair_no_bounds(&mut out, 'L', start);
-        out.push('Q');
-        fmt_path_into(&mut out, curr.x);
-        out.push(',');
-        fmt_path_into(&mut out, curr.y);
-        out.push(' ');
-        fmt_path_into(&mut out, end.x);
-        out.push(',');
-        fmt_path_into(&mut out, end.y);
-    }
-
     out
 }
 
@@ -721,139 +835,6 @@ fn curve_natural_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsB
         );
     }
 
-    out
-}
-
-// Ported from D3 `curveStepAfter` (d3-shape v3.x).
-pub(super) fn curve_step_after_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
-    let d = curve_step_after_path_d_impl(points, Some(&mut b));
-    (d, b.bounds)
-}
-
-fn curve_step_after_path_d_impl(
-    points: &[LayoutPoint],
-    bounds: Option<&mut BoundsBuilder>,
-) -> String {
-    let mut bounds = bounds;
-    let mut out = String::with_capacity(points.len().saturating_mul(32));
-    let Some(first) = points.first() else {
-        return out;
-    };
-    let mut prev_y = first.y;
-    emit_cmd_pair_impl(
-        &mut out,
-        bounds.as_deref_mut(),
-        'M',
-        PathPoint::from_layout(first),
-    );
-    for p in points.iter().skip(1) {
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::new(p.x, prev_y),
-        );
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::from_layout(p),
-        );
-        prev_y = p.y;
-    }
-    out
-}
-
-// Ported from D3 `curveStepBefore` (d3-shape v3.x).
-pub(super) fn curve_step_before_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
-    let d = curve_step_before_path_d_impl(points, Some(&mut b));
-    (d, b.bounds)
-}
-
-fn curve_step_before_path_d_impl(
-    points: &[LayoutPoint],
-    bounds: Option<&mut BoundsBuilder>,
-) -> String {
-    let mut bounds = bounds;
-    let mut out = String::with_capacity(points.len().saturating_mul(32));
-    let Some(first) = points.first() else {
-        return out;
-    };
-    let mut prev_x = first.x;
-    emit_cmd_pair_impl(
-        &mut out,
-        bounds.as_deref_mut(),
-        'M',
-        PathPoint::from_layout(first),
-    );
-    for p in points.iter().skip(1) {
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::new(prev_x, p.y),
-        );
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::from_layout(p),
-        );
-        prev_x = p.x;
-    }
-    out
-}
-
-// Ported from D3 `curveStep` (d3-shape v3.x).
-pub(super) fn curve_step_path_d_and_bounds(
-    points: &[LayoutPoint],
-) -> (String, Option<SvgPathBounds>) {
-    let mut b = BoundsBuilder::default();
-    let d = curve_step_path_d_impl(points, Some(&mut b));
-    (d, b.bounds)
-}
-
-fn curve_step_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuilder>) -> String {
-    let mut bounds = bounds;
-    let mut out = String::with_capacity(points.len().saturating_mul(32));
-    let Some(first) = points.first() else {
-        return out;
-    };
-    emit_cmd_pair_impl(
-        &mut out,
-        bounds.as_deref_mut(),
-        'M',
-        PathPoint::from_layout(first),
-    );
-    let mut prev = first;
-    for p in points.iter().skip(1) {
-        let mid_x = (prev.x + p.x) / 2.0;
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::new(mid_x, prev.y),
-        );
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::new(mid_x, p.y),
-        );
-        emit_cmd_pair_impl(
-            &mut out,
-            bounds.as_deref_mut(),
-            'L',
-            PathPoint::from_layout(p),
-        );
-        prev = p;
-    }
     out
 }
 

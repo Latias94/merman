@@ -2,6 +2,12 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added asynchronous `renderDrawingList(...)` and synchronous `renderDrawingListSync(...)` APIs to the native and Node-targeted WASM transports. Both transports advertise the shared `drawing-list-json` operation and return validated DrawingList v1 JSON without selecting an SVG fallback.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes the published alpha.6 package group. All seven packages, including `@mermanjs/node-wasm`, were manually bootstrapped from the verified package-group artifact. The immutable alpha.6 npm tarballs have no npm provenance; later releases use Trusted Publishing.

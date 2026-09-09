@@ -26,13 +26,20 @@ WEB_PROFILE_FEATURES = {
     "web-full": [
         "analysis",
         "ascii",
+        "drawing-list",
         "editor",
         "layout-cytoscape",
         "layout-elk",
         "math",
         "svg",
     ],
-    "web-render": ["layout-cytoscape", "layout-elk", "math", "svg"],
+    "web-render": [
+        "drawing-list",
+        "layout-cytoscape",
+        "layout-elk",
+        "math",
+        "svg",
+    ],
 }
 
 
@@ -459,7 +466,7 @@ def write_web_profile_fixture(root: Path) -> dict[str, object]:
     manifest.parent.mkdir(parents=True)
     manifest.write_text(
         '[package]\nname = "merman-wasm"\nversion = "0.1.0"\n'
-        "[features]\nanalysis = []\nascii = []\neditor = []\n"
+        "[features]\nanalysis = []\nascii = []\ndrawing-list = []\neditor = []\n"
         'layout-cytoscape = []\nlayout-elk = []\nmath = []\nsvg = []\n',
         encoding="utf-8",
     )

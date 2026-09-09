@@ -45,8 +45,9 @@ pub use catalog_contract::{
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
-    BindingError, BindingErrorKind, BindingIconRegistryErrorDetails, BindingResourceErrorDetails,
-    BindingResourceLimitCause, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
+    BindingDrawingListErrorDetails, BindingError, BindingErrorKind,
+    BindingIconRegistryErrorDetails, BindingResourceErrorDetails, BindingResourceLimitCause,
+    BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
     binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
     render_resource_options_unavailable, resource_options_json,
 };
@@ -118,8 +119,8 @@ pub use ascii::render_ascii;
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
-    IconRegistryResourceLimitId, TEXT_MEASUREMENT_PROTOCOL_VERSION, TextMeasurementOperation,
-    TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
+    IconRegistryResourceLimitId, NormalLineMetrics, TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    TextMeasurementOperation, TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
     icon_registry_resource_limit_descriptors, validate_host_text_measurement,
 };
 #[cfg(feature = "jpeg")]

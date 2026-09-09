@@ -1,5 +1,9 @@
+#[cfg(feature = "drawing-list")]
+use crate::common::BindingDrawingListErrorDetails;
 #[cfg(test)]
 use crate::common::binding_runtime_policy_from;
+#[cfg(feature = "drawing-list")]
+use crate::common::{BindingDrawingListOptions, compile_drawing_list_options};
 use crate::common::{
     BindingError, BindingOptions, BindingResourceLimitCause, BindingStatus,
     PresentationOptionsJson, PresentationThemeOptionsJson, binding_resource_policy,
@@ -8,6 +12,8 @@ use crate::common::{
 };
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::common::{BindingExportResourceOptions, binding_export_resource_options};
+#[cfg(feature = "drawing-list")]
+use merman::DrawingListRequest;
 use merman::svg::{
     HostTheme, HostThemeAppearance, HostThemePreset, LayoutOptions, MeasurementProfileId,
     Presentation, PresentationProfile, RenderCapability, RenderCapabilityPolicy,
@@ -22,6 +28,8 @@ pub(super) struct RenderRequestPlan {
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
+    #[cfg(feature = "drawing-list")]
+    drawing_list: BindingDrawingListOptions,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -38,6 +46,8 @@ pub(super) struct RenderOperationConfig {
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
     output: merman::svg::SvgOutputPolicy,
+    #[cfg(feature = "drawing-list")]
+    drawing_list: BindingDrawingListOptions,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -82,6 +92,43 @@ impl RenderRequestPlan {
             .ok_or_else(no_diagram_error)?;
 
         serde_json::to_vec(&layout_json).map_err(internal_json_error)
+    }
+
+    pub(super) fn render_drawing_list(
+        &self,
+        source: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        #[cfg(feature = "drawing-list")]
+        {
+            let request = DrawingListRequest {
+                diagram_id: self.svg.options.diagram_id.clone(),
+                environment: self.svg.environment.clone(),
+                layout: self.svg.layout.clone(),
+                presentation: self.svg.presentation,
+                policy: self.drawing_list.policy,
+                limits: self.drawing_list.limits,
+            };
+            let output = self
+                .renderer
+                .render(self.request(source, merman::RenderTarget::DrawingList(request), control))
+                .map_err(|error| classify_render_error(error, self.resource_profile))?;
+            let RenderOutput::DrawingList(drawing_list) = output else {
+                return Err(unexpected_render_output("drawing-list-json"));
+            };
+            drawing_list
+                .map(|output| output.into_parts().1)
+                .ok_or_else(no_diagram_error)
+        }
+
+        #[cfg(not(feature = "drawing-list"))]
+        {
+            let _ = (source, control);
+            Err(crate::common::feature_required_error(
+                "DrawingList rendering",
+                "drawing-list",
+            ))
+        }
     }
 
     pub(super) fn svg_plan_json(
@@ -228,6 +275,11 @@ impl RenderOperationConfig {
         capability_policy: RenderCapabilityPolicy,
     ) -> Result<Self, BindingError> {
         let render_resources = binding_resource_policy(options.analysis.resources.as_ref())?;
+        #[cfg(feature = "drawing-list")]
+        let drawing_list = compile_drawing_list_options(
+            options.drawing_list.as_ref(),
+            render_resources.value(merman::svg::ResourceLimitId::MaxSvgBytes),
+        )?;
         let input_resources = *render_resources.input_policy();
         let mut environment =
             SvgEnvironment::deterministic().with_capability_policy(capability_policy);
@@ -365,6 +417,8 @@ impl RenderOperationConfig {
             layout,
             svg: svg_options,
             output,
+            #[cfg(feature = "drawing-list")]
+            drawing_list,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options,
             #[cfg(feature = "pdf")]
@@ -425,6 +479,8 @@ impl RenderOperationConfig {
             parse_options,
             input_resources,
             resource_profile,
+            #[cfg(feature = "drawing-list")]
+            drawing_list: self.drawing_list,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options: self.raster_options,
             #[cfg(feature = "pdf")]
@@ -681,6 +737,16 @@ fn classify_render_error(
         merman::RenderError::Svg(err @ merman::svg::RenderError::IconProcessing { .. }) => {
             BindingError::internal(err.to_string())
         }
+        #[cfg(feature = "drawing-list")]
+        merman::RenderError::DrawingList(err) => classify_drawing_list_error(err),
+        #[cfg(feature = "drawing-list")]
+        merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListUnavailable { .. }) => {
+            classify_drawing_list_error(err)
+        }
+        #[cfg(feature = "drawing-list")]
+        merman::RenderError::Svg(err @ merman::svg::RenderError::DrawingListContract(_)) => {
+            classify_drawing_list_error(err)
+        }
         merman::RenderError::Svg(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
@@ -701,6 +767,43 @@ fn classify_render_error(
             "renderer returned unsupported target `{target}` for an admitted binding operation"
         )),
         _ => BindingError::internal("unknown canonical renderer failure"),
+    }
+}
+
+#[cfg(feature = "drawing-list")]
+fn classify_drawing_list_error(err: merman::svg::RenderError) -> BindingError {
+    match err {
+        merman::svg::RenderError::DrawingListUnavailable { family, reason } => {
+            let message =
+                format!("DrawingList is unavailable for render family `{family}`: {reason}");
+            BindingError::unsupported_operation(message).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "unavailable",
+                    family: Some(family),
+                    reason: Some(reason),
+                },
+            )
+        }
+        merman::svg::RenderError::DrawingListContract(error) => {
+            let reason = error.to_string();
+            BindingError::invalid_argument(reason.clone()).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "contract",
+                    family: None,
+                    reason: Some(reason),
+                },
+            )
+        }
+        other => {
+            let reason = other.to_string();
+            BindingError::new(BindingStatus::RenderError, reason.clone()).with_drawing_list_details(
+                BindingDrawingListErrorDetails {
+                    category: "render",
+                    family: None,
+                    reason: Some(reason),
+                },
+            )
+        }
     }
 }
 
@@ -740,6 +843,38 @@ mod tests {
             details.span,
             Some(crate::common::BindingDiagnosticSpan::new(2, 7, "exact"))
         );
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_errors_keep_target_specific_structured_context() {
+        let unavailable = classify_render_error(
+            merman::RenderError::DrawingList(merman::svg::RenderError::DrawingListUnavailable {
+                family: "pie".to_owned(),
+                reason: "hover effect is not representable".to_owned(),
+            }),
+            merman::resources::ResourceProfile::Interactive,
+        );
+        assert_eq!(unavailable.status(), BindingStatus::UnsupportedOperation);
+        let details = unavailable
+            .drawing_list_details()
+            .expect("DrawingList context must be retained");
+        assert_eq!(details.category, "unavailable");
+        assert_eq!(details.family.as_deref(), Some("pie"));
+        assert_eq!(
+            details.reason.as_deref(),
+            Some("hover effect is not representable")
+        );
+
+        let payload: serde_json::Value = serde_json::from_slice(
+            &crate::common::binding_error_payload_json_bytes(&unavailable),
+        )
+        .expect("structured DrawingList payload");
+        assert_eq!(
+            payload["details"]["drawing_list"]["category"],
+            "unavailable"
+        );
+        assert_eq!(payload["details"]["drawing_list"]["family"], "pie");
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]

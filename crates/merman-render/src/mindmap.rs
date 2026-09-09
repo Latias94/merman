@@ -8,6 +8,7 @@ use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 mod tidy_tree;
@@ -170,10 +171,8 @@ fn mindmap_node_dimensions_from_label_bbox(
         // h = bbox.height + 2*halfPadding, then upstream cose-bilkent lays out the node
         // using the inserted SVG node's rendered path bbox.
         "cloud" => {
-            let shape_w = bbox_w + 2.0 * half_padding;
-            let shape_h = bbox_h + 2.0 * half_padding;
-            crate::svg::mindmap_cloud_rendered_bbox_size_px(shape_w, shape_h)
-                .unwrap_or((shape_w, shape_h))
+            let geometry = crate::flowchart::cloud_geometry(bbox_w, bbox_h, padding);
+            (geometry.width(), geometry.height())
         }
         // `bang.ts`:
         // - w = bbox.width + 10*halfPadding; h = bbox.height + 8*halfPadding
@@ -210,22 +209,105 @@ fn mindmap_node_dimensions_px(
     mindmap_node_dimensions_from_label_bbox(node, bbox_w, bbox_h)
 }
 
-fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-    let mut pts: Vec<(f64, f64)> = Vec::new();
-    for n in nodes {
-        let x0 = n.x - n.width / 2.0;
-        let y0 = n.y - n.height / 2.0;
-        let x1 = n.x + n.width / 2.0;
-        let y1 = n.y + n.height / 2.0;
-        pts.push((x0, y0));
-        pts.push((x1, y1));
+fn include_bounds(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
+    if let Some(bounds) = bounds.as_mut() {
+        bounds.min_x = bounds.min_x.min(min_x);
+        bounds.min_y = bounds.min_y.min(min_y);
+        bounds.max_x = bounds.max_x.max(max_x);
+        bounds.max_y = bounds.max_y.max(max_y);
+    } else {
+        *bounds = Some(Bounds {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        });
     }
-    for e in edges {
-        for p in &e.points {
-            pts.push((p.x, p.y));
+}
+
+/// Returns the bounds of the geometry Mindmap actually emits, rather than only the layout boxes.
+///
+/// Cloud and bang paths are asymmetric around their layout origins. Keeping this calculation in
+/// the renderer-neutral Mindmap module ensures layout, DrawingList, and SVG use the same source of
+/// truth and prevents organic shapes from being clipped by the root viewport.
+pub(crate) fn mindmap_visual_bounds(
+    layout: &MindmapDiagramLayout,
+    model: &MindmapModel,
+) -> Option<Bounds> {
+    let layout_nodes = layout
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut bounds = None;
+
+    for node in &model.nodes {
+        let Some(layout_node) = layout_nodes.get(node.id.as_str()).copied() else {
+            continue;
+        };
+        let padding = node.padding.max(0.0);
+        match node.shape.as_str() {
+            "cloud" => {
+                let label_width = layout_node
+                    .label_width
+                    .unwrap_or_else(|| (layout_node.width - padding).max(1.0));
+                let label_height = layout_node
+                    .label_height
+                    .unwrap_or_else(|| (layout_node.height - padding).max(1.0));
+                let geometry = crate::flowchart::cloud_geometry(label_width, label_height, padding);
+                include_bounds(
+                    &mut bounds,
+                    layout_node.x + geometry.rendered_min_x(),
+                    layout_node.y + geometry.rendered_min_y(),
+                    layout_node.x + geometry.rendered_max_x(),
+                    layout_node.y + geometry.rendered_max_y(),
+                );
+            }
+            "bang" => {
+                let label_width = layout_node
+                    .label_width
+                    .unwrap_or_else(|| (layout_node.width - 5.0 * padding).max(1.0));
+                let label_height = layout_node
+                    .label_height
+                    .unwrap_or_else(|| (layout_node.height - 4.0 * padding).max(1.0));
+                let geometry = crate::flowchart::bang_geometry(label_width, label_height, padding);
+                include_bounds(
+                    &mut bounds,
+                    layout_node.x + geometry.rendered_min_x(),
+                    layout_node.y + geometry.rendered_min_y(),
+                    layout_node.x + geometry.rendered_max_x(),
+                    layout_node.y + geometry.rendered_max_y(),
+                );
+            }
+            _ => include_bounds(
+                &mut bounds,
+                layout_node.x - layout_node.width / 2.0,
+                layout_node.y - layout_node.height / 2.0,
+                layout_node.x + layout_node.width / 2.0,
+                layout_node.y + layout_node.height / 2.0,
+            ),
+        }
+
+        if let (Some(label_width), Some(label_height)) =
+            (layout_node.label_width, layout_node.label_height)
+        {
+            include_bounds(
+                &mut bounds,
+                layout_node.x - label_width / 2.0,
+                layout_node.y - label_height / 2.0,
+                layout_node.x + label_width / 2.0,
+                layout_node.y + label_height / 2.0,
+            );
         }
     }
-    Bounds::from_points(pts)
+
+    for edge in &layout.edges {
+        for point in &edge.points {
+            include_bounds(&mut bounds, point.x, point.y, point.x, point.y);
+        }
+    }
+
+    bounds
 }
 
 fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
@@ -457,12 +539,13 @@ fn layout_mindmap_diagram_model(
             })
             .collect()
     };
-    let bounds = compute_bounds(&nodes, &edges);
-    Ok(MindmapDiagramLayout {
+    let mut layout = MindmapDiagramLayout {
         nodes,
         edges,
-        bounds,
-    })
+        bounds: None,
+    };
+    layout.bounds = mindmap_visual_bounds(&layout, model);
+    Ok(layout)
 }
 
 #[cfg(test)]
@@ -691,14 +774,12 @@ mod tests {
         let (width, height, label_width, label_height) =
             super::mindmap_node_dimensions_px(&node, &measurer, &style, 200.0);
 
-        let shape_width = label_width + node.padding;
-        let shape_height = label_height + node.padding;
-        let expected = crate::svg::mindmap_cloud_rendered_bbox_size_px(shape_width, shape_height)
-            .expect("cloud path bounds");
+        let geometry = crate::flowchart::cloud_geometry(label_width, label_height, node.padding);
+        let expected = (geometry.width(), geometry.height());
 
         assert_eq!((label_width, label_height), (73.0, 24.0));
         assert_eq!((width, height), expected);
-        assert!(width > shape_width && height > shape_height);
+        assert!(width > label_width + node.padding && height > label_height + node.padding);
     }
 
     #[test]

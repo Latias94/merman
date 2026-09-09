@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:c787f0510e088b3e0f5f39b8dc2b6f3159a1e3fe640ec6a46ba37ad91e783cd5";
+    "sha256:c010497069147ac1aac9fe171b2b22ed30d0e0d0029dab875990b7a17ae8ae74";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -274,6 +274,13 @@ pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_SVG_PLAN_JSON: bool = true;
 pub const MERMAN_NATIVE_OPERATION_ID_SVG_PLAN_JSON: &str = "svg-plan-json";
 pub const MERMAN_NATIVE_OPERATION_CAPABILITY_SVG_PLAN_JSON: &str = "svg";
 pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_SVG_PLAN_JSON: &str = "application/json";
+pub const MERMAN_NATIVE_OPERATION_DRAWING_LIST_JSON: MermanNativeOperationCode = 14;
+pub const MERMAN_NATIVE_OPERATION_REQUIRES_URI_DRAWING_LIST_JSON: bool = false;
+pub const MERMAN_NATIVE_OPERATION_EXECUTABLE_DRAWING_LIST_JSON: bool = true;
+pub const MERMAN_NATIVE_OPERATION_ID_DRAWING_LIST_JSON: &str = "drawing-list-json";
+pub const MERMAN_NATIVE_OPERATION_CAPABILITY_DRAWING_LIST_JSON: &str = "drawing-list";
+pub const MERMAN_NATIVE_OPERATION_MEDIA_TYPE_DRAWING_LIST_JSON: &str =
+    "application/vnd.merman.drawing-list+json;version=1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MermanNativeOperationFailureDescriptor {
@@ -422,6 +429,15 @@ pub const MERMAN_NATIVE_OPERATION_DESCRIPTORS: &[MermanNativeOperationDescriptor
         media_type: Some("application/json"),
         requires_uri: false,
     },
+    MermanNativeOperationDescriptor {
+        code: MERMAN_NATIVE_OPERATION_DRAWING_LIST_JSON,
+        executable: true,
+        non_executable_failure: None,
+        operation_id: Some("drawing-list-json"),
+        capability_id: Some("drawing-list"),
+        media_type: Some("application/vnd.merman.drawing-list+json;version=1"),
+        requires_uri: false,
+    },
 ];
 
 pub fn merman_native_operation_descriptor(
@@ -449,6 +465,7 @@ pub fn merman_native_operation_key(
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisJson),
         MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON => Some(merman_bindings_core::OperationKey::DocumentAnalysisFactsJson),
         MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON => Some(merman_bindings_core::OperationKey::SvgPlanJson),
+        MERMAN_NATIVE_OPERATION_DRAWING_LIST_JSON => Some(merman_bindings_core::OperationKey::DrawingListJson),
         _ => None,
     }
 }
@@ -470,6 +487,7 @@ pub const fn merman_native_operation_code(
         merman_bindings_core::OperationKey::DocumentAnalysisJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_JSON),
         merman_bindings_core::OperationKey::DocumentAnalysisFactsJson => Some(MERMAN_NATIVE_OPERATION_DOCUMENT_ANALYSIS_FACTS_JSON),
         merman_bindings_core::OperationKey::SvgPlanJson => Some(MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON),
+        merman_bindings_core::OperationKey::DrawingListJson => Some(MERMAN_NATIVE_OPERATION_DRAWING_LIST_JSON),
         _ => None,
     }
 }
@@ -486,6 +504,7 @@ pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW: MermanNativeFunctionSlot
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL: MermanNativeFunctionSlot = 8;
 pub const MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE: MermanNativeFunctionSlot = 9;
 pub const MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED: MermanNativeFunctionSlot = 10;
+pub const MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_SERVICES_V2: MermanNativeFunctionSlot = 11;
 
 pub type MermanNativeEngineToken = u64;
 pub(crate) const MERMAN_NATIVE_TOKEN_DOMAIN_MASK: u64 = 3;
@@ -625,6 +644,7 @@ pub struct MermanNativeApi {
     pub operation_control_cancel: Option<MermanNativeOperationControlCancelFn>,
     pub operation_control_release: Option<MermanNativeOperationControlReleaseFn>,
     pub execute_collect_controlled: Option<MermanNativeExecuteCollectControlledFn>,
+    pub engine_new_with_services_v2: Option<MermanNativeEngineNewWithServicesV2Fn>,
 }
 
 /// One size-tagged borrowed IconifyJSON collection for transactional engine construction. A
@@ -650,9 +670,55 @@ pub struct MermanNativeEngineServicesConfig {
     pub icon_pack_count: usize,
 }
 
+/// A separately size-tagged protocol-2 result. For normal-line-metrics, line_height and
+/// baseline_offset are one atomic pair; other result kinds retain their protocol-1 field meanings.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeTextMeasureResultV2 {
+    pub struct_size: u32,
+    pub handled: u8,
+    pub has_raw_width: u8,
+    pub result_kind: i32,
+    pub width: f64,
+    pub height: f64,
+    pub length: f64,
+    pub bbox_left: f64,
+    pub bbox_right: f64,
+    pub raw_width: f64,
+    pub line_count: usize,
+    pub line_height: f64,
+    pub baseline_offset: f64,
+}
+
+/// A reusable-engine configuration with a strongly typed protocol-2 callback.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeEngineConfigV2 {
+    pub struct_size: u32,
+    pub options_json: MermanNativeSlice,
+    pub text_measure: Option<MermanNativeTextMeasureCallbackV2>,
+    pub text_measure_user_data: *mut std::ffi::c_void,
+}
+
+/// A size-tagged protocol-2 services configuration. All caller storage follows the original
+/// services constructor's borrowing and non-overlap requirements.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MermanNativeEngineServicesConfigV2 {
+    pub struct_size: u32,
+    pub engine_config: MermanNativeEngineConfigV2,
+    pub icon_packs: *const MermanNativeIconPack,
+    pub icon_pack_count: usize,
+}
+
 pub type MermanNativeTextMeasureCallback = unsafe extern "C" fn(
     request: *const MermanNativeTextMeasureRequest,
     out_result: *mut MermanNativeTextMeasureResult,
+    user_data: *mut std::ffi::c_void,
+) -> MermanNativeStatus;
+pub type MermanNativeTextMeasureCallbackV2 = unsafe extern "C" fn(
+    request: *const MermanNativeTextMeasureRequest,
+    out_result: *mut MermanNativeTextMeasureResultV2,
     user_data: *mut std::ffi::c_void,
 ) -> MermanNativeStatus;
 
@@ -696,6 +762,11 @@ pub type MermanNativeExecuteCollectControlledFn = unsafe extern "C" fn(
     request: *const MermanNativeOperationRequest,
     out_result: *mut MermanNativeResult,
 ) -> MermanNativeStatus;
+pub type MermanNativeEngineNewWithServicesV2Fn = unsafe extern "C" fn(
+    config: *const MermanNativeEngineServicesConfigV2,
+    out_engine: *mut MermanNativeEngineToken,
+    out_result: *mut MermanNativeResult,
+) -> MermanNativeStatus;
 
 pub const MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, engine_new_with_services)
@@ -717,12 +788,17 @@ pub const MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE: u32 =
     (std::mem::offset_of!(MermanNativeApi, execute_collect_controlled)
         + std::mem::size_of::<Option<MermanNativeExecuteCollectControlledFn>>()) as u32;
 
+pub const MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE: u32 =
+    (std::mem::offset_of!(MermanNativeApi, engine_new_with_services_v2)
+        + std::mem::size_of::<Option<MermanNativeEngineNewWithServicesV2Fn>>()) as u32;
+
 pub const MERMAN_NATIVE_API_COMPLETE_PREFIX_SIZES: &[u32] = &[
     MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_NEW_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_CANCEL_PREFIX_SIZE,
     MERMAN_NATIVE_API_OPERATION_CONTROL_RELEASE_PREFIX_SIZE,
     MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE,
+    MERMAN_NATIVE_API_ENGINE_NEW_WITH_SERVICES_V2_PREFIX_SIZE,
 ];
 
 pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[

@@ -17,8 +17,30 @@ class MermanTextMeasureResult private constructor(
     val bboxRight: Double,
     val rawWidth: Double,
     val hasRawWidth: Boolean,
+    val normalLineHeight: Double = 0.0,
+    val normalBaselineOffset: Double = 0.0,
 ) {
     companion object {
+        /** Measures both parts of one normal line box from the same text provider. */
+        @JvmStatic
+        fun normalLineMetrics(lineHeight: Double, baselineOffset: Double): MermanTextMeasureResult {
+            requireNonNegativeFinite(lineHeight, "lineHeight")
+            require(baselineOffset.isFinite()) { "baselineOffset must be finite" }
+            return MermanTextMeasureResult(
+                resultKind = MermanTextMeasurementResultKind.NORMAL_LINE_METRICS,
+                width = 0.0,
+                height = 0.0,
+                length = 0.0,
+                lineCount = 0,
+                bboxLeft = 0.0,
+                bboxRight = 0.0,
+                rawWidth = 0.0,
+                hasRawWidth = false,
+                normalLineHeight = lineHeight,
+                normalBaselineOffset = baselineOffset,
+            )
+        }
+
         /** Creates a metrics result with every required field. */
         @JvmStatic
         fun metrics(

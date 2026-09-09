@@ -313,7 +313,7 @@ fn push_transitions(
     Ok(())
 }
 
-fn cynefin_css<I>(
+pub(super) fn cynefin_css<I>(
     diagram_id: I,
     effective_config: &serde_json::Value,
     theme: &crate::cynefin::CynefinTheme,

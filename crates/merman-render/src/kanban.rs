@@ -7,6 +7,7 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 use merman_core::svg_security::{
     MermaidNavigationSecurity, SerializedMermaidNavigationHref, prepare_mermaid_navigation_href,
+    prepare_mermaid_navigation_uri,
 };
 use std::collections::HashMap;
 
@@ -114,6 +115,7 @@ pub(crate) struct KanbanPreparedItem {
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedTicketLink {
     pub(crate) href: Option<SerializedMermaidNavigationHref>,
+    pub(crate) uri: Option<String>,
 }
 
 fn replace_first_like_javascript(source: &str, search: &str, replacement: &str) -> String {
@@ -155,13 +157,12 @@ fn prepare_kanban_ticket_link(
 ) -> Option<KanbanPreparedTicketLink> {
     let ticket = ticket.filter(|ticket| !ticket.is_empty())?;
     let ticket_url = replace_first_like_javascript(ticket_base_url?, "#TICKET#", ticket);
-    let href = prepare_mermaid_navigation_href(
-        &ticket_url,
-        MermaidNavigationSecurity::from_security_level_loose(
-            effective_config.get_str("securityLevel") == Some("loose"),
-        ),
+    let security = MermaidNavigationSecurity::from_security_level_loose(
+        effective_config.get_str("securityLevel") == Some("loose"),
     );
-    Some(KanbanPreparedTicketLink { href })
+    let href = prepare_mermaid_navigation_href(&ticket_url, security);
+    let uri = prepare_mermaid_navigation_uri(&ticket_url, security);
+    Some(KanbanPreparedTicketLink { href, uri })
 }
 
 fn prepare_kanban_markdown_label(
@@ -544,6 +545,30 @@ mod tests {
         assert_eq!(
             replace_first_like_javascript("https://example.test/tickets", "#TICKET#", "$&"),
             "https://example.test/tickets"
+        );
+    }
+
+    #[test]
+    fn kanban_ticket_link_keeps_logical_uri_separate_from_svg_serialization() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "kanban": {
+                "ticketBaseUrl": "https://example.test/tickets/#TICKET#"
+            }
+        }));
+        let link = super::prepare_kanban_ticket_link(
+            Some("https://example.test/tickets/#TICKET#"),
+            Some("A&B"),
+            &config,
+        )
+        .expect("ticket link should be prepared");
+
+        assert_eq!(
+            link.uri.as_deref(),
+            Some("https://example.test/tickets/A&B")
+        );
+        assert_eq!(
+            link.href.as_ref().map(|href| href.as_serialized_str()),
+            Some("https://example.test/tickets/A&amp;B")
         );
     }
 

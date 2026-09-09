@@ -8,6 +8,7 @@ type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 mod label;
 pub(crate) use label::{
     measure_state_markdown_label, state_edge_label_xhtml, state_node_label_xhtml,
+    state_plain_text_label,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,7 +57,7 @@ impl RectWithTitleGeometry {
 mod config;
 mod layout;
 
-pub(crate) use config::{StateConfigView, state_text_style};
+pub(crate) use config::{StateConfigView, state_text_style, state_value_to_label_text};
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{

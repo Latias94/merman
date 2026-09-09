@@ -5,6 +5,7 @@
     "descriptor": "capabilities/feature-surface-v1.json",
     "target": "native",
     "capabilities": [
+      "drawing-list",
       "layout-cytoscape",
       "layout-elk",
       "svg"

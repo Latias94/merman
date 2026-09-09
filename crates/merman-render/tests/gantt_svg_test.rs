@@ -8,8 +8,8 @@ use merman_render::family;
 use merman_render::model::GanttDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
@@ -59,6 +59,7 @@ fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() 
 struct RawBBoxProbeMeasurer {
     calls: Arc<AtomicUsize>,
     width: f64,
+    inputs: Arc<Mutex<Vec<(String, TextStyle)>>>,
 }
 
 impl TextMeasurer for RawBBoxProbeMeasurer {
@@ -66,8 +67,12 @@ impl TextMeasurer for RawBBoxProbeMeasurer {
         panic!("Gantt task labels must use the raw SVG text bbox operation")
     }
 
-    fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+    fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.calls.fetch_add(1, Ordering::Relaxed);
+        self.inputs
+            .lock()
+            .unwrap()
+            .push((text.to_owned(), style.clone()));
         self.width
     }
 }
@@ -84,6 +89,7 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
         Arc::new(RawBBoxProbeMeasurer {
             calls: Arc::clone(&calls),
             width: 200.0,
+            inputs: Default::default(),
         }),
     );
     let environment = RenderEnvironment::deterministic()
@@ -99,6 +105,150 @@ fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
 }
 
 #[test]
+fn gantt_raw_label_whitespace_preserves_width_threshold_placement() {
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = TextStyle {
+        font_size: 11.0,
+        ..Default::default()
+    };
+    let normalized_width = measurer.measure("Alpha Beta", &style).width;
+    let uncollapsed_width = measurer.measure("Alpha     Beta", &style).width;
+    assert!(uncollapsed_width > normalized_width);
+    // One-day task in a ten-day domain: put its bar between the old and correct widths.
+    let bar_width = (normalized_width + uncollapsed_width) / 2.0;
+    let container_width = 150.0 + 10.0 * bar_width;
+    let source = |label: &str| {
+        format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Delivery\n{label}: target, 2024-01-01, 1d\nHorizon: horizon, 2024-01-01, 10d\n"
+        )
+    };
+    let plain = layout_gantt_from_text_at_container_width(&source("Alpha Beta"), container_width);
+    let spaced =
+        layout_gantt_from_text_at_container_width(&source("Alpha     Beta"), container_width);
+    let plain = plain.tasks.iter().find(|task| task.id == "target").unwrap();
+    let spaced = spaced
+        .tasks
+        .iter()
+        .find(|task| task.id == "target")
+        .unwrap();
+    assert!(plain.label.width < plain.bar.width);
+    assert!(
+        uncollapsed_width > plain.bar.width,
+        "the previous measurement crossed this threshold"
+    );
+    assert_eq!(plain.label.width, spaced.label.width);
+    assert_eq!(plain.label.x, spaced.label.x);
+    assert_eq!(plain.label.class, spaced.label.class);
+    assert!(
+        spaced
+            .label
+            .class
+            .split_whitespace()
+            .any(|token| token == "taskText")
+    );
+    assert_eq!(
+        spaced.label.text, "Alpha     Beta",
+        "layout retains authored text for final source projection"
+    );
+
+    // Custom raw-DOM measurement stays authoritative and receives uncollapsed source text.
+    let inputs = Arc::new(Mutex::new(Vec::new()));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-whitespace").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Default::default(),
+            width: uncollapsed_width,
+            inputs: Arc::clone(&inputs),
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let host = layout_gantt_from_text_with_environment(
+        &source("Alpha     Beta"),
+        container_width,
+        &environment,
+    );
+    assert!(
+        inputs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(text, _)| text == "Alpha     Beta")
+    );
+    let task = host.tasks.iter().find(|task| task.id == "target").unwrap();
+    assert_eq!(task.label.width, uncollapsed_width);
+    assert!(
+        task.label
+            .class
+            .split_whitespace()
+            .any(|token| token == "taskTextOutsideRight")
+    );
+}
+
+#[test]
+fn gantt_source_bbox_measurements_restore_threshold_sensitive_label_placement() {
+    // Browser getBBox measurements are injected through the existing host measurement route.
+    // These fixture observations are evidence for the placement formula, not correction factors
+    // in the production deterministic profile. Only the selected task is compared: the probe
+    // deliberately returns the same width for other tasks in each fixture.
+    for (fixture, task_id, source_width, expected_bar_width, expected_x) in [
+        (
+            "upstream_cypress_gantt_spec_example_001",
+            "task5",
+            123.78125,
+            121.0,
+            992.0,
+        ),
+        (
+            "upstream_cypress_theme_spec_should_render_a_gantt_diagram_006",
+            "task2",
+            135.375,
+            129.0,
+            209.0,
+        ),
+    ] {
+        let source = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../fixtures/gantt")
+                .join(format!("{fixture}.mmd")),
+        )
+        .expect("Gantt source fixture");
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.gantt-source-raw-bbox").unwrap(),
+                "v1",
+            )
+            .unwrap(),
+            Arc::new(RawBBoxProbeMeasurer {
+                calls: Default::default(),
+                width: source_width,
+                inputs: Default::default(),
+            }),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let layout = layout_gantt_from_text_with_environment(&source, 1_184.0, &environment);
+        let task = layout.tasks.iter().find(|task| task.id == task_id).unwrap();
+        assert_eq!(task.label.width, source_width, "{fixture}");
+        assert_eq!(task.bar.width, expected_bar_width, "{fixture}");
+        assert!(source_width > task.bar.width, "{fixture}");
+        assert!(
+            task.label
+                .class
+                .split_whitespace()
+                .any(|class| class == "taskTextOutsideRight"),
+            "{fixture}: {}",
+            task.label.class,
+        );
+        assert_eq!(task.label.x, expected_x, "{fixture}");
+    }
+}
+
+#[test]
 fn gantt_label_placement_uses_the_resolved_container_edges() {
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(
@@ -109,6 +259,7 @@ fn gantt_label_placement_uses_the_resolved_container_edges() {
         Arc::new(RawBBoxProbeMeasurer {
             calls: Arc::new(AtomicUsize::new(0)),
             width: 200.0,
+            inputs: Default::default(),
         }),
     );
     let environment = RenderEnvironment::deterministic()
@@ -136,8 +287,95 @@ fn gantt_label_placement_uses_the_resolved_container_edges() {
 }
 
 #[test]
+fn gantt_reversed_task_interval_keeps_the_source_signed_overflow_check() {
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-reversed-interval").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Default::default(),
+            width: 200.0,
+            inputs: Default::default(),
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let layout = layout_gantt_from_text_with_environment(
+        "gantt\ndateFormat YYYY-MM-DD\nFull: full, 2024-01-01, 2024-01-11\nReversed: reversed, 2024-01-09, 2024-01-02\n",
+        1184.0,
+        &environment,
+    );
+    let reversed = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "reversed")
+        .unwrap();
+    assert_eq!(reversed.bar.width, 0.0);
+    assert!(reversed.label.class.contains("taskTextOutsideRight"));
+    let full = layout.tasks.iter().find(|task| task.id == "full").unwrap();
+    let end_x = full.bar.x + (full.bar.width / 10.0).round();
+    assert!((reversed.label.x - end_x - 5.0).abs() < 1e-9);
+}
+
+#[test]
 fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
     // The raw model boundary case lives beside the private layout entry point.
+}
+
+#[test]
+fn gantt_layout_measurement_uses_the_rendered_font_and_preserves_nonbreaking_spaces() {
+    for (config, expected_font) in [
+        (
+            serde_json::json!({"fontFamily": "Arial", "themeVariables": {"fontFamily": "Verdana"}, "gantt": {"fontFamily": "Courier"}}),
+            "Verdana",
+        ),
+        (
+            serde_json::json!({"fontFamily": "Arial", "gantt": {"fontFamily": "Courier"}}),
+            "Arial",
+        ),
+    ] {
+        let inputs = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.gantt-measurement-input").unwrap(),
+                "v1",
+            )
+            .unwrap(),
+            Arc::new(RawBBoxProbeMeasurer {
+                calls: Default::default(),
+                width: 200.0,
+                inputs: Arc::clone(&inputs),
+            }),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+        let source = "gantt\ndateFormat YYYY-MM-DD\nTask\u{a0} :task, 2024-01-01, 1d\n";
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(config))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout: GanttDiagramLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["GanttDiagram"].clone(),
+        )
+        .unwrap();
+        let inputs = inputs.lock().unwrap();
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(
+            inputs[0].0, "Task\u{a0}",
+            "only SVG-collapsible trailing spaces may be removed"
+        );
+        assert_eq!(inputs[0].1.font_family.as_deref(), Some(expected_font));
+        assert_eq!(layout.tasks[0].label.width, 200.0);
+    }
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
@@ -211,8 +449,23 @@ section Delivery
 Task: 2024-01-01, 1d
 "#,
     );
+    let title_texts = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Gantt SVG XML");
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|class| {
+                        class.split_whitespace().any(|token| token == "titleText")
+                    })
+            })
+            .filter_map(|node| node.text().map(str::to_owned))
+            .collect::<Vec<_>>()
+    };
     assert!(
-        frontmatter_svg.contains(r#"class="titleText">Frontmatter schedule</text>"#),
+        title_texts(&frontmatter_svg)
+            .iter()
+            .any(|title| title == "Frontmatter schedule"),
         "frontmatter title should render when the Gantt body has none: {frontmatter_svg}"
     );
 
@@ -227,8 +480,13 @@ section Delivery
 Task: 2024-01-01, 1d
 "#,
     );
-    assert!(body_svg.contains(r#"class="titleText">Body schedule</text>"#));
-    assert!(!body_svg.contains(">Frontmatter schedule</text>"));
+    let body_titles = title_texts(&body_svg);
+    assert!(body_titles.iter().any(|title| title == "Body schedule"));
+    assert!(
+        !body_titles
+            .iter()
+            .any(|title| title == "Frontmatter schedule")
+    );
 }
 
 #[test]
@@ -244,11 +502,15 @@ fn gantt_explicit_whitespace_title_overrides_frontmatter_without_trimming() {
         "Task: 2024-01-01, 1d\n",
     ));
 
-    assert!(
-        svg.contains(r#"class="titleText"> </text>"#),
-        "the one remaining Jison separator must be rendered exactly: {svg}"
-    );
-    assert!(!svg.contains(">Frontmatter schedule</text>"));
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("text")
+            && node
+                .attribute("class")
+                .is_some_and(|class| class.split_whitespace().any(|token| token == "titleText"))
+            && node.text() == Some(" ")
+    }));
+    assert!(!svg.contains("Frontmatter schedule"));
 }
 
 #[test]
@@ -261,6 +523,7 @@ config:
     useWidth: 420
     rightPadding: 10
     topAxis: true
+    topPadding: 70
     numberSectionStyles: 2
 ---
 gantt
@@ -281,30 +544,78 @@ gantt
             && svg.contains(r#"style="max-width: 420px; background-color: white;""#),
         "frontmatter gantt.useWidth should set rendered SVG width: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("valid Gantt SVG XML");
+    let class_has = |node: roxmltree::Node<'_, '_>, token: &str| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_whitespace().any(|value| value == token))
+    };
     assert_eq!(
-        svg.matches(r#"<g class="grid" transform="translate(75, 50)""#)
-            .count(),
-        1,
-        "frontmatter gantt.topAxis should add the top axis grid at top padding: {svg}"
-    );
-    assert_eq!(
-        svg.matches(r#"<g class="grid" transform="translate(75, "#)
+        document
+            .descendants()
+            .filter(|node| node.has_tag_name("g") && class_has(*node, "grid"))
             .count(),
         2,
         "frontmatter gantt.topAxis should render both top and bottom axes: {svg}"
     );
-    assert!(
-        svg.contains(r#"width="415" height="24" class="section section0""#)
-            && svg.contains(r#"width="415" height="24" class="section section1""#),
-        "frontmatter gantt.rightPadding and numberSectionStyles should affect visible rows: {svg}"
+    let height: f64 = document
+        .root_element()
+        .attribute("viewBox")
+        .unwrap()
+        .split_whitespace()
+        .nth(3)
+        .unwrap()
+        .parse()
+        .unwrap();
+    let axis_y = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && class_has(*node, "grid"))
+        .map(|node| {
+            node.attribute("transform")
+                .unwrap()
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split(',')
+                .nth(1)
+                .unwrap()
+                .trim()
+                .parse::<f64>()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        axis_y,
+        [height - 50.0, 70.0],
+        "Mermaid fixes the bottom inset at 50, independently of topPadding"
     );
-    assert!(
-        svg.contains(r#"class="sectionTitle sectionTitle0""#)
-            && svg.contains(r#"class="sectionTitle sectionTitle1""#)
-            && svg.contains(r#"id="gantt-config-a1""#)
-            && svg.contains(r#"id="gantt-config-b1-text""#),
-        "configured Gantt SVG should expose section classes and scoped task DOM: {svg}"
-    );
+    for section in ["section0", "section1"] {
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("rect")
+                    && class_has(node, section)
+                    && node.attribute("width") == Some("415")
+                    && node.attribute("height") == Some("24")
+            }),
+            "frontmatter Gantt row {section} should reflect configured width: {svg}"
+        );
+    }
+    for id in ["gantt-config-a1", "gantt-config-b1-text"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(id)),
+            "configured Gantt SVG should expose scoped DOM id {id}: {svg}"
+        );
+    }
+    for section in ["sectionTitle0", "sectionTitle1"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && class_has(node, section)),
+            "configured Gantt SVG should expose section title class {section}: {svg}"
+        );
+    }
 }
 
 #[test]

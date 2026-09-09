@@ -41,6 +41,15 @@ impl CachedRenderEngine {
         self.plan.layout_json(source, control)
     }
 
+    pub(crate) fn render_drawing_list(
+        &self,
+        source: &[u8],
+        control: merman::OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_drawing_list(source, control)
+    }
+
     pub(crate) fn svg_plan_json(
         &self,
         source: &[u8],
@@ -256,6 +265,58 @@ mod tests {
 
         assert!(svg.contains("id=\"bindings-core-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_uses_the_shared_render_identity() {
+        let render = |id: &str, source: &[u8]| {
+            let options =
+                serde_json::to_vec(&serde_json::json!({"svg": {"diagram_id": id}})).unwrap();
+            let bytes = crate::BindingEngine::new(&options)
+                .unwrap()
+                .render_drawing_list(source)
+                .unwrap();
+            serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+        };
+        let source = b"cynefin-beta\n";
+        let first = render("first", source);
+        let second = render("second", source);
+        assert_ne!(
+            first["resources"], second["resources"],
+            "identity must reach boundary geometry"
+        );
+        assert_eq!(render(" a b ", source), render("a-b", source));
+        assert_eq!(render("", source), render("m-untitled", source));
+        let seeded = b"---\nconfig:\n  cynefin:\n    seed: 42\n---\ncynefin-beta\n";
+        assert_eq!(render("first", seeded), render("second", seeded));
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn render_drawing_list_uses_protocol_limits_from_options_json() {
+        let engine = crate::BindingEngine::new(
+            br#"{
+                "drawing_list": {
+                    "policy": "vector_only",
+                    "limits": { "max_serialized_bytes": 1 }
+                }
+            }"#,
+        )
+        .expect("DrawingList options should compile on the drawing-list artifact");
+        let error = engine
+            .render_drawing_list(b"flowchart TD\nA[Hello]")
+            .expect_err("a one-byte DrawingList budget must reject the complete document");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("serialized_bytes"), "{error:?}");
+        let details = error
+            .resource_details()
+            .expect("protocol quota keeps structured details");
+        assert_eq!(details.limit_id, "max_serialized_bytes");
+        assert_eq!(details.phase, "drawing-list-validation");
+        assert_eq!(details.max, 1);
+        assert!(details.actual > details.max);
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
     }
 
     #[cfg(feature = "svg")]

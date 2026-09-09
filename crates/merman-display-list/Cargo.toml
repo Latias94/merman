@@ -1,0 +1,24 @@
+[package]
+name = "merman-display-list"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Versioned, renderer-neutral drawing-list contracts for Merman."
+documentation = "https://docs.rs/merman-display-list"
+keywords = ["mermaid", "graphics", "canvas", "ffi"]
+categories = ["data-structures", "graphics"]
+
+[dependencies]
+base64.workspace = true
+png.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip", "raw_value"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }

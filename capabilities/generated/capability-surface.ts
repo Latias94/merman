@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e3dfc678c1ccd830bb4e2a10b24b0e5957c6cb6112c9e1c9f75d847317ba31d7" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:982c18d7ddd8f27e848c4c4aed38b3ccd9277afd0646a8543701746c89277401" as const;
 
 export const TARGETS = [
   {
@@ -40,6 +40,18 @@ export const CAPABILITIES = [
       "web"
     ],
     "implications": []
+  },
+  {
+    "id": "drawing-list",
+    "kind": "output",
+    "description": "Render Mermaid input as a validated renderer-neutral DrawingList JSON document.",
+    "targets": [
+      "native",
+      "web"
+    ],
+    "implications": [
+      "svg"
+    ]
   },
   {
     "id": "editor",
@@ -235,6 +247,16 @@ export const OUTPUTS = [
     ]
   },
   {
+    "id": "drawing-list",
+    "capability": "drawing-list",
+    "description": "Renderer-neutral DrawingList v1 JSON output.",
+    "media_type": "application/vnd.merman.drawing-list+json;version=1",
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
     "id": "jpeg",
     "capability": "jpeg",
     "description": "JPEG image output.",
@@ -336,6 +358,19 @@ export const BINDING_OPERATIONS = [
     "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
     "media_type": "application/json",
     "requires_uri": true,
+    "targets": [
+      "native",
+      "web"
+    ]
+  },
+  {
+    "id": "drawing-list-json",
+    "capability": "drawing-list",
+    "output": "drawing-list",
+    "compiled_prerequisites": [],
+    "description": "Render Mermaid input as renderer-neutral DrawingList v1 JSON.",
+    "media_type": "application/vnd.merman.drawing-list+json;version=1",
+    "requires_uri": false,
     "targets": [
       "native",
       "web"
@@ -462,6 +497,7 @@ export type TargetId = (typeof TARGET_IDS)[number];
 export const CAPABILITY_IDS = [
   "analysis",
   "ascii",
+  "drawing-list",
   "editor",
   "icons",
   "jpeg",
@@ -486,6 +522,7 @@ export type CapabilityId = (typeof CAPABILITY_IDS)[number];
 
 export const OUTPUT_IDS = [
   "ascii",
+  "drawing-list",
   "jpeg",
   "pdf",
   "png",
@@ -500,6 +537,7 @@ export const BINDING_OPERATION_IDS = [
   "ascii",
   "document-analysis-facts-json",
   "document-analysis-json",
+  "drawing-list-json",
   "jpeg",
   "layout-json",
   "pdf",

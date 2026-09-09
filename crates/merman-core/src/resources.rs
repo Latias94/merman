@@ -1530,6 +1530,7 @@ impl ZenumlComplexity {
                         participant.emoji.as_deref(),
                         participant.width_source.as_deref(),
                         participant.color.as_deref(),
+                        participant.comment.as_deref(),
                         participant.group_id.as_deref(),
                     ]
                     .into_iter()
@@ -1570,6 +1571,7 @@ impl ZenumlComplexity {
                         label,
                         assignment,
                         body,
+                        body_comment,
                         ..
                     } => {
                         complexity.label_bytes = complexity
@@ -1578,7 +1580,8 @@ impl ZenumlComplexity {
                             .saturating_add(resolved_from.as_deref().map_or(0, str::len))
                             .saturating_add(resolved_to.as_deref().map_or(0, str::len))
                             .saturating_add(label.len())
-                            .saturating_add(assignment.as_deref().map_or(0, str::len));
+                            .saturating_add(assignment.as_deref().map_or(0, str::len))
+                            .saturating_add(body_comment.as_deref().map_or(0, str::len));
                         pending.push((body, nesting_depth.saturating_add(1)));
                     }
                     ZenumlStatementKind::Creation {
@@ -1589,6 +1592,7 @@ impl ZenumlComplexity {
                         assignment,
                         label,
                         body,
+                        body_comment,
                         ..
                     } => {
                         complexity.label_bytes = complexity
@@ -1598,7 +1602,8 @@ impl ZenumlComplexity {
                             .saturating_add(constructor.len())
                             .saturating_add(parameters.len())
                             .saturating_add(assignment.as_deref().map_or(0, str::len))
-                            .saturating_add(label.len());
+                            .saturating_add(label.len())
+                            .saturating_add(body_comment.as_deref().map_or(0, str::len));
                         pending.push((body, nesting_depth.saturating_add(1)));
                     }
                     ZenumlStatementKind::Return {
@@ -1626,7 +1631,10 @@ impl ZenumlComplexity {
                         for section in sections {
                             complexity.label_bytes = complexity
                                 .label_bytes
-                                .saturating_add(section.label.as_deref().map_or(0, str::len));
+                                .saturating_add(section.label.as_deref().map_or(0, str::len))
+                                .saturating_add(
+                                    section.body_comment.as_deref().map_or(0, str::len),
+                                );
                             pending.push((&section.statements, nesting_depth.saturating_add(1)));
                         }
                     }

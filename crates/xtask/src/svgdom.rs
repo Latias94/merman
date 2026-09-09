@@ -916,9 +916,116 @@ fn build_node(
             has_plot && has_bar_plot
         }
 
+        // Pinned empty Gantt diagrams emit invalid x lengths on the Today line. Browser
+        // used values are zero (including visible stroke), as the canonical finite path records.
+        // Keep Strict source spelling; other modes compare this proven length representation.
+        let gantt_empty_today = mode != DomMode::Strict
+            && n.has_tag_name("line")
+            && n.attribute("class") == Some("today")
+            && n.attribute("x1") == Some("NaN")
+            && n.attribute("x2") == Some("NaN")
+            && n.parent().is_some_and(|parent| {
+                parent.has_tag_name("g")
+                    && parent.attribute("class") == Some("today")
+                    && parent.parent().is_some_and(|root| {
+                        root == n.document().root_element()
+                            && root.has_tag_name("svg")
+                            && root.attribute("aria-roledescription") == Some("gantt")
+                    })
+            });
         for a in n.attributes() {
             let key = a.name().to_string();
-            let mut val = a.value().to_string();
+            let mut val = if gantt_empty_today && matches!(a.name(), "x1" | "x2") {
+                "0".to_string()
+            } else {
+                a.value().to_string()
+            };
+
+            // Cynefin's typed colors do not retain authored hex letter case. Normalize only
+            // valid hex fills on source paint elements, preserving every channel and alpha.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "fill"
+                && ((n.has_tag_name("rect")
+                    && ["cynefinDomain", "cynefinItem", "cynefinItemOverflow"]
+                        .iter()
+                        .any(|class| has_class_token(n, class)))
+                    || (n.has_tag_name("path") && has_class_token(n, "cynefinConfusion")))
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("cynefin")
+                })
+                && let Some(hex) = val.strip_prefix('#')
+                && matches!(hex.len(), 3 | 4 | 6 | 8)
+                && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                val.make_ascii_lowercase();
+                attrs.insert(key, val);
+                continue;
+            }
+
+            // Venn rough paint is public RGBA plus a floating-point opacity scope. Compare
+            // static color values, not HSL/hex spelling. Keep alpha beyond its 8-bit encoding;
+            // twelve decimal places remove conversion roundoff, not visible opacity changes.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "stroke"
+                && n.has_tag_name("path")
+                && n.parent()
+                    .filter(|parent| parent.has_tag_name("g"))
+                    .and_then(|parent| parent.parent())
+                    .is_some_and(|area| {
+                        area.has_tag_name("g")
+                            && has_class_token(area, "venn-area")
+                            && (has_class_token(area, "venn-circle")
+                                || has_class_token(area, "venn-intersection"))
+                    })
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("venn")
+                })
+                && let Ok(color) = merman_core::theme_color::ThemeColor::parse(&val)
+            {
+                let color = color.rgba_channels();
+                attrs.insert(
+                    key,
+                    format!(
+                        "rgba({},{},{},{:.12})",
+                        color.red.round(),
+                        color.green.round(),
+                        color.blue.round(),
+                        color.alpha
+                    ),
+                );
+                continue;
+            }
+
+            // Pie's canonical document stores static colors as RGBA rather than preserving
+            // their HSL/hex spelling. Compare only successfully parsed static fills here;
+            // dynamic/invalid paints remain byte-sensitive, and Strict mode is unchanged.
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "fill"
+                && n.has_tag_name("path")
+                && has_class_token(n, "pieCircle")
+                && n.ancestors().any(|ancestor| {
+                    ancestor.has_tag_name("svg")
+                        && ancestor.attribute("aria-roledescription") == Some("pie")
+                })
+                && let Ok(color) = val.parse::<svgtypes::Color>()
+            {
+                attrs.insert(
+                    key,
+                    format!(
+                        "#{:02x}{:02x}{:02x}{:02x}",
+                        color.red, color.green, color.blue, color.alpha
+                    ),
+                );
+                continue;
+            }
 
             if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && n.tag_name().name() == "foreignObject"
@@ -2558,6 +2665,48 @@ mod tests {
     }
 
     #[test]
+    fn gantt_empty_today_lengths_normalize_only_the_pinned_shape() {
+        let source = r#"<svg aria-roledescription="gantt"><g class="today"><line class="today" x1="NaN" x2="NaN" y1="25" y2="75" stroke="red"/></g></svg>"#;
+        let finite = source.replace("NaN", "0");
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(source, mode, 3).unwrap(),
+                dom_signature(&finite, mode, 3).unwrap()
+            );
+            for (from, to) in [
+                ("gantt", "other"),
+                ("<g class=\"today\">", "<g class=\"other\">"),
+                ("x2=\"NaN\"", "x2=\"1\""),
+            ] {
+                let unrecognized = source.replace(from, to);
+                assert_ne!(
+                    dom_signature(&unrecognized, mode, 3).unwrap(),
+                    dom_signature(&unrecognized.replace("NaN", "0"), mode, 3).unwrap()
+                );
+            }
+            assert_ne!(
+                dom_signature(source, mode, 3).unwrap(),
+                dom_signature(
+                    &finite.replace("stroke=\"red\"", "stroke=\"blue\""),
+                    mode,
+                    3
+                )
+                .unwrap()
+            );
+        }
+        assert_ne!(
+            dom_signature(source, DomMode::Strict, 3).unwrap(),
+            dom_signature(&finite, DomMode::Strict, 3).unwrap()
+        );
+        // These existing non-strict modes mask coordinate magnitudes. They prove structure,
+        // not position: the public path mutation and browser evidence cover used geometry.
+        assert_ne!(
+            dom_signature(&finite, DomMode::Strict, 3).unwrap(),
+            dom_signature(&finite.replace("x1=\"0\"", "x1=\"37\""), DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
     fn parity_masks_geometry_attrs_as_n() {
         let svg = r#"<svg class="flowchart" aria-roledescription="flowchart-v2"><path x="12.3" y="4.56" width="7" height="8" class="label-container" label-offset-y="9.19347190389631"/></svg>"#;
         let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
@@ -2580,6 +2729,92 @@ mod tests {
         assert_eq!(
             path.attrs.get("label-offset-y").map(|s| s.as_str()),
             Some("9.193")
+        );
+    }
+
+    #[test]
+    fn venn_rough_stroke_spellings_preserve_color_and_precise_opacity() {
+        let signature = |role: &str, stroke: &str, mode| {
+            dom_signature(&format!(r#"<svg aria-roledescription="{role}"><g class="venn-area venn-circle" data-venn-sets="A"><g><path stroke="{stroke}" fill="none"/></g></g></svg>"#), mode, 3).unwrap()
+        };
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            let stroke = |paint| signature("venn", paint, mode);
+            assert_eq!(
+                stroke("hsla(240, 100%, 66.2745098039%, 0.30000000000000004)"),
+                stroke("rgba(83, 83, 255, 0.3)")
+            );
+            assert_eq!(stroke("#ff6b6b"), stroke("rgba(255, 107, 107, 1)"));
+            assert_ne!(
+                stroke("rgba(83, 83, 255, 0.3)"),
+                stroke("rgba(84, 83, 255, 0.3)")
+            );
+            assert_ne!(
+                stroke("rgba(83, 83, 255, 0.3)"),
+                stroke("rgba(83, 83, 255, 0.30001)")
+            );
+            for unresolved in ["currentColor", "var(--stroke)", "hsl(240, 100%, NaN%)"] {
+                assert_ne!(stroke(unresolved), stroke("#000"));
+            }
+        }
+        assert_ne!(
+            signature("venn", "#ff6b6b", DomMode::Strict),
+            signature("venn", "rgb(255,107,107)", DomMode::Strict)
+        );
+        assert_ne!(
+            signature("other", "#ff6b6b", DomMode::Parity),
+            signature("other", "rgb(255,107,107)", DomMode::Parity)
+        );
+    }
+
+    #[test]
+    fn pie_static_fill_spellings_compare_by_color_without_hiding_differences() {
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            let signature = |fill: &str| {
+                dom_signature(&format!(r#"<svg aria-roledescription="pie"><path class="pieCircle" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+            };
+            assert_eq!(
+                signature("hsl(80, 100%, 56.2745098039%)"),
+                signature("#b5ff20")
+            );
+            assert_eq!(signature("#ECECFF"), signature("#ececff"));
+            assert_ne!(signature("#000"), signature("#001"));
+            assert_ne!(signature("#00000080"), signature("#000000ff"));
+            assert_ne!(signature("hsl(80, 100%, NaN%)"), signature("#000"));
+            assert_ne!(signature("currentColor"), signature("#000"));
+            assert_ne!(signature("var(--fill)"), signature("#000"));
+        }
+    }
+
+    #[test]
+    fn cynefin_hex_fill_case_is_nonsemantic_but_color_and_alpha_are_not() {
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            for (element, class) in [
+                ("rect", "cynefinDomain"),
+                ("rect", "cynefinItem"),
+                ("rect", "cynefinItemOverflow"),
+                ("path", "cynefinConfusion"),
+            ] {
+                let signature = |fill: &str| {
+                    dom_signature(&format!(r#"<svg aria-roledescription="cynefin"><{element} class="{class}" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+                };
+                assert_eq!(signature("#ECECFF"), signature("#ececff"));
+                assert_eq!(signature("#ABCd"), signature("#abcd"));
+                assert_ne!(signature("#abc"), signature("#abd"));
+                assert_ne!(signature("#aabbccdd"), signature("#aabbccee"));
+                assert_ne!(signature("var(--FILL)"), signature("var(--fill)"));
+                assert_ne!(signature("#GGGGGG"), signature("#gggggg"));
+            }
+        }
+        let signature = |role: &str, fill: &str, mode| {
+            dom_signature(&format!(r#"<svg aria-roledescription="{role}"><rect class="cynefinDomain" fill="{fill}"/></svg>"#), mode, 3).unwrap()
+        };
+        assert_ne!(
+            signature("cynefin", "#ABCDEF", DomMode::Strict),
+            signature("cynefin", "#abcdef", DomMode::Strict)
+        );
+        assert_ne!(
+            signature("other", "#ABCDEF", DomMode::ParityRoot),
+            signature("other", "#abcdef", DomMode::ParityRoot)
         );
     }
 

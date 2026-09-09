@@ -1,0 +1,301 @@
+{
+  "schema_version": 2,
+  "family_baselines": [
+    {
+      "family": "error",
+      "source": "flowchart TD\nA -->\n",
+      "expected_effects": ["host_text", "path", "text_stroke"]
+    },
+    {
+      "family": "mindmap",
+      "source": "mindmap\n  root((Merman))\n    Parser\n    Renderer[Render]\n",
+      "expected_effects": ["host_text", "path"],
+      "required_feature": "layout_cytoscape"
+    },
+    {
+      "family": "state",
+      "source": "stateDiagram-v2\n  A --> B: next\n",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
+    },
+    {
+      "family": "sequence",
+      "source": "sequenceDiagram\n  participant A\n  participant B\n  A->>B: hello\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "zenuml",
+      "source": "zenuml\n@Starter(Client)\nClient->Service: call\nService-->Client: done\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "swimlane",
+      "source": "swimlane-beta LR\n  subgraph Customer\n    request[Request]\n  end\n  subgraph Support\n    answer[Answer]\n  end\n  request --> answer\n",
+      "expected_effects": ["expanded_marker", "host_text", "path", "transform"]
+    },
+    {
+      "family": "architecture",
+      "source": "%%{init: {\"architecture\": {\"numIter\": 1, \"randomize\": false}}}%%\narchitecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n  service db(database)[Database] in core\n  api:R --> L:db\n",
+      "expected_effects": ["host_text", "path"],
+      "required_feature": "layout_cytoscape"
+    },
+    {
+      "family": "class",
+      "source": "classDiagram\n  class A\n  class B\n  A --> B : uses\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "c4",
+      "source": "C4Context\n  Person(user, \"User\")\n  System(api, \"API\", \"Service\")\n  Rel(user, api, \"uses\")\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "cynefin",
+      "source": "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "wardley",
+      "source": "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "railroad",
+      "source": "railroad-beta\nexpr = sequence(terminal(\"a\"), nonterminal(\"b\"));\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "kanban",
+      "source": "kanban\n  todo[Todo]\n    task[Task]\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "gantt",
+      "source": "gantt\n  dateFormat YYYY-MM-DD\n  section Core\n  Build :a1, 2026-01-01, 4d\n",
+      "expected_effects": ["host_text", "layer", "opacity", "path", "transform"]
+    },
+    {
+      "family": "pie",
+      "source": "pie\n  \"A\" : 1\n  \"B\" : 2\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "packet",
+      "source": "packet\n  title Header\n  0-7: \"Version\"\n  8-15: \"Length\"\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "timeline",
+      "source": "timeline\n  title Release history\n  section Planning\n    Plan : Build\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "journey",
+      "source": "journey\n  title User checkout\n  section Checkout\n    Sign Up: 5: Alice\n",
+      "expected_effects": ["clip_path", "host_text", "path"]
+    },
+    {
+      "family": "requirement",
+      "source": "requirementDiagram\n  requirement req1 {\n    id: REQ-1\n    text: Login\n    risk: high\n    verifymethod: test\n  }\n  element system {\n    type: service\n    docref: docs\n  }\n  system - satisfies -> req1\n",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
+    },
+    {
+      "family": "sankey",
+      "source": "sankey\nSource,Target,10\nTarget,Done,4\n",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"]
+    },
+    {
+      "family": "radar",
+      "source": "radar-beta\n  axis Speed, Quality, Reach\n  curve Current{80, 60, 90}\n  ticks 3\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "info",
+      "source": "info",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "treemap",
+      "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+      "expected_effects": ["clip_path", "host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "block",
+      "source": "block\n  A[\"A\"]\n  B[\"B\"]\n  A --> B\n",
+      "expected_effects": ["expanded_marker", "host_text", "path"]
+    },
+    {
+      "family": "er",
+      "source": "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path"]
+    },
+    {
+      "family": "quadrantChart",
+      "source": "quadrantChart\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "xychart",
+      "source": "xychart\n  x-axis [Q1, Q2]\n  y-axis 0 --> 100\n  bar [20, 40]\n  line [30, 50]\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "gitGraph",
+      "source": "gitGraph\n  commit id: \"base\"\n  branch feature\n  checkout feature\n  commit id: \"work\"\n  checkout main\n  merge feature\n",
+      "expected_effects": ["host_text", "opacity", "path", "transform"]
+    },
+    {
+      "family": "treeView",
+      "source": "treeView-beta\nRoot icon(folder)\n  Child icon(file)\n",
+      "expected_effects": ["host_text", "path", "transform"]
+    },
+    {
+      "family": "ishikawa",
+      "source": "ishikawa-beta\n  Effect\n  Cause\n    Detail\n",
+      "expected_effects": ["expanded_marker", "host_text", "path", "transform"]
+    },
+    {
+      "family": "eventmodeling",
+      "source": "eventmodeling\ntf 01 ui Shop.Cart\ntf 02 cmd Ordering.AddItem ->> 01\n",
+      "expected_effects": ["host_text", "path"]
+    },
+    {
+      "family": "venn",
+      "source": "venn-beta\nset A\nset B\nunion A,B\n",
+      "expected_effects": ["host_text", "opacity", "path"]
+    }
+  ],
+  "effects": [
+    {
+      "id": "path-fill-stroke",
+      "disposition": "vector",
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\n",
+      "assertion": "path_fill_stroke",
+      "expected_effects": ["expanded_marker", "host_text", "path"],
+      "evidence": "DrawingCommand::DrawPath with resolved fill and stroke"
+    },
+    {
+      "id": "host-text",
+      "disposition": "vector",
+      "family": "info",
+      "source": "info",
+      "assertion": "host_text",
+      "expected_effects": ["host_text", "path"],
+      "evidence": "DrawingCommand::DrawText with TextObligation::HostText"
+    },
+    {
+      "id": "error-text-stroke",
+      "disposition": "vector",
+      "family": "error",
+      "source": "flowchart TD\nA -->\n",
+      "assertion": "text_stroke",
+      "expected_effects": ["host_text", "path", "text_stroke"],
+      "evidence": "Error DrawText commands retain the resolved text stroke and SVG default fill-then-stroke order"
+    },
+    {
+      "id": "linear-gradient",
+      "disposition": "vector",
+      "family": "sankey",
+      "source": "sankey\nSource,Target,10\n",
+      "assertion": "linear_gradient",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"],
+      "evidence": "DrawingResource::LinearGradient referenced by a link paint"
+    },
+    {
+      "id": "clip-path",
+      "disposition": "vector",
+      "family": "treemap",
+      "source": "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+      "assertion": "clip_path",
+      "expected_effects": ["clip_path", "host_text", "opacity", "path", "transform"],
+      "evidence": "DrawingCommand::ClipPath scopes a section paint"
+    },
+    {
+      "id": "semantic-link",
+      "disposition": "vector",
+      "family": "flowchart",
+      "source": "flowchart TD\nA[Start] --> B[End]\nclick A \"https://example.invalid/start\"\n",
+      "assertion": "semantic_link",
+      "expected_effects": ["expanded_marker", "host_text", "path", "semantic_link"],
+      "evidence": "SemanticAnnotation.link carries a sanitized navigation URI"
+    },
+    {
+      "id": "opacity",
+      "disposition": "vector",
+      "family": "cynefin",
+      "source": "cynefin-beta\n  complex\n    \"Observe\"\n  complicated\n    \"Analyze\"\n  complex --> complicated : \"move\"\n",
+      "assertion": "opacity",
+      "expected_effects": ["host_text", "opacity", "path", "transform"],
+      "evidence": "SetOpacity retains translucent domain backgrounds"
+    },
+    {
+      "id": "blend-mode",
+      "disposition": "vector",
+      "family": "sankey",
+      "source": "sankey-beta\nA,B,10\n",
+      "assertion": "blend_mode",
+      "expected_effects": ["blend_mode", "host_text", "linear_gradient", "opacity", "path", "transform"],
+      "evidence": "SetBlendMode retains the link compositing mode"
+    },
+    {
+      "id": "transform",
+      "disposition": "vector",
+      "family": "quadrantChart",
+      "source": "quadrantChart\n  x-axis Low --> High\n  y-axis Bottom --> Top\n  quadrant-1 Invest\n  quadrant-2 Explore\n  quadrant-3 Retire\n  quadrant-4 Maintain\n  Feature: [0.7, 0.8]\n",
+      "assertion": "transform",
+      "expected_effects": ["host_text", "path", "transform"],
+      "evidence": "ConcatTransform retains the chart's translated drawing space"
+    },
+    {
+      "id": "wardley-expanded-marker",
+      "disposition": "vector",
+      "family": "wardley",
+      "source": "wardley-beta\ncomponent A [0.8, 0.2]\ncomponent B [0.4, 0.8]\nA -> B\nevolve A 0.7\n",
+      "assertion": "expanded_marker",
+      "expected_effects": ["expanded_marker", "host_text", "opacity", "path", "transform"],
+      "evidence": "Wardley link and evolution markers are ordinary path resources"
+    },
+    {
+      "id": "foreign-object",
+      "disposition": "vector",
+      "family": "venn",
+      "source": "venn-beta\nset A[\"Frontend\"]:20\n  text A1[\"React\"]\n",
+      "assertion": "host_text",
+      "expected_effects": ["host_text", "opacity", "path"],
+      "evidence": "Venn plain HTML text resolves into positioned host-text lines without HTML interpretation or a second wrap"
+    },
+    {
+      "id": "filter",
+      "disposition": "error",
+      "family": "treemap",
+      "source": "treemap-beta\n\"Engineering\"\n  \"Frontend\": 1:::glow\nclassDef glow fill:#123456,filter:blur(2px);\n",
+      "assertion": "error_message",
+      "expected_effects": [],
+      "expected_error": "classDef property `filter`",
+      "evidence": "structured DrawingListUnavailable instead of dropping a filter"
+    },
+    {
+      "id": "hand-drawn",
+      "disposition": "vector",
+      "family": "venn",
+      "source": "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
+      "assertion": "opacity",
+      "expected_effects": ["host_text", "opacity", "path"],
+      "evidence": "bounded hachure and outline paths with exact paint opacity; seeded path and painter-order parity are checked in venn_svg_test"
+    },
+    {
+      "id": "unknown-icon",
+      "disposition": "vector",
+      "family": "treeView",
+      "source": "treeView-beta\nRoot icon(logos:react)\n",
+      "assertion": "clip_path",
+      "expected_effects": ["clip_path", "host_text", "path", "transform"],
+      "evidence": "a missing registry icon uses Mermaid's clipped blue rectangle and host-text question mark; existing unsupported assets fail explicitly in the facade icon regression"
+    }
+  ]
+}

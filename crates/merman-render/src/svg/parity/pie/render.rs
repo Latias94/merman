@@ -11,12 +11,6 @@ fn pie_legend_rect_style(fill: &str) -> String {
     format!("fill: {color}; stroke: {color};")
 }
 
-fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
-    let x = radius * angle.sin();
-    let y = -radius * angle.cos();
-    (x, y)
-}
-
 fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
     let highlight = crate::config::config_string(effective_config, &["pie", "highlightSlice"])
         .unwrap_or_default();
@@ -151,16 +145,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     );
 
     let legend_position = render_settings.legend_position;
-    let pie_offset_x = if legend_position == crate::pie::PieLegendPosition::Left {
-        (vb_w - 490.0).max(0.0)
-    } else {
-        0.0
-    };
-    let pie_offset_y = if legend_position == crate::pie::PieLegendPosition::Top {
-        layout.legend_step_y * ((layout.legend_items.len() as f64) + 1.0)
-    } else {
-        0.0
-    };
+    let (pie_offset_x, pie_offset_y) = crate::pie::pie_content_offset(layout, legend_position);
     let has_pie_offset = pie_offset_x != 0.0 || pie_offset_y != 0.0;
     if has_pie_offset {
         let _ = write!(
@@ -183,72 +168,25 @@ pub(crate) fn render_pie_diagram_svg_model(
     let inner_radius = render_settings.donut_hole * layout.radius;
     for slice in &layout.slices {
         options.checkpoint_emit()?;
-        let r = layout.radius;
         let slice_class = pie_slice_class(effective_config, &slice.label);
-        if slice.is_full_circle {
-            let d = if inner_radius > 0.0 {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
-                    r = fmt(r),
-                    ir = fmt(inner_radius)
-                )
-            } else {
-                format!(
-                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                    r = fmt(r)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        } else {
-            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
-            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
-            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
-                1
-            } else {
-                0
-            };
-            let d = if inner_radius > 0.0 {
-                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
-                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1),
-                    ix1 = fmt(ix1),
-                    iy1 = fmt(iy1),
-                    ir = fmt(inner_radius),
-                    ix0 = fmt(ix0),
-                    iy0 = fmt(iy0)
-                )
-            } else {
-                format!(
-                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                    x0 = fmt(x0),
-                    y0 = fmt(y0),
-                    r = fmt(r),
-                    large = large,
-                    x1 = fmt(x1),
-                    y1 = fmt(y1)
-                )
-            };
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill),
-                class = escape_xml(&slice_class)
-            );
-        }
+        let segments = crate::render_geometry::pie_slice_segments(
+            layout.radius,
+            inner_radius,
+            slice.start_angle,
+            slice.end_angle,
+            slice.is_full_circle,
+        )
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!("Pie slice `{}` has invalid arc geometry", slice.label),
+        })?;
+        let d = crate::svg::parity::curve::drawing_path_segments_d_unrounded(&segments);
+        let _ = write!(
+            &mut out,
+            r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
+            d = d,
+            fill = escape_xml(&slice.fill),
+            class = escape_xml(&slice_class)
+        );
     }
 
     for slice in &layout.slices {
@@ -270,7 +208,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
-                y = fmt(-200.0),
+                y = fmt(crate::pie::PIE_TITLE_Y),
                 text = escape_xml(t)
             );
         }
@@ -279,7 +217,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
-                y = fmt(-200.0)
+                y = fmt(crate::pie::PIE_TITLE_Y)
             );
         }
     }
@@ -302,11 +240,7 @@ pub(crate) fn render_pie_diagram_svg_model(
             size = fmt(legend_rect_size),
             style = escape_xml(&style)
         );
-        let text = if model.show_data {
-            format!("{} [{}]", item.label, fmt(item.value))
-        } else {
-            item.label.clone()
-        };
+        let text = crate::pie::pie_legend_text(&item.label, item.value, model.show_data);
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}">{text}</text>"#,

@@ -7,10 +7,12 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
+#[cfg(test)]
+const V1_DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
+const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v2.json";
 const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
 const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
-const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;
+const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 2;
 const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 19;
 const TEXT_MEASUREMENT_RESULT_KIND_COUNT: usize = 4;
 const TEXT_MEASUREMENT_WRAP_MODE_COUNT: usize = 3;
@@ -296,21 +298,26 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
             descriptor.protocol_id
         )));
     }
-    if descriptor.protocol_version != TEXT_MEASUREMENT_PROTOCOL_VERSION {
+    if !matches!(descriptor.protocol_version, 1 | 2) {
         return Err(descriptor_error(format!(
             "text-measurement descriptor protocol version {}; expected {TEXT_MEASUREMENT_PROTOCOL_VERSION}",
             descriptor.protocol_version
         )));
     }
-    if descriptor.operations.len() != TEXT_MEASUREMENT_OPERATION_COUNT {
+    let additional = usize::from(descriptor.protocol_version == 2);
+    let operation_count = TEXT_MEASUREMENT_OPERATION_COUNT + additional;
+    let result_kind_count = TEXT_MEASUREMENT_RESULT_KIND_COUNT + additional;
+    if descriptor.operations.len() != operation_count {
         return Err(descriptor_error(format!(
-            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_OPERATION_COUNT} operations; found {}",
+            "text-measurement protocol {} requires exactly {operation_count} operations; found {}",
+            descriptor.protocol_version,
             descriptor.operations.len()
         )));
     }
-    if descriptor.result_kinds.len() != TEXT_MEASUREMENT_RESULT_KIND_COUNT {
+    if descriptor.result_kinds.len() != result_kind_count {
         return Err(descriptor_error(format!(
-            "text-measurement protocol {TEXT_MEASUREMENT_PROTOCOL_VERSION} requires exactly {TEXT_MEASUREMENT_RESULT_KIND_COUNT} result kinds; found {}",
+            "text-measurement protocol {} requires exactly {result_kind_count} result kinds; found {}",
+            descriptor.protocol_version,
             descriptor.result_kinds.len()
         )));
     }
@@ -381,12 +388,12 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
     )?;
     validate_contiguous_codes(
         descriptor.result_kinds.iter().map(|kind| kind.code),
-        TEXT_MEASUREMENT_RESULT_KIND_COUNT,
+        result_kind_count,
         "result-kind",
     )?;
     validate_contiguous_codes(
         descriptor.operations.iter().map(|operation| operation.code),
-        TEXT_MEASUREMENT_OPERATION_COUNT,
+        operation_count,
         "operation",
     )?;
 
@@ -409,7 +416,13 @@ fn validate_descriptor(descriptor: &TextMeasurementProtocolDescriptor) -> Result
             )));
         }
     }
-    let protocol_sha256 = protocol_sha256(descriptor);
+    let mut legacy = descriptor.clone();
+    legacy.protocol_version = 1;
+    legacy.operations.truncate(TEXT_MEASUREMENT_OPERATION_COUNT);
+    legacy
+        .result_kinds
+        .truncate(TEXT_MEASUREMENT_RESULT_KIND_COUNT);
+    let protocol_sha256 = protocol_sha256(&legacy);
     if protocol_sha256 != TEXT_MEASUREMENT_V1_PROTOCOL_SHA256 {
         return Err(descriptor_error(format!(
             "text-measurement protocol 1 contract is immutable; expected sha256:{TEXT_MEASUREMENT_V1_PROTOCOL_SHA256}, found sha256:{protocol_sha256}; add a new protocol version before changing an emitted value or meaning"
@@ -663,7 +676,8 @@ fn render_ffi_rust(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let mut output = generated_preamble("//");
     writeln!(
         output,
-        "pub const MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = {};\n",
+        "pub const MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;\n\
+         pub const MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION: u32 = {};\n",
         descriptor.protocol_version
     )
     .unwrap();
@@ -750,7 +764,8 @@ fn render_c_header(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     );
     writeln!(
         output,
-        "#define MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION {}\n",
+        "#define MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION 1\n\
+         #define MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION {}\n",
         descriptor.protocol_version
     )
     .unwrap();
@@ -962,6 +977,12 @@ fn render_dart_enum(output: &mut String, enum_name: &str, values: &[VocabularyVa
 
 fn render_dart(descriptor: &TextMeasurementProtocolDescriptor) -> String {
     let mut output = generated_preamble("//");
+    writeln!(
+        output,
+        "const int mermanTextMeasurementProtocolVersion = {};\n",
+        descriptor.protocol_version
+    )
+    .unwrap();
     render_dart_enum(&mut output, "MermanTextWrapMode", &descriptor.wrap_modes);
     render_dart_enum(&mut output, "MermanTextDirection", &descriptor.directions);
     render_dart_enum(
@@ -1227,7 +1248,7 @@ mod tests {
     use super::*;
 
     fn committed_descriptor() -> TextMeasurementProtocolDescriptor {
-        read_descriptor(&crate::cmd::workspace_root().join(DESCRIPTOR_PATH))
+        read_descriptor(&crate::cmd::workspace_root().join(V1_DESCRIPTOR_PATH))
             .expect("committed text-measurement protocol descriptor")
     }
 
@@ -1239,6 +1260,26 @@ mod tests {
                 .contains("text-measurement protocol 1 contract is immutable"),
             "unexpected validation error: {error}"
         );
+    }
+
+    #[test]
+    fn protocol_v2_adds_atomic_normal_line_metrics_without_rewriting_v1() {
+        let v1 = committed_descriptor();
+        let mut v2 = read_descriptor(&crate::cmd::workspace_root().join(DESCRIPTOR_PATH)).unwrap();
+        assert_eq!(v2.protocol_version, 2);
+        assert_eq!(v2.operations[19].external_name, "normal-line-metrics");
+        assert_eq!(v2.operations[19].result_kind, "normal_line_metrics");
+        assert_eq!(v2.result_kinds[4].external_name, "normal-line-metrics");
+        validate_descriptor(&v2).expect("protocol 2 owns the additional paired result");
+        let c = render_c_header(&v2);
+        assert!(c.contains("#define MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION 1\n"));
+        assert!(c.contains("#define MERMAN_TEXT_MEASUREMENT_PROTOCOL_V2_VERSION 2\n"));
+        v2.operations[0].external_name = "changed-measure".into();
+        assert!(
+            validate_descriptor(&v2).is_err(),
+            "shared protocol 1 meanings stay frozen"
+        );
+        validate_descriptor(&v1).expect("old callback vocabulary stays valid");
     }
 
     #[test]
@@ -1280,7 +1321,7 @@ mod tests {
         assert!(validate_descriptor(&wrong_protocol_id).is_err());
 
         let mut wrong_protocol_version = committed_descriptor();
-        wrong_protocol_version.protocol_version = 2;
+        wrong_protocol_version.protocol_version = 3;
         assert!(validate_descriptor(&wrong_protocol_version).is_err());
 
         let mut duplicate = committed_descriptor();

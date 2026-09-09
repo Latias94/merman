@@ -7,13 +7,13 @@ use svgtypes::PathSegment;
 pub(crate) fn absolutize(
     path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
 ) -> impl Iterator<Item = PathSegment> {
-    let mut result = vec![];
     let (mut cx, mut cy, mut subx, mut suby) = (0.0, 0.0, 0.0, 0.0);
 
-    for segment in path_segments {
+    path_segments.map(move |segment| {
+        let result;
         match *segment.borrow() {
             PathSegment::MoveTo { abs: true, x, y } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
                 subx = x;
@@ -22,27 +22,27 @@ pub(crate) fn absolutize(
             PathSegment::MoveTo { abs: false, x, y } => {
                 cx += x;
                 cy += y;
-                result.push(PathSegment::MoveTo {
+                result = PathSegment::MoveTo {
                     abs: true,
                     x: cx,
                     y: cy,
-                });
+                };
                 subx = cx;
                 suby = cy;
             }
             PathSegment::LineTo { abs: true, x, y } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
             PathSegment::LineTo { abs: false, x, y } => {
                 cx += x;
                 cy += y;
-                result.push(PathSegment::LineTo {
+                result = PathSegment::LineTo {
                     abs: true,
                     x: cx,
                     y: cy,
-                });
+                };
             }
             PathSegment::CurveTo {
                 abs: true,
@@ -53,7 +53,7 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
@@ -66,7 +66,7 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(PathSegment::CurveTo {
+                result = PathSegment::CurveTo {
                     abs: true,
                     x1: x1 + cx,
                     y1: y1 + cy,
@@ -74,7 +74,7 @@ pub(crate) fn absolutize(
                     y2: y2 + cy,
                     x: x + cx,
                     y: y + cy,
-                });
+                };
                 cx += x;
                 cy += y;
             }
@@ -85,7 +85,7 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
@@ -96,13 +96,13 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(PathSegment::Quadratic {
+                result = PathSegment::Quadratic {
                     abs: true,
                     x1: x1 + cx,
                     y1: y1 + cy,
                     x: x + cx,
                     y: y + cy,
-                });
+                };
                 cx += x;
                 cy += y;
             }
@@ -116,7 +116,7 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
@@ -132,7 +132,7 @@ pub(crate) fn absolutize(
             } => {
                 cx += x;
                 cy += y;
-                result.push(PathSegment::EllipticalArc {
+                result = PathSegment::EllipticalArc {
                     abs: true,
                     rx,
                     ry,
@@ -141,23 +141,23 @@ pub(crate) fn absolutize(
                     sweep,
                     x: cx,
                     y: cy,
-                });
+                };
             }
             PathSegment::HorizontalLineTo { abs: true, x } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
             }
             PathSegment::HorizontalLineTo { abs: false, x } => {
                 cx += x;
-                result.push(PathSegment::HorizontalLineTo { abs: true, x: cx });
+                result = PathSegment::HorizontalLineTo { abs: true, x: cx };
             }
             PathSegment::VerticalLineTo { abs: true, y } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cy = y;
             }
             PathSegment::VerticalLineTo { abs: false, y } => {
                 cy += y;
-                result.push(PathSegment::VerticalLineTo { abs: true, y: cy });
+                result = PathSegment::VerticalLineTo { abs: true, y: cy };
             }
             PathSegment::SmoothCurveTo {
                 abs: true,
@@ -166,7 +166,7 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
@@ -177,39 +177,38 @@ pub(crate) fn absolutize(
                 x,
                 y,
             } => {
-                result.push(PathSegment::SmoothCurveTo {
+                result = PathSegment::SmoothCurveTo {
                     abs: true,
                     x2: x2 + cx,
                     y2: y2 + cy,
                     x: x + cx,
                     y: y + cy,
-                });
+                };
                 cx += x;
                 cy += y;
             }
             PathSegment::SmoothQuadratic { abs: true, x, y } => {
-                result.push(*segment.borrow());
+                result = *segment.borrow();
                 cx = x;
                 cy = y;
             }
             PathSegment::SmoothQuadratic { abs: false, x, y } => {
                 cx += x;
                 cy += y;
-                result.push(PathSegment::SmoothQuadratic {
+                result = PathSegment::SmoothQuadratic {
                     abs: true,
                     x: cx,
                     y: cy,
-                });
+                };
             }
             PathSegment::ClosePath { .. } => {
-                result.push(PathSegment::ClosePath { abs: true });
+                result = PathSegment::ClosePath { abs: true };
                 cx = subx;
                 cy = suby;
             }
         }
-    }
-
-    result.into_iter()
+        result
+    })
 }
 
 /// Normalize absolute SVG path commands into `M/L/C/Z`.
@@ -217,7 +216,27 @@ pub(crate) fn normalize(
     path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
 ) -> impl Iterator<Item = PathSegment> {
     let mut out = vec![];
+    let result = normalize_into(path_segments, |event| {
+        if let NormalizationEvent::Segment(segment) = event {
+            out.push(segment);
+        }
+        Ok::<_, std::convert::Infallible>(())
+    });
+    match result {
+        Ok(()) => out.into_iter(),
+        Err(never) => match never {},
+    }
+}
 
+pub(crate) enum NormalizationEvent {
+    Work,
+    Segment(PathSegment),
+}
+
+pub(crate) fn normalize_into<E>(
+    mut path_segments: impl Iterator<Item = impl Borrow<PathSegment>>,
+    mut emit: impl FnMut(NormalizationEvent) -> Result<(), E>,
+) -> Result<(), E> {
     let mut cx = 0.0;
     let mut cy = 0.0;
     let mut subx = 0.0;
@@ -226,10 +245,14 @@ pub(crate) fn normalize(
     let mut lcy = 0.0;
     let mut last_type: Option<PathSegment> = None;
 
-    for segment in path_segments {
+    loop {
+        emit(NormalizationEvent::Work)?;
+        let Some(segment) = path_segments.next() else {
+            break;
+        };
         match *segment.borrow() {
             PathSegment::MoveTo { abs: true, x, y } => {
-                out.push(*segment.borrow());
+                emit(NormalizationEvent::Segment(*segment.borrow()))?;
                 cx = x;
                 cy = y;
                 subx = x;
@@ -244,32 +267,32 @@ pub(crate) fn normalize(
                 x,
                 y,
             } => {
-                out.push(*segment.borrow());
+                emit(NormalizationEvent::Segment(*segment.borrow()))?;
                 cx = x;
                 cy = y;
                 lcx = x2;
                 lcy = y2;
             }
             PathSegment::LineTo { abs: true, x, y } => {
-                out.push(*segment.borrow());
+                emit(NormalizationEvent::Segment(*segment.borrow()))?;
                 cx = x;
                 cy = y;
             }
             PathSegment::HorizontalLineTo { abs: true, x } => {
                 cx = x;
-                out.push(PathSegment::LineTo {
+                emit(NormalizationEvent::Segment(PathSegment::LineTo {
                     abs: true,
                     x: cx,
                     y: cy,
-                });
+                }))?;
             }
             PathSegment::VerticalLineTo { abs: true, y } => {
                 cy = y;
-                out.push(PathSegment::LineTo {
+                emit(NormalizationEvent::Segment(PathSegment::LineTo {
                     abs: true,
                     x: cx,
                     y: cy,
-                });
+                }))?;
             }
             PathSegment::SmoothCurveTo {
                 abs: true,
@@ -289,7 +312,7 @@ pub(crate) fn normalize(
                 } else {
                     (cx, cy)
                 };
-                out.push(PathSegment::CurveTo {
+                emit(NormalizationEvent::Segment(PathSegment::CurveTo {
                     abs: true,
                     x1: cx1,
                     y1: cy1,
@@ -297,7 +320,7 @@ pub(crate) fn normalize(
                     y2,
                     x,
                     y,
-                });
+                }))?;
                 lcx = x2;
                 lcy = y2;
                 cx = x;
@@ -319,7 +342,7 @@ pub(crate) fn normalize(
                 let cy1 = cy + 2.0 * (y1 - cy) / 3.0;
                 let cx2 = x + 2.0 * (x1 - x) / 3.0;
                 let cy2 = y + 2.0 * (y1 - y) / 3.0;
-                out.push(PathSegment::CurveTo {
+                emit(NormalizationEvent::Segment(PathSegment::CurveTo {
                     abs: true,
                     x1: cx1,
                     y1: cy1,
@@ -327,7 +350,7 @@ pub(crate) fn normalize(
                     y2: cy2,
                     x,
                     y,
-                });
+                }))?;
                 lcx = x1;
                 lcy = y1;
                 cx = x;
@@ -344,7 +367,7 @@ pub(crate) fn normalize(
                 let cy1 = cy + 2.0 * (y1 - cy) / 3.0;
                 let cx2 = x + 2.0 * (x1 - x) / 3.0;
                 let cy2 = y + 2.0 * (y1 - y) / 3.0;
-                out.push(PathSegment::CurveTo {
+                emit(NormalizationEvent::Segment(PathSegment::CurveTo {
                     abs: true,
                     x1: cx1,
                     y1: cy1,
@@ -352,7 +375,7 @@ pub(crate) fn normalize(
                     y2: cy2,
                     x,
                     y,
-                });
+                }))?;
                 lcx = x1;
                 lcy = y1;
                 cx = x;
@@ -374,7 +397,7 @@ pub(crate) fn normalize(
                 let large_arc_flag = large_arc;
                 let sweep_flag = sweep;
                 if r1 == 0.0 || r2 == 0.0 {
-                    out.push(PathSegment::CurveTo {
+                    emit(NormalizationEvent::Segment(PathSegment::CurveTo {
                         abs: true,
                         x1: cx,
                         y1: cy,
@@ -382,7 +405,7 @@ pub(crate) fn normalize(
                         y2: y,
                         x,
                         y,
-                    });
+                    }))?;
                     cx = x;
                     cy = y;
                 } else if cx != x || cy != y {
@@ -399,7 +422,7 @@ pub(crate) fn normalize(
                         None,
                     );
                     for curve in curves.iter() {
-                        out.push(PathSegment::CurveTo {
+                        emit(NormalizationEvent::Segment(PathSegment::CurveTo {
                             abs: true,
                             x1: curve[0],
                             y1: curve[1],
@@ -407,14 +430,14 @@ pub(crate) fn normalize(
                             y2: curve[3],
                             x: curve[4],
                             y: curve[5],
-                        });
+                        }))?;
                     }
                     cx = x;
                     cy = y;
                 }
             }
             PathSegment::ClosePath { abs: true } => {
-                out.push(*segment.borrow());
+                emit(NormalizationEvent::Segment(*segment.borrow()))?;
                 cx = subx;
                 cy = suby;
             }
@@ -423,7 +446,7 @@ pub(crate) fn normalize(
         last_type = Some(*segment.borrow());
     }
 
-    out.into_iter()
+    Ok(())
 }
 
 fn rotate(x: f64, y: f64, angle_rad: f64) -> (f64, f64) {
@@ -574,6 +597,27 @@ mod tests {
     use svgtypes::{PathParser, PathSegment};
 
     use super::{absolutize, normalize};
+
+    #[test]
+    fn absolutize_does_not_preconsume_source_segments() {
+        let visited = std::cell::Cell::new(0);
+        let source = [PathSegment::LineTo {
+            abs: false,
+            x: 1.0,
+            y: 2.0,
+        }; 100];
+        let mut absolute = absolutize(source.iter().inspect(|_| visited.set(visited.get() + 1)));
+        assert_eq!(visited.get(), 0);
+        assert_eq!(
+            absolute.next(),
+            Some(PathSegment::LineTo {
+                abs: true,
+                x: 1.0,
+                y: 2.0
+            })
+        );
+        assert_eq!(visited.get(), 1);
+    }
 
     #[test]
     fn absolutize_handles_relative_segments() {

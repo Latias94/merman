@@ -19,8 +19,9 @@ sanitization, and SVG structure are checked against pinned Mermaid source and fi
 
 > [!NOTE]
 > This README documents the current `main` branch. The operation-scoped `Renderer` API was
-> introduced in the published `0.8.0-alpha.6` release. If you depend on `0.8.0-alpha.5`, use its
-> [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
+> introduced in the published `0.8.0-alpha.6` release, but DrawingList is an unreleased addition on
+> current `main` and is absent from immutable alpha.6 artifacts. If you depend on `0.8.0-alpha.5`, use
+> its [tagged README](https://github.com/Latias94/merman/blob/v0.8.0-alpha.5/README.md).
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend. [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
@@ -94,6 +95,7 @@ Choose one typed target for each request:
 | Parse a typed Mermaid model | `Engine` and `ParseOptions` | Always available |
 | Prepare or inspect the semantic artifact | `Renderer::prepare_semantic()` or `RenderTarget::Semantic` | Always available |
 | Render Mermaid-style SVG | `RenderRequest::svg()` | `svg` |
+| Render a renderer-neutral DrawingList for a native graphics host | `RenderRequest::drawing_list()` | `drawing-list` |
 | Inspect layout JSON or an SVG capability plan | `RenderRequest::layout_json()` or `RenderRequest::svg_plan()` | `svg` |
 | Render terminal text for supported families | `RenderRequest::ascii()` | `ascii` |
 | Export PNG, JPEG, or PDF | `RenderRequest::png()`, `jpeg()`, or `pdf()` | matching output feature |
@@ -106,19 +108,20 @@ silently choosing a different result.
 
 ## Cargo features
 
-The default `merman` dependency enables `complete-svg`: SVG rendering, Cytoscape layout, and math
-labels. It intentionally does not pull the optional EPL-2.0 ELK implementation into ordinary Cargo
-dependencies. Analysis, editor APIs, terminal output, binary export, ambient system adapters, and
-ELK remain opt-in.
+The default `merman` dependency enables `complete-svg`: SVG and renderer-neutral DrawingList
+output, Cytoscape layout, and math labels. It intentionally does not pull the optional EPL-2.0 ELK
+implementation into ordinary Cargo dependencies. Analysis, editor APIs, terminal output, binary
+export, ambient system adapters, and ELK remain opt-in.
 
 Cargo features select capabilities and output backends, not Mermaid diagram families. Every
 parser-capable build retains the same language catalog.
 
 | Goal | Cargo selection |
 | --- | --- |
-| Complete deterministic SVG | defaults, or `complete-svg` |
+| Complete deterministic SVG plus DrawingList | defaults, or `complete-svg` |
 | Complete SVG plus ELK layout | `default-features = false, features = ["complete-svg-elk"]` |
 | Basic SVG without optional layout engines or math | `default-features = false, features = ["svg"]` |
+| DrawingList plus the shared render/layout foundation | `default-features = false, features = ["drawing-list"]` |
 | Diagnostics and editor APIs | `default-features = false, features = ["analysis", "editor"]` |
 | Terminal output | `default-features = false, features = ["ascii"]` |
 | Binary export | Add only the required `png`, `jpeg`, or `pdf` feature |

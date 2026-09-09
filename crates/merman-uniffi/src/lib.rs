@@ -28,13 +28,16 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 6;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 8;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 6 therefore
-// replaces the API 5 version-probe symbol before adding ASCII capability axes and output encoding
-// fields, so stale generated bindings fail before decoding either changed record layout.
+// UniFFI method checksums do not fully cover nested record layouts. Replace the version-probe
+// symbol before adding the normal-line metrics pair so stale bindings fail before decoding it.
 #[cfg(test)]
 const UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM: u16 = 32_101;
+#[cfg(test)]
+const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
+#[cfg(test)]
+const UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM: u16 = 21_723;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -106,6 +109,13 @@ pub struct MermanIconRegistryErrorDetails {
     pub registration_name: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MermanDrawingListErrorDetails {
+    pub category: String,
+    pub family: Option<String>,
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
     #[error("{code_name}: {message}")]
@@ -118,6 +128,7 @@ pub enum MermanError {
         diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         cancellation: Option<MermanCancelledDetails>,
+        drawing_list: Option<MermanDrawingListErrorDetails>,
         message: String,
     },
 }
@@ -165,6 +176,14 @@ impl MermanError {
                 reason: details.reason.to_string(),
                 phase: details.phase.to_string(),
             });
+        let drawing_list =
+            error
+                .drawing_list_details()
+                .map(|details| MermanDrawingListErrorDetails {
+                    category: details.category.to_string(),
+                    family: details.family.clone(),
+                    reason: details.reason.clone(),
+                });
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -174,6 +193,7 @@ impl MermanError {
             diagnostic,
             icon_registry,
             cancellation,
+            drawing_list,
             message: error.message().to_string(),
         }
     }
@@ -189,6 +209,7 @@ impl MermanError {
             diagnostic: None,
             icon_registry: None,
             cancellation: None,
+            drawing_list: None,
             message: message.into(),
         }
     }
@@ -451,6 +472,12 @@ pub struct MermanTextMeasureRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct MermanNormalLineMetrics {
+    pub line_height: f64,
+    pub baseline_offset: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
 pub struct MermanTextMeasureResult {
     pub result_kind: MermanTextMeasurementResultKind,
     pub width: f64,
@@ -460,6 +487,7 @@ pub struct MermanTextMeasureResult {
     pub bbox_left: Option<f64>,
     pub bbox_right: Option<f64>,
     pub raw_width: Option<f64>,
+    pub normal_line_metrics: Option<MermanNormalLineMetrics>,
 }
 
 /// Synchronous host text measurement supplied when a reusable engine is constructed.
@@ -617,12 +645,19 @@ impl UniffiHostTextMeasurer {
                 .clone()
                 .unwrap_or_else(|| "normal".to_string()),
             max_width: request.max_width,
-            line_height: uniffi_line_height(request.style, request.wrap_mode),
+            line_height: merman_bindings_core::host_text_measurement_transport_fields(request)
+                .line_height,
             letter_spacing: 0.0,
             word_spacing: 0.0,
             wrap_mode: uniffi_wrap_mode(request.wrap_mode),
             direction: MermanTextDirection::Auto,
-            white_space: uniffi_white_space(request.max_width, request.wrap_mode),
+            white_space: if request.operation
+                == merman_bindings_core::TextMeasurementOperation::NormalLineMetrics
+            {
+                MermanTextWhiteSpace::Normal
+            } else {
+                uniffi_white_space(request.max_width, request.wrap_mode)
+            },
         }) {
             Ok(Some(result)) => result,
             Ok(None) => return Ok(None),
@@ -640,6 +675,12 @@ impl UniffiHostTextMeasurer {
                 bbox_left: result.bbox_left,
                 bbox_right: result.bbox_right,
                 raw_width: result.raw_width,
+                normal_line_metrics: result.normal_line_metrics.map(|metrics| {
+                    merman_bindings_core::NormalLineMetrics {
+                        line_height: metrics.line_height,
+                        baseline_offset: metrics.baseline_offset,
+                    }
+                }),
             },
         )
         .map(Some)
@@ -654,19 +695,6 @@ impl HostTextMeasurer for UniffiHostTextMeasurer {
     ) -> merman_bindings_core::HostMeasurementResult {
         self.call_host(request)
     }
-}
-
-#[cfg(feature = "svg")]
-fn uniffi_line_height(
-    style: &merman_bindings_core::TextStyle,
-    wrap_mode: merman_bindings_core::WrapMode,
-) -> f64 {
-    let factor = match wrap_mode {
-        merman_bindings_core::WrapMode::SvgLike
-        | merman_bindings_core::WrapMode::SvgLikeSingleRun => 1.1,
-        merman_bindings_core::WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
 }
 
 #[cfg(feature = "svg")]
@@ -711,7 +739,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v6(&self) -> u32 {
+    pub fn binding_api_version_v8(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -753,6 +781,18 @@ impl Merman {
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
             OperationKey::Svg,
+            source,
+            options_json,
+        )))
+    }
+
+    pub fn render_drawing_list(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::DrawingListJson,
             source,
             options_json,
         )))
@@ -1102,6 +1142,18 @@ impl MermanEngine {
     ) -> Result<String, MermanError> {
         string_operation_output(self.execute(operation_request(
             OperationKey::Svg,
+            source,
+            options_json,
+        )))
+    }
+
+    pub fn render_drawing_list(
+        &self,
+        source: String,
+        options_json: Option<String>,
+    ) -> Result<String, MermanError> {
+        string_operation_output(self.execute(operation_request(
+            OperationKey::DrawingListJson,
             source,
             options_json,
         )))
@@ -2079,8 +2131,18 @@ mod tests {
                 bbox_left: None,
                 bbox_right: None,
                 raw_width: None,
+                normal_line_metrics: None,
             };
             match request.operation {
+                MermanTextMeasurementOperation::NormalLineMetrics => {
+                    assert_eq!(request.line_height, 0.0);
+                    assert_eq!(request.white_space, MermanTextWhiteSpace::Normal);
+                    result.result_kind = MermanTextMeasurementResultKind::NormalLineMetrics;
+                    result.normal_line_metrics = Some(MermanNormalLineMetrics {
+                        line_height: 28.0,
+                        baseline_offset: 21.0,
+                    });
+                }
                 MermanTextMeasurementOperation::Measure
                 | MermanTextMeasurementOperation::Wrapped
                 | MermanTextMeasurementOperation::MermaidCalculateTextDimensions => {
@@ -2617,28 +2679,40 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 6);
-        assert_eq!(engine.binding_api_version_v6(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 8);
+        assert_eq!(engine.binding_api_version_v8(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v5_generated_bindings_are_rejected_before_record_decoding() {
+    fn previous_generated_bindings_are_rejected_before_record_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6(),
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
+            UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM
+        );
+        assert_ne!(
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
             UNIFFI_BINDING_API_V5_VERSION_METHOD_CHECKSUM
+        );
+        assert_ne!(
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
+            UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../platforms/apple/Sources/Merman/Generated/MermanFFI.h"
         ));
         assert!(
-            generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6")
+            !generated_header
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8")
+        );
+        assert!(
+            generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8")
         );
         assert!(
             !generated_header
@@ -2649,6 +2723,16 @@ mod tests {
             !generated_header
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v5"),
             "API 5 checksum symbol must stay absent from generated bindings"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
+            "API 6 probe symbol must stay absent so stale bindings fail before error decoding"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
+            "API 6 checksum symbol must stay absent from generated bindings"
         );
     }
 
@@ -2741,6 +2825,23 @@ mod tests {
             panic!("raw bbox height must use the length result shape");
         };
         assert!(raw_height > 0.0);
+
+        let normal = host
+            .call_host(merman_bindings_core::HostTextMeasurementRequest {
+                operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+                phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+                text: "中文",
+                style: &style,
+                max_width: None,
+                wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+            })
+            .expect("callback transport")
+            .expect("handled normal line metrics");
+        let merman_bindings_core::HostTextMeasurement::NormalLineMetrics(normal) = normal else {
+            panic!("normal line metrics must preserve the paired result shape");
+        };
+        assert_eq!(normal.line_height, 28.0);
+        assert_eq!(normal.baseline_offset, 21.0);
     }
 
     #[cfg(feature = "svg")]
@@ -2769,6 +2870,7 @@ mod tests {
                     bbox_left: None,
                     bbox_right: None,
                     raw_width: None,
+                    normal_line_metrics: None,
                 },
             }),
             Arc::clone(&admission),
@@ -2792,6 +2894,7 @@ mod tests {
                     bbox_left: Some(1.0),
                     bbox_right: None,
                     raw_width: None,
+                    normal_line_metrics: None,
                 },
             }),
             admission,
@@ -3665,6 +3768,29 @@ A@{ icon: "test:rocket", label: "A" }"#
                 kind_id: "invalid_xml".to_string(),
                 pack_index: Some(0),
                 registration_name: None,
+            })
+        );
+    }
+
+    #[test]
+    fn drawing_list_errors_preserve_structured_details() {
+        let error = MermanError::from_binding(
+            BindingError::unsupported_operation("DrawingList is unavailable")
+                .with_drawing_list_details(
+                    merman_bindings_core::BindingDrawingListErrorDetails::new(
+                        "unavailable",
+                        Some("state".to_string()),
+                        Some("htmlLabels requires a foreignObject fallback".to_string()),
+                    ),
+                ),
+        );
+        let MermanError::Binding { drawing_list, .. } = error;
+        assert_eq!(
+            drawing_list,
+            Some(MermanDrawingListErrorDetails {
+                category: "unavailable".to_string(),
+                family: Some("state".to_string()),
+                reason: Some("htmlLabels requires a foreignObject fallback".to_string()),
             })
         );
     }

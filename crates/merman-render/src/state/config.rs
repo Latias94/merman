@@ -54,6 +54,22 @@ pub(super) fn value_to_label_text(v: &Value) -> String {
     }
 }
 
+/// Returns the complete plain label represented by a State semantic value.
+///
+/// Arrays are used by the parser for multiline labels; preserving every item here prevents a
+/// renderer-neutral adapter from silently dropping later lines.
+pub(crate) fn state_value_to_label_text(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(items) => items
+            .iter()
+            .map(Value::as_str)
+            .collect::<Option<Vec<_>>>()
+            .map(|items| items.join("\n")),
+        _ => None,
+    }
+}
+
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
     if text.contains('ﬂ') || text.contains('¶') || text.contains('#') {
         return merman_core::entities::decode_mermaid_entities_to_unicode(text);

@@ -5,6 +5,7 @@ use merman::{
     MermaidConfig, OperationControl, ParseOptions, RenderOutput, RenderRequest, Renderer,
     SvgRequest,
 };
+use merman_core::theme_color::{ColorChannel, ThemeColor};
 use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
 #[cfg(feature = "png")]
@@ -567,6 +568,49 @@ fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     assert_rasterizes_when_enabled(name, source, svg);
 }
 
+fn svg_contains_equivalent_theme_color(svg: &str, expected: &str) -> bool {
+    if svg.contains(expected) {
+        return true;
+    }
+    let Ok(expected) = ThemeColor::parse(expected) else {
+        return false;
+    };
+    let expected_channels = [
+        expected.channel(ColorChannel::Red),
+        expected.channel(ColorChannel::Green),
+        expected.channel(ColorChannel::Blue),
+        expected.channel(ColorChannel::Alpha),
+    ];
+    let Ok(document) = roxmltree::Document::parse(svg) else {
+        return false;
+    };
+    document
+        .descendants()
+        .filter(roxmltree::Node::is_element)
+        .any(|node| {
+            node.attributes().any(|attribute| {
+                if !matches!(attribute.name(), "fill" | "stroke" | "color") {
+                    return false;
+                }
+                let Ok(actual) = ThemeColor::parse(attribute.value()) else {
+                    return false;
+                };
+                [
+                    actual.channel(ColorChannel::Red),
+                    actual.channel(ColorChannel::Green),
+                    actual.channel(ColorChannel::Blue),
+                    actual.channel(ColorChannel::Alpha),
+                ]
+                .into_iter()
+                .zip(expected_channels)
+                // Canonical SVG paints are serialized as 8-bit RGB hex values. Compare the
+                // quantized channels so a source HSL token and its canonical hex spelling remain
+                // semantically equivalent without weakening the visible-color assertion.
+                .all(|(actual, expected)| actual.round() == expected.round())
+            })
+        })
+}
+
 fn contains_non_finite_visual_token(value: &str) -> bool {
     value
         .split(|character: char| {
@@ -973,7 +1017,7 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
 }
 
 #[test]
-fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
+fn quadrant_parity_and_resvg_safe_outputs_keep_separate_color_contracts() {
     let source = r#"quadrantChart
   title Reach and engagement
   x-axis Low Reach --> High Reach
@@ -984,13 +1028,19 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
         .with_deterministic_text_measurer()
         .with_diagram_id("quadrant-artifact-lanes");
 
-    let raw_svg = renderer
+    let parity_svg = renderer
         .render_svg(source)
-        .expect("raw/source render should succeed")
+        .expect("parity render should succeed")
         .expect("quadrant should be detected");
-    assert!(
-        raw_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
-        "raw/source output must preserve the pinned Mermaid token: {raw_svg}"
+    let parity_document = roxmltree::Document::parse(&parity_svg).expect("valid parity SVG XML");
+    let parity_point = parity_document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("parity quadrant point circle");
+    assert_eq!(parity_point.attribute("fill"), Some("hsl(240, 100%, NaN%)"));
+    assert_eq!(
+        parity_point.attribute("stroke"),
+        Some("hsl(240, 100%, NaN%)")
     );
 
     let resvg_safe_svg = renderer
@@ -1004,8 +1054,22 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
         .descendants()
         .find(|node| node.has_tag_name("circle"))
         .expect("quadrant point circle");
-    assert_eq!(point.attribute("fill"), Some("#000000"));
-    assert_eq!(point.attribute("stroke"), Some("none"));
+    assert_eq!(point.attribute("fill"), Some("inherit"));
+    assert_eq!(point.attribute("stroke"), Some("inherit"));
+
+    // Check the native consumer's resolved paint, not only the rewritten attribute token.
+    let identified =
+        resvg_safe_svg.replacen("<circle ", "<circle id=\"quadrant-native-point\" ", 1);
+    let tree = usvg::Tree::from_str(&identified, &usvg::Options::default())
+        .expect("native SVG consumer parses the inherited presentation");
+    let Some(usvg::Node::Path(point)) = tree.node_by_id("quadrant-native-point") else {
+        panic!("native consumer retains the identified circle path");
+    };
+    let usvg::Paint::Color(color) = point.fill().expect("inherited point fill").paint() else {
+        panic!("point inherits a solid color");
+    };
+    assert_eq!((color.red, color.green, color.blue), (51, 51, 51));
+    assert!(point.stroke().is_none());
 }
 
 #[test]
@@ -1045,8 +1109,8 @@ fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
                 render_resvg_safe_with_options(&name, source, false, Some(site_config.clone()));
             assert_resvg_safe_output(&name, source, &svg);
             assert!(
-                svg.contains(expected_scale),
-                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?}: {svg}"
+                svg_contains_equivalent_theme_color(&svg, expected_scale),
+                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?} (possibly in canonical color syntax): {svg}"
             );
         }
     }

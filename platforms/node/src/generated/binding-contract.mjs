@@ -3,7 +3,7 @@
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1;
 export const BINDING_OPTIONS_SCHEMA_VERSION = 2;
-export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1;
+export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 2;
 
 export const RUNTIME_CATALOG_IDENTIFIER_PATTERN = "^[a-z0-9][a-z0-9-]*$";
 export const RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN = "^[a-z][a-z0-9_-]*$";
@@ -17,6 +17,12 @@ export const CAPABILITY_SPECS = [
   {
     "id": "ascii",
     "implication_ids": []
+  },
+  {
+    "id": "drawing-list",
+    "implication_ids": [
+      "svg"
+    ]
   },
   {
     "id": "editor",
@@ -486,6 +492,21 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
+    "operation_id": "drawing-list-json",
+    "output_id": "drawing-list",
+    "media_type": "application/vnd.merman.drawing-list+json;version=1",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "drawing-list",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "drawing-list"
+    }
+  },
+  {
     "operation_id": "jpeg",
     "output_id": "jpeg",
     "media_type": "image/jpeg",
@@ -652,6 +673,14 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "always_available": false,
     "any_capability_ids": [
       "ascii"
+    ],
+    "requires_svg_pipeline": false
+  },
+  {
+    "id": "drawing_list",
+    "always_available": false,
+    "any_capability_ids": [
+      "drawing-list"
     ],
     "requires_svg_pipeline": false
   },

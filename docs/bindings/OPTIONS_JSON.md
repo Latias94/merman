@@ -85,6 +85,14 @@ than translated implicitly.
     "text_measurement": "deterministic",
     "math_renderer": "none"
   },
+  "drawing_list": {
+    "policy": "allow_raster_subtree",
+    "limits": {
+      "max_commands": 1000000,
+      "max_resources": 100000,
+      "max_serialized_bytes": 25165824
+    }
+  },
   "resources": {
     "profile": "interactive",
     "limits": {
@@ -170,6 +178,7 @@ Every field is optional.
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
 | `layout` | object | defaults | Per-request layout container dimensions. |
 | `environment` | object | defaults | Public selection of operation-owned text measurement and optional math rendering. |
+| `drawing_list` | object | defaults | Renderer-neutral DrawingList policy and protocol limits. Requires the `drawing-list-json` operation. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
@@ -604,7 +613,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `6`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `7`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for
@@ -618,7 +627,7 @@ does not depend on them.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
+| `svg.diagram_id` | string | renderer default | Shared render-instance identity for SVG and DrawingList. Overrides SVG DOM ownership and source-defined identity-seeded geometry (for example, Cynefin boundaries). Both targets use the same ID normalization. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
@@ -649,6 +658,43 @@ semantics, and renderer-specific compatibility.
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
 diagram canvas to match the host surface. The value must be a single CSS declaration value; use
 `"transparent"` when the host wants no opaque root background.
+
+## DrawingList Options
+
+`drawing_list` applies only to the `drawing-list-json` operation. It controls whether the
+renderer may emit an explicit raster subtree fallback and supplies protocol-level limits for the
+returned renderer-neutral document. These limits are independent from the artifact-wide
+`resources.limits` profile, but `max_serialized_bytes` is always clamped by the effective
+`resources.limits.max_svg_bytes` ceiling.
+
+The historically named `svg.diagram_id` also applies to `drawing-list-json`: it supplies the
+instance identity before geometry construction, not an SVG postprocessing instruction. Omitting
+it preserves the family default; an explicit empty string is normalized like any other supplied
+ID. A Mermaid configuration seed (for example, `cynefin.seed`) overrides the identity-derived seed.
+Other SVG pipeline options do not gain DrawingList semantics from this shared identity field.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `drawing_list.policy` | string | `allow_raster_subtree` | `allow_raster_subtree` or `vector_only`. Vector-only requests fail closed when an effect cannot be represented as portable vector commands. |
+| `drawing_list.limits.max_serialized_bytes` | positive integer | protocol default, clamped by `resources.limits.max_svg_bytes` | Maximum canonical DrawingList JSON bytes. |
+| `drawing_list.limits.max_commands` | positive integer | `1000000` | Maximum command count. |
+| `drawing_list.limits.max_resources` | positive integer | `100000` | Maximum resource count. |
+| `drawing_list.limits.max_path_segments` | positive integer | `2000000` | Aggregate path segment count. |
+| `drawing_list.limits.max_stroke_dash_entries` | positive integer | `2000000` | Aggregate stroke dash entry count. |
+| `drawing_list.limits.max_image_bytes` | positive integer | `67108864` | Aggregate encoded image bytes. |
+| `drawing_list.limits.max_image_pixels` | positive integer | `67108864` | Aggregate image pixels. |
+| `drawing_list.limits.max_fallback_pixels` | positive integer | `67108864` | Aggregate raster-fallback pixels. |
+| `drawing_list.limits.max_font_bytes` | positive integer | `16777216` | Aggregate encoded font bytes. |
+| `drawing_list.limits.max_nesting_depth` | positive integer | `256` | Combined Save/layer/clip/semantic nesting depth. |
+| `drawing_list.limits.max_fallbacks` | positive integer | `100000` | Maximum raster fallback count. |
+| `drawing_list.limits.max_text_bytes` | positive integer | `16777216` | Aggregate UTF-8 text bytes. |
+| `drawing_list.limits.max_glyphs` | positive integer | `10000000` | Aggregate declared glyph count. |
+
+For reusable engines, constructor values form an immutable ceiling. A request overlay may lower a
+DrawingList limit or select the stricter `vector_only` policy, but cannot raise a limit, re-enable
+raster fallbacks after a vector-only constructor, or apply `drawing_list` options to SVG, layout,
+or another operation. The renderer commits a complete validated document only after these limits
+and the operation cancellation boundary succeed; no partial DrawingList is returned.
 
 ## Native Export Options
 

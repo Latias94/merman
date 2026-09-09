@@ -9,6 +9,8 @@ type NativeGetApi = unsafe extern "C" fn(
     *mut merman_ffi::MermanNativeApi,
 ) -> merman_ffi::MermanNativeStatus;
 
+const DRAWING_LIST_FIXTURE: &[u8] = b"info\n";
+
 #[test]
 fn c_consumer_smoke() {
     let library_path = compile_c_consumer();
@@ -20,13 +22,18 @@ fn c_consumer_smoke() {
                 library_path.display()
             )
         });
-        let smoke: libloading::Symbol<unsafe extern "C" fn(NativeGetApi, i32) -> i32> = library
+        let smoke: libloading::Symbol<
+            unsafe extern "C" fn(NativeGetApi, i32, *const u8, usize, i32) -> i32,
+        > = library
             .get(b"merman_c_consumer_smoke")
             .expect("load merman_c_consumer_smoke symbol");
 
         let result = smoke(
             merman_ffi::merman_get_native_api,
             i32::from(has_native_sdk_operation_features()),
+            DRAWING_LIST_FIXTURE.as_ptr(),
+            DRAWING_LIST_FIXTURE.len(),
+            i32::from(cfg!(feature = "svg")),
         );
         assert_eq!(result, 0, "C consumer smoke returned {result}");
 
@@ -71,6 +78,7 @@ fn alpha5_consumer_smoke() {
 fn has_native_sdk_operation_features() -> bool {
     cfg!(all(
         feature = "svg",
+        feature = "drawing-list",
         feature = "analysis",
         feature = "ascii",
         feature = "png",
@@ -283,46 +291,23 @@ fn rust_layout_fingerprint() -> u64 {
 fn assert_c_abi_native_runtime_catalog() {
     let catalog = runtime_catalog_through_function_table();
     assert_runtime_output_contracts(&catalog);
-    let profiles: Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/artifact-profiles-v1.json"
-    )))
-    .expect("artifact profile descriptor must be valid JSON");
-    let capability_surface: Value = serde_json::from_str(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../capabilities/feature-surface-v1.json"
-    )))
-    .expect("capability descriptor must be valid JSON");
-    let profiles = profiles["profiles"]
-        .as_array()
-        .expect("artifact profiles must be an array");
-
-    let profile_id = "c-abi-native";
-    let profile = profiles
-        .iter()
-        .find(|profile| profile["id"] == profile_id)
-        .unwrap_or_else(|| panic!("missing {profile_id} artifact profile"));
-    let expected = &profile["expected"];
+    let expected =
+        merman_bindings_core::native_sdk_artifact_contract!(NativeC).runtime_capabilities();
 
     assert_eq!(
         string_ids(&catalog["capabilities"]["capability_ids"]),
-        string_ids(&expected["capabilities"]),
-        "the real C ABI runtime capabilities drifted from {profile_id}"
-    );
-    assert_eq!(
-        string_ids(&catalog["capabilities"]["capability_ids"]),
-        string_ids(&expected["runtime_ids"]),
-        "the real C ABI runtime IDs drifted from {profile_id}"
+        expected.capability_ids,
+        "the real C ABI runtime capabilities drifted from its typed artifact contract"
     );
     assert_eq!(
         string_ids(&catalog["capabilities"]["output_ids"]),
-        string_ids(&expected["outputs"]),
-        "the real C ABI output report drifted from {profile_id}"
+        expected.output_ids,
+        "the real C ABI output report drifted from its typed artifact contract"
     );
     assert_eq!(
         string_ids(&catalog["capabilities"]["operation_ids"]),
-        expected_native_operation_ids(&capability_surface, expected),
-        "the real C ABI operation report drifted from {profile_id}"
+        expected.operation_ids,
+        "the real C ABI operation report drifted from its typed artifact contract"
     );
 }
 
@@ -453,6 +438,7 @@ fn assert_optional_embedded_image_contract(value: &Value, output_id: &str) {
 fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
     let expected_media_type = match output_id {
         "ascii" => "text/plain; charset=utf-8",
+        "drawing-list" => "application/vnd.merman.drawing-list+json;version=1",
         "jpeg" => "image/jpeg",
         "pdf" => "application/pdf",
         "png" => "image/png",
@@ -461,7 +447,7 @@ fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
     };
     assert_eq!(contract["media_type"], expected_media_type);
 
-    if matches!(output_id, "ascii" | "svg") {
+    if matches!(output_id, "ascii" | "drawing-list" | "svg") {
         assert!(contract["system_fonts"].is_null());
         assert!(contract["embedded_images"].is_null());
         return;
@@ -513,31 +499,6 @@ fn sorted_unique_string_ids<'a>(value: &'a Value, label: &str) -> Vec<&'a str> {
         "{label} must be sorted and unique"
     );
     values
-}
-
-fn expected_native_operation_ids<'a>(
-    capability_surface: &'a Value,
-    expected: &'a Value,
-) -> Vec<&'a str> {
-    let capabilities = string_ids(&expected["capabilities"]);
-    let mut operations = capability_surface["binding_operations"]
-        .as_array()
-        .expect("binding operations must be an array")
-        .iter()
-        .filter(|operation| {
-            string_ids(&operation["targets"]).contains(&"native")
-                && operation["capability"]
-                    .as_str()
-                    .is_none_or(|capability| capabilities.contains(&capability))
-        })
-        .map(|operation| {
-            operation["id"]
-                .as_str()
-                .expect("operation ID must be a string")
-        })
-        .collect::<Vec<_>>();
-    operations.sort_unstable();
-    operations
 }
 
 fn string_ids(value: &Value) -> Vec<&str> {

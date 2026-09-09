@@ -340,8 +340,8 @@ radar-beta
                 "#22c55e",
                 "#facc15",
                 "#334155",
-                "stroke-width:4",
-                "stroke-width:5",
+                r#"#theme-radar .radarAxisLine{stroke:#facc15;stroke-width:4;}"#,
+                r#"#theme-radar .radarCurve-0{color:#22c55e;fill:#22c55e;fill-opacity:0.9;stroke:#22c55e;stroke-width:5;}"#,
             ],
         ),
         (
@@ -415,7 +415,7 @@ pie title Theme Pie
   "Beta": 60
 "##,
             &["Theme Pie", "Alpha", "Beta"],
-            &["#f8fafc", "#111827", "#fde68a", "#38bdf8", "3px"],
+            &["#f8fafc", "#111827", "#fde68a"],
         ),
         (
             "theme-xychart",
@@ -512,6 +512,30 @@ data ItemAddedData {
     for (name, source, expected_labels, expected_colors) in cases {
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
+        if *name == "theme-pie" {
+            // Canonical paint uses RGBA and user units, not an unused theme CSS rule.
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let slices: Vec<_> = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")
+                })
+                .collect();
+            assert_eq!(slices.len(), 2);
+            for slice in slices {
+                let style = slice.attribute("style").expect("slice paint");
+                assert!(
+                    style
+                        .split(';')
+                        .any(|property| property == "stroke:rgba(56,189,248,1)")
+                );
+                assert!(
+                    style
+                        .split(';')
+                        .any(|property| property == "stroke-width:3")
+                );
+            }
+        }
     }
 }
 
@@ -534,32 +558,131 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
         svg.contains(r#"#c4-visible-audit .person{stroke:#ec4899;fill:#0ea5e9;}"#),
         "Mermaid 11.17 still emits C4 .person provider CSS: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("C4 theme smoke should emit valid XML");
+    let person = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "c4-person")
+                })
+        })
+        .expect("C4 current output should expose the current person group DOM");
     assert!(
-        svg.contains(r#"class="node c4-shape c4-person""#),
+        person.attribute("class").is_some_and(|classes| {
+            ["node", "c4-shape", "c4-person"].iter().all(|expected| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == *expected)
+            })
+        }),
         "C4 current output should expose the current shape group DOM: {svg}"
     );
     assert!(
-        !svg.contains(r#"class="person""#),
+        !document.descendants().any(|node| {
+            node.attribute("class").is_some_and(|classes| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == "person")
+            })
+        }),
         "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
     );
-    assert!(
-        svg.contains(r##"style="fill:#334155 !important;stroke:#f97316 !important""##),
-        "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
+    let person_container = person
+        .children()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    ["basic", "label-container"].iter().all(|expected| {
+                        classes
+                            .split_ascii_whitespace()
+                            .any(|class| class == *expected)
+                    })
+                })
+        })
+        .expect("C4 person should expose its visible shape container");
+    let person_shapes = person_container
+        .children()
+        .filter(|node| node.has_tag_name("rect") || node.has_tag_name("circle"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        person_shapes.len(),
+        2,
+        "C4 person should expose body and head shapes: {svg}"
     );
+    for shape in person_shapes {
+        let style = shape
+            .attribute("style")
+            .expect("C4 person shape should have an inline style");
+        assert!(
+            style.contains("fill:#334155 !important")
+                && style.contains("stroke:#f97316 !important"),
+            "UpdateElementStyle colors should reach each visible C4 person shape: {svg}"
+        );
+    }
+    let person_labels = person
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .collect::<Vec<_>>();
+    assert!(!person_labels.is_empty());
     assert!(
-        svg.contains(r##"style="fill:#fde68a !important""##),
+        person_labels.iter().all(|node| {
+            node.attribute("style")
+                .is_some_and(|style| style.contains("fill:#fde68a !important"))
+        }),
         "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
     );
+
+    let system = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_ascii_whitespace()
+                        .any(|class| class == "c4-system")
+                })
+        })
+        .expect("C4 system group should be visible");
+    let system_shape = system
+        .descendants()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("C4 system shape should be visible");
     assert!(
-        svg.contains(r##"style="fill:#111827 !important;stroke:#facc15 !important"##),
+        system_shape.attribute("style").is_some_and(|style| {
+            style.contains("fill:#111827 !important") && style.contains("stroke:#facc15 !important")
+        }),
         "C4 config colors should reach the visible system shape: {svg}"
     );
+
+    let relation_line = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("line")
+                && node.attribute("stroke") == Some("#facc15")
+                && node.attribute("stroke-width") == Some("1")
+        })
+        .expect("C4 relationship route should be visible");
+    assert_eq!(relation_line.attribute("stroke"), Some("#facc15"));
+    assert_eq!(relation_line.attribute("stroke-width"), Some("1"));
+    let relation_labels = document
+        .descendants()
+        .filter(|node| {
+            if !node.has_tag_name("text") || node.attribute("fill") != Some("#a7f3d0") {
+                return false;
+            }
+            let text = node
+                .descendants()
+                .filter(|descendant| descendant.is_text())
+                .filter_map(|descendant| descendant.text())
+                .collect::<String>();
+            matches!(text.as_str(), "Uses" | "[HTTPS]")
+        })
+        .collect::<Vec<_>>();
     assert!(
-        svg.contains(r##"stroke-width="1" stroke="#facc15""##),
-        "UpdateRelStyle lineColor should reach the visible C4 relationship line: {svg}"
-    );
-    assert!(
-        svg.contains(r##"dominant-baseline="middle" fill="#a7f3d0""##),
+        relation_labels.len() == 2,
         "UpdateRelStyle textColor should reach visible C4 relationship labels: {svg}"
     );
 }
@@ -654,16 +777,35 @@ Target,Done,2
         sankey.contains(r#"class="link""#),
         "Sankey link styling should only count with link DOM: {sankey}"
     );
+    let document = roxmltree::Document::parse(&sankey).unwrap();
+    let labels = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("node-labels"))
+        .expect("Sankey labels inherit the public text paint from their container");
+    let label_rule = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .find_map(|css| css.split_once("#sankey-visible-audit .node-labels{"))
+        .and_then(|(_, rule)| rule.split_once('}'))
+        .map(|(rule, _)| rule)
+        .expect("scoped rule for the actual label container");
     assert!(
-        sankey.contains(
-            r##"#sankey-visible-audit .sankey-label-bg{stroke:#111827;stroke-width:4px;"##
-        ),
-        "Sankey mainBkg should reach the outlined label background selector: {sankey}"
+        label_rule
+            .split(';')
+            .any(|property| property == "fill:#f8fafc")
     );
-    assert!(
-        sankey.contains(r##"#sankey-visible-audit .sankey-label-fg{fill:#f8fafc;}"##),
-        "Sankey textColor should reach the outlined label foreground selector: {sankey}"
-    );
+    let backgrounds: Vec<_> = labels
+        .children()
+        .filter(|node| node.attribute("class") == Some("sankey-label-bg"))
+        .collect();
+    assert_eq!(backgrounds.len(), 3);
+    for text in backgrounds {
+        assert!(text.has_tag_name("text"));
+        assert_eq!(text.attribute("stroke"), Some("#111827"));
+        assert_eq!(text.attribute("stroke-width"), Some("4"));
+        assert_eq!(text.attribute("paint-order"), Some("stroke fill"));
+    }
     assert!(
         sankey.contains(r##"<rect height=""##) && sankey.contains(r##"fill="#22c55e""##),
         "Sankey nodeColors should reach visible node rect fills: {sankey}"
@@ -1020,6 +1162,7 @@ fn requirement_default_visible_rough_stroke_uses_node_border() {
         ),
         "Requirement legacy CSS should keep Mermaid's requirementBorderColor rule: {svg}"
     );
+
     assert!(
         svg.contains(
             r##"stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
@@ -1105,9 +1248,9 @@ journey
     );
     assert!(
         svg.contains(
-            r#"stroke-width="4" stroke="black" marker-end="url(#journey-line-audit-arrowhead)""#
+            r##"stroke-width="4" stroke="black" marker-end="url(#journey-line-audit-arrowhead)""##,
         ),
-        "Mermaid 11.15 still emits a black presentation attribute on the activity line: {svg}"
+        "Journey should preserve the current visible activity line and arrow marker contract: {svg}"
     );
     assert!(
         svg.contains(r#"#journey-line-audit .flowchart-link{stroke:#22c55e;fill:none;}"#),

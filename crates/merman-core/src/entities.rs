@@ -73,7 +73,7 @@ pub fn restore_mermaid_entity_spelling(input: &str) -> Cow<'_, str> {
             let mut ok = false;
             for _ in 0..64 {
                 match it.peek().copied() {
-                    Some(';') => {
+                    Some(';') if !entity.is_empty() => {
                         it.next();
                         ok = true;
                         break;
@@ -119,6 +119,126 @@ pub fn decode_html_entities_to_unicode(input: &str) -> Cow<'_, str> {
     }
 
     htmlize::unescape(input)
+}
+
+/// Visits final text from Mermaid's preprocessed SVG text-content representation.
+///
+/// Ordinary ampersands and shorthand-looking text stay literal. Only preprocessor placeholders
+/// are restored and decoded, once, as in serialize DOM -> cleanUpSvgCode -> browser parsing.
+#[doc(hidden)]
+pub fn visit_mermaid_text_content<'a, E>(
+    input: &'a str,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+    mut visit: impl FnMut(DecodedHtmlFragment<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut cursor = 0;
+    let mut start = 0;
+    while cursor < input.len() {
+        checkpoint()?;
+        let tail = &input[cursor..];
+        if tail.starts_with("ﬂ°") {
+            if start < cursor {
+                visit(DecodedHtmlFragment::Borrowed(&input[start..cursor]))?;
+            }
+            cursor += "ﬂ°".len();
+            let numeric_prefix_len = if input[cursor..].starts_with('°') {
+                '°'.len_utf8()
+            } else if input[cursor..].starts_with('#') {
+                1
+            } else {
+                0
+            };
+            let numeric = numeric_prefix_len != 0;
+            cursor += numeric_prefix_len;
+            let body_start = cursor;
+            while input
+                .as_bytes()
+                .get(cursor)
+                .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'+'))
+            {
+                if (cursor - body_start) % 64 == 0 {
+                    checkpoint()?;
+                }
+                cursor += 1;
+            }
+            let body = &input[body_start..cursor];
+            let terminator_len = if input[cursor..].starts_with("¶ß") {
+                "¶ß".len()
+            } else {
+                usize::from(input[cursor..].starts_with(';'))
+            };
+            let closed = terminator_len != 0;
+            let matched = if numeric {
+                match_numeric_html_entity_body(body.as_bytes())
+            } else {
+                // Named references have a finite dictionary maximum; unknown suffixes remain
+                // borrowed source text, including after a valid legacy bare-reference prefix.
+                let mut candidate = [0; htmlize::ENTITY_MAX_LENGTH + 1];
+                candidate[0] = b'&';
+                let take = body.len().min(candidate.len() - 2);
+                candidate[1..1 + take].copy_from_slice(&body.as_bytes()[..take]);
+                let mut len = 1 + take;
+                if closed && take == body.len() {
+                    candidate[len] = b';';
+                    len += 1;
+                }
+                match_html_entity(&candidate[..len]).map(|mut matched| {
+                    matched.consumed -= 1;
+                    matched
+                })
+            };
+            if let Some(matched) = matched {
+                match matched.expansion {
+                    HtmlEntityExpansion::Static(bytes) => visit(DecodedHtmlFragment::Borrowed(
+                        std::str::from_utf8(bytes).expect("HTML entities expand to UTF-8"),
+                    ))?,
+                    HtmlEntityExpansion::Scalar(ch) => visit(DecodedHtmlFragment::Scalar(ch))?,
+                }
+                if matched.consumed < body.len() {
+                    visit(DecodedHtmlFragment::Borrowed(&body[matched.consumed..]))?;
+                }
+                if closed
+                    && matched.consumed <= body.len()
+                    && (!numeric || matched.consumed != body.len())
+                {
+                    visit(DecodedHtmlFragment::Borrowed(";"))?;
+                }
+            } else {
+                visit(DecodedHtmlFragment::Borrowed(if numeric {
+                    "&#"
+                } else {
+                    "&"
+                }))?;
+                visit(DecodedHtmlFragment::Borrowed(body))?;
+                if closed {
+                    visit(DecodedHtmlFragment::Borrowed(";"))?;
+                }
+            }
+            cursor += terminator_len;
+            start = cursor;
+        } else if tail.starts_with("¶ß") {
+            if start < cursor {
+                visit(DecodedHtmlFragment::Borrowed(&input[start..cursor]))?;
+            }
+            visit(DecodedHtmlFragment::Borrowed(";"))?;
+            cursor += "¶ß".len();
+            start = cursor;
+        } else {
+            let mut end = (cursor + 64).min(input.len());
+            while !input.is_char_boundary(end) {
+                end -= 1;
+            }
+            // Stop before a placeholder even when it begins at the end of this chunk.
+            cursor = match input[cursor..end].find(['ﬂ', '¶']) {
+                Some(0) => cursor + tail.chars().next().map_or(0, char::len_utf8),
+                Some(offset) => cursor + offset,
+                None => end,
+            };
+            visit(DecodedHtmlFragment::Borrowed(&input[start..cursor]))?;
+            start = cursor;
+        }
+    }
+    checkpoint()
 }
 
 /// Visits browser-facing HTML text as decoded Unicode without retaining an intermediate string.
@@ -279,9 +399,16 @@ fn match_html_entity(input: &[u8]) -> Option<HtmlEntityMatch> {
 }
 
 fn match_numeric_html_entity(input: &[u8]) -> Option<HtmlEntityMatch> {
-    let (radix, digits_start) = match input.get(2) {
-        Some(b'x' | b'X') => (16, 3),
-        Some(_) => (10, 2),
+    match_numeric_html_entity_body(&input[2..]).map(|mut matched| {
+        matched.consumed += 2;
+        matched
+    })
+}
+
+fn match_numeric_html_entity_body(input: &[u8]) -> Option<HtmlEntityMatch> {
+    let (radix, digits_start) = match input.first() {
+        Some(b'x' | b'X') => (16, 1),
+        Some(_) => (10, 0),
         None => return None,
     };
     let mut digits_end = digits_start;
@@ -470,6 +597,14 @@ mod tests {
 
     #[test]
     fn mermaid_entity_spelling_restoration_stops_before_browser_decode() {
+        assert_eq!(
+            restore_mermaid_entity_spelling("#;A task #;"),
+            "#;A task #;"
+        );
+        assert_eq!(
+            decode_mermaid_entities_to_unicode("#;A task #;"),
+            "#;A task #;"
+        );
         assert_eq!(restore_mermaid_entity_spelling("#nbsp;"), "&nbsp;");
         assert_eq!(restore_mermaid_entity_spelling("ﬂ°nbsp¶ß"), "&nbsp;");
         assert_eq!(restore_mermaid_entity_spelling("ﬂ°°160¶ß"), "&#160;");
@@ -486,5 +621,47 @@ mod tests {
             decode_mermaid_entity_placeholders("ticket&amp;value"),
             "ticket&amp;value"
         );
+    }
+
+    #[test]
+    fn mermaid_text_content_decodes_only_serialized_placeholders_once() {
+        for input in [
+            "#; #quot; &quot; &#160; &amp;",
+            "ﬂ°quot¶ß ﬂ°°35¶ßquot; ﬂ°amp¶ßquot;",
+            "ﬂ°unknown¶ß ﬂ°notit¶ß ﬂ°nGg¶ß",
+            "ﬂ°°0¶ß ﬂ°°x80¶ß ﬂ°°x110000¶ß",
+            "ﬂ°°39suffix¶ß ﬂ°°x¶ß ﬂ°°+39¶ß",
+            "ﬂ°#39¶ß ﬂ°#x27¶ß",
+            "ﬂ°quot; ﬂ°amp ﬂ°¶ß ¶ß ﬂ ¶ ﬂ°°",
+            "中ﬂ x¶ ﬂ°quot¶ß 😀",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .chain([
+            format!("{}ﬂ°quot¶ß{}", "界".repeat(23), "😀".repeat(30)),
+            format!("ﬂ°amp{}¶ß", "suffix".repeat(50)),
+            format!("ﬂ°°{}¶ß", "9".repeat(100)),
+        ]) {
+            let mut actual = String::new();
+            super::visit_mermaid_text_content(
+                &input,
+                || Ok::<_, ()>(()),
+                |fragment| {
+                    match fragment {
+                        super::DecodedHtmlFragment::Borrowed(text) => actual.push_str(text),
+                        super::DecodedHtmlFragment::Scalar(ch) => actual.push(ch),
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
+            let serialized = input.replace('&', "&amp;");
+            let restored = decode_mermaid_entity_placeholders(&serialized);
+            assert_eq!(
+                actual,
+                decode_html_entities_to_unicode(&restored),
+                "{input:?}"
+            );
+        }
     }
 }

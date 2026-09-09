@@ -25,9 +25,13 @@ the shared wrapper layer, and
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for current Mermaid parity.
 
+This guide tracks current unreleased source. The immutable `0.8.0a6` wheels use binding API 6 and
+predate DrawingList. Current examples require an API 7 generated Python module and native library
+built from current source or a later matching release.
+
 ## Generate Locally
 
-`scripts/build-python-uniffi-wheel.py` resolves the `python-uniffi-native` artifact profile. It
+`scripts/build-python-uniffi-wheel.py` resolves the current `python-uniffi-native` artifact profile. It
 builds the release library set with the default native direct feature list, then runs a separate
 generator with only `binding-generation`. UniFFI metadata is read from the matching Rust `rlib`,
 because fully stripped ELF cdylibs intentionally omit the metadata symbol table; the generated
@@ -37,7 +41,7 @@ the checked-in single-target report before building the wheel.
 
 ```bash
 cargo build -p merman-uniffi --profile native-distribution --no-default-features \
-  --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+  --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features \
   --features binding-generation --example generate_python_package -- \
   --metadata-library target/native-distribution/libmerman_uniffi.rlib \
@@ -53,13 +57,13 @@ adapter IDs only when present; the Cargo aggregate is not a Python capability na
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
-cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk'
+cargo build -p merman-uniffi --profile native-distribution --no-default-features --features 'svg,drawing-list,analysis,ascii,layout-cytoscape,layout-elk'
 cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
 ## API
 
-The package re-exports the generated UniFFI API:
+The following example targets the generated UniFFI API from current unreleased source:
 
 ```python
 import json
@@ -70,14 +74,16 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version_v6() == 6
+assert api.binding_api_version_v7() == 7
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version_v6()
+assert catalog["transport_api_version"] == api.binding_api_version_v7()
 assert "svg" in capabilities["capability_ids"]
+assert "drawing-list" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+drawing_list_json = api.render_drawing_list("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = api.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = api.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = api.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
@@ -121,9 +127,11 @@ finally:
     engine.close()
 ```
 
-The default wheel omits math, PNG, JPEG, and PDF. Their generated methods remain available for a
-custom current-contract library and otherwise raise `MermanError.Binding` with
-`MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
+The immutable alpha.6 default wheel provides SVG, ASCII, semantic/layout operations, analysis,
+validation, and document analysis, but not DrawingList. Current unreleased default wheel profiles
+add DrawingList. Both profiles omit math, PNG, JPEG, and PDF. Generated modules and native libraries
+must remain release-matched; operations omitted by a matching artifact raise `MermanError.Binding`
+with `MermanErrorKind.MISSING_CAPABILITY` plus the exact capability ID.
 
 Errors are exposed through the generated `MermanError` type. `MermanError.Binding` carries the
 underlying status code/name, `MermanErrorKind`, optional `capability_id`, optional
@@ -163,15 +171,19 @@ The optional `options_json` argument uses the shared contract documented in
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
 
-The direct UniFFI binding API is `6`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `7`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
 
-When migrating from API 5, replace `binding_api_version_v5()` with
-`binding_api_version_v6()` and regenerate the complete package with its matching native library.
-API 6 adds layout/width/encoding/fallback-encoding admission arrays to
+When migrating from API 6, replace `binding_api_version_v6()` with
+`binding_api_version_v7()` and regenerate the complete package with its matching native library.
+API 7 adds optional `drawing_list` details to `MermanError.Binding`, changing every structured
+error's wire layout even when the field is absent. The old API 6 probe symbols are removed so an
+old generated consumer fails at library symbol resolution before decoding an incompatible error.
+
+API 6 added layout/width/encoding/fallback-encoding admission arrays to
 `MermanAsciiCapability` and adds `encoding` to the schema-2 `MermanAsciiOutputPlan`. The symbol
 change makes stale generated bindings fail before decoding either revised record. API 4 or older
 consumers must likewise regenerate the whole projection rather than applying incremental shims.
@@ -229,6 +241,8 @@ mutation lifecycle.
   `with_icon_registry(...)`. Each call returns a new immutable bundle; the constructor no longer
   takes positional optional services.
 - Call `close()` deterministically; busy and re-entrant failures retain the engine for retry.
+- Move API 6 generated modules and native libraries together to API 7 before consuming structured
+  DrawingList errors. Replace `binding_api_version_v6()` with `binding_api_version_v7()`.
 - Move API 5 generated modules and native libraries together to API 6 before consuming ASCII
   capability admission arrays or schema-2 output-plan encoding. Generic request constructors require `control`;
   pass `None` until the host adopts `MermanOperationControl`.

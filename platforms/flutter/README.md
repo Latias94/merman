@@ -4,7 +4,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-> `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> `Merman.open()` accepts only the exact native package version bundled with this Dart release. `Merman.openPath(...)` may load a host-owned library, but it must satisfy the complete ABI 3 table, runtime catalog fields, metadata and payload schemas, and service constructor expected by that Dart facade. Pair release-matched generated Dart and native artifacts; historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
 ## Install
 
@@ -16,7 +16,12 @@ the Dart facade with its native libraries:
 flutter pub add 'merman:0.8.0-alpha.6'
 ```
 
-For alpha.6 source development, check out the exact commit accepted by release preflight and use a local path dependency:
+The immutable alpha.6 package exposes 13 executable operations, with native operation codes `1`
+through `13` ending at `svg-plan-json`. It does not contain operation code `14`,
+`drawing-list-json`, or `renderDrawingList(...)`; DrawingList is part of current unreleased source.
+
+For development against current unreleased source, build the Dart facade and native libraries from
+the same checkout and use a local path dependency:
 
 ```yaml
 dependencies:
@@ -33,7 +38,7 @@ Run `flutter pub get` after adding the dependency.
 - iOS 13 or newer
 - macOS 11 or newer
 
-This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the packaged native library for Flutter and Dart consumers. The public API can instead load a host-owned current-contract library with `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
+This is a `package_ffi`-style Dart package and does not depend on the Flutter SDK. Its build hook selects and bundles the packaged native library for Flutter and Dart consumers. The public API can instead load a host-owned library compatible with the Dart facade through `Merman.openPath(...)`; `mermanPackageVersion` is the exact version expected by `Merman.open()`.
 
 ## Render A Diagram
 
@@ -48,6 +53,13 @@ final svg = merman.renderSvg(source);
 print(svg.substring(0, 4)); // <svg
 ```
 
+Current unreleased source adds a renderer-neutral document for native canvas hosts. This API is not
+part of the published alpha.6 package:
+
+```dart
+final drawingListJson = merman.renderDrawingList(source);
+```
+
 The generic API is available when an application needs to select an output at runtime. It returns a structured `MermanOperationResult` with the selected operation, media type, copied Dart bytes, and typed `MermanOperationMetadata`:
 
 ```dart
@@ -57,9 +69,9 @@ print(output.metadata.runtimePolicy);
 print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+In the published alpha.6 package, convenience methods cover 13 generated executable operations, including `analysisFactsJson` and `svgPlanJson`. Current unreleased source appends `drawing-list-json` as operation code `14` and adds `renderDrawingList(...)`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
-The libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis. They intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of the generated ABI facade for a current-contract custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against the bundled library, unavailable outputs raise `MermanMissingCapabilityException` with capability `math`, `png`, `jpeg`, or `pdf` as appropriate.
+The alpha.6 libraries bundled on pub.dev provide SVG, semantic and layout JSON, both native layout engines, ASCII, analysis, validation, and document analysis; they do not provide DrawingList. Current unreleased default native profiles additionally provide DrawingList. Both profile generations intentionally omit math, PNG, JPEG, PDF, and native runtime adapters to keep the five-platform package small. The corresponding Dart methods remain part of their release-matched generated ABI facade for a compatible custom library loaded with `Merman.openPath(...)` or `Merman.fromDynamicLibrary(...)`; against a bundled library, unavailable outputs raise `MermanMissingCapabilityException` with the required capability ID.
 
 A native artifact can intentionally omit some outputs. Inspect `merman.runtimeCatalog` before enabling optional UI or export paths; an unavailable operation raises `MermanUnsupportedOperationException` rather than silently falling back. `MermanUnknownOperationException` identifies an ID outside the generated ABI vocabulary; `MermanMissingCapabilityException.capabilityId` identifies the backend absent from a valid native request.
 
@@ -180,6 +192,8 @@ try {
 ```
 
 The callback is isolate-local and synchronous. Create, render with, and close the measured engine on the same Dart isolate. Do not call back into that engine from the measurer. Precompute or cache WebView, platform-channel, and font results instead of blocking inside the callback. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#flutter--dart-ffi) describes result shapes and cache keys.
+
+Current source uses ABI 3's appended `engine_new_with_services_v2` entry point and requires a matching native library containing that complete slot. For `normalLineMetrics`, return `MermanTextMeasureResult.normalLineMetrics(lineHeight: ..., baselineOffset: ...)` from the actual text/font measurement, or return `null` to use the complete fallback pair. The values describe normal line height and alphabetic baseline relative to the line-box top; the request's zero explicit-line-height hint does not mean a zero-height line.
 
 `MermanIconPack` accepts one in-memory IconifyJSON collection and an optional registration-name override. `MermanIconPackSet.fromPacks` enforces the fixed transport byte/count limits and snapshots packs into immutable UTF-8 buffers, so the source strings need not be retained. Flutter's C ABI has no separate native registry handle: those buffers are borrowed only during each `MermanEngine` constructor call, and the engine owns the parsed registry after construction returns. Native semantic validation is transactional at engine construction; a failure publishes no engine and exposes `MermanException.iconRegistryDetails` when available.
 

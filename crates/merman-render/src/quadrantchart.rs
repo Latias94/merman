@@ -12,6 +12,99 @@ mod config;
 
 pub(crate) use config::QuadrantChartConfigView;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuadrantTextAnchor {
+    Start,
+    Middle,
+}
+
+impl QuadrantTextAnchor {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuadrantTextBaseline {
+    Hanging,
+    Middle,
+}
+
+impl QuadrantTextBaseline {
+    pub(crate) const fn as_svg(self) -> &'static str {
+        match self {
+            Self::Hanging => "hanging",
+            Self::Middle => "middle",
+        }
+    }
+}
+
+pub(crate) fn quadrant_text_anchor(vertical_pos: &str) -> QuadrantTextAnchor {
+    if vertical_pos == "left" {
+        QuadrantTextAnchor::Start
+    } else {
+        QuadrantTextAnchor::Middle
+    }
+}
+
+pub(crate) fn quadrant_text_baseline(horizontal_pos: &str) -> QuadrantTextBaseline {
+    if horizontal_pos == "top" {
+        QuadrantTextBaseline::Hanging
+    } else {
+        QuadrantTextBaseline::Middle
+    }
+}
+
+/// Known invalid presentation tokens emitted by this family, not arbitrary CSS failures.
+/// CSS variables and currentColor still require explicit resolution.
+pub(crate) fn is_quadrant_inherited_paint(value: &str) -> bool {
+    let value = value.trim();
+    is_mermaid_missing_amount_hsl(value)
+        || (matches!(value.len(), 3 | 4 | 6 | 8)
+            && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+            && merman_core::theme_color::ThemeColor::parse(value).is_err())
+}
+
+/// Identifies Mermaid's source-backed missing-amount HSL token for QuadrantChart points.
+///
+/// Browsers ignore this invalid presentation attribute. The family-specific browser-visible
+/// projection therefore resolves inherited paint (normally the root text color and no stroke),
+/// while parity SVG retains the upstream token verbatim.
+pub(crate) fn is_mermaid_missing_amount_hsl(value: &str) -> bool {
+    let Some(body) = value
+        .trim()
+        .strip_prefix("hsl(")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return false;
+    };
+    let mut channels = body.split(',');
+    let (Some(hue), Some(saturation), Some(lightness), None) = (
+        channels.next(),
+        channels.next(),
+        channels.next(),
+        channels.next(),
+    ) else {
+        return false;
+    };
+
+    is_finite_css_number(hue) && is_finite_css_percentage(saturation) && lightness.trim() == "NaN%"
+}
+
+fn is_finite_css_number(value: &str) -> bool {
+    value.trim().parse::<f64>().is_ok_and(f64::is_finite)
+}
+
+fn is_finite_css_percentage(value: &str) -> bool {
+    value
+        .trim()
+        .strip_suffix('%')
+        .is_some_and(is_finite_css_number)
+}
+
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     PresentationTheme::new(effective_config).quadrantchart()
 }

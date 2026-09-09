@@ -10,7 +10,7 @@ const String mermanRuntimeCatalogIdentifierPattern = r'^[a-z0-9][a-z0-9-]*$';
 const String mermanRuntimeCatalogFieldIdentifierPattern = r'^[a-z][a-z0-9_-]*$';
 const int mermanBindingOptionsContractSchemaVersion = 2;
 const int mermanOperationMetadataSchemaVersion = 1;
-const int mermanTextMeasurementContractProtocolVersion = 1;
+const int mermanTextMeasurementContractProtocolVersion = 2;
 const String mermanHostTextMeasurementConstructorServiceId =
     "host-text-measurement";
 const String mermanIconRegistryConstructorServiceId = "icon-registry";
@@ -127,6 +127,12 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
   "ascii": MermanBindingCapabilitySpec(
     id: "ascii",
     implicationIds: <String>{},
+  ),
+  "drawing-list": MermanBindingCapabilitySpec(
+    id: "drawing-list",
+    implicationIds: <String>{
+      "svg",
+    },
   ),
   "editor": MermanBindingCapabilitySpec(
     id: "editor",
@@ -441,6 +447,14 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     },
     requiresSvgPipeline: false,
   ),
+  "drawing_list": MermanBindingOptionGroupSpec(
+    id: "drawing_list",
+    alwaysAvailable: false,
+    anyCapabilityIds: <String>{
+      "drawing-list",
+    },
+    requiresSvgPipeline: false,
+  ),
   "environment": MermanBindingOptionGroupSpec(
     id: "environment",
     alwaysAvailable: false,
@@ -654,6 +668,14 @@ const List<MermanBindingOperationExpectation>
     metadataSchemaVersion: 1,
     requiresUri: true,
     availabilityCapabilityId: "analysis",
+  ),
+  MermanBindingOperationExpectation(
+    operationId: "drawing-list-json",
+    outputId: "drawing-list",
+    mediaType: "application/vnd.merman.drawing-list+json;version=1",
+    metadataSchemaVersion: 1,
+    requiresUri: false,
+    availabilityCapabilityId: "drawing-list",
   ),
   MermanBindingOperationExpectation(
     operationId: "jpeg",

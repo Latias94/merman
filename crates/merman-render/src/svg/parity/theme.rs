@@ -118,10 +118,42 @@ pub(super) struct StateDiagramTheme {
     pub(super) drop_shadow: String,
 }
 
+/// Resolved State roles needed by renderer-neutral drawing backends.
+#[derive(Debug, Clone)]
+pub(crate) struct StateDrawingTheme {
+    pub(crate) state_bkg: String,
+    pub(crate) state_border: String,
+    pub(crate) state_label_color: String,
+    pub(crate) special_state_color: String,
+    pub(crate) transition_color: String,
+    pub(crate) transition_label_color: String,
+    pub(crate) marker_fill: String,
+    pub(crate) edge_label_background: String,
+    pub(crate) stroke_width: String,
+}
+
+/// Resolved Pie roles shared by SVG and renderer-neutral drawing backends.
+#[derive(Debug, Clone)]
+pub(crate) struct PieDrawingTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) slice_stroke_color: String,
+    pub(crate) slice_stroke_width: String,
+    pub(crate) slice_opacity: String,
+    pub(crate) outer_stroke_color: String,
+    pub(crate) outer_stroke_width: String,
+    pub(crate) title_text_size: String,
+    pub(crate) title_text_color: String,
+    pub(crate) section_text_size: String,
+    pub(crate) section_text_color: String,
+    pub(crate) legend_text_size: String,
+    pub(crate) legend_text_color: String,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct XyChartTheme {
     pub(crate) background_color: String,
     pub(crate) title_color: String,
+    pub(crate) data_label_color: String,
     pub(crate) legend_text_color: String,
     pub(crate) x_axis_title_color: String,
     pub(crate) x_axis_label_color: String,
@@ -344,6 +376,10 @@ pub(crate) struct TimelineSectionTheme {
 
 #[derive(Debug, Clone)]
 pub(crate) struct TimelineTheme {
+    pub(crate) font_family: String,
+    pub(crate) font_size_px: f64,
+    pub(crate) text_color: String,
+    pub(crate) line_color: String,
     pub(crate) is_redux_theme: bool,
     pub(crate) is_dark_theme: bool,
     pub(crate) is_color_theme: bool,

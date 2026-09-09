@@ -14,7 +14,9 @@ pub use merman_render::environment::{
     TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
     TextMeasurementSummary, validate_host_text_measurement,
 };
-pub use merman_render::family::{RenderCapabilityPlan, RenderFamilyKind};
+pub use merman_render::family::{
+    RenderCapabilityPlan, RenderFamilyKind, SvgSerializationBridgeReason, SvgSerializationRoute,
+};
 #[cfg(feature = "math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -45,7 +47,7 @@ pub use merman_render::svg::{
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, NormalLineMetrics, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
 pub use merman_render::{
     Error as RenderError, LayoutOptions, RenderCapability, RenderCapabilityPolicy,

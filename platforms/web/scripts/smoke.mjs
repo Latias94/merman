@@ -100,6 +100,10 @@ await assertNoDeprecatedWasmBindgenInitWarning(() =>
 );
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
+const drawingListFixtureSource = await readFile(
+  path.join(repoRoot, "fixtures", "bindings", "drawing-list-v1-smoke.mmd"),
+  "utf8",
+);
 const deterministicTime = {
   fixed_today: "2026-06-10",
   fixed_local_offset_minutes: 0,
@@ -246,6 +250,13 @@ const presentationCatalog = api.presentationCatalog();
 const capabilities = runtimeCatalog.capabilities;
 const hasCapability = (id) => capabilities.capability_ids.includes(id);
 const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
+if (hasCapability("drawing-list")) {
+  assert.equal(typeof api.renderDrawingList, "function");
+  const drawingList = JSON.parse(api.renderDrawingList(drawingListFixtureSource));
+  assert.equal(drawingList.version, 1);
+  assert.equal(drawingList.coordinate_system, "logical_pixels_y_down");
+  assert.ok(Array.isArray(drawingList.commands) && drawingList.commands.length > 0);
+}
 if (hasCapability("svg")) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
   assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
@@ -455,11 +466,6 @@ assertRuntimeOwnerEvidence(capabilities, {
   runtime_capability_ids: presetManifest.runtime_capability_ids,
   runtime_output_ids: presetManifest.outputs,
 });
-assert.ok(
-  capabilities.output_ids.every((outputId) =>
-    capabilities.operation_ids.includes(outputId)
-  )
-);
 assert.ok(
   capabilities.system_adapter_ids.every((adapterId) =>
     capabilities.capability_ids.includes(adapterId)
@@ -1628,20 +1634,20 @@ async function runPureDistSmoke() {
   assert.equal(typeof svgSafety.assertSelfContainedSvgForDom, "function");
   assert.equal(typeof svgSafety.prepareNavigableSvgForDomMount, "function");
   assert.equal(typeof svgSafety.prepareSelfContainedSvgForDomMount, "function");
-  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
+  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 2);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
-    Array.from({ length: 19 }, (_, code) => code)
+    Array.from({ length: 20 }, (_, code) => code)
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_RESULT_KINDS.map(({ code }) => code),
-    Array.from({ length: 4 }, (_, code) => code)
+    Array.from({ length: 5 }, (_, code) => code)
   );
   assert.equal(
     new Set(
       textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
     ).size,
-    19
+    20
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS

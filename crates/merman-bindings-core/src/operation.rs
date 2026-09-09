@@ -100,6 +100,7 @@ impl BindingOperationKind {
             OperationKey::SemanticJson | OperationKey::SvgPlanJson => BindingResourceScope::Model,
             OperationKey::Ascii => BindingResourceScope::Ascii,
             OperationKey::LayoutJson => BindingResourceScope::Layout,
+            OperationKey::DrawingListJson => BindingResourceScope::DrawingList,
             OperationKey::Svg => BindingResourceScope::Svg,
             OperationKey::Png => BindingResourceScope::Png,
             OperationKey::Jpeg => BindingResourceScope::Jpeg,
@@ -1149,6 +1150,9 @@ impl BindingEngine {
             OperationKey::Svg => self
                 .render_svg_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
+            OperationKey::DrawingListJson => self
+                .render_drawing_list_data(source, control.clone())
+                .map(BindingOperationOutput::plain),
             OperationKey::SvgPlanJson => self
                 .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
@@ -1348,7 +1352,7 @@ mod tests {
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 13);
+        assert_eq!(operations.len(), 14);
         for operation in operations {
             assert_eq!(
                 BindingOperationKind::from_id(operation.operation_id()).unwrap(),
@@ -1357,6 +1361,57 @@ mod tests {
             assert_eq!(operation.key().spec().id, operation.operation_id());
             assert!(!operation.media_type().is_empty());
         }
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_generic_operation_returns_a_valid_v1_document() {
+        const SOURCE: &[u8] = b"info\n";
+        let result = BindingEngine::new(b"")
+            .expect("DrawingList binding engine")
+            .execute(BindingOperationRequest::new("drawing-list-json", SOURCE))
+            .expect("DrawingList smoke input should render through the generic operation");
+
+        assert_eq!(result.operation().operation_id(), "drawing-list-json");
+        assert_eq!(
+            result.media_type(),
+            "application/vnd.merman.drawing-list+json;version=1"
+        );
+
+        let value: serde_json::Value = serde_json::from_slice(result.data())
+            .expect("generic DrawingList output is valid JSON");
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["coordinate_system"], "logical_pixels_y_down");
+
+        let document = merman_display_list::DrawingListDocument::from_json_bytes(result.data())
+            .expect("generic DrawingList output satisfies runtime protocol validation");
+        assert!(!document.commands.is_empty());
+    }
+
+    #[cfg(feature = "drawing-list")]
+    #[test]
+    fn drawing_list_generic_operation_reports_structured_limit_without_output() {
+        let engine = BindingEngine::new(
+            br#"{
+                "drawing_list": {
+                    "limits": { "max_serialized_bytes": 1 }
+                }
+            }"#,
+        )
+        .expect("DrawingList binding engine with a bounded output");
+        let error = engine
+            .execute(BindingOperationRequest::new("drawing-list-json", b"info\n"))
+            .expect_err("a rejected DrawingList operation must not publish a partial result");
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        let details = error
+            .resource_details()
+            .expect("DrawingList resource failures must expose structured details");
+        assert_eq!(details.limit_id, "max_serialized_bytes");
+        assert_eq!(details.phase, "drawing-list-validation");
+        assert!(details.actual > details.max);
+        assert_eq!(details.max, 1);
+        assert_eq!(details.cause, crate::BindingResourceLimitCause::Ceiling);
     }
 
     #[test]

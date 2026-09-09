@@ -29,8 +29,8 @@ pub use editor_language::{
     editor_search_document_symbols,
 };
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-use merman_bindings_core::{TextStyle, WrapMode};
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+use merman_bindings_core::WrapMode;
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 use serde::Deserialize;
 
@@ -54,6 +54,8 @@ const WASM_OPERATIONS: &[OperationKey] = &[
     #[cfg(feature = "svg")]
     OperationKey::LayoutJson,
     OperationKey::SemanticJson,
+    #[cfg(feature = "drawing-list")]
+    OperationKey::DrawingListJson,
     #[cfg(feature = "svg")]
     OperationKey::Svg,
     #[cfg(feature = "svg")]
@@ -116,6 +118,17 @@ pub fn package_version() -> String {
 pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
     string_result(execute_wasm_operation(
         "svg",
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        None,
+    ))
+}
+
+#[cfg(feature = "drawing-list")]
+#[wasm_bindgen(js_name = renderDrawingList)]
+pub fn render_drawing_list(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
+    string_result(execute_wasm_operation(
+        "drawing-list-json",
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
         None,
@@ -442,7 +455,7 @@ thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 #[derive(Debug, Serialize)]
 struct WasmHostTextMeasureRequest<'a> {
     operation: &'static str,
@@ -463,6 +476,36 @@ struct WasmHostTextMeasureRequest<'a> {
 }
 
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+fn wasm_host_text_measure_request(
+    request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+) -> WasmHostTextMeasureRequest<'_> {
+    let fields = merman_bindings_core::host_text_measurement_transport_fields(request);
+    WasmHostTextMeasureRequest {
+        operation: request.operation.external_name(),
+        phase: wasm_measurement_phase(request.phase),
+        text: request.text,
+        font_family: request.style.font_family.as_deref(),
+        font_size: request.style.font_size,
+        font_weight: request.style.font_weight.as_deref(),
+        font_style: request.style.font_style.as_deref().unwrap_or("normal"),
+        max_width: request.max_width,
+        has_max_width: request.max_width.is_some(),
+        line_height: fields.line_height,
+        letter_spacing: 0.0,
+        word_spacing: 0.0,
+        wrap_mode: wasm_wrap_mode(request.wrap_mode),
+        direction: "auto",
+        // Translate the shared protocol codes; whitespace selection belongs to bindings-core.
+        white_space: match fields.white_space {
+            0 => "normal",
+            1 => "nowrap",
+            2 => "break-spaces",
+            _ => unreachable!("bindings-core produces a defined whitespace protocol code"),
+        },
+    }
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 #[derive(Debug, Deserialize)]
 struct WasmHostTextMeasureResult {
     kind: Option<String>,
@@ -473,6 +516,8 @@ struct WasmHostTextMeasureResult {
     bbox_left: Option<f64>,
     bbox_right: Option<f64>,
     raw_width: Option<f64>,
+    line_height: Option<f64>,
+    baseline_offset: Option<f64>,
 }
 
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
@@ -481,6 +526,22 @@ fn decode_wasm_host_text_measurement(
     result: WasmHostTextMeasureResult,
 ) -> Result<merman_bindings_core::HostTextMeasurement, merman_bindings_core::HostTextMeasurementError>
 {
+    let normal_line_metrics = match (result.line_height, result.baseline_offset) {
+        (Some(line_height), Some(baseline_offset)) => {
+            Some(merman_bindings_core::NormalLineMetrics {
+                line_height,
+                baseline_offset,
+            })
+        }
+        (None, None) => None,
+        _ => {
+            return Err(
+                merman_bindings_core::HostTextMeasurementError::invalid_value(
+                    "normal line height and baseline offset must both be present",
+                ),
+            );
+        }
+    };
     merman_bindings_core::decode_host_text_measurement(
         request,
         merman_bindings_core::HostTextMeasurementRecord {
@@ -495,6 +556,7 @@ fn decode_wasm_host_text_measurement(
             bbox_left: result.bbox_left,
             bbox_right: result.bbox_right,
             raw_width: result.raw_width,
+            normal_line_metrics,
         },
     )
 }
@@ -520,23 +582,7 @@ impl WasmHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
-        let external_request = WasmHostTextMeasureRequest {
-            operation: request.operation.external_name(),
-            phase: wasm_measurement_phase(request.phase),
-            text: request.text,
-            font_family: request.style.font_family.as_deref(),
-            font_size: request.style.font_size,
-            font_weight: request.style.font_weight.as_deref(),
-            font_style: request.style.font_style.as_deref().unwrap_or("normal"),
-            max_width: request.max_width,
-            has_max_width: request.max_width.is_some(),
-            line_height: wasm_line_height(request.style, request.wrap_mode),
-            letter_spacing: 0.0,
-            word_spacing: 0.0,
-            wrap_mode: wasm_wrap_mode(request.wrap_mode),
-            direction: "auto",
-            white_space: wasm_white_space(request.max_width, request.wrap_mode),
-        };
+        let external_request = wasm_host_text_measure_request(request);
         let external_request = serde_wasm_bindgen::to_value(&external_request)
             .map_err(|err| merman_bindings_core::HostTextMeasurementError::new(err.to_string()))?;
 
@@ -603,7 +649,7 @@ fn js_error_message(err: &JsValue) -> String {
         .unwrap_or_else(|| "host text measurer callback failed".to_string())
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> &'static str {
     match phase {
         merman_bindings_core::TextMeasurementPhase::Layout => "layout",
@@ -613,30 +659,12 @@ fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> 
     }
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 fn wasm_wrap_mode(wrap_mode: WrapMode) -> &'static str {
     match wrap_mode {
         WrapMode::SvgLike => "svg-like",
         WrapMode::SvgLikeSingleRun => "svg-like-single-run",
         WrapMode::HtmlLike => "html-like",
-    }
-}
-
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-fn wasm_line_height(style: &TextStyle, wrap_mode: WrapMode) -> f64 {
-    let factor = match wrap_mode {
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
-        WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
-}
-
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str {
-    match wrap_mode {
-        WrapMode::HtmlLike if max_width.is_some() => "break-spaces",
-        WrapMode::HtmlLike => "nowrap",
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => "normal",
     }
 }
 
@@ -816,6 +844,7 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "normal-line-metrics"),
             ]
         );
     }
@@ -841,10 +870,69 @@ mod tests {
             bbox_left: None,
             bbox_right: None,
             raw_width: None,
+            line_height: None,
+            baseline_offset: None,
         };
 
         assert!(decode_wasm_host_text_measurement(request, result(None, Some(1))).is_err());
         assert!(decode_wasm_host_text_measurement(request, result(Some(1.0), Some(3))).is_err());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_normal_line_metrics_decode_the_complete_json_pair() {
+        let style = merman_bindings_core::TextStyle::default();
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+            phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+            text: "中文",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+        };
+        let result: WasmHostTextMeasureResult = serde_json::from_str(
+            r#"{"kind":"normal-line-metrics","line_height":28,"baseline_offset":21}"#,
+        )
+        .unwrap();
+        let merman_bindings_core::HostTextMeasurement::NormalLineMetrics(metrics) =
+            decode_wasm_host_text_measurement(request, result).unwrap()
+        else {
+            panic!("normal line pair")
+        };
+        assert_eq!(
+            metrics,
+            merman_bindings_core::NormalLineMetrics {
+                line_height: 28.0,
+                baseline_offset: 21.0
+            }
+        );
+        let partial: WasmHostTextMeasureResult =
+            serde_json::from_str(r#"{"kind":"normal-line-metrics","line_height":28}"#).unwrap();
+        assert!(decode_wasm_host_text_measurement(request, partial).is_err());
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_normal_line_metrics_request_uses_shared_normal_hints() {
+        let style = merman_bindings_core::TextStyle {
+            font_size: 20.0,
+            ..Default::default()
+        };
+        let request = merman_bindings_core::HostTextMeasurementRequest {
+            operation: merman_bindings_core::TextMeasurementOperation::NormalLineMetrics,
+            phase: merman_bindings_core::TextMeasurementPhase::Wrap,
+            text: "中文",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::HtmlLike,
+        };
+        let json = serde_json::to_value(wasm_host_text_measure_request(request)).unwrap();
+        assert_eq!(json["operation"], "normal-line-metrics");
+        assert_eq!(json["phase"], "wrap");
+        assert_eq!(json["text"], "中文");
+        assert_eq!(json["line_height"], 0.0);
+        assert_eq!(json["white_space"], "normal");
+        assert_eq!(json["wrap_mode"], "html-like");
     }
 
     #[cfg(feature = "svg")]

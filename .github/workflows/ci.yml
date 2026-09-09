@@ -555,9 +555,13 @@ jobs:
             --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing \
             --test runtime_determinism --test render_timezone --cargo-quiet
 
-      - name: Test C FFI artifact-profile contract
+      - name: Test DrawingList binding and C FFI artifact-profile contracts
         if: matrix.parity
         run: |
+          cargo nextest run --locked -p merman-bindings-core \
+            --no-default-features --features drawing-list --lib \
+            -E 'test(drawing_list_generic_operation_returns_a_valid_v1_document)' \
+            --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features "$features" --cargo-quiet

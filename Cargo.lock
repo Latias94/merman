@@ -2309,6 +2309,7 @@ dependencies = [
  "merman-ascii",
  "merman-ascii-test-contracts",
  "merman-core",
+ "merman-display-list",
  "merman-editor-core",
  "merman-export",
  "merman-fixture-render-context",
@@ -2374,6 +2375,7 @@ dependencies = [
  "merman-analysis",
  "merman-ascii-test-contracts",
  "merman-core",
+ "merman-display-list",
  "merman-render",
  "roxmltree 0.21.1",
  "serde",
@@ -2443,6 +2445,18 @@ dependencies = [
  "unicode-width",
  "url",
  "web-time",
+]
+
+[[package]]
+name = "merman-display-list"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "base64 0.22.1",
+ "jsonschema",
+ "png",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
 ]
 
 [[package]]
@@ -2550,6 +2564,7 @@ dependencies = [
  "libm",
  "manatee",
  "merman-core",
+ "merman-display-list",
  "merman-fixture-render-context",
  "merman-layout-elk",
  "pulldown-cmark",

@@ -5,7 +5,7 @@ use merman_render::family;
 use merman_render::model::VennDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
+fn prepare_typed_venn(input: &str) -> family::FamilyRenderArtifact {
     let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -13,7 +13,37 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .expect("diagram detected");
     assert_eq!(parsed.metadata().diagram_type, "venn");
 
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok")
+}
+
+#[test]
+fn venn_rough_cancellation_after_layout_returns_no_document() {
+    let control = merman_core::OperationControl::new();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_control(control.clone())
+        .unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  look: handDrawn\n---\nvenn-beta\nset A\nset B\nunion A,B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    // Arm cancellation only after parsing/layout, so this exercises document production.
+    control.cancel_after_checkpoints(100);
+    let error = artifact
+        .render_drawing_list(
+            merman_display_list::DrawingListPolicy::VectorOnly,
+            Default::default(),
+        )
+        .err()
+        .expect("cancelled drawing must not return a document");
+    assert!(matches!(error, merman_render::Error::Cancelled(_)));
+}
+
+fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
+    let artifact = prepare_typed_venn(input);
     let projection = artifact.layout_json().expect("serialize Venn layout");
     let layout: VennDiagramLayout =
         serde_json::from_value(projection["layout"]["VennDiagram"].clone())
@@ -31,6 +61,128 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
         .to_owned();
 
     (layout, svg)
+}
+
+#[test]
+fn venn_drawing_list_preserves_seeded_svg_paths_paint_and_order() {
+    use merman_display_list::{
+        DrawingCommand, DrawingListPolicy, DrawingResource, Paint, PathSegment,
+    };
+    use std::fmt::Write;
+    for seed in [1_u64, 4_294_967_296] {
+        let input = format!(
+            "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: {seed}\n---\nvenn-beta\nset A\nset B\nunion A,B\nstyle A fill:#ff6b6b,stroke:#202020,stroke-width:7pt,fill-opacity:0,stroke-opacity:0\nstyle A,B fill:#ffe66d\n"
+        );
+        let artifact = prepare_typed_venn(&input);
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let svg = roxmltree::Document::parse(svg.svg()).unwrap();
+        let drawing = prepare_typed_venn(&input)
+            .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+            .unwrap();
+        let document = drawing.document();
+        let mut opacity = 1.0;
+        let mut stack = Vec::new();
+        let mut paints = Vec::new();
+        for command in &document.commands {
+            match command {
+                DrawingCommand::Save => stack.push(opacity),
+                DrawingCommand::Restore => opacity = stack.pop().unwrap(),
+                DrawingCommand::SetOpacity { opacity: value } => opacity = *value,
+                DrawingCommand::DrawPath { path, style } if path.as_str().contains(".rough-") => {
+                    paints.push((path, style, opacity));
+                }
+                _ => {}
+            }
+        }
+        let expected_ids = [
+            "venn.area.0.rough-fill",
+            "venn.area.0.rough-outline",
+            "venn.area.1.rough-fill",
+            "venn.area.1.rough-outline",
+            "venn.area.2.rough-fill",
+        ];
+        assert_eq!(
+            paints
+                .iter()
+                .map(|(id, _, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            expected_ids
+        );
+        let svg_paths = [
+            ("A", "venn-circle"),
+            ("B", "venn-circle"),
+            ("A_B", "venn-intersection"),
+        ]
+        .into_iter()
+        .flat_map(|(sets, class)| {
+            find_venn_area(&svg, sets, class)
+                .descendants()
+                .filter(|node| node.has_tag_name("path"))
+        })
+        .collect::<Vec<_>>();
+        assert_eq!(svg_paths.len(), paints.len());
+        for ((id, style, opacity), svg_path) in paints.into_iter().zip(svg_paths) {
+            let path = document
+                .resources
+                .iter()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path) if &path.id == id => Some(path),
+                    _ => None,
+                })
+                .unwrap();
+            let mut data = String::new();
+            for segment in &path.segments {
+                match segment {
+                    PathSegment::MoveTo { to } => write!(data, "M{} {} ", to.x, to.y).unwrap(),
+                    PathSegment::LineTo { to } => write!(data, "L{} {} ", to.x, to.y).unwrap(),
+                    PathSegment::CubicTo {
+                        control1,
+                        control2,
+                        to,
+                    } => write!(
+                        data,
+                        "C{} {}, {} {}, {} {} ",
+                        control1.x, control1.y, control2.x, control2.y, to.x, to.y
+                    )
+                    .unwrap(),
+                    other => panic!("unexpected rough segment {other:?}"),
+                }
+            }
+            assert_eq!(
+                data.trim_end(),
+                svg_path.attribute("d").unwrap(),
+                "{id:?}, seed={seed}"
+            );
+            assert!(style.fill.is_none());
+            let stroke = style.stroke.as_ref().unwrap();
+            assert_eq!(
+                stroke.width,
+                svg_path
+                    .attribute("stroke-width")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            );
+            let Paint::Solid { color, .. } = &stroke.paint else {
+                panic!("expected solid rough stroke");
+            };
+            let source =
+                merman_core::theme_color::ThemeColor::parse(svg_path.attribute("stroke").unwrap())
+                    .unwrap()
+                    .rgba_channels();
+            assert_eq!(
+                [color.red, color.green, color.blue],
+                [
+                    source.red.round() as u8,
+                    source.green.round() as u8,
+                    source.blue.round() as u8
+                ]
+            );
+            assert!((opacity * f64::from(color.alpha) / 255.0 - source.alpha).abs() < 1e-10);
+        }
+    }
 }
 
 fn find_venn_area<'a, 'input>(

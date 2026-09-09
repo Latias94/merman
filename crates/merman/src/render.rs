@@ -20,6 +20,11 @@ use crate::{TerminalDiagnostic, TerminalRuntimePolicyError, operation_runner::Op
 use merman_ascii::{
     AsciiError, AsciiOutput, AsciiRenderOptions, AsciiResourcePolicy, AsciiViewportPolicy,
 };
+#[cfg(feature = "drawing-list")]
+use merman_display_list::{
+    DRAWING_LIST_MEDIA_TYPE, DrawingListDocument, DrawingListError, DrawingListLimits,
+    DrawingListPolicy,
+};
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use merman_export::ExportError;
 #[cfg(feature = "svg")]
@@ -214,6 +219,54 @@ impl RenderEvidence {
 pub struct SvgOutput {
     svg: String,
     evidence: RenderEvidence,
+    family_kind: merman_render::family::RenderFamilyKind,
+    serialization_route: merman_render::family::SvgSerializationRoute,
+    serialization_bridge_reason: Option<merman_render::family::SvgSerializationBridgeReason>,
+}
+
+/// Successful renderer-neutral DrawingList output and the evidence for its operation.
+#[cfg(feature = "drawing-list")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawingListOutput {
+    document: DrawingListDocument,
+    json: Vec<u8>,
+    evidence: RenderEvidence,
+}
+
+#[cfg(feature = "drawing-list")]
+impl DrawingListOutput {
+    fn new(
+        document: DrawingListDocument,
+        json: Vec<u8>,
+        session: merman_render::environment::RenderSession,
+        required_capabilities: Vec<RenderCapability>,
+    ) -> Self {
+        Self {
+            document,
+            json,
+            evidence: RenderEvidence::from_session(session, required_capabilities),
+        }
+    }
+
+    pub fn document(&self) -> &DrawingListDocument {
+        &self.document
+    }
+
+    pub fn json(&self) -> &[u8] {
+        &self.json
+    }
+
+    pub const fn media_type(&self) -> &'static str {
+        DRAWING_LIST_MEDIA_TYPE
+    }
+
+    pub fn evidence(&self) -> &RenderEvidence {
+        &self.evidence
+    }
+
+    pub fn into_parts(self) -> (DrawingListDocument, Vec<u8>, RenderEvidence) {
+        (self.document, self.json, self.evidence)
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -222,10 +275,16 @@ impl SvgOutput {
         svg: String,
         session: merman_render::environment::RenderSession,
         required_capabilities: Vec<RenderCapability>,
+        family_kind: merman_render::family::RenderFamilyKind,
+        serialization_route: merman_render::family::SvgSerializationRoute,
+        serialization_bridge_reason: Option<merman_render::family::SvgSerializationBridgeReason>,
     ) -> Self {
         Self {
             svg,
             evidence: RenderEvidence::from_session(session, required_capabilities),
+            family_kind,
+            serialization_route,
+            serialization_bridge_reason,
         }
     }
 
@@ -235,6 +294,23 @@ impl SvgOutput {
 
     pub fn evidence(&self) -> &RenderEvidence {
         &self.evidence
+    }
+
+    /// Returns the typed render family that produced this SVG.
+    pub const fn family_kind(&self) -> merman_render::family::RenderFamilyKind {
+        self.family_kind
+    }
+
+    /// Returns the actual SVG serializer route used for this result.
+    pub const fn serialization_route(&self) -> merman_render::family::SvgSerializationRoute {
+        self.serialization_route
+    }
+
+    /// Returns the structured reason when this SVG used the compatibility bridge.
+    pub fn serialization_bridge_reason(
+        &self,
+    ) -> Option<&merman_render::family::SvgSerializationBridgeReason> {
+        self.serialization_bridge_reason.as_ref()
     }
 
     pub fn into_parts(self) -> (String, RenderEvidence) {
@@ -299,6 +375,14 @@ pub enum RenderError {
     #[cfg(feature = "svg")]
     #[error(transparent)]
     Svg(merman_render::Error),
+    /// Renderer-neutral DrawingList construction or validation failed.
+    ///
+    /// Keeping this target-specific wrapper separate from [`Self::Svg`] lets callers distinguish
+    /// an unsupported/invalid DrawingList document from a failure in the SVG serializer without
+    /// changing the closed C ABI error vocabulary.
+    #[cfg(feature = "drawing-list")]
+    #[error(transparent)]
+    DrawingList(merman_render::Error),
     #[cfg(feature = "ascii")]
     #[error(transparent)]
     Ascii(AsciiError),
@@ -338,6 +422,25 @@ impl From<merman_render::Error> for RenderError {
             merman_render::Error::OperationResourceTerminal(error) => {
                 crate::operation_runner::operation_terminal_error(error)
             }
+            #[cfg(feature = "drawing-list")]
+            merman_render::Error::DrawingListContract(
+                ref error @ DrawingListError::ResourceLimit {
+                    resource,
+                    actual,
+                    maximum,
+                },
+            ) => Self::ResourceLimitExceeded(ResourceLimitExceeded {
+                id: error.limit_id().unwrap_or(resource),
+                phase: "drawing-list-validation",
+                actual: actual as u64,
+                maximum: maximum as u64,
+                cause: ResourceLimitCause::Ceiling,
+                provenance: None,
+            }),
+            #[cfg(feature = "drawing-list")]
+            error @ (merman_render::Error::DrawingListUnavailable { .. }
+            | merman_render::Error::DrawingListAllocationFailed { .. }
+            | merman_render::Error::DrawingListContract(_)) => Self::DrawingList(error),
             other => Self::Svg(other),
         }
     }
@@ -536,6 +639,8 @@ pub enum RenderTarget {
     Semantic,
     #[cfg(feature = "svg")]
     Svg(SvgRequest),
+    #[cfg(feature = "drawing-list")]
+    DrawingList(DrawingListRequest),
     #[cfg(feature = "svg")]
     LayoutJson(SvgRequest),
     #[cfg(feature = "svg")]
@@ -559,6 +664,36 @@ pub struct SvgRequest {
     pub debug: SvgDebugOptions,
     pub pipeline: Option<SvgPipeline>,
     pub presentation: PresentationRenderPolicy,
+}
+
+#[cfg(feature = "drawing-list")]
+#[derive(Debug, Clone)]
+pub struct DrawingListRequest {
+    /// Instance identity shared with SVG, including source-defined identity-seeded geometry.
+    pub diagram_id: Option<String>,
+    pub environment: SvgEnvironment,
+    pub layout: LayoutOptions,
+    pub policy: DrawingListPolicy,
+    /// Protocol validation and serialization limits for this DrawingList operation.
+    ///
+    /// The effective serialized-byte ceiling is additionally clamped to the environment's
+    /// established `max_svg_bytes` render budget so a DrawingList cannot bypass caller policy.
+    pub limits: DrawingListLimits,
+    pub presentation: PresentationRenderPolicy,
+}
+
+#[cfg(feature = "drawing-list")]
+impl Default for DrawingListRequest {
+    fn default() -> Self {
+        Self {
+            diagram_id: None,
+            environment: SvgEnvironment::deterministic(),
+            layout: LayoutOptions::headless_svg_defaults(),
+            policy: DrawingListPolicy::AllowRasterSubtree,
+            limits: DrawingListLimits::default(),
+            presentation: PresentationRenderPolicy::default(),
+        }
+    }
 }
 
 #[cfg(feature = "svg")]
@@ -655,6 +790,15 @@ impl<'a> RenderRequest<'a> {
         Self::new(source, RenderTarget::Svg(request), control)
     }
 
+    #[cfg(feature = "drawing-list")]
+    pub fn drawing_list(
+        source: &'a str,
+        control: OperationControl,
+        request: DrawingListRequest,
+    ) -> Self {
+        Self::new(source, RenderTarget::DrawingList(request), control)
+    }
+
     #[cfg(feature = "svg")]
     pub fn layout_json(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::LayoutJson(request), control)
@@ -702,6 +846,8 @@ pub enum RenderOutput {
     Semantic(Option<SemanticArtifact>),
     #[cfg(feature = "svg")]
     Svg(Option<SvgOutput>),
+    #[cfg(feature = "drawing-list")]
+    DrawingList(Option<DrawingListOutput>),
     #[cfg(feature = "svg")]
     LayoutJson(Option<SvgLayoutOutput>),
     #[cfg(feature = "svg")]
@@ -835,6 +981,10 @@ impl SemanticArtifact {
             RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(request) => render_svg_target(self, request).map(RenderOutput::Svg),
+            #[cfg(feature = "drawing-list")]
+            RenderTarget::DrawingList(request) => {
+                render_drawing_list_target(self, request).map(RenderOutput::DrawingList)
+            }
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(request) => {
                 render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
@@ -865,6 +1015,8 @@ impl RenderOutput {
             RenderTarget::Semantic => Self::Semantic(None),
             #[cfg(feature = "svg")]
             RenderTarget::Svg(_) => Self::Svg(None),
+            #[cfg(feature = "drawing-list")]
+            RenderTarget::DrawingList(_) => Self::DrawingList(None),
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
             #[cfg(feature = "svg")]
@@ -907,8 +1059,53 @@ fn render_svg_target(
         None => rendered,
     };
     let required_capabilities = rendered.required_capabilities().to_vec();
-    let (svg, _, _, session) = rendered.into_parts();
-    Ok(Some(SvgOutput::new(svg, session, required_capabilities)))
+    let serialization_route = rendered.serialization_route();
+    let serialization_bridge_reason = rendered.serialization_bridge_reason().cloned();
+    let (svg, family_kind, _, session) = rendered.into_parts();
+    Ok(Some(SvgOutput::new(
+        svg,
+        session,
+        required_capabilities,
+        family_kind,
+        serialization_route,
+        serialization_bridge_reason,
+    )))
+}
+
+#[cfg(feature = "drawing-list")]
+fn render_drawing_list_target(
+    semantic: SemanticArtifact,
+    request: DrawingListRequest,
+) -> Result<Option<DrawingListOutput>, RenderError> {
+    let (parsed, operation) = semantic.into_parts();
+    let session = request
+        .environment
+        .begin_session_in_context(operation.context, operation.control);
+    let resource_policy = session.resource_policy();
+    let artifact = merman_render::family::prepare_with_render_policy(
+        parsed,
+        &request.layout,
+        session,
+        request.presentation,
+    )
+    .map_err(RenderError::from)?;
+    let mut limits = request.limits;
+    if let Some(max_output_bytes) =
+        resource_policy.value(merman_render::ResourceLimitId::MaxSvgBytes)
+    {
+        limits.max_serialized_bytes = limits.max_serialized_bytes.min(max_output_bytes);
+    }
+    let rendered = artifact
+        .render_drawing_list_with_diagram_id(request.policy, limits, request.diagram_id.as_deref())
+        .map_err(RenderError::from)?;
+    let required_capabilities = rendered.required_capabilities().to_vec();
+    let (document, json, _, _, _, session) = rendered.into_parts();
+    Ok(Some(DrawingListOutput::new(
+        document,
+        json,
+        session,
+        required_capabilities,
+    )))
 }
 
 #[cfg(feature = "svg")]

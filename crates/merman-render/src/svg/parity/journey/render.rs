@@ -11,7 +11,7 @@ fn fmt_task_face_y(v: Option<f64>) -> String {
         .unwrap_or_else(|| "NaN".to_string())
 }
 
-fn journey_css(
+pub(super) fn journey_css(
     diagram_id: impl Copy + std::fmt::Display,
     effective_config: &serde_json::Value,
     theme: &JourneyTheme,
