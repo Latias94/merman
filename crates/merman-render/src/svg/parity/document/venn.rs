@@ -313,7 +313,7 @@ impl DocumentSvgEncoder<'_> {
             .semantic_classes
             .get(id)
             .is_some_and(|class| matches!(class.as_str(), "venn-text-nodes" | "venn-text-area"));
-        if text_group
+        if (text_group || id == "venn.content")
             && (semantic.title.is_some()
                 || semantic.description.is_some()
                 || semantic.role != SemanticRole::Group)
@@ -321,6 +321,27 @@ impl DocumentSvgEncoder<'_> {
             // Edited public annotations need the generic canonical wrapper, rather than a
             // source structural shell which has no annotation payload of its own.
             return Ok(false);
+        }
+        if (area && semantic.role != SemanticRole::Node)
+            || (id == "venn.document" && semantic.role != SemanticRole::Document)
+        {
+            return Ok(false);
+        }
+        if id == "venn.title" {
+            let native_name = matches!(
+                self.document.commands.get(self.command_index + 1..),
+                Some([
+                    DrawingCommand::DrawText { run },
+                    DrawingCommand::EndSemanticGroup,
+                    ..
+                ]) if semantic.title.as_deref().is_none_or(|name| name == run.text)
+            );
+            if semantic.role != SemanticRole::Label
+                || semantic.description.is_some()
+                || !native_name
+            {
+                return Ok(false);
+            }
         }
         if semantic.link.is_some()
             || !(area
@@ -351,6 +372,21 @@ impl DocumentSvgEncoder<'_> {
             }
             if let Some(sets) = body.semantic_data_sets.get(id) {
                 write!(self.output, " data-venn-sets=\"{}\"", escaped_attr(sets))?;
+            }
+            if area && (semantic.title.is_some() || semantic.description.is_some()) {
+                // The public area annotation is authoritative, including independently edited
+                // descriptions. Keep it on the existing group without changing paint order.
+                self.output.push_str(" role=\"group\"")?;
+                if let Some(title) = &semantic.title {
+                    write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
+                }
+                if let Some(description) = &semantic.description {
+                    write!(
+                        self.output,
+                        " aria-description=\"{}\"",
+                        escaped_attr(description)
+                    )?;
+                }
             }
             if projected_transform != Transform::IDENTITY || id == "venn.content" {
                 let t = projected_transform;

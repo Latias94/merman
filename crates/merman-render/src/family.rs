@@ -7423,6 +7423,126 @@ gantt
     }
 
     #[test]
+    fn venn_public_scope_metadata_survives_native_projection() {
+        use merman_display_list::SemanticRole;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "venn-beta\ntitle Overlap\nset A\nset B\nunion A,B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let baseline = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let original = render(&baseline);
+        let xml = roxmltree::Document::parse(&original).unwrap();
+        let area = xml
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        let annotation = baseline
+            .public
+            .semantics
+            .iter()
+            .find(|entry| entry.id == "venn.area.0")
+            .unwrap();
+        assert_eq!(
+            area.attribute("aria-description"),
+            annotation.description.as_deref()
+        );
+        assert_eq!(area.attribute("aria-label"), annotation.title.as_deref());
+        for id in ["venn.content", "venn.title", "venn.area.0"] {
+            for field in ["title", "description", "link", "role"] {
+                let mut document = baseline.clone();
+                let semantic = document
+                    .public
+                    .semantics
+                    .iter_mut()
+                    .find(|entry| entry.id == id)
+                    .unwrap();
+                match field {
+                    "title" => semantic.title = Some("Independent &amp; <br> name".into()),
+                    "description" => semantic.description = Some("Independent description".into()),
+                    "link" => semantic.link = Some("https://example.com/area?a=1&b=2".into()),
+                    "role" => semantic.role = SemanticRole::Edge,
+                    _ => unreachable!(),
+                }
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                match field {
+                    "title" => assert!(
+                        xml.descendants().any(|node| node.attribute("aria-label")
+                            == Some("Independent &amp; <br> name")
+                            || node.has_tag_name("title")
+                                && node.text() == Some("Independent &amp; <br> name")),
+                        "{id}"
+                    ),
+                    "description" => assert!(
+                        xml.descendants()
+                            .any(|node| node.attribute("aria-description")
+                                == Some("Independent description")
+                                || node.has_tag_name("desc")
+                                    && node.text() == Some("Independent description")),
+                        "{id}"
+                    ),
+                    "link" => assert!(
+                        xml.descendants().any(|node| node.attribute("href")
+                            == Some("https://example.com/area?a=1&b=2")),
+                        "{id}"
+                    ),
+                    "role" => assert!(
+                        xml.descendants()
+                            .any(|node| node.attribute("data-merman-semantic-id") == Some(id)
+                                && node.attribute("class").is_some_and(|classes| classes
+                                    .split_whitespace()
+                                    .any(|class| class == "semantic-edge"))),
+                        "{id}"
+                    ),
+                    _ => unreachable!(),
+                }
+                let painted_tags = |xml: &roxmltree::Document<'_>| {
+                    xml.descendants()
+                        .filter(|node| {
+                            node.is_element()
+                                && matches!(node.tag_name().name(), "path" | "text" | "tspan")
+                        })
+                        .map(|node| {
+                            (
+                                node.tag_name().name().to_owned(),
+                                node.attribute("d").map(str::to_owned),
+                                node.text().map(str::to_owned),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                let original_xml = roxmltree::Document::parse(&original).unwrap();
+                assert_eq!(
+                    painted_tags(&xml),
+                    painted_tags(&original_xml),
+                    "{id} {field}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn venn_projection_preserves_empty_labels_and_edited_paint_scopes() {
         use merman_display_list::{Color, DrawingCommand, LineCap, Paint};
         let parsed = Engine::new()
