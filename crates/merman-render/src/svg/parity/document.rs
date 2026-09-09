@@ -4579,6 +4579,11 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_transform_and_blend(&mut self) -> Result<()> {
+        self.write_transform()?;
+        write_blend_style(&mut self.output, self.state.blend_mode)
+    }
+
+    fn write_transform(&mut self) -> Result<()> {
         let family_text = self
             .current_semantic_id()
             .is_some_and(|id| match self.svg_body {
@@ -4611,7 +4616,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                 matrix_attr(self.state.transform)
             )?;
         }
-        write_blend_style(&mut self.output, self.state.blend_mode)?;
         Ok(())
     }
 

@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AssetStructure {
     pub(crate) primitives: BTreeMap<String, PrimitiveGeometry>,
+    pub(crate) inline_styles: BTreeMap<String, AssetInlineStyle>,
     pub(crate) dom_ids: BTreeMap<String, String>,
     pub(crate) scopes: BTreeMap<usize, AssetScope>,
 }
@@ -27,8 +28,81 @@ pub(crate) struct AssetStructure {
 impl AssetStructure {
     pub(crate) fn extend(&mut self, other: Self) {
         self.primitives.extend(other.primitives);
+        self.inline_styles.extend(other.inline_styles);
         self.dom_ids.extend(other.dom_ids);
         self.scopes.extend(other.scopes);
+    }
+}
+
+/// Declaration placement only: values always come from the current public path/state.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct AssetInlineStyle(u16);
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AssetInlineProperty {
+    Fill,
+    Stroke,
+    FillOpacity,
+    StrokeOpacity,
+    FillRule,
+    StrokeWidth,
+    StrokeLineCap,
+    StrokeLineJoin,
+    StrokeMiterLimit,
+    StrokeDashArray,
+    StrokeDashOffset,
+    Opacity,
+}
+
+impl AssetInlineProperty {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Fill => "fill",
+            Self::Stroke => "stroke",
+            Self::FillOpacity => "fill-opacity",
+            Self::StrokeOpacity => "stroke-opacity",
+            Self::FillRule => "fill-rule",
+            Self::StrokeWidth => "stroke-width",
+            Self::StrokeLineCap => "stroke-linecap",
+            Self::StrokeLineJoin => "stroke-linejoin",
+            Self::StrokeMiterLimit => "stroke-miterlimit",
+            Self::StrokeDashArray => "stroke-dasharray",
+            Self::StrokeDashOffset => "stroke-dashoffset",
+            Self::Opacity => "opacity",
+        }
+    }
+}
+
+impl AssetInlineStyle {
+    const PROPERTIES: [AssetInlineProperty; 12] = [
+        AssetInlineProperty::Fill,
+        AssetInlineProperty::Stroke,
+        AssetInlineProperty::FillOpacity,
+        AssetInlineProperty::StrokeOpacity,
+        AssetInlineProperty::FillRule,
+        AssetInlineProperty::StrokeWidth,
+        AssetInlineProperty::StrokeLineCap,
+        AssetInlineProperty::StrokeLineJoin,
+        AssetInlineProperty::StrokeMiterLimit,
+        AssetInlineProperty::StrokeDashArray,
+        AssetInlineProperty::StrokeDashOffset,
+        AssetInlineProperty::Opacity,
+    ];
+
+    fn insert(&mut self, name: &str) {
+        if let Some(index) = Self::PROPERTIES
+            .iter()
+            .position(|property| property.name() == name)
+        {
+            self.0 |= 1 << index;
+        }
+    }
+
+    pub(crate) fn properties(self) -> impl Iterator<Item = AssetInlineProperty> {
+        Self::PROPERTIES
+            .into_iter()
+            .enumerate()
+            .filter_map(move |(index, property)| (self.0 & (1 << index) != 0).then_some(property))
     }
 }
 
@@ -359,7 +433,7 @@ pub(crate) fn lower_icon_asset(
                 if tag != "g" && node.children().any(|child| child.is_element()) {
                     return Err(context.unsupported(format!("nested content in <{tag}>")));
                 }
-                let next = context.style(node, state)?;
+                let (next, inline) = context.style(node, state)?;
                 let mut dom_id = if node.attribute("id").is_some() {
                     let id = identity
                         .svg_scope
@@ -407,6 +481,9 @@ pub(crate) fn lower_icon_asset(
                         style,
                         |emit| context.geometry(tag, |name| node.attribute(name), emit),
                     )? {
+                        if inline.0 != 0 {
+                            structure.inline_styles.insert(id.clone(), inline);
+                        }
                         if let Some(dom_id) = dom_id {
                             structure.dom_ids.insert(id.clone(), dom_id);
                         }
@@ -484,8 +561,13 @@ impl Context<'_> {
         Ok(number)
     }
 
-    fn style<'a>(&self, node: Node<'a, '_>, inherited: Style<'a>) -> Result<Style<'a>> {
+    fn style<'a>(
+        &self,
+        node: Node<'a, '_>,
+        inherited: Style<'a>,
+    ) -> Result<(Style<'a>, AssetInlineStyle)> {
         let mut style = inherited;
+        let mut placement = AssetInlineStyle::default();
         for attribute in node.attributes() {
             self.session.checkpoint(OperationPhase::Emit)?;
             if attribute.namespace().is_some() {
@@ -521,9 +603,10 @@ impl Context<'_> {
                     .split_once(':')
                     .ok_or_else(|| self.unsupported("malformed style declaration"))?;
                 self.property(&mut style, key.trim(), value.trim(), inherited)?;
+                placement.insert(key.trim());
             }
         }
-        Ok(style)
+        Ok((style, placement))
     }
 
     fn property<'a>(

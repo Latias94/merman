@@ -244,24 +244,129 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         };
         let path = self.path_resource(path_id)?;
-        if !geometry.matches_path(&path.segments, self.session)? {
-            return Ok(false);
-        }
-        self.output.push('<')?;
-        self.output.push_str(geometry.tag)?;
-        for (key, value) in &geometry.attributes {
-            self.output.push(' ')?;
-            self.output.push_str(key)?;
-            self.output.push_str("=\"")?;
-            output::escape_attr(&mut self.output, value)?;
+        if geometry.matches_path(&path.segments, self.session)? {
+            self.output.push('<')?;
+            self.output.push_str(geometry.tag)?;
+            for (key, value) in &geometry.attributes {
+                self.output.push(' ')?;
+                self.output.push_str(key)?;
+                self.output.push_str("=\"")?;
+                output::escape_attr(&mut self.output, value)?;
+                self.output.push('"')?;
+            }
+        } else {
+            // An edited path still owns its declaration placement and DOM identity.
+            self.output.push_str("<path d=\"")?;
+            output::escape_attr(&mut self.output, path_d(&path.segments))?;
             self.output.push('"')?;
         }
         self.write_path_style(style)?;
-        self.write_state_attrs()?;
+        self.write_transform()?;
+        if self.state.opacity != 1.0 {
+            write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
+        }
+        self.write_tree_view_asset_inline_style(path_id, style)?;
         self.write_sidecar_dom_id(path_id.as_str())?;
         self.write_path_metadata(path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(true)
+    }
+
+    fn write_tree_view_asset_inline_style(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<()> {
+        use crate::drawing_list::AssetInlineProperty as Property;
+        let SvgStructureBody::TreeView(body) = self.svg_body else {
+            return Ok(());
+        };
+        let placement = body.assets.inline_styles.get(path_id.as_str()).copied();
+        let blend = blend_css(self.state.blend_mode);
+        if placement.is_none() && blend.is_none() {
+            return Ok(());
+        }
+        self.output.push_str(" style=\"")?;
+        for property in placement
+            .into_iter()
+            .flat_map(|placement| placement.properties())
+        {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            self.output.push_str(property.name())?;
+            self.output.push(':')?;
+            let stroke = style.stroke.as_ref();
+            match property {
+                Property::Fill | Property::Stroke => {
+                    let paint = if matches!(property, Property::Fill) {
+                        style.fill.as_ref()
+                    } else {
+                        stroke.map(|s| &s.paint)
+                    };
+                    match paint {
+                        Some(Paint::Solid { color }) => self.output.push_str(&color_css(*color))?,
+                        Some(Paint::Resource { id }) => {
+                            let svg_id = self.svg_resource_id(id.as_str())?;
+                            write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
+                        }
+                        None => self.output.push_str("none")?,
+                    }
+                }
+                Property::FillOpacity | Property::StrokeOpacity => {
+                    let paint = if matches!(property, Property::FillOpacity) {
+                        style.fill.as_ref()
+                    } else {
+                        stroke.map(|s| &s.paint)
+                    };
+                    let opacity = match paint {
+                        Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
+                        _ => 1.0,
+                    };
+                    write!(self.output, "{}", fmt(opacity))?;
+                }
+                Property::FillRule => self.output.push_str(fill_rule_name(style.fill_rule))?,
+                Property::StrokeWidth => {
+                    write!(self.output, "{}", fmt(stroke.map_or(0.0, |s| s.width)))?
+                }
+                Property::StrokeLineCap => self
+                    .output
+                    .push_str(stroke.map_or("butt", |s| line_cap(s.line_cap)))?,
+                Property::StrokeLineJoin => self
+                    .output
+                    .push_str(stroke.map_or("miter", |s| line_join(s.line_join)))?,
+                Property::StrokeMiterLimit => write!(
+                    self.output,
+                    "{}",
+                    fmt(stroke.map_or(4.0, |s| s.miter_limit))
+                )?,
+                Property::StrokeDashOffset => write!(
+                    self.output,
+                    "{}",
+                    fmt(stroke.map_or(0.0, |s| s.dash_offset))
+                )?,
+                Property::StrokeDashArray => {
+                    if let Some(stroke) = stroke
+                        && !stroke.dash_array.is_empty()
+                    {
+                        for (index, value) in stroke.dash_array.iter().enumerate() {
+                            self.session.checkpoint(OperationPhase::Emit)?;
+                            if index != 0 {
+                                self.output.push(',')?;
+                            }
+                            write!(self.output, "{}", fmt(*value))?;
+                        }
+                    } else {
+                        self.output.push_str("none")?;
+                    }
+                }
+                Property::Opacity => write!(self.output, "{}", fmt(self.state.opacity))?,
+            }
+            self.output.push(';')?;
+        }
+        if let Some(blend) = blend {
+            write!(self.output, "mix-blend-mode:{blend};")?;
+        }
+        self.output.push('"')?;
+        Ok(())
     }
 
     pub(super) fn emit_tree_view_asset_viewport(&mut self, index: usize) -> Result<bool> {

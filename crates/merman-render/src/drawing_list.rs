@@ -17,7 +17,7 @@ mod flowchart;
 mod gantt;
 mod gitgraph;
 mod icon_asset;
-pub(crate) use icon_asset::{AssetScope, AssetScopeKind};
+pub(crate) use icon_asset::{AssetInlineProperty, AssetScope, AssetScopeKind};
 mod info;
 mod ishikawa;
 mod journey;

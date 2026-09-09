@@ -2421,6 +2421,121 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_registered_inline_styles_project_current_public_paint() {
+        use merman_display_list::{
+            BlendMode, Color, DrawingCommand, DrawingResource, Paint, PathSegment,
+        };
+        let pack = serde_json::json!({"prefix":"test","width":24,"height":24,"icons":{"styles":{"body":r##"<g fill="#2a68ad" style="stroke:#802000" stroke-width="2" fill-opacity="0.5" stroke-opacity="0.25"><path id="inherited" d="M1 1H8V8H1Z"/><path id="current" color="#10a020" style="fill:currentColor;stroke:currentColor;fill-opacity:1;stroke-opacity:1;fill-rule:evenodd;stroke-width:3;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:6;stroke-dasharray:2 1;stroke-dashoffset:1;opacity:1" d="M12 1H20V8H12Z"/><path id="override" fill="#ee8800" stroke="none" d="M1 12H8V20H1Z"/></g><g fill="currentColor" color="#ff0000"><circle id="inherited-current" color="#0000ff" cx="17" cy="17" r="4"/></g>"##}}});
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            &serde_json::to_vec(&pack).unwrap(),
+        )])
+        .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(test:styles)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_icon_registry(registry)
+            .begin_session()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let legacy = render_legacy_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let candidate = render(&document);
+        let legacy_xml = roxmltree::Document::parse(&legacy).unwrap();
+        let xml = roxmltree::Document::parse(&candidate).unwrap();
+        let paths: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("id").is_some())
+            .collect();
+        assert_eq!(paths.len(), 3);
+        assert_eq!(
+            paths
+                .iter()
+                .map(|node| node.attribute("id"))
+                .collect::<Vec<_>>(),
+            legacy_xml
+                .descendants()
+                .filter(|node| node.has_tag_name("path") && node.attribute("id").is_some())
+                .map(|node| node.attribute("id"))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            paths[0].attribute("style"),
+            None,
+            "inherited inline declarations must not acquire child-level precedence"
+        );
+        assert_eq!(
+            paths[1].attribute("style"),
+            Some(
+                "fill:#10a020;stroke:#10a020;fill-opacity:1;stroke-opacity:1;fill-rule:evenodd;stroke-width:3;stroke-linecap:round;stroke-linejoin:bevel;stroke-miterlimit:6;stroke-dasharray:2,1;stroke-dashoffset:1;opacity:1;"
+            )
+        );
+        assert_eq!(paths[2].attribute("style"), None);
+        let id = paths[1].attribute("id").unwrap().to_owned();
+        // A public paint edit must update inline values, not replay the source currentColor.
+        let draw_index = document.public.commands.iter().position(|command| matches!(command, DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".asset.shape.1"))).unwrap();
+        if let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[draw_index] {
+            style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 128)));
+            style.stroke = None;
+        }
+        // Force generic geometry. Declaration placement remains associated with the path.
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str().ends_with(".asset.shape.1")
+                && let PathSegment::MoveTo { to } = &mut path.segments[0]
+            {
+                to.x += 1.0;
+            }
+        }
+        document.public.commands.insert(
+            draw_index,
+            DrawingCommand::SetBlendMode {
+                blend_mode: BlendMode::Multiply,
+            },
+        );
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited)
+            .expect("one combined style attribute even with public blending");
+        let path = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id.as_str()))
+            .unwrap();
+        assert_ne!(path.attribute("d"), Some("M12 1H20V8H12Z"));
+        let inline = path.attribute("style").unwrap();
+        assert!(inline.contains(
+            "fill:#ff0000;stroke:none;fill-opacity:0.5019607843137255;stroke-opacity:1;"
+        ));
+        assert!(inline.contains("mix-blend-mode:multiply;"));
+        assert!(!inline.contains("#10a020"));
+    }
+
+    #[test]
     fn tree_view_registered_groups_preserve_scoped_identity_and_public_transforms() {
         use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Transform};
         let pack = serde_json::json!({

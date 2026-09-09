@@ -106,6 +106,24 @@ aliases, then edits public transforms, geometry, and scope hints. Complete regis
 presentation parity remains unfinished. These steps do not admit TreeView or establish complete
 asset parity.
 
+Registered leaf primitives now retain a fixed mask of inline property names, not source CSS or
+paint values. Both original primitives and edited generic paths serialize those declarations from
+the current public `PathStyle`/graphics state, including explicit default opacity and disabled
+paint. Parent inline declarations do not become child inline declarations. Blend mode shares the
+same style attribute. Public paint/geometry edits and stroke deletion cannot replay stale values.
+The Chromium probe `target/compare/asset-style-browser-result.txt` confirms that host rules no
+longer replace a source-inline green stroke or its two explicit opacity values; neighboring
+presentation-only paths remain overridable. The focused test covers all twelve admitted inline
+properties, edited geometry/paint, deleted stroke, and blending. This is not an admission receipt.
+Group presentation is still flattened, alpha uses the public RGBA8 precision, and inactive `color`
+or absent-stroke parameters cannot be recovered from public paint. In particular, a host rule
+that adds a stroke to a source `stroke="none"` path can expose a width difference (source 2,
+public default 1). These remain explicit registered-asset parity gaps, not silently accepted
+browser residuals or a reason to store a second visual model in the sidecar.
+All 80 focused TreeView/icon tests, Clippy, formatting, and the required full SVG structure gate
+pass for this change. The gate uses the existing admission matrix; it does not certify registered
+asset candidate parity.
+
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
 root geometry, style, DOM/a11y obligations, and effect disposition remain source-backed.  ZenUML
