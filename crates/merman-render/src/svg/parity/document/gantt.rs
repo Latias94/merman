@@ -3,46 +3,108 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
-    pub(super) fn write_gantt_path_state_attrs(&mut self, path_id: &ResourceId) -> Result<bool> {
+    /// Own one element's CSS declaration block so paint, transform and blend compose once.
+    pub(super) fn write_gantt_path_presentation(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+        path_element: bool,
+    ) -> Result<bool> {
         let SvgStructureBody::Gantt(body) = self.svg_body else {
             return Ok(false);
         };
-        let Some(origin) = body.path_transform_bases.get(path_id.as_str()).copied() else {
+        let raw_id = path_id.as_str();
+        let primitive = raw_id.starts_with("gantt.task.") && raw_id.ends_with(".bar")
+            || raw_id == "gantt.today.line";
+        let origin = body.path_transform_bases.get(raw_id).copied();
+        if !primitive && origin.is_none() {
             return Ok(false);
-        };
+        }
         let matrix = self.state.transform;
-        // SVG applies origin before/after the element's matrix. Change only its representation:
-        // T(P) [T(-P) M T(P)] T(-P) = M. Ancestor transforms already emitted on groups are not
-        // part of this element-local M. Gantt uses absolute px origins in the root SVG viewport.
-        let adjusted = Transform {
-            e: matrix.e + (matrix.a - 1.0) * origin.x + matrix.c * origin.y,
-            f: matrix.f + matrix.b * origin.x + (matrix.d - 1.0) * origin.y,
-            ..matrix
+        // Keep the public element transform M authoritative. P changes only its SVG basis:
+        // T(P) [T(-P) M T(P)] T(-P) = M. Ancestor transforms remain outside this operation.
+        let adjusted = if let Some(origin) = origin {
+            if !origin.x.is_finite() || !origin.y.is_finite() {
+                return Err(invalid(
+                    "Gantt SVG transform basis exceeds finite coordinates",
+                ));
+            }
+            Transform {
+                e: matrix.e + (matrix.a - 1.0) * origin.x + matrix.c * origin.y,
+                f: matrix.f + matrix.b * origin.x + (matrix.d - 1.0) * origin.y,
+                ..matrix
+            }
+        } else {
+            matrix
         };
-        if !origin.x.is_finite()
-            || !origin.y.is_finite()
-            || !adjusted.e.is_finite()
-            || !adjusted.f.is_finite()
-        {
+        if !adjusted.e.is_finite() || !adjusted.f.is_finite() {
             return Err(invalid(
                 "Gantt SVG transform basis exceeds finite coordinates",
             ));
         }
-        // Emit round-trip numbers for both parts: rounding P or matrix coefficients separately
-        // before/after conjugation can amplify a small rounding error into a visible translation.
-        write!(
-            self.output,
-            " transform-origin=\"{}px {}px\"",
-            origin.x, origin.y
-        )?;
-        if matrix != Transform::IDENTITY {
+        if let Some(origin) = origin {
+            // Round-trip both origin and matrix; independent integer snapping changes geometry.
             write!(
                 self.output,
-                " transform=\"matrix({} {} {} {} {} {})\"",
-                adjusted.a, adjusted.b, adjusted.c, adjusted.d, adjusted.e, adjusted.f
+                " transform-origin=\"{}px {}px\"",
+                origin.x, origin.y
             )?;
         }
-        write_blend_style(&mut self.output, self.state.blend_mode)?;
+        if path_element {
+            write!(
+                self.output,
+                " fill-rule=\"{}\"",
+                fill_rule_name(style.fill_rule)
+            )?;
+        }
+        // Keep general path/resource/dash paint attributes when the compact source-shaped
+        // projection cannot describe them. Transform and blend still share one CSS block.
+        let paint = (primitive && !path_element && self.state.blend_mode == BlendMode::Normal)
+            .then(|| gantt_solid_paint(style))
+            .flatten();
+        if paint.is_none() {
+            self.write_fill_stroke_style(style)?;
+        }
+        let blend = blend_css(self.state.blend_mode);
+        if paint.is_some() || matrix != Transform::IDENTITY || blend.is_some() {
+            self.output.push_str(" style=\"")?;
+            if let Some(paint) = paint {
+                if let Some(color) = paint.fill {
+                    write!(
+                        self.output,
+                        "fill:{};fill-opacity:{};",
+                        color_css(color),
+                        fmt(f64::from(color.alpha) / 255.0)
+                    )?;
+                } else {
+                    self.output.push_str("fill:none;")?;
+                }
+                if let Some((color, width)) = paint.stroke {
+                    write!(
+                        self.output,
+                        "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;",
+                        color_css(color),
+                        fmt(f64::from(color.alpha) / 255.0),
+                        fmt(width)
+                    )?;
+                } else {
+                    self.output.push_str("stroke:none;")?;
+                }
+            }
+            if matrix != Transform::IDENTITY {
+                // CSS matrix() requires comma separators. The pinned source also expresses
+                // milestone transforms in CSS, but these coefficients come only from M.
+                write!(
+                    self.output,
+                    "transform:matrix({},{},{},{},{},{});",
+                    adjusted.a, adjusted.b, adjusted.c, adjusted.d, adjusted.e, adjusted.f
+                )?;
+            }
+            if let Some(blend) = blend {
+                write!(self.output, "mix-blend-mode:{blend};")?;
+            }
+            self.output.push('"')?;
+        }
         if self.state.opacity != 1.0 {
             write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
         }
@@ -103,68 +165,6 @@ impl DocumentSvgEncoder<'_> {
             self.output.push_str(" xml:space=\"preserve\"")?;
         }
         Ok(())
-    }
-
-    /// Retain source CSS-shaped paint without consulting the source stylesheet.
-    /// Resource paints and non-default strokes keep the general attribute projection.
-    pub(super) fn write_gantt_primitive_style(
-        &mut self,
-        path_id: &ResourceId,
-        style: &PathStyle,
-    ) -> Result<bool> {
-        if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
-            || !(path_id.as_str().starts_with("gantt.task.") && path_id.as_str().ends_with(".bar")
-                || path_id.as_str() == "gantt.today.line")
-            || self.state.blend_mode != BlendMode::Normal
-        {
-            return Ok(false);
-        }
-        let fill = match style.fill {
-            Some(Paint::Solid { color }) => Some(color),
-            None => None,
-            _ => return Ok(false),
-        };
-        let stroke = match &style.stroke {
-            Some(stroke) => {
-                let Paint::Solid { color } = stroke.paint else {
-                    return Ok(false);
-                };
-                if !stroke.dash_array.is_empty()
-                    || stroke.dash_offset != 0.0
-                    || stroke.line_cap != merman_display_list::LineCap::Butt
-                    || stroke.line_join != merman_display_list::LineJoin::Miter
-                    || stroke.miter_limit != 4.0
-                {
-                    return Ok(false);
-                }
-                Some((color, stroke.width))
-            }
-            None => None,
-        };
-        self.output.push_str(" style=\"")?;
-        if let Some(color) = fill {
-            write!(
-                self.output,
-                "fill:{};fill-opacity:{};",
-                color_css(color),
-                fmt(f64::from(color.alpha) / 255.0)
-            )?;
-        } else {
-            self.output.push_str("fill:none;")?;
-        }
-        if let Some((color, width)) = stroke {
-            write!(
-                self.output,
-                "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;",
-                color_css(color),
-                fmt(f64::from(color.alpha) / 255.0),
-                fmt(width)
-            )?;
-        } else {
-            self.output.push_str("stroke:none;")?;
-        }
-        self.output.push('"')?;
-        Ok(true)
     }
 
     pub(super) fn emit_gantt_plain_text(
@@ -898,4 +898,35 @@ fn gantt_text_has_significant_whitespace(text: &str) -> bool {
         || text.ends_with(' ')
         || text.contains("  ")
         || text.contains(['\t', '\r', '\n'])
+}
+
+struct GanttSolidPaint {
+    fill: Option<Color>,
+    stroke: Option<(Color, f64)>,
+}
+
+fn gantt_solid_paint(style: &PathStyle) -> Option<GanttSolidPaint> {
+    let fill = match style.fill {
+        Some(Paint::Solid { color }) => Some(color),
+        None => None,
+        _ => return None,
+    };
+    let stroke = match &style.stroke {
+        Some(stroke) => {
+            let Paint::Solid { color } = stroke.paint else {
+                return None;
+            };
+            if !stroke.dash_array.is_empty()
+                || stroke.dash_offset != 0.0
+                || stroke.line_cap != merman_display_list::LineCap::Butt
+                || stroke.line_join != merman_display_list::LineJoin::Miter
+                || stroke.miter_limit != 4.0
+            {
+                return None;
+            }
+            Some((color, stroke.width))
+        }
+        None => None,
+    };
+    Some(GanttSolidPaint { fill, stroke })
 }

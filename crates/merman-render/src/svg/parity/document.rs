@@ -2610,8 +2610,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        self.write_path_style(style)?;
-        self.write_path_state_attrs(path_id)?;
+        if !self.write_gantt_path_presentation(path_id, style, true)? {
+            self.write_path_style(style)?;
+            self.write_state_attrs()?;
+        }
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2874,8 +2876,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        self.write_path_style(style)?;
-        self.write_path_state_attrs(path_id)?;
+        if !self.write_gantt_path_presentation(path_id, style, true)? {
+            self.write_path_style(style)?;
+            self.write_state_attrs()?;
+        }
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2917,10 +2921,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        if !self.write_gantt_primitive_style(path_id, style)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)? {
             self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
         }
-        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2968,10 +2972,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius_x);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
-        if !self.write_gantt_primitive_style(path_id, style)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)? {
             self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
         }
-        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -3099,10 +3103,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_wardley_marker_attributes(path_id.as_str())?;
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
-        if !self.write_gantt_primitive_style(path_id, style)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)? {
             self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
         }
-        self.write_state_attrs()?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -4464,13 +4468,6 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_transform_and_blend()?;
         if self.state.opacity != 1.0 {
             write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
-        }
-        Ok(())
-    }
-
-    fn write_path_state_attrs(&mut self, path_id: &ResourceId) -> Result<()> {
-        if !self.write_gantt_path_state_attrs(path_id)? {
-            self.write_state_attrs()?;
         }
         Ok(())
     }

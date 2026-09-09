@@ -2633,15 +2633,20 @@ mod tests {
                 .map(|part| part.strip_suffix("px").unwrap().parse().unwrap())
                 .collect();
             assert_eq!(origin.len(), 2);
+            assert_eq!(node.attribute("transform"), None);
             let matrix = node
-                .attribute("transform")
+                .attribute("style")
+                .and_then(|css| {
+                    css.split(';')
+                        .find_map(|entry| entry.strip_prefix("transform:"))
+                })
                 .map(|value| {
                     value
                         .strip_prefix("matrix(")
                         .unwrap()
                         .strip_suffix(')')
                         .unwrap()
-                        .split_whitespace()
+                        .split(',')
                         .map(|part| part.parse::<f64>().unwrap())
                         .collect::<Vec<_>>()
                 })
@@ -2855,7 +2860,14 @@ mod tests {
                     .attribute("data-merman-semantic-id")
                     .is_none()
             );
-            let matrix = rect.attribute("transform").unwrap().to_owned();
+            assert_eq!(rect.attribute("transform"), None);
+            let matrix = rect
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .find_map(|entry| entry.strip_prefix("transform:"))
+                .unwrap()
+                .to_owned();
             assert!(matrix.starts_with("matrix("));
             let label = xml
                 .descendants()
@@ -2917,7 +2929,32 @@ mod tests {
                 .descendants()
                 .find(|node| node.attribute("data-merman-resource") == Some(path_id))
                 .unwrap();
-            assert_ne!(rect.attribute("transform"), Some(matrix.as_str()));
+            assert_eq!(rect.attribute("transform"), None);
+            let changed_matrix = rect
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .find_map(|entry| entry.strip_prefix("transform:"))
+                .unwrap();
+            assert_ne!(changed_matrix, matrix);
+            // General dash paint, CSS transform and blend must coexist in one valid style block.
+            document.public.commands.insert(
+                index,
+                DrawingCommand::SetBlendMode {
+                    blend_mode: merman_display_list::BlendMode::Multiply,
+                },
+            );
+            let blended = render(&document);
+            let xml = roxmltree::Document::parse(&blended).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            assert_eq!(rect.attribute("stroke-dasharray"), Some("3,2"));
+            let css = rect.attribute("style").unwrap();
+            assert!(css.contains("transform:matrix("));
+            assert!(css.contains("mix-blend-mode:multiply;"));
+            document.public.commands.remove(index);
             let path = document
                 .public
                 .resources

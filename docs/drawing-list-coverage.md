@@ -437,6 +437,16 @@ within a maximum component/translation delta of `4.83e-5`; the source CSS rotate
 matrix numeric paths have different floating-point precision. This is scoped browser evidence,
 not full-family admission or a comparator tolerance change.
 
+The next path projection emits the public conjugated matrix as CSS `matrix()` alongside paint and
+blend in one declaration block, following the pinned source's CSS transform representation.
+General paths, resource paints and edited dash styles retain their paint attributes. All 45 focused
+Gantt tests pass, including combined dash/blend/transform edits and independent origin mapping.
+`target/compare/gantt_160088c47_css_matrix_candidate_structure.md` still fails the single milestone
+fixture on 45 semantic/diagnostic attributes; the two extra transform attributes are resolved.
+Temporary admission was removed. Chromium's two milestone CTMs differ from the pinned source by
+at most `9.71e-6`, with identical transform origins. This scoped numeric evidence does not change
+comparison tolerances or admit Gantt; full-family structure and semantic projection remain open.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
