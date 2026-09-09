@@ -1634,20 +1634,20 @@ async function runPureDistSmoke() {
   assert.equal(typeof svgSafety.assertSelfContainedSvgForDom, "function");
   assert.equal(typeof svgSafety.prepareNavigableSvgForDomMount, "function");
   assert.equal(typeof svgSafety.prepareSelfContainedSvgForDomMount, "function");
-  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
+  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 2);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
-    Array.from({ length: 19 }, (_, code) => code)
+    Array.from({ length: 20 }, (_, code) => code)
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_RESULT_KINDS.map(({ code }) => code),
-    Array.from({ length: 4 }, (_, code) => code)
+    Array.from({ length: 5 }, (_, code) => code)
   );
   assert.equal(
     new Set(
       textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
     ).size,
-    19
+    20
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
