@@ -415,7 +415,7 @@ pie title Theme Pie
   "Beta": 60
 "##,
             &["Theme Pie", "Alpha", "Beta"],
-            &["#f8fafc", "#111827", "#fde68a", "#38bdf8", "3px"],
+            &["#f8fafc", "#111827", "#fde68a"],
         ),
         (
             "theme-xychart",
@@ -512,6 +512,30 @@ data ItemAddedData {
     for (name, source, expected_labels, expected_colors) in cases {
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
+        if *name == "theme-pie" {
+            // Canonical paint uses RGBA and user units, not an unused theme CSS rule.
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let slices: Vec<_> = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("path") && node.attribute("class") == Some("pieCircle")
+                })
+                .collect();
+            assert_eq!(slices.len(), 2);
+            for slice in slices {
+                let style = slice.attribute("style").expect("slice paint");
+                assert!(
+                    style
+                        .split(';')
+                        .any(|property| property == "stroke:rgba(56,189,248,1)")
+                );
+                assert!(
+                    style
+                        .split(';')
+                        .any(|property| property == "stroke-width:3")
+                );
+            }
+        }
     }
 }
 
@@ -753,16 +777,35 @@ Target,Done,2
         sankey.contains(r#"class="link""#),
         "Sankey link styling should only count with link DOM: {sankey}"
     );
+    let document = roxmltree::Document::parse(&sankey).unwrap();
+    let labels = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("node-labels"))
+        .expect("Sankey labels inherit the public text paint from their container");
+    let label_rule = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .find_map(|css| css.split_once("#sankey-visible-audit .node-labels{"))
+        .and_then(|(_, rule)| rule.split_once('}'))
+        .map(|(rule, _)| rule)
+        .expect("scoped rule for the actual label container");
     assert!(
-        sankey.contains(
-            r##"#sankey-visible-audit .sankey-label-bg{stroke:#111827;stroke-width:4px;"##
-        ),
-        "Sankey mainBkg should reach the outlined label background selector: {sankey}"
+        label_rule
+            .split(';')
+            .any(|property| property == "fill:#f8fafc")
     );
-    assert!(
-        sankey.contains(r##"#sankey-visible-audit .sankey-label-fg{fill:#f8fafc;}"##),
-        "Sankey textColor should reach the outlined label foreground selector: {sankey}"
-    );
+    let backgrounds: Vec<_> = labels
+        .children()
+        .filter(|node| node.attribute("class") == Some("sankey-label-bg"))
+        .collect();
+    assert_eq!(backgrounds.len(), 3);
+    for text in backgrounds {
+        assert!(text.has_tag_name("text"));
+        assert_eq!(text.attribute("stroke"), Some("#111827"));
+        assert_eq!(text.attribute("stroke-width"), Some("4"));
+        assert_eq!(text.attribute("paint-order"), Some("stroke fill"));
+    }
     assert!(
         sankey.contains(r##"<rect height=""##) && sankey.contains(r##"fill="#22c55e""##),
         "Sankey nodeColors should reach visible node rect fills: {sankey}"
