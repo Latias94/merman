@@ -99,7 +99,7 @@ struct DocumentSvgEncoder<'a> {
     tree_view_icons: Option<tree_view_icon::IconProjection>,
     tree_view_unknown_icons: BTreeMap<usize, tree_view_unknown_icon::UnknownIcon<'a>>,
     tree_view_asset_viewports: BTreeMap<usize, tree_view_asset::AssetViewport<'a>>,
-    tree_view_asset_groups: BTreeMap<usize, &'a crate::drawing_list::AssetGroup>,
+    tree_view_asset_scopes: BTreeMap<usize, &'a crate::drawing_list::AssetScope>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -266,8 +266,8 @@ impl<'a> DocumentSvgEncoder<'a> {
             } else {
                 BTreeMap::new()
             },
-            tree_view_asset_groups: if let SvgStructureBody::TreeView(body) = &document.svg.body {
-                tree_view_asset::group_projections(&document.public, body, session)?
+            tree_view_asset_scopes: if let SvgStructureBody::TreeView(body) = &document.svg.body {
+                tree_view_asset::scope_projections(&document.public, body, session)?
             } else {
                 BTreeMap::new()
             },
@@ -631,7 +631,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 consumed_until = index + 2;
                 continue;
             }
-            if let Some(count) = self.emit_tree_view_asset_group(index)? {
+            if let Some(count) = self.emit_tree_view_asset_scope(index)? {
                 consumed_until = index + count;
                 continue;
             }

@@ -2482,7 +2482,6 @@ mod tests {
                 let xml = roxmltree::Document::parse(&svg).unwrap();
                 let expected_ids: Vec<_> = source
                     .descendants()
-                    .filter(|node| !node.has_tag_name("rect"))
                     .filter_map(|node| node.attribute("id"))
                     .filter(|id| id.starts_with("IconifyId"))
                     .map(str::to_owned)
@@ -2495,37 +2494,120 @@ mod tests {
                     .collect();
                 assert_eq!(
                     expected_ids.len(),
-                    4,
-                    "two groups and two paths; the empty rectangle still consumes source ID 1"
+                    5,
+                    "two groups, two paths, and the inert rectangle with source ID 1"
                 );
                 assert_eq!(actual_ids, expected_ids);
-                assert!(actual_ids[1].ends_with('2'));
-                assert!(actual_ids[2].ends_with('3'));
+                assert!(actual_ids[1].ends_with('1'));
+                assert!(actual_ids[2].ends_with('2'));
+                assert!(actual_ids[3].ends_with('3'));
                 let outer = xml
                     .descendants()
                     .find(|node| node.attribute("id") == Some(actual_ids[0].as_str()))
                     .unwrap();
                 let inner = xml
                     .descendants()
-                    .find(|node| node.attribute("id") == Some(actual_ids[1].as_str()))
+                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
                     .unwrap();
                 let face = xml
                     .descendants()
-                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                    .find(|node| node.attribute("id") == Some(actual_ids[3].as_str()))
                     .unwrap();
                 assert_eq!(inner.parent(), Some(outer));
                 assert_eq!(face.parent(), Some(inner));
                 assert_eq!(inner.attribute("transform"), Some("scale(2)"));
                 assert_eq!(face.attribute("transform"), None);
-                if name == "grouped" {
-                    assert_eq!(outer.attribute("transform"), Some("translate(1 2)"));
-                }
+                assert_eq!(outer.attribute("transform"), Some("translate(1 2)"));
+                let asset_structure = |xml: &roxmltree::Document<'_>| {
+                    xml.descendants()
+                        .find(|node| {
+                            node.has_tag_name("svg") && node.attribute("width") == Some("14")
+                        })
+                        .unwrap()
+                        .descendants()
+                        .filter(|node| node.is_element())
+                        .map(|node| {
+                            (
+                                node.tag_name().name().to_owned(),
+                                node.attribute("id").map(str::to_owned),
+                                node.attribute("transform").map(str::to_owned),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    asset_structure(&xml),
+                    asset_structure(&source),
+                    "alias wrappers and source element scopes"
+                );
                 alias_ids.push(actual_ids.clone());
+
+                if name == "grouped" && diagram_id == "treeView" {
+                    let mut edited = document.clone();
+                    let crate::drawing_list::SvgStructureBody::TreeView(body) =
+                        &mut edited.svg.body
+                    else {
+                        panic!("TreeView sidecar")
+                    };
+                    let (&empty_start, empty) = body
+                        .assets
+                        .scopes
+                        .iter_mut()
+                        .find(|(_, scope)| scope.dom_id.as_deref() == Some(actual_ids[1].as_str()))
+                        .unwrap();
+                    let crate::drawing_list::AssetScopeKind::EmptyPrimitive(geometry) =
+                        &mut empty.kind
+                    else {
+                        panic!("empty source primitive")
+                    };
+                    geometry
+                        .attributes
+                        .iter_mut()
+                        .find(|(key, _)| *key == "width")
+                        .unwrap()
+                        .1 = "4".to_owned();
+                    let svg = render(&edited);
+                    assert!(
+                        !roxmltree::Document::parse(&svg)
+                            .unwrap()
+                            .descendants()
+                            .any(|node| node.attribute("id") == Some(actual_ids[1].as_str())),
+                        "a hint cannot introduce painted geometry"
+                    );
+
+                    let mut edited = document.clone();
+                    let paint = edited.public.commands.iter().find(|command| matches!(command, DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".asset.shape.0"))).unwrap().clone();
+                    edited.public.commands.insert(empty_start + 1, paint);
+                    if let crate::drawing_list::SvgStructureBody::TreeView(body) =
+                        &mut edited.svg.body
+                    {
+                        body.assets.scopes.get_mut(&empty_start).unwrap().end += 1;
+                    }
+                    let svg = render(&edited);
+                    let xml = roxmltree::Document::parse(&svg).unwrap();
+                    assert_eq!(
+                        xml.descendants()
+                            .filter(|node| node
+                                .attribute("data-merman-resource")
+                                .is_some_and(|id| id.ends_with(".asset.shape.0")))
+                            .count(),
+                        2,
+                        "empty-element projection must not consume a new draw command"
+                    );
+                }
 
                 // A changed public matrix must override stale source transform spelling.
                 let group_start = match &document.svg.body {
                     crate::drawing_list::SvgStructureBody::TreeView(body) => {
-                        *body.assets.groups.keys().next().unwrap()
+                        *body
+                            .assets
+                            .scopes
+                            .iter()
+                            .find(|(_, scope)| {
+                                scope.dom_id.as_deref() == Some(actual_ids[0].as_str())
+                            })
+                            .unwrap()
+                            .0
                     }
                     _ => panic!("TreeView sidecar"),
                 };
@@ -2549,7 +2631,7 @@ mod tests {
                 assert_ne!(outer.attribute("transform"), Some("translate(1 2)"));
                 let inner = xml
                     .descendants()
-                    .find(|node| node.attribute("id") == Some(actual_ids[1].as_str()))
+                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
                     .unwrap();
                 assert_eq!(inner.attribute("transform"), Some("matrix(2 0 0 2 8 9)"));
 
@@ -2566,7 +2648,7 @@ mod tests {
                 let xml = roxmltree::Document::parse(&svg).unwrap();
                 let face = xml
                     .descendants()
-                    .find(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                    .find(|node| node.attribute("id") == Some(actual_ids[3].as_str()))
                     .unwrap();
                 assert_ne!(face.attribute("d"), Some("M0 0H2V3Z"));
 
@@ -2574,7 +2656,7 @@ mod tests {
                 if let crate::drawing_list::SvgStructureBody::TreeView(body) =
                     &mut document.svg.body
                 {
-                    body.assets.groups.get_mut(&group_start).unwrap().end += 1;
+                    body.assets.scopes.get_mut(&group_start).unwrap().end += 1;
                 }
                 let svg = render(&document);
                 let xml = roxmltree::Document::parse(&svg).unwrap();
@@ -2584,7 +2666,7 @@ mod tests {
                 );
                 assert!(
                     xml.descendants()
-                        .any(|node| node.attribute("id") == Some(actual_ids[2].as_str()))
+                        .any(|node| node.attribute("id") == Some(actual_ids[3].as_str()))
                 );
             }
             assert_eq!(
@@ -2819,19 +2901,25 @@ mod tests {
                             .is_some_and(|id| id.ends_with(".asset.shape.0"))
                     })
                     .unwrap();
-                match path.attribute("transform") {
-                    None => [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-                    Some(value) => match svgtypes::TransformListParser::from(value)
-                        .next()
-                        .unwrap()
-                        .unwrap()
-                    {
-                        svgtypes::TransformListToken::Matrix { a, b, c, d, e, f } => {
-                            [a, b, c, d, e, f]
-                        }
-                        other => panic!("unexpected transform {other:?}"),
-                    },
+                let mut matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+                for node in path
+                    .ancestors()
+                    .take_while(|node| !node.has_tag_name("svg"))
+                {
+                    if let Some(value) = node.attribute("transform") {
+                        let t = value.parse::<svgtypes::Transform>().unwrap();
+                        let [a, b, c, d, e, f] = matrix;
+                        matrix = [
+                            t.a * a + t.c * b,
+                            t.b * a + t.d * b,
+                            t.a * c + t.c * d,
+                            t.b * c + t.d * d,
+                            t.a * e + t.c * f + t.e,
+                            t.b * e + t.d * f + t.f,
+                        ];
+                    }
                 }
+                matrix
             };
             let original = asset_matrix(&svg);
             let mut edited = document.clone();

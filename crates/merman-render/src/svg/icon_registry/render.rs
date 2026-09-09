@@ -316,20 +316,7 @@ fn transformed_icon(icon: &ResolvedIcon) -> crate::Result<TransformedIcon> {
     let plan = super::IconGeometryPlan::new(icon)?;
     let transformations = plan
         .transforms()
-        .map(|transform| match transform {
-            super::IconTransform::Translate { x, y } => {
-                format!("translate({} {})", js_number(x), js_number(y))
-            }
-            super::IconTransform::Scale { x, y } => {
-                format!("scale({} {})", js_number(x), js_number(y))
-            }
-            super::IconTransform::Rotate { turn, x, y } => format!(
-                "rotate({} {} {})",
-                turn.degrees(),
-                js_number(x),
-                js_number(y)
-            ),
-        })
+        .map(|transform| transform.to_string())
         .collect::<Vec<_>>();
     let wrapper = (!transformations.is_empty()).then(|| {
         (

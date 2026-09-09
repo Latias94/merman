@@ -13,7 +13,7 @@ mod parity;
 mod pipeline;
 pub(crate) mod scanner;
 
-pub(crate) use icon_registry::IconIdScope;
+pub(crate) use icon_registry::{IconGeometryPlan, IconIdScope};
 #[cfg(feature = "layout-cytoscape")]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::render_builtin_family_artifact;

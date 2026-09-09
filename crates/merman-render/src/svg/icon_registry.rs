@@ -14,7 +14,7 @@ pub use limits::{
 };
 pub use pack::IconPack;
 
-pub(crate) use geometry::{IconGeometryPlan, IconTransform};
+pub(crate) use geometry::IconGeometryPlan;
 use ingest::{BuildUsage, ParsedPack, ResolvedIcon};
 use limits::IconRegistryBuildLimits;
 use merman_core::OperationPhase;

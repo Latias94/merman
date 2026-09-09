@@ -2,6 +2,7 @@
 
 use super::ingest::ResolvedIcon;
 use merman_display_list::Transform;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum IconQuarterTurn {
@@ -35,6 +36,23 @@ pub(crate) enum IconTransform {
         x: f64,
         y: f64,
     },
+}
+
+impl fmt::Display for IconTransform {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (x, y) = match *self {
+            Self::Translate { x, y } | Self::Scale { x, y } | Self::Rotate { x, y, .. } => (x, y),
+        };
+        let mut x_buffer = ryu_js::Buffer::new();
+        let mut y_buffer = ryu_js::Buffer::new();
+        let x = x_buffer.format_finite(if x == 0.0 { 0.0 } else { x });
+        let y = y_buffer.format_finite(if y == 0.0 { 0.0 } else { y });
+        match *self {
+            Self::Translate { .. } => write!(formatter, "translate({x} {y})"),
+            Self::Scale { .. } => write!(formatter, "scale({x} {y})"),
+            Self::Rotate { turn, .. } => write!(formatter, "rotate({} {x} {y})", turn.degrees()),
+        }
+    }
 }
 
 impl IconTransform {
@@ -156,5 +174,52 @@ impl IconGeometryPlan {
             height,
             transforms,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transform_display_preserves_svg_numbers_and_quarter_turns() {
+        for (transform, expected) in [
+            (
+                IconTransform::Translate { x: -0.0, y: 0.0 },
+                "translate(0 0)",
+            ),
+            (
+                IconTransform::Translate { x: 1e21, y: 1e-7 },
+                "translate(1e+21 1e-7)",
+            ),
+            (IconTransform::Scale { x: -1.0, y: 0.5 }, "scale(-1 0.5)"),
+            (IconTransform::Scale { x: -0.0, y: 2.0 }, "scale(0 2)"),
+            (
+                IconTransform::Rotate {
+                    turn: IconQuarterTurn::Clockwise,
+                    x: -0.0,
+                    y: 2.5,
+                },
+                "rotate(90 0 2.5)",
+            ),
+            (
+                IconTransform::Rotate {
+                    turn: IconQuarterTurn::Half,
+                    x: 1.5,
+                    y: -0.0,
+                },
+                "rotate(180 1.5 0)",
+            ),
+            (
+                IconTransform::Rotate {
+                    turn: IconQuarterTurn::CounterClockwise,
+                    x: 1.0,
+                    y: 2.0,
+                },
+                "rotate(-90 1 2)",
+            ),
+        ] {
+            assert_eq!(transform.to_string(), expected);
+        }
     }
 }

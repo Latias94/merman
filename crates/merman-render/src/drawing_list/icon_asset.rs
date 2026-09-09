@@ -21,22 +21,107 @@ use std::collections::BTreeMap;
 pub(crate) struct AssetStructure {
     pub(crate) primitives: BTreeMap<String, PrimitiveGeometry>,
     pub(crate) dom_ids: BTreeMap<String, String>,
-    pub(crate) groups: BTreeMap<usize, AssetGroup>,
+    pub(crate) scopes: BTreeMap<usize, AssetScope>,
 }
 
 impl AssetStructure {
     pub(crate) fn extend(&mut self, other: Self) {
         self.primitives.extend(other.primitives);
         self.dom_ids.extend(other.dom_ids);
-        self.groups.extend(other.groups);
+        self.scopes.extend(other.scopes);
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AssetGroup {
+pub(crate) struct AssetScope {
     pub(crate) end: usize,
-    pub(crate) transform: Option<String>,
+    pub(crate) transform: Option<AssetTransform>,
     pub(crate) dom_id: Option<String>,
+    pub(crate) kind: AssetScopeKind,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AssetScopeKind {
+    Group,
+    EmptyPrimitive(PrimitiveGeometry),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AssetTransform {
+    Source(String),
+    Alias(crate::svg::IconGeometryPlan),
+}
+
+impl AssetTransform {
+    pub(crate) fn matching_prefix(
+        &self,
+        commands: &[DrawingCommand],
+        session: &RenderSession,
+    ) -> Result<Option<usize>> {
+        match self {
+            Self::Source(source) => matching_transform_prefix(source, commands, session),
+            Self::Alias(plan) => {
+                let mut count = 0;
+                for expected in plan.transforms() {
+                    session.checkpoint(OperationPhase::Emit)?;
+                    if !matches!(commands.get(count), Some(DrawingCommand::ConcatTransform { transform }) if *transform == expected.matrix())
+                    {
+                        return Ok(None);
+                    }
+                    count += 1;
+                }
+                Ok(Some(count))
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for AssetTransform {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Source(source) => output.write_str(source),
+            Self::Alias(plan) => {
+                for (index, transform) in plan.transforms().enumerate() {
+                    if index != 0 {
+                        output.write_str(" ")?;
+                    }
+                    write!(output, "{transform}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl AssetScope {
+    fn capture(
+        node: Node<'_, '_>,
+        start: usize,
+        dom_id: Option<String>,
+        kind: AssetScopeKind,
+        session: &RenderSession,
+    ) -> Result<Self> {
+        let transform = node
+            .attribute("transform")
+            .map(|source| -> Result<_> {
+                session
+                    .work_meter()
+                    .charge_at(source.len(), OperationPhase::Emit)?;
+                let mut owned = String::new();
+                owned
+                    .try_reserve_exact(source.len())
+                    .map_err(|_| allocation("icon transform spelling"))?;
+                owned.push_str(source);
+                Ok(AssetTransform::Source(owned))
+            })
+            .transpose()?;
+        Ok(Self {
+            end: start,
+            transform,
+            dom_id,
+            kind,
+        })
+    }
 }
 
 pub(crate) struct AssetIdentity<'a> {
@@ -45,7 +130,7 @@ pub(crate) struct AssetIdentity<'a> {
 }
 
 /// Source transform spelling is usable only for the exact current command prefix.
-pub(crate) fn matching_transform_prefix(
+fn matching_transform_prefix(
     source: &str,
     commands: &[DrawingCommand],
     session: &RenderSession,
@@ -275,7 +360,7 @@ pub(crate) fn lower_icon_asset(
                     return Err(context.unsupported(format!("nested content in <{tag}>")));
                 }
                 let next = context.style(node, state)?;
-                let dom_id = if node.attribute("id").is_some() {
+                let mut dom_id = if node.attribute("id").is_some() {
                     let id = identity
                         .svg_scope
                         .map(|scope| scope.scoped_id(id_index))
@@ -293,27 +378,15 @@ pub(crate) fn lower_icon_asset(
                 stack.push((state, start));
                 state = next;
                 if tag == "g" {
-                    let transform = node
-                        .attribute("transform")
-                        .map(|source| -> Result<String> {
-                            session
-                                .work_meter()
-                                .charge_at(source.len(), OperationPhase::Emit)?;
-                            let mut owned = String::new();
-                            owned
-                                .try_reserve_exact(source.len())
-                                .map_err(|_| allocation("icon transform spelling"))?;
-                            owned.push_str(source);
-                            Ok(owned)
-                        })
-                        .transpose()?;
-                    structure.groups.insert(
+                    structure.scopes.insert(
                         start,
-                        AssetGroup {
-                            end: start,
-                            transform,
-                            dom_id: dom_id.clone(),
-                        },
+                        AssetScope::capture(
+                            node,
+                            start,
+                            dom_id.take(),
+                            AssetScopeKind::Group,
+                            session,
+                        )?,
                     );
                 }
                 if let Some(value) = node.attribute("transform") {
@@ -340,6 +413,18 @@ pub(crate) fn lower_icon_asset(
                         structure
                             .primitives
                             .insert(id, PrimitiveGeometry::capture(node, session)?);
+                    } else {
+                        let empty = PrimitiveGeometry::capture(node, session)?;
+                        structure.scopes.insert(
+                            start,
+                            AssetScope::capture(
+                                node,
+                                start,
+                                dom_id.take(),
+                                AssetScopeKind::EmptyPrimitive(empty),
+                                session,
+                            )?,
+                        );
                     }
                     index += 1;
                 }
@@ -348,7 +433,7 @@ pub(crate) fn lower_icon_asset(
                 let (previous, start) = stack
                     .pop()
                     .ok_or_else(|| context.unsupported("unbalanced XML scopes"))?;
-                if let Some(group) = structure.groups.get_mut(&start) {
+                if let Some(group) = structure.scopes.get_mut(&start) {
                     group.end = builder.command_count();
                 }
                 builder.push_control(DrawingCommand::Restore)?;

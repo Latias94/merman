@@ -423,6 +423,13 @@ impl<'a> TreeViewBuilder<'a> {
             };
             self.output
                 .push_control(DrawingCommand::ConcatTransform { transform })?;
+            let alias_start = if geometry.transforms().next().is_some() {
+                let start = self.output.command_count();
+                self.output.push_control(DrawingCommand::Save)?;
+                Some(start)
+            } else {
+                None
+            };
             for transform in geometry.transforms() {
                 self.output.push_control(DrawingCommand::ConcatTransform {
                     transform: transform.matrix(),
@@ -455,6 +462,18 @@ impl<'a> TreeViewBuilder<'a> {
                 self.session,
                 RenderFamilyKind::TreeView,
             )?);
+            if let Some(start) = alias_start {
+                self.assets.scopes.insert(
+                    start,
+                    super::icon_asset::AssetScope {
+                        end: self.output.command_count(),
+                        transform: Some(super::icon_asset::AssetTransform::Alias(geometry)),
+                        dom_id: None,
+                        kind: super::icon_asset::AssetScopeKind::Group,
+                    },
+                );
+                self.output.push_control(DrawingCommand::Restore)?;
+            }
         } else {
             let scale = TREE_VIEW_ICON_SIZE / 80.0;
             self.output.push_control(DrawingCommand::ConcatTransform {

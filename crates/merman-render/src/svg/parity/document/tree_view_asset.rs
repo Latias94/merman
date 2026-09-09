@@ -3,13 +3,13 @@
 use super::*;
 
 /// Match scopes once, rather than rescanning a subtree for each source group.
-pub(super) fn group_projections<'a>(
+pub(super) fn scope_projections<'a>(
     document: &DrawingListDocument,
     body: &'a crate::drawing_list::TreeViewSvgBody,
     session: &RenderSession,
-) -> Result<BTreeMap<usize, &'a crate::drawing_list::AssetGroup>> {
+) -> Result<BTreeMap<usize, &'a crate::drawing_list::AssetScope>> {
     let mut result = BTreeMap::new();
-    if body.assets.groups.is_empty() {
+    if body.assets.scopes.is_empty() {
         return Ok(result);
     }
     let mut saves = Vec::new();
@@ -26,7 +26,7 @@ pub(super) fn group_projections<'a>(
             }
             DrawingCommand::Restore => {
                 if let Some(start) = saves.pop()
-                    && let Some(group) = body.assets.groups.get(&start)
+                    && let Some(group) = body.assets.scopes.get(&start)
                     && group.end == index
                 {
                     result.insert(start, group);
@@ -149,38 +149,79 @@ fn compensate_view_box(viewport: Rect, view_box: Rect, public: Transform) -> Opt
 }
 
 impl DocumentSvgEncoder<'_> {
-    pub(super) fn emit_tree_view_asset_group(&mut self, index: usize) -> Result<Option<usize>> {
-        let Some(&group) = self.tree_view_asset_groups.get(&index) else {
+    pub(super) fn emit_tree_view_asset_scope(&mut self, index: usize) -> Result<Option<usize>> {
+        let Some(&group) = self.tree_view_asset_scopes.get(&index) else {
             return Ok(None);
         };
         let commands = &self.document.commands[index + 1..group.end];
         let prefix = group
             .transform
-            .as_deref()
-            .map(|source| {
-                crate::drawing_list::matching_transform_prefix(source, commands, self.session)
-            })
+            .as_ref()
+            .map(|source| source.matching_prefix(commands, self.session))
             .transpose()?
             .flatten();
         let count = prefix.unwrap_or(0);
         let parent = self.state.transform;
+        if let crate::drawing_list::AssetScopeKind::EmptyPrimitive(geometry) = &group.kind {
+            // An inert source element never conceals a newly added public draw command.
+            for command in commands {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                if !matches!(command, DrawingCommand::ConcatTransform { .. }) {
+                    return Ok(None);
+                }
+            }
+            if !geometry.matches_path(&[], self.session)? {
+                return Ok(None);
+            }
+            let saved = self.state;
+            for command in commands {
+                self.session.checkpoint(OperationPhase::Emit)?;
+                self.emit_command(command)?;
+            }
+            self.output.push('<')?;
+            self.output.push_str(geometry.tag)?;
+            for (key, value) in &geometry.attributes {
+                self.output.push(' ')?;
+                self.output.push_str(key)?;
+                self.output.push_str("=\"")?;
+                output::escape_attr(&mut self.output, value)?;
+                self.output.push('"')?;
+            }
+            self.write_asset_scope_attrs(group, parent, prefix == Some(commands.len()))?;
+            // There is no public paint for a zero-extent/empty primitive.
+            self.output.push_str(" fill=\"none\" stroke=\"none\"/>")?;
+            self.state = saved;
+            return Ok(Some(group.end - index + 1));
+        }
         self.emit_command(&DrawingCommand::Save)?;
         for command in &commands[..count] {
             self.emit_command(command)?;
         }
         self.output.push_str("<g")?;
+        self.write_asset_scope_attrs(group, parent, prefix.is_some())?;
+        self.output.push('>')?;
+        // Only the current public matrix moves onto the group. Paint/opacity stay on leaves.
+        self.state.transform = Transform::IDENTITY;
+        self.groups.push(GroupKind::Asset);
+        Ok(Some(count + 1))
+    }
+
+    fn write_asset_scope_attrs(
+        &mut self,
+        group: &crate::drawing_list::AssetScope,
+        parent: Transform,
+        source_matches: bool,
+    ) -> Result<()> {
         if let Some(id) = &group.dom_id {
             self.output.push_str(" id=\"")?;
             output::escape_attr(&mut self.output, id)?;
             self.output.push('"')?;
         }
-        if parent == Transform::IDENTITY && prefix.is_some() {
-            self.output.push_str(" transform=\"")?;
-            output::escape_attr(
-                &mut self.output,
-                group.transform.as_deref().unwrap_or_default(),
-            )?;
-            self.output.push('"')?;
+        if parent == Transform::IDENTITY
+            && source_matches
+            && let Some(transform) = &group.transform
+        {
+            write!(self.output, " transform=\"{}\"", escaped_attr(transform))?;
         } else if self.state.transform != Transform::IDENTITY {
             write!(
                 self.output,
@@ -188,11 +229,7 @@ impl DocumentSvgEncoder<'_> {
                 matrix_attr(self.state.transform)
             )?;
         }
-        self.output.push('>')?;
-        // Only the current public matrix moves onto the group. Paint/opacity stay on leaves.
-        self.state.transform = Transform::IDENTITY;
-        self.groups.push(GroupKind::Asset);
-        Ok(Some(count + 1))
+        Ok(())
     }
 
     pub(super) fn emit_tree_view_asset_primitive(
