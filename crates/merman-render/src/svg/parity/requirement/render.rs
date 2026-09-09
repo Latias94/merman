@@ -569,7 +569,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
 
     let mut paint_theme_receipt = paint_theme.begin_terminal_receipt();
-    paint_theme_receipt.record_typography(css_emission.font_family(), css_emission.font_size());
+    if let Some(receipt) = paint_theme_receipt.as_mut() {
+        receipt.record_typography(css_emission.font_family(), css_emission.font_size());
+    }
 
     out.push_str("<g>");
 
@@ -754,8 +756,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
         out.push_str("</g></g>");
-        if prepared_label.has_label {
-            paint_theme_receipt.record_edge_text(label_text);
+        if prepared_label.has_label
+            && let Some(receipt) = paint_theme_receipt.as_mut()
+        {
+            receipt.record_edge_text(label_text);
         }
     }
     out.push_str("</g>");
@@ -826,14 +830,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
             node_classes = el.classes.iter().map(String::as_str).collect();
             css_styles = &el.css_styles;
         }
-        let Some(paint_theme_index) = paint_theme.index_for_node_id(&n.id) else {
-            return Err(Error::InvalidModel {
-                message: format!(
-                    "Requirement paint theme plan is missing semantic node {}",
-                    n.id
-                ),
-            });
-        };
+        let paint_theme_index = paint_theme_receipt
+            .as_ref()
+            .map(|_| {
+                paint_theme
+                    .index_for_node_id(&n.id)
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!(
+                            "Requirement paint theme plan is missing semantic node {}",
+                            n.id
+                        ),
+                    })
+            })
+            .transpose()?;
 
         if !node_classes.contains(&"default") {
             node_classes.insert(0, "default");
@@ -877,8 +886,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             stroke: stroke_override,
             stroke_width: stroke_width_override,
         } = parse_node_style_overrides(css_styles, render_settings.html_labels);
-        let typed_fill = paint_theme.typed_fill(paint_theme_index, fill_override.is_some());
-        let typed_stroke = paint_theme.typed_stroke(paint_theme_index, stroke_override.is_some());
+        let typed_fill = paint_theme_index
+            .and_then(|index| paint_theme.typed_fill(index, fill_override.is_some()));
+        let typed_stroke = paint_theme_index
+            .and_then(|index| paint_theme.typed_stroke(index, stroke_override.is_some()));
         let fill_color = fill_override
             .as_deref()
             .or_else(|| typed_fill.map(|(_, fill)| fill))
@@ -1087,33 +1098,37 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 message: "Requirement divider terminal emission failed".to_string(),
             })?;
             out.checkpoint()?;
-            divider_emissions.push(
-                crate::requirement::RequirementDividerEmission::from_successful_write(
-                    paint_theme_index,
-                    stroke_color,
-                    stroke_style_declaration.as_deref().unwrap_or_default(),
-                ),
-            );
+            if let Some(index) = paint_theme_index {
+                divider_emissions.push(
+                    crate::requirement::RequirementDividerEmission::from_successful_write(
+                        index,
+                        stroke_color,
+                        stroke_style_declaration.as_deref().unwrap_or_default(),
+                    ),
+                );
+            }
         }
 
-        paint_theme_receipt.record_checkpointed_node(
-            paint_theme_index,
-            rendered_node
-                .lines
-                .iter()
-                .any(|line| !line.display_text.trim().is_empty()),
-            &rendered_node.typography,
-            &label_styles,
-            fill_override.is_some(),
-            typed_fill,
-            fill_color,
-            stroke_override.is_some(),
-            typed_stroke,
-            stroke_color,
-            stroke_style_declaration.as_deref().unwrap_or_default(),
-            divider_expected,
-            &divider_emissions,
-        );
+        if let Some(receipt) = paint_theme_receipt.as_mut() {
+            receipt.record_checkpointed_node(
+                paint_theme_index.expect("themed node index validated before emission"),
+                rendered_node
+                    .lines
+                    .iter()
+                    .any(|line| !line.display_text.trim().is_empty()),
+                &rendered_node.typography,
+                &label_styles,
+                fill_override.is_some(),
+                typed_fill,
+                fill_color,
+                stroke_override.is_some(),
+                typed_stroke,
+                stroke_color,
+                stroke_style_declaration.as_deref().unwrap_or_default(),
+                divider_expected,
+                &divider_emissions,
+            );
+        }
 
         out.push_str("</g>");
     }
@@ -1129,7 +1144,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             y = fmt(title_y),
             txt = escape_xml(title),
         );
-        paint_theme_receipt.record_title_text("requirementDiagramTitleText", title);
+        if let Some(receipt) = paint_theme_receipt.as_mut() {
+            receipt.record_title_text("requirementDiagramTitleText", title);
+        }
     }
 
     push_requirement_shadow_defs(&mut out, diagram_id.semantic_str(), effective_config);

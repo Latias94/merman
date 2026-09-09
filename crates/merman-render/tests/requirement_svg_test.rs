@@ -193,7 +193,14 @@ fn try_render_requirement_with_theme_requirement_and_environment(
 }
 
 fn render_requirement_without_theme(source: &str) -> family::RenderedFamilySvg {
-    let parsed = Engine::new()
+    render_requirement_without_theme_and_engine(source, Engine::new())
+}
+
+fn render_requirement_without_theme_and_engine(
+    source: &str,
+    engine: Engine,
+) -> family::RenderedFamilySvg {
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Requirement")
         .expect("detect Requirement");
@@ -307,6 +314,41 @@ fn requirement_svg_label_source() -> &'static str {
   req1 - traces -> req1
   style req1 color:#123456,fill:#abcdef
 "#
+}
+
+#[test]
+fn requirement_optional_evidence_preserves_exact_unmodified_svg() {
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile empty theme");
+    for source in [
+        "requirementDiagram\n",
+        "---\ntitle: 标题 & title\n---\nrequirementDiagram\n",
+        requirement_svg_label_source(),
+    ] {
+        for html_labels in [true, false] {
+            let config = MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": html_labels,
+                "fontFamily": "Arial",
+                "themeVariables": {"fontSize": "24px", "nodeBorder": "#123456"}
+            }));
+            let unthemed = render_requirement_without_theme_and_engine(
+                source,
+                Engine::new().with_site_config(config.clone()),
+            );
+            let with_evidence = render_requirement_with_theme_and_engine(
+                source,
+                &empty_theme,
+                Engine::new().with_site_config(config),
+            );
+            roxmltree::Document::parse(unthemed.svg()).expect("valid unthemed SVG");
+            assert_eq!(
+                unthemed.svg(),
+                with_evidence.svg(),
+                "htmlLabels={html_labels}, source={source}"
+            );
+        }
+    }
 }
 
 #[test]

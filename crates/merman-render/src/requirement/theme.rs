@@ -64,7 +64,7 @@ impl RequirementDividerEmission {
 #[derive(Debug)]
 pub(crate) struct RequirementPaintThemePlan {
     node_indices: BTreeMap<String, usize>,
-    expectations: Arc<[NodeExpectation]>,
+    expectations: Option<Arc<[NodeExpectation]>>,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_css: Box<str>,
     font_size_px: f64,
@@ -73,7 +73,7 @@ pub(crate) struct RequirementPaintThemePlan {
     title_present: bool,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeMap<ResolvedStyleProperty, ThemeCapability>>,
-    terminal_receipt: OnceLock<RequirementPaintThemeReceipt>,
+    terminal_receipt: OnceLock<Option<RequirementPaintThemeReceipt>>,
 }
 
 impl RequirementPaintThemePlan {
@@ -84,29 +84,14 @@ impl RequirementPaintThemePlan {
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let mut node_indices = BTreeMap::new();
-        for node_id in model
-            .requirements
-            .iter()
-            .map(|node| node.name.as_str())
-            .chain(model.elements.iter().map(|node| node.name.as_str()))
-            .filter(|node_id| *node_id != "__proto__")
-        {
-            let next_index = node_indices.len();
-            node_indices
-                .entry(node_id.to_string())
-                .or_insert(next_index);
-        }
-        let node_count = node_indices.len();
-        let expectations = vec![NodeExpectation::default(); node_count];
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let configured_font_size_css = configured_font_size_css(effective_config);
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let Some(theme) = theme else {
             return Ok(Self {
-                node_indices,
-                expectations: expectations.into(),
+                node_indices: BTreeMap::new(),
+                expectations: None,
                 inherited_font_stack,
                 font_size_css: configured_font_size_css,
                 font_size_px: crate::config::config_theme_or_root_font_size_px(
@@ -122,6 +107,23 @@ impl RequirementPaintThemePlan {
                 terminal_receipt: OnceLock::new(),
             });
         };
+
+        // Node identities and checkpoints belong to theme evidence, not ordinary rendering.
+        let mut node_indices = BTreeMap::new();
+        for node_id in model
+            .requirements
+            .iter()
+            .map(|node| node.name.as_str())
+            .chain(model.elements.iter().map(|node| node.name.as_str()))
+            .filter(|node_id| *node_id != "__proto__")
+        {
+            let next_index = node_indices.len();
+            node_indices
+                .entry(node_id.to_string())
+                .or_insert(next_index);
+        }
+        let node_count = node_indices.len();
+        let expectations = vec![NodeExpectation::default(); node_count];
 
         let typed_font_size_requested = theme.family_mechanism_routes().iter().any(|route| {
             route.mechanism()
@@ -279,7 +281,7 @@ impl RequirementPaintThemePlan {
 
         Ok(Self {
             node_indices,
-            expectations: expectations.into(),
+            expectations: Some(expectations.into()),
             inherited_font_stack,
             font_size_css,
             font_size_px,
@@ -302,7 +304,7 @@ impl RequirementPaintThemePlan {
         source_owns_fill: bool,
     ) -> Option<(usize, &str)> {
         (!source_owns_fill)
-            .then(|| self.expectations.get(node_index)?.fill.as_ref())
+            .then(|| self.expectations.as_ref()?.get(node_index)?.fill.as_ref())
             .flatten()
             .map(|expected| (expected.rule_index(), expected.css()))
     }
@@ -313,7 +315,7 @@ impl RequirementPaintThemePlan {
         source_owns_stroke: bool,
     ) -> Option<(usize, &str)> {
         (!source_owns_stroke)
-            .then(|| self.expectations.get(node_index)?.stroke.as_ref())
+            .then(|| self.expectations.as_ref()?.get(node_index)?.stroke.as_ref())
             .flatten()
             .map(|expected| (expected.rule_index(), expected.css()))
     }
@@ -344,28 +346,32 @@ impl RequirementPaintThemePlan {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> RequirementPaintThemeReceipt {
-        RequirementPaintThemeReceipt::with_typography(
-            Arc::clone(&self.expectations),
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<RequirementPaintThemeReceipt> {
+        Some(RequirementPaintThemeReceipt::with_typography(
+            Arc::clone(self.expectations.as_ref()?),
             self.title_present,
             self.inherited_font_stack.typed_font_stack_requested(),
             self.typed_font_size_requested,
             self.font_family_css(),
             self.font_size_css(),
-        )
+        ))
     }
 
-    pub(crate) fn record_terminal(&self, receipt: RequirementPaintThemeReceipt) -> bool {
-        receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
+    pub(crate) fn record_terminal(&self, receipt: Option<RequirementPaintThemeReceipt>) -> bool {
+        let complete = match receipt.as_ref() {
+            Some(receipt) => self.expectations.is_some() && receipt.proves_complete(),
+            None => self.expectations.is_none(),
+        };
+        complete && self.terminal_receipt.set(receipt).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
-        let Some(receipt) = self.terminal_receipt.get() else {
+        let Some(Some(receipt)) = self.terminal_receipt.get() else {
             self.inherited_font_stack
                 .mark_unsupported_typography_evidence(
                     &mut evidence,
-                    self.title_present || !self.expectations.is_empty(),
+                    self.title_present || !self.node_indices.is_empty(),
                 );
             for (property, requested, active) in [
                 (
@@ -807,6 +813,116 @@ fn important_style_value<'a>(style: &'a str, property: &str) -> Option<&'a str> 
 mod tests {
     use super::*;
     use crate::diagram_theme::ThemeCapability;
+
+    #[test]
+    fn unthemed_plan_keeps_config_without_per_node_evidence() {
+        use merman_core::diagrams::requirement::RequirementRenderElement;
+
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "fontFamily": "Config Sans, Arial",
+            "themeVariables": {"fontSize": "24px"}
+        }));
+        let work_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        for node_count in [0, 1, 4096] {
+            let model = RequirementDiagramRenderModel {
+                acc_title: None,
+                acc_descr: None,
+                direction: "TB".to_owned(),
+                requirements: Vec::new(),
+                elements: (0..node_count)
+                    .map(|index| RequirementRenderElement {
+                        name: format!("element_{index}"),
+                        element_type: "component".to_owned(),
+                        doc_ref: String::new(),
+                        css_styles: Vec::new(),
+                        classes: Vec::new(),
+                    })
+                    .collect(),
+                relationships: Vec::new(),
+                classes: BTreeMap::new(),
+            };
+            let plan = RequirementPaintThemePlan::resolve_with_title(
+                None,
+                &config,
+                &model,
+                Some("Visible title"),
+                &work_meter,
+            )
+            .unwrap();
+            assert_eq!(plan.font_family_css(), "Config Sans,Arial");
+            assert_eq!(plan.font_size_css(), "24px");
+            assert_eq!(plan.font_size_px, 24.0);
+            assert!(plan.font_family_override().is_none());
+            assert!(plan.font_size_override().is_none());
+            assert!(plan.node_indices.is_empty(), "node_count={node_count}");
+            assert!(plan.expectations.is_none(), "node_count={node_count}");
+            assert!(plan.pending.is_empty());
+            assert!(plan.begin_terminal_receipt().is_none());
+            assert!(
+                !plan.record_terminal(Some(RequirementPaintThemeReceipt::with_typography(
+                    Vec::new().into(),
+                    false,
+                    false,
+                    false,
+                    "",
+                    ""
+                )))
+            );
+            assert!(plan.record_terminal(None));
+            assert!(matches!(plan.terminal_receipt.get(), Some(None)));
+            assert!(!plan.record_terminal(None));
+        }
+    }
+
+    #[test]
+    fn themed_empty_plan_requires_one_complete_receipt() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
+        };
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::REQUIREMENT,
+                    ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::REQUIREMENT);
+        let model = serde_json::from_value(serde_json::json!({})).unwrap();
+        let plan = RequirementPaintThemePlan::resolve_with_title(
+            Some(&resolved),
+            &MermaidConfig::empty_object(),
+            &model,
+            None,
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .unwrap();
+
+        assert!(plan.node_indices.is_empty());
+        assert!(
+            !plan.record_terminal(None),
+            "empty is not the same as unthemed"
+        );
+        assert!(
+            !plan.record_terminal(plan.begin_terminal_receipt()),
+            "missing typography emission"
+        );
+        let mut receipt = plan
+            .begin_terminal_receipt()
+            .expect("theme requires evidence");
+        receipt.record_typography(plan.font_family_css(), plan.font_size_css());
+        let duplicate = receipt.clone();
+        assert!(plan.record_terminal(Some(receipt)));
+        assert!(!plan.record_terminal(Some(duplicate)));
+        assert!(plan.finish_evidence().not_applicable_mechanisms().contains(
+            &FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize)
+        ));
+    }
 
     fn stroke_receipt() -> RequirementPaintThemeReceipt {
         RequirementPaintThemeReceipt::with_typography(
