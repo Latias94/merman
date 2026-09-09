@@ -11,7 +11,9 @@ use std::fmt::Write as _;
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
+mod task_bar;
 mod theme;
+use task_bar::GanttTaskBarState;
 pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt};
 
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
@@ -1075,9 +1077,6 @@ pub(crate) fn layout_gantt_diagram_typed(
         .enumerate()
         .collect::<Vec<_>>();
     indexed_tasks.sort_by_key(|(_, task)| task.start_ms);
-    let (semantic_task_occurrences, sorted_tasks): (Vec<_>, Vec<_>) =
-        indexed_tasks.into_iter().unzip();
-    m.tasks = sorted_tasks;
 
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
@@ -1145,7 +1144,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     // `startTime`). This means the row insertion order is *not* necessarily ascending by `order`
     // (e.g. forward references can cause `order=0` to have the latest start date).
     let mut row_orders: Vec<i64> = Vec::new();
-    for t in &m.tasks {
+    for (_, t) in &indexed_tasks {
         if t.vert {
             continue;
         }
@@ -1156,11 +1155,10 @@ pub(crate) fn layout_gantt_diagram_typed(
 
     let mut rows: Vec<GanttRowLayout> = Vec::new();
     for order in &row_orders {
-        let ttype = m
-            .tasks
+        let ttype = indexed_tasks
             .iter()
-            .find(|t| t.order == *order)
-            .map(|t| t.task_type.clone())
+            .find(|(_, t)| t.order == *order)
+            .map(|(_, t)| t.task_type.clone())
             .unwrap_or_default();
 
         let sec_num = gantt_section_class_suffix(&ttype, &categories, number_section_styles);
@@ -1190,9 +1188,9 @@ pub(crate) fn layout_gantt_diagram_typed(
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
-    for (t, &semantic_task_index) in m.tasks.iter().zip(&semantic_task_occurrences) {
+    for (semantic_task_index, t) in &indexed_tasks {
         let task_radius = task_theme
-            .radius_px(semantic_task_index)
+            .radius_px(*semantic_task_index)
             .expect("Gantt task theme count was validated before layout");
         let start_x = scale_time(t.start_ms, min_ms, max_ms, range);
         let end_x = scale_time(t.end_ms, min_ms, max_ms, range);
@@ -1223,9 +1221,7 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         let sec_num = gantt_section_class_suffix(&t.task_type, &categories, number_section_styles);
 
-        let task_state_class = task_theme
-            .bar_state_class_for_semantic_task(semantic_task_index)
-            .expect("Gantt task theme count was validated before layout");
+        let task_state_class = GanttTaskBarState::from_task(t).bar_class_prefix();
         let mut task_class = format!(" {task_state_class}");
         if t.milestone {
             task_class = format!(" milestone{task_class}");
@@ -1409,7 +1405,10 @@ pub(crate) fn layout_gantt_diagram_typed(
         max_y: height,
     });
 
-    if !task_theme.bind_layout_occurrences(semantic_task_occurrences) {
+    if task_theme.needs_layout_binding()
+        && !task_theme
+            .bind_layout_occurrences(indexed_tasks.into_iter().map(|(index, _)| index).collect())
+    {
         return Err(crate::Error::InvalidModel {
             message: "Gantt task theme could not bind semantic occurrences to layout order"
                 .to_string(),

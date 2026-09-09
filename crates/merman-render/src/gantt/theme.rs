@@ -17,9 +17,7 @@ use crate::family::{
 };
 use crate::resources::OperationWorkMeter;
 
-mod task_bar;
-
-use task_bar::GanttTaskBarState;
+use super::task_bar::GanttTaskBarState;
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
 
@@ -163,6 +161,7 @@ impl GanttTaskTerminalExpectation {
 /// Gantt task geometry, paint, and terminal evidence resolved once for semantic occurrences.
 #[derive(Debug)]
 pub(crate) struct GanttTaskTheme {
+    task_count: usize,
     tasks: Box<[GanttTaskTerminalExpectation]>,
     font_family_css: Box<str>,
     title_fill: Option<GanttGlobalFillExpectation>,
@@ -582,6 +581,7 @@ impl GanttTaskTheme {
         }
 
         Ok(Self {
+            task_count: tasks.len(),
             tasks: task_expectations.into_boxed_slice(),
             font_family_css: typography.font_family_css,
             title_fill,
@@ -599,11 +599,8 @@ impl GanttTaskTheme {
 
     pub(crate) fn baseline(tasks: &[GanttRenderTask]) -> Self {
         Self {
-            tasks: tasks
-                .iter()
-                .map(GanttTaskTerminalExpectation::baseline)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            task_count: tasks.len(),
+            tasks: Box::default(),
             font_family_css: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.into(),
             title_fill: None,
             text_fill: None,
@@ -619,7 +616,7 @@ impl GanttTaskTheme {
     }
 
     pub(crate) fn task_count(&self) -> usize {
-        self.tasks.len()
+        self.task_count
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -659,16 +656,15 @@ impl GanttTaskTheme {
     }
 
     pub(crate) fn radius_px(&self, task_index: usize) -> Option<f64> {
-        self.tasks.get(task_index).map(|task| task.radius_px)
+        (task_index < self.task_count).then(|| {
+            self.tasks
+                .get(task_index)
+                .map_or(MERMAID_TASK_RADIUS_PX, |task| task.radius_px)
+        })
     }
 
-    pub(crate) fn bar_state_class_for_semantic_task(
-        &self,
-        task_index: usize,
-    ) -> Option<&'static str> {
-        self.tasks
-            .get(task_index)
-            .map(|task| task.state.bar_class_prefix())
+    pub(crate) fn needs_layout_binding(&self) -> bool {
+        !self.tasks.is_empty() || self.requires_terminal_receipt()
     }
 
     pub(crate) fn bind_layout_occurrences(&self, layout_occurrences: Vec<usize>) -> bool {
@@ -704,8 +700,8 @@ impl GanttTaskTheme {
             .map(|stroke| stroke.css.as_ref())
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskThemeReceipt> {
-        let requires_receipt = !self.pending.is_empty()
+    fn requires_terminal_receipt(&self) -> bool {
+        !self.pending.is_empty()
             || self
                 .tasks
                 .iter()
@@ -714,8 +710,11 @@ impl GanttTaskTheme {
             || !self.unsupported_typography_properties.is_empty()
             || self.title_fill.is_some()
             || self.text_fill.is_some()
-            || self.warning_stroke.is_some();
-        requires_receipt.then(|| {
+            || self.warning_stroke.is_some()
+    }
+
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<GanttTaskThemeReceipt> {
+        self.requires_terminal_receipt().then(|| {
             let Some(layout_occurrences) = self.layout_occurrences.get() else {
                 return GanttTaskThemeReceipt::invalid(self.task_count());
             };
@@ -1972,6 +1971,93 @@ mod tests {
             );
         }
         assert!(!duplicate.proves_complete());
+    }
+
+    #[test]
+    fn unthemed_tasks_do_not_allocate_theme_expectations() {
+        for count in [0, 1, 4096] {
+            let tasks = vec![
+                GanttRenderTask {
+                    id: "ordinary-task".to_string(),
+                    ..GanttRenderTask::default()
+                };
+                count
+            ];
+            let plan = GanttTaskTheme::resolve(
+                None,
+                &MermaidConfig::empty_object(),
+                &tasks,
+                &OperationWorkMeter::new(RenderResourcePolicy::default()),
+            )
+            .expect("unthemed plan");
+            assert_eq!(plan.task_count(), count);
+            assert!(plan.tasks.is_empty(), "no theme means no task expectations");
+            assert!(plan.begin_terminal_receipt().is_none());
+            for index in 0..count {
+                assert_eq!(plan.radius_px(index), Some(3.0));
+                assert!(plan.terminal_fill_for_layout_task(index).is_none());
+                assert!(plan.terminal_stroke_for_layout_task(index).is_none());
+            }
+            assert_eq!(plan.radius_px(count), None);
+        }
+    }
+
+    #[test]
+    fn unthemed_layout_preserves_source_states_without_retaining_evidence_mapping() {
+        let tasks = vec![
+            GanttRenderTask {
+                id: "later".into(),
+                start_ms: 1000,
+                end_ms: 2000,
+                active: true,
+                crit: true,
+                ..GanttRenderTask::default()
+            },
+            GanttRenderTask {
+                id: "first".into(),
+                start_ms: 0,
+                end_ms: 2000,
+                done: true,
+                ..GanttRenderTask::default()
+            },
+            GanttRenderTask {
+                id: "tie".into(),
+                start_ms: 0,
+                end_ms: 2000,
+                crit: true,
+                ..GanttRenderTask::default()
+            },
+        ];
+        let plan = GanttTaskTheme::baseline(&tasks);
+        let mut model = merman_core::diagrams::gantt::GanttDiagramRenderModel::default();
+        model.tasks = tasks;
+        let layout = crate::gantt::layout_gantt_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            &plan,
+            &crate::text::DeterministicTextMeasurer::default(),
+            800.0,
+            &merman_core::time::LocalTimeZone::utc(),
+        )
+        .expect("unthemed layout");
+        let bars = layout
+            .tasks
+            .iter()
+            .map(|task| (task.bar.id.as_str(), task.bar.class.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            bars,
+            vec![
+                ("first", "task done0"),
+                ("tie", "task crit0"),
+                ("later", "task activeCrit0")
+            ]
+        );
+        assert!(
+            plan.layout_occurrences.get().is_none(),
+            "no theme means no evidence mapping"
+        );
     }
 
     #[test]
