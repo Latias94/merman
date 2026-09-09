@@ -21,8 +21,8 @@ use crate::model::{
     QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::quadrantchart::{
-    QUADRANT_BROWSER_POINT_FILL, QUADRANT_BROWSER_POINT_STROKE, QuadrantChartConfigView,
-    QuadrantTextAnchor, QuadrantTextBaseline, is_mermaid_missing_amount_hsl, quadrant_text_anchor,
+    QUADRANT_BROWSER_POINT_STROKE, QuadrantChartConfigView, QuadrantTextAnchor,
+    QuadrantTextBaseline, is_mermaid_missing_amount_hsl, quadrant_text_anchor,
     quadrant_text_baseline,
 };
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
@@ -31,9 +31,9 @@ use merman_core::OperationPhase;
 use merman_core::ParseMetadata;
 use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use merman_display_list::{
-    DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint, PathSegment,
-    PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor, TextBaseline,
-    TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
+    Color, DrawingCommand, DrawingListPolicy, FillRule, FontDescriptor, FontStyle, Paint,
+    PathSegment, PathStyle, Point, Rect, ResourceId, SemanticAnnotation, SemanticRole, TextAnchor,
+    TextBaseline, TextDirection, TextObligation, TextRun, TextStyle, Transform, Viewport,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -112,7 +112,21 @@ impl<'a> QuadrantChartBuilder<'a> {
 
     fn build(mut self) -> Result<RenderDocument> {
         self.begin_group("quadrantchart.document")?;
-        self.output.push_semantic(SemanticAnnotation {
+        self.add_path(
+            "quadrantchart.background".to_owned(),
+            polygon_path(&[
+                Point::new(0.0, 0.0),
+                Point::new(self.root_width, 0.0),
+                Point::new(self.root_width, self.root_height),
+                Point::new(0.0, self.root_height),
+            ]),
+            PathStyle {
+                fill: Some(Paint::solid(Color::rgba(255, 255, 255, 255))),
+                fill_rule: FillRule::NonZero,
+                stroke: None,
+            },
+        )?;
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: "quadrantchart.document".to_string(),
             role: SemanticRole::Document,
             // Body/frontmatter titles are visible chart labels.  Only an explicit `accTitle`
@@ -171,6 +185,10 @@ impl<'a> QuadrantChartBuilder<'a> {
                 &title,
                 "title fill",
             )?;
+        } else {
+            self.begin_group("quadrantchart.title")?;
+            self.end_group()?;
+            self.push_structural_semantic("quadrantchart.title")?;
         }
 
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
@@ -228,25 +246,24 @@ impl<'a> QuadrantChartBuilder<'a> {
         let semantic_id = format!("quadrantchart.quadrant.{index}");
         self.begin_group(&semantic_id)?;
         let styles = PortableStyleResolver::new("quadrantchart");
-        if let Some(fill) = styles.optional_color("quadrant fill", &quadrant.fill)? {
-            self.add_path(
-                format!("{semantic_id}.shape"),
-                polygon_path(&[
-                    Point::new(quadrant.x, quadrant.y),
-                    Point::new(quadrant.x + quadrant.width, quadrant.y),
-                    Point::new(quadrant.x + quadrant.width, quadrant.y + quadrant.height),
-                    Point::new(quadrant.x, quadrant.y + quadrant.height),
-                ]),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: Some(Paint::solid(fill)),
-                    stroke: None,
-                },
-            )?;
-        }
+        let fill = styles.optional_color("quadrant fill", &quadrant.fill)?;
+        self.add_path(
+            format!("{semantic_id}.shape"),
+            polygon_path(&[
+                Point::new(quadrant.x, quadrant.y),
+                Point::new(quadrant.x + quadrant.width, quadrant.y),
+                Point::new(quadrant.x + quadrant.width, quadrant.y + quadrant.height),
+                Point::new(quadrant.x, quadrant.y + quadrant.height),
+            ]),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: fill.map(Paint::solid),
+                stroke: None,
+            },
+        )?;
         self.emit_text(&quadrant.text, "quadrant text fill")?;
         self.end_group()?;
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Group,
             title: visible_text(&quadrant.text.text),
@@ -257,14 +274,8 @@ impl<'a> QuadrantChartBuilder<'a> {
     }
 
     fn emit_border(&mut self, index: usize, border: &QuadrantChartBorderLineData) -> Result<()> {
-        if border.stroke_width == 0.0 {
-            return Ok(());
-        }
-        let Some(color) = PortableStyleResolver::new("quadrantchart")
-            .optional_color("border stroke", &border.stroke_fill)?
-        else {
-            return Ok(());
-        };
+        let color = PortableStyleResolver::new("quadrantchart")
+            .optional_color("border stroke", &border.stroke_fill)?;
         self.add_path(
             format!("quadrantchart.border.{index}"),
             vec![
@@ -278,7 +289,7 @@ impl<'a> QuadrantChartBuilder<'a> {
             PathStyle {
                 fill_rule: FillRule::NonZero,
                 fill: None,
-                stroke: Some(stroke(color, border.stroke_width)),
+                stroke: color.map(|color| stroke(color, border.stroke_width)),
             },
         )
     }
@@ -287,12 +298,19 @@ impl<'a> QuadrantChartBuilder<'a> {
         let semantic_id = format!("quadrantchart.point.{index}");
         self.begin_group(&semantic_id)?;
         let styles = PortableStyleResolver::new("quadrantchart");
-        let fill_value = if is_mermaid_missing_amount_hsl(&point.fill) {
-            QUADRANT_BROWSER_POINT_FILL
+        let fill = if is_mermaid_missing_amount_hsl(&point.fill) {
+            let inherited = self
+                .metadata
+                .effective_config
+                .as_value()
+                .get("themeVariables")
+                .and_then(|theme| theme.get("textColor"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("#333");
+            styles.optional_color("inherited point fill", inherited)?
         } else {
-            &point.fill
+            styles.optional_color("point fill", &point.fill)?
         };
-        let fill = styles.optional_color("point fill", fill_value)?;
         let stroke_width = styles.length("point stroke-width", &point.stroke_width)?;
         let stroke_value = if is_mermaid_missing_amount_hsl(&point.stroke_color) {
             QUADRANT_BROWSER_POINT_STROKE
@@ -302,20 +320,18 @@ impl<'a> QuadrantChartBuilder<'a> {
         let stroke = styles
             .optional_color("point stroke", stroke_value)?
             .map(|color| stroke(color, stroke_width));
-        if point.radius > 0.0 && (fill.is_some() || stroke.is_some()) {
-            self.add_path(
-                format!("{semantic_id}.shape"),
-                ellipse_path(point.x, point.y, point.radius, point.radius),
-                PathStyle {
-                    fill_rule: FillRule::NonZero,
-                    fill: fill.map(Paint::solid),
-                    stroke,
-                },
-            )?;
-        }
+        self.add_path(
+            format!("{semantic_id}.shape"),
+            ellipse_path(point.x, point.y, point.radius, point.radius),
+            PathStyle {
+                fill_rule: FillRule::NonZero,
+                fill: fill.map(Paint::solid),
+                stroke,
+            },
+        )?;
         self.emit_text(&point.text, "point text fill")?;
         self.end_group()?;
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: visible_text(&point.text.text),
@@ -336,7 +352,7 @@ impl<'a> QuadrantChartBuilder<'a> {
         self.begin_group(&semantic_id)?;
         self.emit_text(text, fill_property)?;
         self.end_group()?;
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role,
             title,
@@ -351,15 +367,11 @@ impl<'a> QuadrantChartBuilder<'a> {
         text: &QuadrantChartTextData,
         fill_property: &'static str,
     ) -> Result<()> {
-        let parts = normalized_text_parts(&text.text);
-        if parts.clone().next().is_none() {
-            return Ok(());
-        }
-        let Some(fill) = PortableStyleResolver::new("quadrantchart")
+        let resolved = self.output.resolve_mermaid_layout_text(&text.text)?;
+        let parts = normalized_text_parts(&resolved);
+        let fill = PortableStyleResolver::new("quadrantchart")
             .optional_color(fill_property, &text.fill)?
-        else {
-            return Ok(());
-        };
+            .unwrap_or(Color::rgba(0, 0, 0, 0));
         let anchor = match quadrant_text_anchor(&text.vertical_pos) {
             QuadrantTextAnchor::Start => TextAnchor::Start,
             QuadrantTextAnchor::Middle => TextAnchor::Middle,

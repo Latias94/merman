@@ -34,6 +34,7 @@ mod info;
 mod journey;
 mod journey_marker;
 mod pie;
+mod quadrantchart;
 mod sankey;
 mod tree_view;
 mod tree_view_asset;
@@ -63,6 +64,7 @@ pub(crate) fn render_document_svg(
             | SvgStructureBody::Gantt(_)
             | SvgStructureBody::Venn(_)
             | SvgStructureBody::TreeView(_)
+            | SvgStructureBody::QuadrantChart(_)
     ) {
         // These families resolve styles in the command stream. Theme CSS is rejected by the
         // builder; an encoder must not reintroduce a second visual source from external config.
@@ -104,6 +106,7 @@ struct DocumentSvgEncoder<'a> {
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
     info_text_style: Option<&'a merman_display_list::TextStyle>,
+    quadrant_font: Option<&'a merman_display_list::FontDescriptor>,
     venn_text_styles: Option<venn::TextStyles<'a>>,
     sankey_links: Option<sankey::LinkProjection>,
     gantt_text: Option<gantt::TextProjection<'a>>,
@@ -295,6 +298,11 @@ impl<'a> DocumentSvgEncoder<'a> {
                 None
             },
             state: GraphicsState::default(),
+            quadrant_font: if matches!(document.svg.body, SvgStructureBody::QuadrantChart(_)) {
+                quadrantchart::shared_font(&document.public, session)?
+            } else {
+                None
+            },
             cynefin_marker_definitions: BTreeMap::new(),
             cynefin_text_styles: if let SvgStructureBody::Cynefin(body) = &document.svg.body {
                 cynefin::shared_text_styles(&document.public, body, session)?
@@ -742,10 +750,14 @@ impl<'a> DocumentSvgEncoder<'a> {
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
                 viewport_bounds.width,
             ))),
-            SvgStructureBody::QuadrantChart(body) => Ok(root_svg::RootViewportSpec::mermaid(
-                viewport_bounds,
-                body.use_max_width,
-            )),
+            SvgStructureBody::QuadrantChart(body) => {
+                let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width);
+                Ok(if self.document_background_is_root_paint() {
+                    spec
+                } else {
+                    spec.without_background()
+                })
+            }
             SvgStructureBody::Pie(body) => {
                 let spec = root_svg::RootViewportSpec::mermaid(viewport_bounds, body.use_max_width)
                     .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(
@@ -929,6 +941,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             SvgStructureBody::Sankey(_) => ("sankey.document", "sankey.background"),
             SvgStructureBody::Gantt(_) => ("gantt.document", "gantt.background"),
             SvgStructureBody::TreeView(_) => ("treeView.document", "treeView.background"),
+            SvgStructureBody::QuadrantChart(_) => {
+                ("quadrantchart.document", "quadrantchart.background")
+            }
             _ => return false,
         };
         let [
@@ -952,6 +967,9 @@ impl<'a> DocumentSvgEncoder<'a> {
     }
 
     fn write_family_style(&mut self) -> Result<()> {
+        if matches!(self.svg_body, SvgStructureBody::QuadrantChart(_)) {
+            return self.write_quadrant_style();
+        }
         if matches!(self.svg_body, SvgStructureBody::Info(_)) {
             return self.write_info_style();
         }
@@ -992,10 +1010,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.diagram_id.as_str(),
                     self.effective_config,
                 ),
-            )),
-            SvgStructureBody::QuadrantChart(_) => Some((
-                false,
-                super::info_css_with_config(self.diagram_id.as_str(), self.effective_config),
             )),
             SvgStructureBody::Pie(_) => Some((
                 false,
@@ -1718,6 +1732,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if self.begin_tree_view_semantic_group(semantic_id, semantic)? {
             return Ok(());
         }
+        if self.begin_quadrant_semantic_group(semantic_id, semantic)? {
+            return Ok(());
+        }
         if self.begin_journey_semantic_group(semantic_id, semantic)? {
             return Ok(());
         }
@@ -2336,6 +2353,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::QuadrantChart(_)) {
+            if self.emit_quadrant_path(path_id, style)? {
+                return Ok(());
+            }
             let raw_id = path_id.as_str();
             if raw_id.starts_with("quadrantchart.quadrant.") && raw_id.ends_with(".shape") {
                 let path = self.path_resource(path_id)?;
@@ -3417,6 +3437,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         }
         if self.emit_compact_info_text(run)? {
+            return Ok(());
+        }
+        if self.emit_quadrant_text(run)? {
             return Ok(());
         }
         if self.emit_compact_cynefin_text(run, semantic_id.as_deref())? {

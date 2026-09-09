@@ -4,9 +4,7 @@ use super::util::{
     SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
 use crate::family::RenderFamilyKind;
-use crate::quadrantchart::{
-    QUADRANT_BROWSER_POINT_FILL, QUADRANT_BROWSER_POINT_STROKE, is_mermaid_missing_amount_hsl,
-};
+use crate::quadrantchart::is_mermaid_missing_amount_hsl;
 use crate::svg::pipeline::SvgPostprocessMetadata;
 #[cfg(test)]
 use std::convert::Infallible;
@@ -40,8 +38,8 @@ fn resolve_quadrant_point_fallbacks<'a, E>(
     svg: Cow<'a, str>,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Cow<'a, str>, E> {
-    // Mermaid 11.16's Quadrant renderer emits circles only for data points. Its invalid
-    // presentation attributes are ignored by browsers, leaving black fill and no stroke.
+    // Invalid inherited presentation attributes behave as absent declarations in browsers.
+    // Preserve ancestor/CSS paint rather than replacing it with SVG's initial black/none.
     let mut scanner = SvgTagScanner::new(svg.as_ref());
     let mut rewritten = None::<String>;
     let mut copied_until = 0usize;
@@ -95,11 +93,10 @@ fn resolve_invalid_circle_presentation_with_checkpoints<E>(
         iteration = iteration.saturating_add(1);
         let name = &tag[attr.name_start..attr.name_end];
         let value = &tag[attr.value_start..attr.value_end];
-        let fallback = if name.eq_ignore_ascii_case("fill") && is_mermaid_missing_amount_hsl(value)
+        let fallback = if (name.eq_ignore_ascii_case("fill") || name.eq_ignore_ascii_case("stroke"))
+            && is_mermaid_missing_amount_hsl(value)
         {
-            Some(QUADRANT_BROWSER_POINT_FILL)
-        } else if name.eq_ignore_ascii_case("stroke") && is_mermaid_missing_amount_hsl(value) {
-            Some(QUADRANT_BROWSER_POINT_STROKE)
+            Some("inherit")
         } else {
             None
         };
@@ -130,7 +127,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn typed_quadrant_metadata_resolves_browser_initials_for_invalid_point_colors() {
+    fn typed_quadrant_metadata_preserves_inheritance_for_invalid_point_colors() {
         let svg = Cow::Borrowed(
             r#"<svg><g class="data-points"><g class="data-point"><circle cx="5" cy="6" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)" stroke-width="0px"/></g></g></svg>"#,
         );
@@ -139,8 +136,8 @@ mod tests {
 
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 
-        assert!(out.contains(r##"fill="#000000""##), "{out}");
-        assert!(out.contains(r#"stroke="none""#), "{out}");
+        assert!(out.contains(r#"fill="inherit""#), "{out}");
+        assert!(out.contains(r#"stroke="inherit""#), "{out}");
         assert!(!out.contains("NaN"), "{out}");
     }
 
@@ -196,7 +193,7 @@ mod tests {
         let out = resolve_resvg_presentation_fallbacks(svg, &metadata);
 
         assert!(out.contains(r##"fill="#facc15""##), "{out}");
-        assert!(out.contains(r#"stroke="none""#), "{out}");
+        assert!(out.contains(r#"stroke="inherit""#), "{out}");
         assert!(!out.contains(r##"fill="#000000""##), "{out}");
     }
 

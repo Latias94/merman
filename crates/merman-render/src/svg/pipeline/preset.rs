@@ -249,8 +249,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(out.contains(r##"fill="#000000""##), "{out}");
-        assert!(out.contains(r#"stroke="none""#), "{out}");
+        assert!(out.contains(r#"fill="inherit""#), "{out}");
+        assert!(out.contains(r#"stroke="inherit""#), "{out}");
     }
 
     #[test]

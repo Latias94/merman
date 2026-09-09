@@ -2421,6 +2421,98 @@ mod tests {
     }
 
     #[test]
+    fn quadrant_candidate_projects_public_styles_and_semantics() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "quadrantChart\n  title Portfolio\n  x-axis Low --> High\n  A: [0.7, 0.8]\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument,
+                      config: &serde_json::Value| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                config,
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let original = render(&document, artifact.metadata.effective_config.as_value());
+        assert_eq!(
+            original,
+            render(
+                &document,
+                &serde_json::json!({"fontFamily":"monospace", "themeCSS":"text { fill: red; }"})
+            ),
+            "SVG visual state must not be read from external config"
+        );
+        let xml = roxmltree::Document::parse(&original).unwrap();
+        let main = xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("main"))
+            .unwrap();
+        assert_eq!(main.attribute("id"), None);
+        assert_eq!(main.attribute("role"), None);
+        assert!(!main.descendants().any(|node| node.has_tag_name("title")));
+        for command in &mut document.public.commands {
+            match command {
+                DrawingCommand::DrawText { run } if run.text == "A" => {
+                    run.text = "Edited".to_owned();
+                    run.origin.x = 13.0;
+                    run.style.fill = Paint::solid(Color::rgba(255, 0, 0, 128));
+                }
+                DrawingCommand::DrawPath { path, style }
+                    if path.as_str() == "quadrantchart.background" =>
+                {
+                    style.fill = None;
+                }
+                _ => {}
+            }
+        }
+        document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|semantic| semantic.id == "quadrantchart.point.0")
+            .unwrap()
+            .description = Some("Independent description".to_owned());
+        let edited = render(&document, &serde_json::json!({}));
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        assert!(
+            !xml.root_element()
+                .attribute("style")
+                .unwrap_or_default()
+                .contains("background-color")
+        );
+        let text = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Edited"))
+            .unwrap();
+        assert_eq!(text.attribute("x"), Some("13"));
+        assert_eq!(text.attribute("fill"), Some("#ff0000"));
+        assert_eq!(text.attribute("fill-opacity"), Some("0.5019607843137255"));
+        assert!(xml.descendants().any(
+            |node| node.has_tag_name("desc") && node.text() == Some("Independent description")
+        ));
+    }
+
+    #[test]
     fn tree_view_registered_groups_project_shared_public_paint() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let pack = serde_json::json!({"prefix":"test","width":24,"height":24,"icons":{"groups":{"body":r##"<g id="outer" fill="#234567"><g id="shared" fill="#123456" stroke="#654321" stroke-width="2" fill-opacity="0.5" style="stroke-linecap:round"><path d="M0 0H4V4Z"/><path fill="#123456" fill-opacity="0.5" d="M5 0H9V4Z"/></g><g id="overridden" fill="#abcdef"><path fill="#123456" d="M0 5H4V9Z"/></g></g>"##}}});
@@ -3746,6 +3838,7 @@ mod tests {
             "pie\n\"#quot; #35;quot; &quot;\": 1\n",
             "sankey-beta\n#quot; #35;quot; &quot;,B,1\n",
             "cynefin-beta\nclear\n  \"#quot; #35;quot; &quot;\"\n",
+            "quadrantChart\n  \"#quot; #35;quot; &quot;\": [0.5, 0.5]\n",
             "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection #quot; #35;quot; &quot;\nTask :a, 2026-01-01, 1d\n",
         ] {
             let parsed = Engine::new()

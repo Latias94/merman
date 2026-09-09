@@ -3466,7 +3466,7 @@ fn quadrantchart_emits_regions_points_rotated_axes_and_semantics() {
     assert_eq!(
         default_point_style.fill,
         Some(merman_display_list::Paint::solid(
-            merman_display_list::Color::rgba(0, 0, 0, 0xff)
+            merman_display_list::Color::rgba(0x33, 0x33, 0x33, 0xff)
         ))
     );
     assert_eq!(default_point_style.stroke, None);

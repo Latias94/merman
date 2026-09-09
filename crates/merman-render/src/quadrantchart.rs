@@ -58,14 +58,13 @@ pub(crate) fn quadrant_text_baseline(horizontal_pos: &str) -> QuadrantTextBaseli
     }
 }
 
-pub(crate) const QUADRANT_BROWSER_POINT_FILL: &str = "#000000";
 pub(crate) const QUADRANT_BROWSER_POINT_STROKE: &str = "none";
 
 /// Identifies Mermaid's source-backed missing-amount HSL token for QuadrantChart points.
 ///
 /// Browsers ignore this invalid presentation attribute. The family-specific browser-visible
-/// projection therefore uses SVG's initial black fill or no stroke, while parity SVG retains the
-/// upstream token verbatim.
+/// projection therefore resolves inherited paint (normally the root text color and no stroke),
+/// while parity SVG retains the upstream token verbatim.
 pub(crate) fn is_mermaid_missing_amount_hsl(value: &str) -> bool {
     let Some(body) = value
         .trim()

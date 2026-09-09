@@ -1054,8 +1054,22 @@ fn quadrant_parity_and_resvg_safe_outputs_keep_separate_color_contracts() {
         .descendants()
         .find(|node| node.has_tag_name("circle"))
         .expect("quadrant point circle");
-    assert_eq!(point.attribute("fill"), Some("#000000"));
-    assert_eq!(point.attribute("stroke"), Some("none"));
+    assert_eq!(point.attribute("fill"), Some("inherit"));
+    assert_eq!(point.attribute("stroke"), Some("inherit"));
+
+    // Check the native consumer's resolved paint, not only the rewritten attribute token.
+    let identified =
+        resvg_safe_svg.replacen("<circle ", "<circle id=\"quadrant-native-point\" ", 1);
+    let tree = usvg::Tree::from_str(&identified, &usvg::Options::default())
+        .expect("native SVG consumer parses the inherited presentation");
+    let Some(usvg::Node::Path(point)) = tree.node_by_id("quadrant-native-point") else {
+        panic!("native consumer retains the identified circle path");
+    };
+    let usvg::Paint::Color(color) = point.fill().expect("inherited point fill").paint() else {
+        panic!("point inherits a solid color");
+    };
+    assert_eq!((color.red, color.green, color.blue), (51, 51, 51));
+    assert!(point.stroke().is_none());
 }
 
 #[test]

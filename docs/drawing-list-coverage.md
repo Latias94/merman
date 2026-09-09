@@ -1210,3 +1210,43 @@ resolved font size. Pinned `gantt/styles.js` sets `.vertText { font-size: 15px; 
 that attribute. Chromium computed style for both labels in
 `upstream_docs_gantt_vertical_markers_011.svg` is `15px`. The public text run therefore retains
 15px; matching the inactive attribute cannot justify changing its visible size.
+
+### QuadrantChart public paint and source DOM projection
+
+The candidate now projects native `.main`, `.quadrants`, `.quadrant`, `.border`, `.data-points`,
+`.data-point`, `.labels`, `.label`, and `.title` groups from public semantic scopes. A visible
+direct text run can supply its group's default accessible name; independently edited names,
+descriptions, links, roles, and debug visibility retain the generic semantic projection.
+Empty title containers, empty text, zero-width borders, and unpainted geometry remain in the
+public command stream rather than being reconstructed from private layout data.
+
+The adapter owns the white root background and resolves Mermaid text entities before measurement
+and semantic projection. Shared fonts come from agreeing public font descriptors; other text
+styles and transforms remain per-run. Quadrant's `middle` baseline is no longer serialized as
+`central`. External configuration cannot replace public font, paint, or text through regenerated
+CSS. An edited background keeps ordinary public path rendering instead of stale white root CSS.
+
+The full-source Chromium probe `target/compare/quadrant-point-paint-browser.json` covers all
+59 upstream fixtures. Its 118 points with invalid missing-amount HSL fill inherit `#333` from
+the root, not SVG's initial black. Direct DrawingList now resolves that inherited theme text
+color. The native SVG pipeline substitutes `inherit` for the source-backed invalid fill/stroke
+tokens, preserving CSS and ancestor ownership rather than hard-coding black/none. A native
+`usvg` consumer regression verifies the resolved point color, in addition to attribute checks.
+
+The temporary admission run after `5bac6b725` selects 59 fixtures and observes 58 canonical
+outputs plus one explicit rejection: `upstream_quadrant_docs_config_and_theme_example` uses
+non-portable `ff0000` as a text color. Its report is
+`target/compare/quadrant_5bac_candidate_public_projection.md`. The DOM/root gate still fails;
+remaining differences include source color spelling/invalid paint tokens and absent inactive
+stroke parameters. No comparator normalization or admission rule was relaxed. Temporary runtime
+and inventory admission were removed after the comparison exited.
+
+The separate browser candidate probe `target/compare/quadrant-candidate-browser.json` excludes
+that rejected fixture by name and compares 58 canonical outputs. Text content, font families,
+font sizes, baseline attributes, painted fill/stroke, and paint opacity agree. The 467 observed
+computed-style differences are 342 unused line fills and 125 stroke widths on circles with no
+stroke. This is presentation evidence only, not DOM admission or a geometric/pixel oracle.
+QuadrantChart remains on its explicit legacy SVG bridge until the remaining contract is closed.
+The 22 focused render/facade tests, strengthened native-consumer assertion, Clippy, formatting,
+and required full SVG structure gate pass. The full gate exercises the existing admitted matrix;
+it does not override the failed QuadrantChart candidate report.
