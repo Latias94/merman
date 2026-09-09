@@ -61,6 +61,169 @@ fn journey_typography_theme(font_size: f32) -> merman_render::diagram_theme::Dia
 }
 
 #[test]
+fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for (paint, expected_paint) in [("#123456", "#123456"), ("transparent", "#00000000")] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid(paint).expect("valid text paint")),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(rule).with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Title,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#987654").expect("valid title paint"),
+                            ),
+                        ),
+                    ),
+                ))
+                .expect("compile Journey text paint");
+            for (config, expected_text, expected_title) in [
+                (serde_json::json!({}), expected_paint, ""),
+                (
+                    serde_json::json!({"themeVariables": {"textColor": "#abcdef"}}),
+                    "#abcdef",
+                    "",
+                ),
+                (
+                    serde_json::json!({"journey": {"titleColor": "#fedcba"}}),
+                    expected_paint,
+                    "#fedcba",
+                ),
+            ] {
+                let parsed = merman_render::__private::install_parse_compatibility(
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                )
+                .parse_diagram_for_render_model_sync(
+                    "journey\n  title Release\n  section Delivery\n    Ship release: 5: Maintainer\n",
+                    ParseOptions::strict(),
+                )
+                .expect("parse Journey text paint fixture")
+                .expect("detect Journey");
+                let session = RenderEnvironment::deterministic()
+                    .begin_session_with_theme(&theme)
+                    .expect("begin Journey session");
+                let artifact =
+                    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                        .expect("prepare Journey text paint fixture");
+                let rendered = artifact
+                    .render_svg(
+                        &SvgRenderOptions {
+                            diagram_id: Some("journey-text-paint".to_owned()),
+                            ..SvgRenderOptions::default()
+                        },
+                        &SvgDebugOptions::default(),
+                    )
+                    .expect("render Journey text paint fixture");
+                let document =
+                    roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG");
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .expect("Journey stylesheet");
+                let root_rule = css.split_once('}').expect("complete root CSS rule").0;
+                assert!(root_rule.starts_with("#journey-text-paint{"));
+                assert!(
+                    root_rule.ends_with(&format!(";fill:{expected_text};")),
+                    "root rule: {root_rule}"
+                );
+                assert!(css.contains(&format!(
+                    "#journey-text-paint line{{stroke:{expected_text};}}"
+                )));
+                assert!(css.contains(&format!(
+                    "#journey-text-paint .legend{{fill:{expected_text};"
+                )));
+                assert!(css.contains(&format!(
+                    "#journey-text-paint .label{{color:{expected_text};}}"
+                )));
+                // The legacy Title projection only styles nonexistent cluster text. It does
+                // not own the diagram title, which inherits Text unless journey.titleColor wins.
+                assert!(css.contains("#journey-text-paint .cluster text{fill:#987654;}"));
+                assert!(!document.descendants().any(|node| {
+                    node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "cluster")
+                    })
+                }));
+
+                for (class, expected_label) in [
+                    ("task", "    Ship release"),
+                    ("journey-section", "Delivery"),
+                ] {
+                    let text = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("text")
+                                && node.attribute("class").is_some_and(|classes| {
+                                    classes.split_whitespace().any(|item| item == class)
+                                })
+                        })
+                        .expect("native Journey text terminal");
+                    assert_eq!(
+                        text.descendants()
+                            .find(|node| node.is_text())
+                            .and_then(|node| node.text()),
+                        Some(expected_label)
+                    );
+                    assert!(
+                        text.attribute("style")
+                            .expect("native text style")
+                            .ends_with(&format!("fill: {expected_text};"))
+                    );
+                    let html = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("div")
+                                && node.attribute("class").is_some_and(|classes| {
+                                    classes.split_whitespace().any(|item| item == class)
+                                })
+                        })
+                        .expect("HTML Journey text terminal");
+                    let label = html
+                        .children()
+                        .find(|node| node.attribute("class") == Some("label"))
+                        .expect("HTML label uses the color rule");
+                    assert_eq!(label.text(), Some(expected_label));
+                }
+                let legend = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("text") && node.attribute("class") == Some("legend")
+                    })
+                    .expect("actor legend terminal");
+                assert_eq!(
+                    legend
+                        .descendants()
+                        .find(|node| node.is_text())
+                        .and_then(|node| node.text()),
+                    Some("Maintainer")
+                );
+                let title = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
+                    .expect("diagram title terminal");
+                assert_eq!(title.attribute("fill"), Some(expected_title));
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("line"))
+                        .count(),
+                    2,
+                    "task and activity lines consume the line rule"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn journey_task_radius_reaches_terminal_svg_without_changing_sections() {
     for (radius, expected_task_radius) in [(Specified::Value(9.0), "9"), (Specified::Clear, "3")] {
         let styles = ThemeRuleSet::default()

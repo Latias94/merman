@@ -1082,11 +1082,12 @@ fn compile_journey_family(
         [("nodeBorder", reader.stroke(ThemeTarget::JourneyTask))],
     );
     contributions.add_theme_variables(
-        "task.text",
-        [
-            ("textColor", reader.text_fill(ThemeTarget::Text)),
-            ("titleColor", reader.text_fill(ThemeTarget::Title)),
-        ],
+        "text.fill",
+        [("textColor", reader.text_fill(ThemeTarget::Text))],
+    );
+    contributions.add_theme_variables(
+        "title.fill",
+        [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     contributions.finish_into(builder)
 }
@@ -3005,12 +3006,13 @@ mod tests {
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.journey.task.stroke")
         );
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.task.text")
+        assert_eq!(
+            artifact.contribution_ids,
+            BTreeSet::from([
+                "merman.legacy-family-theme.v1.journey.text.fill".to_owned(),
+                "merman.legacy-family-theme.v1.journey.title.fill".to_owned(),
+            ])
         );
-        assert_eq!(artifact.contribution_ids.len(), 1);
         assert!(
             !artifact
                 .contribution_ids
@@ -3026,6 +3028,55 @@ mod tests {
             parsed.effective_config.get_str("themeVariables.titleColor"),
             Some("#9333ea")
         );
+
+        for (explicit_config, expected_paths) in [
+            (
+                serde_json::json!({}),
+                vec![
+                    ("text.fill", "themeVariables.textColor"),
+                    ("title.fill", "themeVariables.titleColor"),
+                ],
+            ),
+            (
+                serde_json::json!({"textColor": "#112233"}),
+                vec![("title.fill", "themeVariables.titleColor")],
+            ),
+            (
+                serde_json::json!({"titleColor": "#445566"}),
+                vec![("text.fill", "themeVariables.textColor")],
+            ),
+        ] {
+            let parsed = parse_with_compatibility(
+                &spec,
+                JOURNEY_FIXTURE,
+                MermaidConfig::from_value(serde_json::json!({
+                    "themeVariables": explicit_config,
+                })),
+            );
+            let evidence = theme_parse_evidence(&parsed);
+            let actual = evidence
+                .fallback_contributions()
+                .map(|contribution| {
+                    (
+                        contribution.opaque_id().to_owned(),
+                        contribution
+                            .surviving_assignment_paths()
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let expected = expected_paths
+                .into_iter()
+                .map(|(mapping, path)| {
+                    (
+                        format!("merman.legacy-family-theme.v1.journey.{mapping}"),
+                        vec![path.to_owned()],
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            assert_eq!(actual, expected, "explicit config: {explicit_config}");
+        }
     }
 
     #[test]
