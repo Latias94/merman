@@ -2,7 +2,65 @@
 
 use super::*;
 
+/// Index only uniquely occurring, single-run task labels. Edited scopes stay generic.
+pub(super) struct TextProjection<'a> {
+    labels: BTreeMap<&'a str, Option<&'a TextRun>>,
+}
+
+impl<'a> TextProjection<'a> {
+    pub(super) fn new(document: &'a DrawingListDocument, session: &RenderSession) -> Result<Self> {
+        let mut labels = BTreeMap::new();
+        for (index, command) in document.commands.iter().enumerate() {
+            session.checkpoint(OperationPhase::Emit)?;
+            let DrawingCommand::BeginSemanticGroup { semantic_id } = command else {
+                continue;
+            };
+            if !semantic_id.starts_with("gantt.task.") || !semantic_id.ends_with(".label") {
+                continue;
+            }
+            let run = match document.commands.get(index + 1..) {
+                Some(
+                    [
+                        DrawingCommand::DrawText { run },
+                        DrawingCommand::EndSemanticGroup,
+                        ..,
+                    ],
+                ) if matches!(run.obligation, TextObligation::HostText { .. }) => {
+                    Some(run.as_ref())
+                }
+                _ => None,
+            };
+            labels
+                .entry(semantic_id.as_str())
+                .and_modify(|entry| *entry = None)
+                .or_insert(run);
+        }
+        Ok(Self { labels })
+    }
+}
+
 impl DocumentSvgEncoder<'_> {
+    fn gantt_task_text(&self, semantic_id: &str) -> Option<&TextRun> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return None;
+        };
+        let label_id = if semantic_id.ends_with(".label") {
+            Cow::Borrowed(semantic_id)
+        } else {
+            Cow::Owned(format!("{semantic_id}.label"))
+        };
+        let label = self.semantics.get(label_id.as_ref())?;
+        if label.role != SemanticRole::Label || !body.dom_ids.contains_key(label_id.as_ref()) {
+            return None;
+        }
+        self.gantt_text
+            .as_ref()?
+            .labels
+            .get(label_id.as_ref())
+            .copied()
+            .flatten()
+    }
+
     /// Own one element's CSS declaration block so paint, transform and blend compose once.
     pub(super) fn write_gantt_path_presentation(
         &mut self,
@@ -374,13 +432,14 @@ impl DocumentSvgEncoder<'_> {
             .copied()
             .ok_or_else(|| invalid("Gantt task has no semantic annotation"))?;
         if !self.debug_visibility(semantic.role)
+            || self.gantt_task_text(semantic_id).is_none()
             || semantic
                 .title
                 .as_deref()
-                .is_none_or(|title| title.trim().is_empty())
+                .is_none_or(|name| name.trim().is_empty())
         {
-            // Native text remains readable inside the generic group when there is no authored
-            // accessible name for the single graphic. Do not turn it into an unnamed image.
+            // Deleted, duplicated or structurally edited labels no longer name a source-shaped
+            // task. Unnamed scopes also stay generic so readable text is not an unnamed image.
             return Ok(false);
         }
         let Some(commands) = self.document.commands.get(self.command_index + 1..) else {
@@ -449,6 +508,7 @@ impl DocumentSvgEncoder<'_> {
         let Some(GroupKind::Semantic {
             emitted: false,
             semantic_id,
+            linked,
             ..
         }) = self.groups.last()
         else {
@@ -462,13 +522,32 @@ impl DocumentSvgEncoder<'_> {
             .get(semantic_id)
             .copied()
             .ok_or_else(|| invalid("Gantt task has no semantic annotation"))?;
+        let native_name = self.gantt_task_text(semantic_id).is_some_and(|run| {
+            semantic
+                .title
+                .as_deref()
+                .is_none_or(|name| name == run.text)
+        });
+        // A described or linked bar remains a named graphic. A sibling text cannot name
+        // its separate anchor or express its description. Ordinary labels remain native text.
+        let explicit_name = !native_name
+            || semantic.role == SemanticRole::Node && (semantic.description.is_some() || *linked);
         write!(
             self.output,
-            " role=\"img\" data-merman-semantic-id=\"{}\"",
+            " data-merman-semantic-id=\"{}\"",
             escaped_attr(semantic_id)
         )?;
-        if let Some(title) = &semantic.title {
-            write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
+        if explicit_name {
+            if semantic
+                .title
+                .as_deref()
+                .is_some_and(|name| !name.is_empty())
+            {
+                self.output.push_str(" role=\"img\"")?;
+            }
+            if let Some(title) = &semantic.title {
+                write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
+            }
         }
         if let Some(description) = &semantic.description {
             write!(

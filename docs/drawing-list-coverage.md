@@ -457,6 +457,25 @@ cover empty lines, XML whitespace, NBSP, entities, independent literal names, ch
 exact reported-work replay. This addresses section/tick semantics, not the remaining task, axis or
 today projection differences, and does not refresh full-family comparison or admit Gantt.
 
+Task bar and label default names now both come from the final public label run. Their metadata is
+created during the label pass without changing all-bars-before-labels paint order, and each owned
+name is budgeted before copying. A Gantt-only, single-pass index recognizes unique single-run label
+scopes; deleting, duplicating, expanding or changing their roles retains the general semantic
+projection. Ordinary native text and unlinked, undescribed bars no longer create duplicate named
+images. Independent names stay explicit; described bars and separately clickable bar anchors keep
+their names, since a sibling text cannot satisfy those obligations. Source section descriptions
+remain exposed rather than being treated as implicit private relationships. This is task-name
+projection work; diagnostic attributes, axis/today semantics and full-family admission remain open.
+
+All 47 focused Gantt/metadata tests pass, including independently edited names, unsectioned linked
+bars, removed/duplicated/multi-run labels, changed roles, and exact work replay. The scoped canonical
+probe `target/compare/gantt_7f87885fa_names_candidate_structure.md` still fails on 19 attributes,
+compared with 45 in the earlier CSS-matrix probe (the intervening section/tick fix is also included).
+Remaining differences are diagnostic attributes and axis/today semantics. Temporary admission was
+removed. Chromium's accessibility tree exposes the same four task StaticText/InlineTextBox names
+as the pinned milestone fixture, without duplicate named task images; this is not full-tree or
+full-family accessibility parity evidence.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

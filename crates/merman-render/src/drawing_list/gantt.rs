@@ -588,17 +588,6 @@ impl<'a> GanttBuilder<'a> {
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_mermaid_semantic(SemanticAnnotation {
-                id: semantic_id,
-                role: SemanticRole::Node,
-                title: Some(source.task.clone()),
-                description: (!source.section.is_empty())
-                    .then(|| format!("{} section", source.section)),
-                link: portable_navigation_uri(
-                    self.model.links.get(&source.id).map(String::as_str),
-                    self.navigation_security,
-                ),
-            })?;
             labels
                 .try_reserve(1)
                 .map_err(|_| Error::DrawingListAllocationFailed {
@@ -639,23 +628,34 @@ impl<'a> GanttBuilder<'a> {
                 baseline: TextBaseline::Alphabetic,
                 italic: source.milestone,
             };
+            let text_start = self.document.command_count();
             if !text.is_empty() {
                 let bounds = self.measure_text_bounds(&text, &spec)?;
                 self.emit_text_in_bounds(&semantic_id, &text, spec, bounds)?;
             }
+            // Both hit targets use the final label text as their default name. Delaying only
+            // metadata preserves all-bars-before-labels paint order and avoids decoding the
+            // resolved name again; each owned metadata copy is charged by the builder.
+            for (id, role) in [
+                (format!("gantt.task.{index}"), SemanticRole::Node),
+                (semantic_id, SemanticRole::Label),
+            ] {
+                let title = self.document.resolved_text_name_since(text_start)?;
+                self.document
+                    .push_semantic_with_source_description(SemanticAnnotation {
+                        id,
+                        role,
+                        title: Some(title),
+                        description: (!source.section.is_empty())
+                            .then(|| format!("{} section", source.section)),
+                        link: portable_navigation_uri(
+                            self.model.links.get(&source.id).map(String::as_str),
+                            self.navigation_security,
+                        ),
+                    })?;
+            }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_mermaid_semantic(SemanticAnnotation {
-                id: semantic_id,
-                role: SemanticRole::Label,
-                title: Some(source.task.clone()),
-                description: (!source.section.is_empty())
-                    .then(|| format!("{} section", source.section)),
-                link: portable_navigation_uri(
-                    self.model.links.get(&source.id).map(String::as_str),
-                    self.navigation_security,
-                ),
-            })?;
         }
         Ok(())
     }
@@ -1615,12 +1615,8 @@ mod tests {
                     let scope = *scopes.last().unwrap();
                     let semantic = document.semantics.iter().find(|s| s.id == scope).unwrap();
                     assert_eq!(semantic.role, SemanticRole::Label);
-                    // Authored metadata retains the separator space before ':', but SVG
-                    // text rendering discards that trailing collapsible whitespace.
-                    assert_eq!(
-                        semantic.title.as_deref().unwrap().trim_end_matches(' '),
-                        run.text
-                    );
+                    // Default accessible names use the same final text as the visible label.
+                    assert_eq!(semantic.title.as_deref(), Some(run.text.as_str()));
                     task_paints.push(("label", scope.to_owned()));
                 }
                 _ => {}
@@ -1663,7 +1659,7 @@ mod tests {
                 .find(|s| s.id == format!("gantt.task.{index}.label"))
                 .unwrap();
             assert_eq!(node.role, SemanticRole::Node);
-            assert_eq!(node.title.as_deref(), Some(task.task.as_str()));
+            assert_eq!(node.title.as_deref(), Some(task.task.trim_end_matches(' ')));
             assert_eq!(node.title, label.title);
             assert_eq!(node.description, label.description);
             assert_eq!(node.link, label.link);

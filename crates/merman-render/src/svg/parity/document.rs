@@ -93,6 +93,7 @@ struct DocumentSvgEncoder<'a> {
     info_text_style: Option<&'a merman_display_list::TextStyle>,
     venn_text_styles: Option<venn::TextStyles<'a>>,
     sankey_links: Option<sankey::LinkProjection>,
+    gantt_text: Option<gantt::TextProjection<'a>>,
     command_index: usize,
     state: GraphicsState,
     saves: Vec<SavePoint>,
@@ -272,6 +273,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             emitted_sankey_gradients: BTreeSet::new(),
             sankey_links: if matches!(document.svg.body, SvgStructureBody::Sankey(_)) {
                 sankey::LinkProjection::new(&document.public, session)?
+            } else {
+                None
+            },
+            gantt_text: if matches!(document.svg.body, SvgStructureBody::Gantt(_)) {
+                Some(gantt::TextProjection::new(&document.public, session)?)
             } else {
                 None
             },

@@ -4059,6 +4059,162 @@ mod tests {
     }
 
     #[test]
+    fn gantt_task_names_follow_public_text_and_survive_edited_label_scopes() {
+        use merman_display_list::{DrawingCommand, SemanticRole};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nAlpha     #quot;Beta#quot; :a, 2026-01-01, 1d\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let baseline = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let name = "Alpha \"Beta\"";
+        let svg = render(&baseline);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        for (id, tag) in [("gantt.task.0", "rect"), ("gantt.task.0.label", "text")] {
+            let semantic = baseline
+                .public
+                .semantics
+                .iter()
+                .find(|entry| entry.id == id)
+                .unwrap();
+            assert_eq!(semantic.title.as_deref(), Some(name));
+            let element = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
+                .unwrap();
+            assert!(element.has_tag_name(tag));
+            assert_eq!(element.attribute("role"), None);
+            assert_eq!(element.attribute("aria-label"), None);
+            if tag == "text" {
+                assert_eq!(element.text(), Some(name));
+            }
+        }
+        for id in ["gantt.task.0", "gantt.task.0.label"] {
+            let mut document = baseline.clone();
+            document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap()
+                .title = Some("Independent &amp; <br> name".into());
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let element = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
+                .unwrap();
+            assert_eq!(
+                element.attribute("aria-label"),
+                Some("Independent &amp; <br> name")
+            );
+            assert_eq!(element.attribute("role"), Some("img"));
+            assert_eq!(
+                xml.descendants()
+                    .filter(
+                        |node| node.attribute("aria-label") == Some("Independent &amp; <br> name")
+                    )
+                    .count(),
+                1
+            );
+        }
+        let mut linked = baseline.clone();
+        for id in ["gantt.task.0", "gantt.task.0.label"] {
+            linked
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap()
+                .link = Some("https://example.com/task".into());
+        }
+        let svg = render(&linked);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let anchors: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("a") && node.attribute("href") == Some("https://example.com/task")
+            })
+            .collect();
+        assert_eq!(anchors.len(), 2);
+        let bar = anchors
+            .iter()
+            .flat_map(|anchor| anchor.children())
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(bar.attribute("aria-label"), Some(name));
+        assert_eq!(bar.attribute("role"), Some("img"));
+        let label = anchors
+            .iter()
+            .flat_map(|anchor| anchor.children())
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(label.text(), Some(name));
+        assert_eq!(label.attribute("role"), None);
+        let label_start = baseline.public.commands.iter().position(|command| matches!(command,
+            DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "gantt.task.0.label"
+        )).unwrap();
+        for edit in ["remove", "multiple-runs", "duplicate-scope", "role"] {
+            let mut document = baseline.clone();
+            match edit {
+                "remove" => {
+                    document.public.commands.drain(label_start..label_start + 3);
+                }
+                "multiple-runs" => {
+                    let text = document.public.commands[label_start + 1].clone();
+                    document.public.commands.insert(label_start + 2, text);
+                }
+                "duplicate-scope" => {
+                    let duplicate = document.public.commands[label_start..label_start + 3].to_vec();
+                    document
+                        .public
+                        .commands
+                        .splice(label_start..label_start, duplicate);
+                }
+                "role" => {
+                    document
+                        .public
+                        .semantics
+                        .iter_mut()
+                        .find(|entry| entry.id == "gantt.task.0.label")
+                        .unwrap()
+                        .role = SemanticRole::Node;
+                }
+                _ => unreachable!(),
+            }
+            let svg = render(&document);
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let task = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some("gantt.task.0"))
+                .unwrap();
+            assert!(task.has_tag_name("g"), "{edit}");
+            assert!(
+                task.children()
+                    .any(|node| node.has_tag_name("title") && node.text() == Some(name)),
+                "{edit}"
+            );
+        }
+    }
+
+    #[test]
     fn gantt_candidate_split_task_scopes_keep_links_and_unique_ids() {
         let parsed = Engine::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
