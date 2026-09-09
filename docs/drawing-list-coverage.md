@@ -1122,3 +1122,37 @@ root defs whose first child is the marker; the comparator's normalized defs orde
 the added public clips. Legend tspan structure is restored, while explicit style attributes,
 HTML/native label structure, and source attribute spellings continue to differ. Runtime/fixture
 admission was withdrawn after the comparison processes exited; the public cohort is unchanged.
+
+## Journey primitive paint projection
+
+Task/activity lines, face and eye circles, and actor circles now retain their source primitive
+attributes while deriving a complete inline presentation from the current public `PathStyle`.
+Default cap/join/miter values move out of the source attribute set without becoming ambient
+inherited styles. Face `overflow=visible`, eye widths, task-line `px` widths, and spaced dash
+attributes retain the source shape. No original theme colors or layout paint are captured in the
+sidecar or reread during SVG emission.
+
+Inline paint preserves solid alpha and resource references independently of object opacity.
+The same CSS block owns opacity and blend, with the public matrix emitted once as a transform;
+there is no second state/style emission. Non-circular edited paths keep the ordinary path
+projection. Backgrounds and raw color/font spellings remain separate migration work.
+
+The focused regression checks theme-resolved face/line paint against conflicting serializer
+configuration, then edits a face to use a public gradient, translucent stroke, custom cap/join,
+miter, dash, offset, opacity, blend, and translation. Both source and finalized native SVG retain
+those values and the referenced gradient resource. All 24 focused Journey tests pass.
+
+The full candidate reports are `target/compare/journey_4e21f27cb_primitive_styles_structure.md`
+and `target/compare/journey_4e21f27cb_primitive_styles_parity_root.md`. Both select 26 fixtures,
+render 25 canonically, skip none, and pass **0/25**, retaining the known non-finite face rejection.
+The default stroke-attribute and face-overflow differences are reduced; background attributes,
+mouth coordinate representation, text shells, and color/font spellings still block admission.
+The temporary runtime/fixture admission has been removed. No comparator policy changed.
+
+Chromium before/after evidence (`target/compare/journey-paint-browser-probe.json`) covers three
+fixtures and 124 circles/lines. Primitive identities, titles, effective paint/stroke/dash,
+opacity/blend, CTM, and screen CTM have zero differences. Face, eye, task-line, and actor colors
+also match the pinned source; task lines remain textColor (#333), not the overridden #666 source
+attribute. Canonical lines have `fill:none` while source lines inherit #333, which does not paint
+a line. The source has one/three additional neutral-mouth line elements in two fixtures because
+the candidate still emits those paths; that pre-existing structural difference remains open.

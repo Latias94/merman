@@ -172,8 +172,10 @@ impl DocumentSvgEncoder<'_> {
             fmt(end.y),
             escaped_attr(&self.diagram_id)
         )?;
-        self.write_fill_stroke_style(style)?;
-        self.write_state_attrs()?;
+        if !self.write_journey_line_presentation(line_id, style)? {
+            self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
+        }
         write_resource_metadata(&mut self.output, self.debug, line_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(true)

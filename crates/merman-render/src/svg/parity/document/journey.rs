@@ -3,6 +3,151 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    /// Circle geometry is already verified by the primitive emitter. Keep source identity
+    /// attributes while the complete public style owns the effective CSS presentation.
+    pub(super) fn write_journey_circle_presentation(
+        &mut self,
+        path: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Journey(_)) {
+            return Ok(false);
+        }
+        let id = path.as_str();
+        let face = id.starts_with("journey.task.") && id.ends_with(".face");
+        let eye = id.starts_with("journey.task.")
+            && (id.ends_with(".left_eye") || id.ends_with(".right_eye"));
+        let actor =
+            id.ends_with(".circle") && (id.starts_with("journey.actor.") || id.contains(".actor."));
+        if !face && !eye && !actor {
+            return Ok(false);
+        }
+        if face {
+            self.output.push_str(" overflow=\"visible\"")?;
+        } else {
+            if let Some(fill) = &style.fill {
+                self.write_paint("fill", fill)?;
+            }
+            if let Some(stroke) = &style.stroke {
+                self.write_paint("stroke", &stroke.paint)?;
+            }
+        }
+        if (face || eye)
+            && let Some(stroke) = &style.stroke
+        {
+            write!(self.output, " stroke-width=\"{}\"", fmt(stroke.width))?;
+        }
+        self.write_journey_primitive_css(style)?;
+        Ok(true)
+    }
+
+    pub(super) fn write_journey_line_presentation(
+        &mut self,
+        path: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Journey(_)) {
+            return Ok(false);
+        }
+        let task = path.as_str().starts_with("journey.task.") && path.as_str().ends_with(".line");
+        if !task && path.as_str() != "journey.activity.line" {
+            return Ok(false);
+        }
+        if let Some(stroke) = &style.stroke {
+            self.write_paint("stroke", &stroke.paint)?;
+            write!(
+                self.output,
+                " stroke-width=\"{}{}\"",
+                fmt(stroke.width),
+                if task { "px" } else { "" }
+            )?;
+            if !stroke.dash_array.is_empty() {
+                self.output.push_str(" stroke-dasharray=\"")?;
+                for (index, value) in stroke.dash_array.iter().enumerate() {
+                    self.session.checkpoint(OperationPhase::Emit)?;
+                    if index != 0 {
+                        self.output.push(' ')?;
+                    }
+                    write!(self.output, "{}", fmt(*value))?;
+                }
+                self.output.push('"')?;
+            }
+        }
+        self.write_journey_primitive_css(style)?;
+        Ok(true)
+    }
+
+    fn write_journey_primitive_css(&mut self, style: &PathStyle) -> Result<()> {
+        self.output.push_str(" style=\"")?;
+        self.write_journey_css_paint("fill", style.fill.as_ref())?;
+        self.write_journey_css_paint("stroke", style.stroke.as_ref().map(|stroke| &stroke.paint))?;
+        write!(
+            self.output,
+            "fill-rule:{};",
+            fill_rule_name(style.fill_rule)
+        )?;
+        if let Some(stroke) = &style.stroke {
+            write!(
+                self.output,
+                "stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
+                fmt(stroke.width),
+                line_cap(stroke.line_cap),
+                line_join(stroke.line_join),
+                fmt(stroke.miter_limit),
+                fmt(stroke.dash_offset)
+            )?;
+            if stroke.dash_array.is_empty() {
+                self.output.push_str("none")?;
+            } else {
+                for (index, value) in stroke.dash_array.iter().enumerate() {
+                    self.session.checkpoint(OperationPhase::Emit)?;
+                    if index != 0 {
+                        self.output.push(' ')?;
+                    }
+                    write!(self.output, "{}", fmt(*value))?;
+                }
+            }
+            self.output.push(';')?;
+        }
+        // Own opacity and blend in this same CSS block; calling write_state_attrs as well
+        // would create a second style attribute when the public blend is non-default.
+        write!(
+            self.output,
+            "opacity:{};mix-blend-mode:{};\"",
+            fmt(self.state.opacity),
+            blend_css(self.state.blend_mode).unwrap_or("normal")
+        )?;
+        if self.state.transform != Transform::IDENTITY {
+            write!(
+                self.output,
+                " transform=\"matrix({})\"",
+                matrix_attr(self.state.transform)
+            )?;
+        }
+        Ok(())
+    }
+
+    fn write_journey_css_paint(&mut self, property: &str, paint: Option<&Paint>) -> Result<()> {
+        write!(self.output, "{property}:")?;
+        let opacity = match paint {
+            Some(Paint::Solid { color }) => {
+                self.output.push_str(&color_css(*color))?;
+                f64::from(color.alpha) / 255.0
+            }
+            Some(Paint::Resource { id }) => {
+                let svg_id = self.svg_resource_id(id.as_str())?;
+                write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
+                1.0
+            }
+            None => {
+                self.output.push_str("none")?;
+                1.0
+            }
+        };
+        write!(self.output, ";{property}-opacity:{};", fmt(opacity))?;
+        Ok(())
+    }
+
     /// The source legend uses text > tspan with an absolute tspan x. Keep this identity
     /// spelling only for single-line host text; all paint/state still uses the common writer.
     pub(super) fn journey_legend_text(&self, run: &TextRun, semantic_id: Option<&str>) -> bool {
@@ -110,8 +255,10 @@ impl DocumentSvgEncoder<'_> {
         if let Some(class) = self.path_class(path) {
             write!(self.output, " class=\"{}\"", escaped_attr(class.as_ref()))?;
         }
-        self.write_fill_stroke_style(style)?;
-        self.write_state_attrs()?;
+        if !self.write_journey_circle_presentation(path, style)? {
+            self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
+        }
         write_resource_metadata(&mut self.output, self.debug, path.as_str())?;
         write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
         self.output.push('>')?;

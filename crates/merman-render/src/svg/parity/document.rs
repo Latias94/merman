@@ -3057,8 +3057,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        self.write_fill_stroke_style(style)?;
-        self.write_state_attrs()?;
+        if !self.write_journey_circle_presentation(path_id, style)? {
+            self.write_fill_stroke_style(style)?;
+            self.write_state_attrs()?;
+        }
         write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
         self.output.push_str("/>")?;
         Ok(())
@@ -3152,7 +3154,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_wardley_marker_attributes(path_id.as_str())?;
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
-        if !self.write_gantt_path_presentation(path_id, style, false)? {
+        if !self.write_gantt_path_presentation(path_id, style, false)?
+            && !self.write_journey_line_presentation(path_id, style)?
+        {
             self.write_fill_stroke_style(style)?;
             self.write_state_attrs()?;
         }

@@ -5812,6 +5812,174 @@ gantt
     }
 
     #[test]
+    fn journey_primitive_styles_preserve_public_paint_and_compositing() {
+        use merman_display_list::{
+            BlendMode, Color, DrawingCommand, DrawingResource, GradientSpread, GradientStop,
+            LineCap, LineJoin, LinearGradientResource, Paint, Point, Transform,
+        };
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "themeVariables": {"textColor":"#123456", "faceColor":"#abcdef"}
+            })))
+            .parse_diagram_for_render_model_sync(
+                "journey\nsection Work\nRead: 5: Alice\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                &json!({"themeVariables":{"textColor":"red", "faceColor":"black"}}),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        for (id, attribute, expected) in [
+            ("journey.task.0.face", "fill", "#abcdef"),
+            ("journey.task.0.line", "stroke", "#123456"),
+            ("journey.activity.line", "stroke", "#123456"),
+        ] {
+            let node = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(id))
+                .unwrap();
+            let css = node
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .filter_map(|item| item.split_once(':'))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            assert_eq!(css.get(attribute), Some(&expected));
+            assert_eq!(css.get("opacity"), Some(&"1"));
+            assert!(node.attribute("stroke-linecap").is_none());
+            if id.ends_with(".face") {
+                assert_eq!(node.attribute("overflow"), Some("visible"));
+                assert!(node.attribute("fill").is_none());
+            }
+        }
+        let face_index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "journey.task.0.face")
+            })
+            .unwrap();
+        let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[face_index]
+        else {
+            unreachable!()
+        };
+        style.fill = Some(Paint::Resource {
+            id: "edited-gradient".into(),
+        });
+        let stroke = style.stroke.as_mut().unwrap();
+        stroke.paint = Paint::solid(Color::rgba(12, 34, 56, 128));
+        stroke.width = 3.0;
+        stroke.line_cap = LineCap::Round;
+        stroke.line_join = LineJoin::Bevel;
+        stroke.miter_limit = 7.0;
+        stroke.dash_array = vec![3.0, 5.0];
+        stroke.dash_offset = 2.0;
+        document
+            .public
+            .resources
+            .push(DrawingResource::LinearGradient(LinearGradientResource {
+                id: "edited-gradient".into(),
+                start: Point::new(0.0, 0.0),
+                end: Point::new(40.0, 0.0),
+                transform: Transform::IDENTITY,
+                spread: GradientSpread::Pad,
+                stops: vec![
+                    GradientStop::new(0.0, Color::rgba(255, 0, 0, 128)),
+                    GradientStop::new(1.0, Color::rgba(0, 0, 255, 255)),
+                ],
+            }));
+        document
+            .public
+            .commands
+            .insert(face_index + 1, DrawingCommand::Restore);
+        document.public.commands.splice(
+            face_index..face_index,
+            [
+                DrawingCommand::Save,
+                DrawingCommand::SetOpacity { opacity: 0.5 },
+                DrawingCommand::SetBlendMode {
+                    blend_mode: BlendMode::Multiply,
+                },
+                DrawingCommand::ConcatTransform {
+                    transform: Transform {
+                        e: 11.0,
+                        f: 13.0,
+                        ..Transform::IDENTITY
+                    },
+                },
+            ],
+        );
+        let svg = render(&document);
+        let native = crate::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(&svg, &artifact.session)
+            .unwrap();
+        for output in [svg.as_str(), native.as_str()] {
+            let xml = roxmltree::Document::parse(output).unwrap();
+            let face = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some("journey.task.0.face"))
+                .unwrap();
+            let css = face
+                .attribute("style")
+                .unwrap()
+                .split(';')
+                .filter_map(|item| item.split_once(':'))
+                .collect::<std::collections::BTreeMap<_, _>>();
+            for (key, value) in [
+                ("stroke", "#0c2238"),
+                ("stroke-width", "3"),
+                ("stroke-linecap", "round"),
+                ("stroke-linejoin", "bevel"),
+                ("stroke-miterlimit", "7"),
+                ("stroke-dasharray", "3 5"),
+                ("stroke-dashoffset", "2"),
+                ("opacity", "0.5"),
+                ("mix-blend-mode", "multiply"),
+                ("fill-opacity", "1"),
+            ] {
+                assert_eq!(css.get(key), Some(&value), "public {key}");
+            }
+            assert_eq!(css["stroke-opacity"].parse::<f64>().unwrap(), 128.0 / 255.0);
+            assert!(
+                face.attribute("opacity").is_none(),
+                "one state opacity declaration"
+            );
+            assert_eq!(face.attribute("transform"), Some("matrix(1 0 0 1 11 13)"));
+            let gradient_id = css["fill"]
+                .strip_prefix("url(#")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap();
+            assert!(
+                xml.descendants()
+                    .any(|node| node.has_tag_name("linearGradient")
+                        && node.attribute("id") == Some(gradient_id))
+            );
+        }
+    }
+
+    #[test]
     fn journey_legend_tspan_and_shared_defs_preserve_public_text() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         for placement in ["fo", "old"] {
