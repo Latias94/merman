@@ -164,7 +164,7 @@ impl<'a> BoundedSvgOutput<'a> {
             return Ok(());
         }
 
-        let geometric_capacity = current_capacity.checked_mul(2).unwrap_or(usize::MAX);
+        let geometric_capacity = current_capacity.saturating_mul(2);
         let mut target_capacity = required_len.max(geometric_capacity);
         if let Some(max_svg_bytes) = self.work_meter.max_svg_bytes() {
             target_capacity = target_capacity.min(max_svg_bytes);

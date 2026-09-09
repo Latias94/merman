@@ -820,7 +820,7 @@ impl PreparedFlowchartMathLabel {
             render_id.len(),
             FLOWCHART_PREPARED_OWNER_SLOT_BYTES,
         ] {
-            bytes = bytes.checked_add(retained).unwrap_or(usize::MAX);
+            bytes = bytes.saturating_add(retained);
         }
         bytes
     }
@@ -835,16 +835,8 @@ impl PreparedFlowchartMathLabel {
     ) -> usize {
         let owner_bytes = Self::owner_retained_bytes(source, style, foreground, render_id);
         outcome.prepared().map_or_else(
-            || {
-                owner_bytes
-                    .checked_add(occurrence_id.as_str().len())
-                    .unwrap_or(usize::MAX)
-            },
-            |artifact| {
-                owner_bytes
-                    .checked_add(artifact.retained_bytes())
-                    .unwrap_or(usize::MAX)
-            },
+            || owner_bytes.saturating_add(occurrence_id.as_str().len()),
+            |artifact| owner_bytes.saturating_add(artifact.retained_bytes()),
         )
     }
 

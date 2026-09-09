@@ -594,8 +594,7 @@ fn finish_external_preparation(
     work_meter.preflight_prepared_text_retained_bytes(
         request
             .owner_retained_bytes
-            .checked_add(artifact.retained_bytes())
-            .unwrap_or(usize::MAX),
+            .saturating_add(artifact.retained_bytes()),
     )?;
     Ok(Some(artifact))
 }
@@ -696,7 +695,7 @@ fn resolve_output_error(
 ) -> Result<Option<String>, OperationWorkError> {
     match error {
         PreparedMathOutputError::Limit { attempted } => {
-            let additional = retained_prefix.checked_add(attempted).unwrap_or(usize::MAX);
+            let additional = retained_prefix.saturating_add(attempted);
             match work_meter.preflight_prepared_text_retained_bytes(additional) {
                 Err(error) => Err(error),
                 Ok(()) => Ok(None),
@@ -812,9 +811,7 @@ fn browser_payload(
         Err(crate::xml::XmlOutputError::Allocation) => return Ok(None),
     };
 
-    let final_len = fixed_bytes
-        .checked_add(rendered.len())
-        .unwrap_or(usize::MAX);
+    let final_len = fixed_bytes.saturating_add(rendered.len());
     let mut payload = match sink.string_with_capacity(final_len) {
         Ok(payload) => payload,
         Err(error) => return resolve_output_error(error, retained_prefix, work_meter),
@@ -857,9 +854,7 @@ fn preflight_raw_math_output(
     raw_output_bytes: usize,
 ) -> Result<(), OperationWorkError> {
     work_meter.preflight_prepared_text_retained_bytes(
-        prepared_math_retained_prefix(request)
-            .checked_add(raw_output_bytes)
-            .unwrap_or(usize::MAX),
+        prepared_math_retained_prefix(request).saturating_add(raw_output_bytes),
     )
 }
 

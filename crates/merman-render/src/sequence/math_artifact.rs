@@ -83,16 +83,8 @@ impl SequencePreparedMathEntry {
     ) -> usize {
         let owner_bytes = Self::owner_retained_bytes(occurrence, source);
         outcome.prepared().map_or_else(
-            || {
-                owner_bytes
-                    .checked_add(occurrence_id.as_str().len())
-                    .unwrap_or(usize::MAX)
-            },
-            |artifact| {
-                owner_bytes
-                    .checked_add(artifact.retained_bytes())
-                    .unwrap_or(usize::MAX)
-            },
+            || owner_bytes.saturating_add(occurrence_id.as_str().len()),
+            |artifact| owner_bytes.saturating_add(artifact.retained_bytes()),
         )
     }
 

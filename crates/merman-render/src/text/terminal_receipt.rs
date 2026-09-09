@@ -125,7 +125,7 @@ impl PreparedTextTerminalLabelReceipt {
             id: entry.id(),
             catalog_fingerprint: entry.catalog_fingerprint(),
             provenance: entry.provenance(),
-            line_texts: line_texts.iter().cloned().collect::<Vec<_>>().into(),
+            line_texts: line_texts.to_vec().into(),
             faces: faces.into(),
             identity_digest: hasher.finalize().into(),
         })
