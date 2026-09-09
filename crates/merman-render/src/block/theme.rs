@@ -43,14 +43,10 @@ pub(crate) struct BlockTypographyThemePlan {
     terminal_receipt: OnceLock<BlockTypographyReceipt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct BlockTypographyReceipt {
-    expected_font_family_css: Box<str>,
-    expected_font_size_px: f64,
-    emitted_font_family_css: Option<Box<str>>,
-    emitted_font_size_css: Option<Box<str>>,
-    css_emission_unique: bool,
-    visible_label_count: usize,
+    css_matches: Option<bool>,
+    has_visible_label: bool,
 }
 
 impl BlockTypographyThemePlan {
@@ -170,15 +166,28 @@ impl BlockTypographyThemePlan {
         self.text_style.font_size
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> BlockTypographyReceipt {
-        BlockTypographyReceipt {
-            expected_font_family_css: self.font_family_css().into(),
-            expected_font_size_px: self.font_size_px(),
-            emitted_font_family_css: None,
-            emitted_font_size_css: None,
-            css_emission_unique: true,
-            visible_label_count: 0,
+    pub(crate) fn begin_terminal_receipt(&self) -> Option<BlockTypographyReceipt> {
+        (self.typed_font_stack_requested
+            || self.typed_font_size_requested
+            || !self.unsupported_properties.is_empty())
+        .then(BlockTypographyReceipt::default)
+    }
+
+    pub(crate) fn observe_css(
+        &self,
+        receipt: Option<&mut BlockTypographyReceipt>,
+        font_family_css: &str,
+        font_size_css: &str,
+    ) -> bool {
+        let matches = !self.font_family_css().trim().is_empty()
+            && font_family_css == self.font_family_css()
+            && font_size_css.parse::<f64>().ok().is_some_and(|value| {
+                value.is_finite() && (value - self.font_size_px()).abs() < 1e-6
+            });
+        if let Some(receipt) = receipt {
+            receipt.css_matches = Some(matches && receipt.css_matches.is_none());
         }
+        matches
     }
 
     pub(crate) fn record_terminal(&self, receipt: BlockTypographyReceipt) -> bool {
@@ -239,37 +248,16 @@ impl BlockTypographyThemePlan {
 }
 
 impl BlockTypographyReceipt {
-    pub(crate) fn record_css(&mut self, font_family_css: &str, font_size_css: &str) {
-        if self.emitted_font_family_css.is_some() || self.emitted_font_size_css.is_some() {
-            self.css_emission_unique = false;
-            return;
-        }
-        self.emitted_font_family_css = Some(font_family_css.into());
-        self.emitted_font_size_css = Some(font_size_css.into());
-    }
-
     pub(crate) fn record_visible_label(&mut self, text: &str) {
-        if !text.trim().is_empty() {
-            self.visible_label_count += 1;
-        }
+        self.has_visible_label = self.has_visible_label || !text.trim().is_empty();
     }
 
     fn proves_css(&self) -> bool {
-        let emitted_font_size_px = self
-            .emitted_font_size_css
-            .as_deref()
-            .and_then(|value| value.parse::<f64>().ok());
-        self.css_emission_unique
-            && !self.expected_font_family_css.trim().is_empty()
-            && self.emitted_font_family_css.as_deref()
-                == Some(self.expected_font_family_css.as_ref())
-            && emitted_font_size_px.is_some_and(|value| {
-                value.is_finite() && (value - self.expected_font_size_px).abs() < 1e-6
-            })
+        self.css_matches == Some(true)
     }
 
     fn has_visible_label(&self) -> bool {
-        self.visible_label_count != 0
+        self.has_visible_label
     }
 }
 
@@ -937,6 +925,78 @@ fn terminal_paints(style: &str) -> (Option<&str>, Option<&str>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn typography_css_checks_reject_mismatches_and_duplicate_emissions() {
+        let plan =
+            BlockTypographyThemePlan::resolve(None, &merman_core::MermaidConfig::empty_object());
+        for (family, size, expected) in [
+            (plan.font_family_css(), "16", true),
+            ("wrong-font", "16", false),
+            (plan.font_family_css(), "17", false),
+            (plan.font_family_css(), "NaN", false),
+            (plan.font_family_css(), "invalid", false),
+        ] {
+            assert_eq!(plan.observe_css(None, family, size), expected);
+            let mut receipt = BlockTypographyReceipt::default();
+            assert!(!receipt.proves_css());
+            assert_eq!(plan.observe_css(Some(&mut receipt), family, size), expected);
+            assert_eq!(receipt.proves_css(), expected);
+            plan.observe_css(Some(&mut receipt), family, size);
+            assert!(!receipt.proves_css());
+        }
+    }
+
+    #[test]
+    fn unthemed_typography_keeps_config_style_without_terminal_evidence() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "fontFamily": "Config Sans, Arial",
+            "themeVariables": {"fontSize": "24px"},
+            "block": {"padding": 12}
+        }));
+        let plan = BlockTypographyThemePlan::resolve(None, &config);
+        assert_eq!(plan.font_family_css(), "Config Sans,Arial");
+        assert_eq!(plan.font_size_px(), 24.0);
+        assert_eq!(plan.padding(), 12.0);
+        assert!(plan.begin_terminal_receipt().is_none());
+        assert!(plan.observe_css(None, "Config Sans,Arial", "24"));
+        assert!(plan.terminal_receipt.get().is_none());
+    }
+
+    #[test]
+    fn unsupported_typography_still_observes_visible_terminals() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::BLOCK,
+                    ThemeTextStyle::default().with_font_weight(700).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::BLOCK);
+        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontWeight);
+        for (label, not_applicable) in [(" \n", true), ("Visible", false)] {
+            let plan = BlockTypographyThemePlan::resolve(
+                Some(&resolved),
+                &merman_core::MermaidConfig::empty_object(),
+            );
+            let mut receipt = plan
+                .begin_terminal_receipt()
+                .expect("unsupported obligation");
+            assert!(plan.observe_css(Some(&mut receipt), plan.font_family_css(), "16"));
+            receipt.record_visible_label(label);
+            assert!(plan.record_terminal(receipt));
+            let evidence = plan.finish_evidence();
+            assert_eq!(
+                evidence.not_applicable_mechanisms().contains(&key),
+                not_applicable
+            );
+            assert_eq!(evidence.residuals().is_empty(), not_applicable);
+        }
+    }
 
     fn paint(rule_index: usize, css: &str) -> DirectPaintExpectation {
         DirectPaintExpectation::new(

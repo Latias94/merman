@@ -714,22 +714,22 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         Ok(())
     }
 
-    struct BlockCssEmission {
-        font_family_css: Box<str>,
+    struct BlockCssEmission<'a> {
+        font_family_css: &'a str,
         font_size_css: Box<str>,
     }
 
-    fn write_block_css(
+    fn write_block_css<'a>(
         out: &mut impl SvgOutput,
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
-        typography_theme: &BlockTypographyThemePlan,
+        typography_theme: &'a BlockTypographyThemePlan,
         class_defs: &indexmap::IndexMap<
             String,
             merman_core::diagrams::block::BlockClassDefRenderModel,
         >,
         options: &SvgExecution<'_>,
-    ) -> Result<BlockCssEmission> {
+    ) -> Result<BlockCssEmission<'a>> {
         let theme = MermaidThemeAdapter::new(effective_config).node_diagram();
         let font_family = typography_theme.font_family_css();
         let font_size = typography_theme.font_size_px();
@@ -840,7 +840,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
         write_block_class_css(out, diagram_id, class_defs, options)?;
         Ok(BlockCssEmission {
-            font_family_css: font_family.into(),
+            font_family_css: font_family,
             font_size_css,
         })
     }
@@ -914,7 +914,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         &model.class_defs,
         options,
     )?;
-    typography_receipt.record_css(&css_emission.font_family_css, &css_emission.font_size_css);
+    let typography_css_matches = typography_theme.observe_css(
+        typography_receipt.as_mut(),
+        css_emission.font_family_css,
+        &css_emission.font_size_css,
+    );
     out.push_str("</style><g/>");
     out.checkpoint()?;
 
@@ -1172,7 +1176,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let label = decode_block_label_html(&node.label);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
-        typography_receipt.record_visible_label(&label);
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_visible_label(&label);
+        }
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -1312,7 +1318,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
             continue;
         };
-        typography_receipt.record_visible_label(&e.label);
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_visible_label(&e.label);
+        }
 
         union_block_bounds(
             &mut content_bounds,
@@ -1445,7 +1453,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             message: "Block node shell paint terminal receipt was incomplete".to_string(),
         });
     }
-    if !typography_theme.record_terminal(typography_receipt) {
+    if !typography_css_matches
+        || typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt))
+    {
         return Err(Error::InvalidModel {
             message: "Block typography terminal receipt was incomplete".to_string(),
         });
