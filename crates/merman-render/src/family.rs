@@ -2248,6 +2248,33 @@ mod tests {
             ));
         }
 
+        let mut resized = document.clone();
+        let mut scales = 0;
+        for command in &mut resized.public.commands {
+            if let DrawingCommand::ConcatTransform { transform } = command
+                && transform.a != 1.0
+            {
+                transform.a = 2.0;
+                transform.d = 2.0;
+                scales += 1;
+            }
+        }
+        assert_eq!(scales, 2);
+        let resized = render(&resized, config);
+        let resized_xml = roxmltree::Document::parse(&resized).unwrap();
+        for icon in resized_xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-icon"))
+        {
+            let viewport = icon
+                .children()
+                .find(|node| node.has_tag_name("svg"))
+                .unwrap();
+            assert_eq!(viewport.attribute("width"), Some("48"));
+            assert_eq!(viewport.attribute("height"), Some("48"));
+            assert_eq!(viewport.attribute("viewBox"), Some("0 0 24 24"));
+        }
+
         for command in &mut document.public.commands {
             match command {
                 DrawingCommand::DrawText { run } if run.text == "main.rs" => {

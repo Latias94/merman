@@ -2896,8 +2896,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             .push_str("<g class=\"treeView-node-icon\" transform=\"translate(")?;
         write!(self.output, "{},{})\">", fmt(transform.e), fmt(transform.f))?;
         if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
-            // The icon group is emitted inside the current state, so preserve state attributes on
-            // the nested SVG rather than changing the path's resolved geometry.
+            // Preserve compositing on the icon group without changing the public geometry.
             self.output.pop();
             self.output.push(' ')?;
             if self.state.opacity != 1.0 {
@@ -2909,8 +2908,8 @@ impl<'a> DocumentSvgEncoder<'a> {
         write!(
             self.output,
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" viewBox=\"0 0 24 24\"><path d=\"{}\"",
-            fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
-            fmt(crate::tree_view::TREE_VIEW_ICON_SIZE),
+            fmt(24.0 * transform.a),
+            fmt(24.0 * transform.d),
             escaped_attr(&path_data),
         )?;
         self.write_path_style(style)?;
