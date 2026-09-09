@@ -413,20 +413,93 @@ fn eventmodeling_root_fill_value(root: roxmltree::Node<'_, '_>) -> Option<String
         .filter(|node| node.is_element() && node.tag_name().name() == "style")
     {
         let css = style.text()?;
-        for block in css.split('}') {
-            let Some((selectors, declarations)) = block.split_once('{') else {
-                continue;
+        let mut input = cssparser::ParserInput::new(css);
+        let mut parser = cssparser::Parser::new(&mut input);
+        while !parser.is_exhausted() {
+            let start = parser.position();
+            let selectors_end = loop {
+                let position = parser.position();
+                if matches!(parser.next().ok()?, cssparser::Token::CurlyBracketBlock) {
+                    break position;
+                }
             };
-            if !selectors
-                .split(',')
-                .any(|candidate| candidate.trim() == selector)
-            {
+            let selectors = parser.slice(start..selectors_end).trim();
+            let declarations = parser
+                .parse_nested_block(|body| {
+                    let start = body.position();
+                    while body.next().is_ok() {}
+                    Ok::<_, cssparser::ParseError<'_, ()>>(body.slice_from(start))
+                })
+                .ok()?;
+            // These pinned upstream rules only animate stroke offset. Unknown nested rules fail
+            // closed; their inner selectors must never be reinterpreted as unconditional rules.
+            if matches!(
+                (selectors, declarations.trim()),
+                (
+                    "@keyframes edge-animation-frame",
+                    "from{stroke-dashoffset:0;}"
+                ) | ("@keyframes dash", "to{stroke-dashoffset:0;}")
+            ) {
                 continue;
             }
-            eventmodeling_collect_unique_fill(declarations, &mut fill)?;
+            if selectors.starts_with('@') || declarations.contains('{') {
+                return None;
+            }
+            let mut rule_fill = None;
+            eventmodeling_collect_unique_fill(declarations, &mut rule_fill)?;
+            if rule_fill.is_none() {
+                continue;
+            }
+            let mut matches_root = false;
+            for candidate in selectors.split(',').map(str::trim) {
+                if candidate == selector {
+                    matches_root = true;
+                } else if !eventmodeling_selector_excludes_swimlane_inheritance(root, candidate) {
+                    return None;
+                }
+            }
+            if matches_root {
+                eventmodeling_collect_unique_fill(declarations, &mut fill)?;
+            }
         }
     }
     fill
+}
+
+// Only prove exclusion for descendant selectors ending in a class requirement. Pseudo-classes,
+// functions, combinators and other unknown syntax fail closed without resolving their semantics.
+fn eventmodeling_selector_excludes_swimlane_inheritance(
+    root: roxmltree::Node<'_, '_>,
+    selector: &str,
+) -> bool {
+    let mut input = cssparser::ParserInput::new(selector);
+    let mut parser = cssparser::Parser::new(&mut input);
+    while !parser.is_exhausted() {
+        if let Ok(class) = parser.try_parse(|input| {
+            input.expect_delim('.')?;
+            let class = input.expect_ident_cloned()?;
+            input.expect_exhausted()?;
+            Ok::<_, cssparser::BasicParseError<'_>>(class)
+        }) {
+            return root
+                .descendants()
+                .filter(|node| is_eventmodeling_swimlane_text(*node))
+                .all(|node| {
+                    node.ancestors()
+                        .all(|ancestor| !has_class_token(ancestor, &class))
+                });
+        }
+        if !matches!(
+            parser.next(),
+            Ok(cssparser::Token::IDHash(_)
+                | cssparser::Token::Ident(_)
+                | cssparser::Token::Delim('.')
+                | cssparser::Token::SquareBracketBlock)
+        ) {
+            return false;
+        }
+    }
+    false
 }
 
 // Only enumerate declarations: a competing fill or an `all` reset makes inheritance unproven.
@@ -3168,6 +3241,98 @@ mod tests {
                     "competing root declarations must remain unnormalized: {styles}/{mode:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_through_stylesheet_overrides() {
+        for rule in [
+            "#event-diagram .em-swimlane{fill:#f00;}",
+            "#event-diagram g{fill:#f00;}",
+            "#event-diagram text{fill:#f00;}",
+            "#event-diagram .absent,#event-diagram .em-swimlane{fill:#f00;}",
+            "#event-diagram,#event-diagram .em-swimlane{fill:#333;}",
+            "#event-diagram .em-swimlane{all:initial;}",
+            "#event-diagram text{all:initial;}",
+            r"#event-diagram .em-swimlane{f\69ll:#f00;}",
+            "#event-diagram :is(.em-swimlane,.absent){fill:#f00;}",
+            "#event-diagram :is(.em-swimlane) .absent{fill:#f00;}",
+            "#event-diagram > .absent{fill:#f00;}",
+            "@media screen{#event-diagram .em-swimlane{fill:#f00;}}",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{{fill:#333;}}{rule}</style><g class="em-swimlane"><text>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "stylesheet override must block root inheritance: {rule}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_does_not_infer_eventmodeling_fill_from_later_nested_root_rule() {
+        for selectors in [
+            "@media print",
+            "@supports (display: grid)",
+            "@keyframes dash",
+            ".unused",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>{selectors}{{.unused{{stroke:red;}}#event-diagram{{fill:#333;}}}}</style><g class="em-swimlane"><text>Events</text></g></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_ne!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "a later nested rule must not become an unconditional root rule: {selectors}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_infers_eventmodeling_fill_with_proven_unrelated_class_rules() {
+        for rule in [
+            "",
+            "#event-diagram .em-swimlane{stroke:#f00;}",
+            "#event-diagram .marker{fill:#f00;}",
+            "#event-diagram .error-icon,#event-diagram .error-text{fill:#f00;}",
+            "#event-diagram [data-look='neo'].node circle .state-start{fill:#f00;}",
+            "@keyframes dash{to{stroke-dashoffset:0;}}",
+        ] {
+            let upstream = format!(
+                r##"<svg id="event-diagram" aria-roledescription="eventmodeling"><style>#event-diagram{{fill:#333;}}{rule}</style><g class="em-swimlane"><text>Events</text></g><g class="marker"/></svg>"##
+            );
+            let local = upstream.replace("<text>", "<text fill=\"#333\">");
+            for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+                assert_eq!(
+                    dom_signature(&upstream, mode, 3).unwrap(),
+                    dom_signature(&local, mode, 3).unwrap(),
+                    "unrelated rules must preserve root inheritance: {rule}/{mode:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parity_infers_eventmodeling_fill_with_upstream_fixture_stylesheet() {
+        let upstream = include_str!(
+            "../../../fixtures/upstream-svgs/eventmodeling/upstream_docs_eventmodeling_minimum.svg"
+        );
+        let local = upstream.replace("<text ", "<text fill=\"#333\" ");
+        assert_ne!(upstream, local);
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(&local, mode, 3).unwrap(),
+                "upstream fixture must preserve root inheritance: {mode:?}"
+            );
         }
     }
 
