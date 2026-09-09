@@ -1252,17 +1252,9 @@ pub(crate) fn layout_gantt_diagram_typed(
         });
     }
 
-    // Tasks (bars + labels).
-    // Mermaid gantt task labels inherit the diagram font family (defaulting to
-    // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
-    // Use the effective Mermaid font family here so `getBBox().width`-derived `width-*` class
-    // values match upstream SVG baselines.
-    let task_font_family = gantt_cfg
-        .get("fontFamily")
-        .and_then(|v| v.as_str())
-        .or_else(|| config.get("fontFamily").and_then(|v| v.as_str()))
-        .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif")
-        .to_string();
+    // Before assigning task classes, Mermaid probes a raw text element inheriting the
+    // root theme font. There is no Gantt-specific font-family override in that source path.
+    let task_font_family = crate::config::config_font_family_css(config);
     let text_style = TextStyle {
         font_family: Some(task_font_family.clone()),
         font_size,
@@ -1343,10 +1335,13 @@ pub(crate) fn layout_gantt_diagram_typed(
             class: format!("task{task_class}"),
         };
 
-        // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
-        // whitespace. Preserve the original task text for rendering, but trim it for measurement.
+        // SVG discards trailing collapsible spaces, not NBSP or other Unicode spacing glyphs.
+        // Keep the authored text in the layout; the raw-SVG measurement operation owns collapse.
         let text_width = text_measurer
-            .measure_svg_raw_text_bbox_width_px(t.task.trim_end(), &text_style)
+            .measure_svg_raw_text_bbox_width_px(
+                crate::text::trim_end_html_collapsible_ascii_whitespace(&t.task),
+                &text_style,
+            )
             .max(0.0);
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
@@ -1366,7 +1361,7 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         let label_x = if t.vert {
             start_x + left_padding
-        } else if text_width > (end_x_for_label - start_x_for_label).abs() {
+        } else if text_width > end_x_for_label - start_x_for_label {
             if end_x_for_label + text_width + 1.5 * left_padding > width {
                 start_x_for_label + left_padding - 5.0
             } else {
@@ -1390,7 +1385,7 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         // Mermaid checks overflow for both horizontal and vertical labels:
         // `if (textWidth > endX - startX) { ... }` (Mermaid@11.12.2 ganttRenderer.js).
-        let class_overflows = text_width > (end_x_for_class - start_x_for_class).abs();
+        let class_overflows = text_width > end_x_for_class - start_x_for_class;
         let outside_left =
             class_overflows && (end_x_for_class + text_width + 1.5 * left_padding > width);
         let outside_right = class_overflows && !outside_left;

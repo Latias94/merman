@@ -318,6 +318,20 @@ test verifies literal public text and accessible descriptions. Existing legacy r
 their separate source escaping helper. This addresses the `#;` mismatch in the historical report;
 it neither refreshes that full-family report nor admits Gantt or the remaining bridged families.
 
+The September 9 measurement follow-up aligns the raw task-label probe with the root theme font,
+preserves trailing nonbreaking spaces, and uses Mermaid's signed interval width for label overflow.
+It does not tune the deterministic glyph profile to match browser widths. The 37 focused Gantt
+tests pass, including explicit measurement-input and reversed-date regressions.
+
+A fresh strict-route candidate probe at `e893c1e11` plus the font/whitespace changes selected 157
+fixtures: all 150 canonical renders still had structural differences, two unsupported effects
+were explicitly rejected, and five existing skips remained. The temporary canonical admission was
+removed after the probe. Evidence is in
+`target/compare/gantt_e893c1e11_font_candidate_structure.md`; it predates the signed-interval fix.
+The later historical report listing only six mismatches must not be used as proof that canonical
+Gantt has only six remaining differences. Explicit paint/semantic attributes, source element
+attributes, and today-marker structure remain open; no comparator rules were relaxed.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
