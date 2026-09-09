@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 49);
+    assert_eq!(support.claim_revision(), 50);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -259,6 +259,7 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
         DiagramFamilyId::CYNEFIN,
         DiagramFamilyId::ER,
         DiagramFamilyId::JOURNEY,
+        DiagramFamilyId::KANBAN,
         DiagramFamilyId::SANKEY,
     ] {
         let query = ThemeSupportQueryV1::known(
@@ -1342,6 +1343,20 @@ fn v2_rule_and_ordinal_subjects_preserve_v1_support_decisions() {
             ),
             ThemeSupportQueryV2::rule(
                 DiagramFamilyId::JOURNEY.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Title.id(),
+                ThemeRuleFacetV1::Fill,
+            ),
+        ),
+        (
+            ThemeSupportQueryV1::known(
+                DiagramFamilyId::KANBAN.as_str(),
+                ThemeSupportOutputV1::StandaloneSvg,
+                ThemeTarget::Title.id(),
+                ThemeRuleFacetV1::Fill,
+            ),
+            ThemeSupportQueryV2::rule(
+                DiagramFamilyId::KANBAN.as_str(),
                 ThemeSupportOutputV1::StandaloneSvg,
                 ThemeTarget::Title.id(),
                 ThemeRuleFacetV1::Fill,

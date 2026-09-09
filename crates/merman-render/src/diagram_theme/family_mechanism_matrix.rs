@@ -1295,7 +1295,7 @@ fn legacy_paint_route_without_writer_consumer(
                 && unqualified_or_default
                 && fill
         }
-        DiagramFamilyId::ER | DiagramFamilyId::JOURNEY => {
+        DiagramFamilyId::ER | DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN => {
             target == ThemeTarget::Title && unqualified_or_default && fill
         }
         DiagramFamilyId::ARCHITECTURE
@@ -3921,40 +3921,42 @@ mod tests {
     }
 
     #[test]
-    fn journey_title_fill_is_unsupported_for_static_and_dynamic_selectors() {
-        for paint in [
-            CanvasPaint::Transparent,
-            CanvasPaint::solid("#9333ea").expect("valid Journey title paint"),
-        ] {
-            for variant in [
-                None,
-                Some(ThemeVariant::Default),
-                Some(ThemeVariant::Active),
+    fn terminal_less_title_fill_is_unsupported_for_static_and_dynamic_selectors() {
+        for family in [DiagramFamilyId::JOURNEY, DiagramFamilyId::KANBAN] {
+            for paint in [
+                CanvasPaint::Transparent,
+                CanvasPaint::solid("#9333ea").expect("valid title paint"),
             ] {
-                let mut rule = ThemeRule::new(
-                    ThemeTarget::Title,
-                    ThemeStylePatch::default().with_fill(paint.clone()),
-                )
-                .for_family(DiagramFamilyId::JOURNEY);
-                if let Some(variant) = variant {
-                    rule = rule.with_variant(variant);
-                }
-                for ordinal in [
+                for variant in [
                     None,
-                    Some(OrdinalSelector::exact(1).expect("valid exact selector")),
-                    Some(OrdinalSelector::cycle(2, 0).expect("valid cycle selector")),
+                    Some(ThemeVariant::Default),
+                    Some(ThemeVariant::Active),
                 ] {
-                    let rule = match ordinal {
-                        Some(ordinal) => rule.clone().with_ordinal(ordinal),
-                        None => rule.clone(),
-                    };
-                    let routes = compile_rule_routes(DiagramFamilyId::JOURNEY, 0, &rule);
-                    assert_eq!(routes.len(), 1);
-                    assert_eq!(
-                        routes[0].disposition(),
-                        FamilyThemeDisposition::Unsupported,
-                        "variant={variant:?}, ordinal={ordinal:?}, paint={paint:?}"
-                    );
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Title,
+                        ThemeStylePatch::default().with_fill(paint.clone()),
+                    )
+                    .for_family(family);
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    for ordinal in [
+                        None,
+                        Some(OrdinalSelector::exact(1).expect("valid exact selector")),
+                        Some(OrdinalSelector::cycle(2, 0).expect("valid cycle selector")),
+                    ] {
+                        let rule = match ordinal {
+                            Some(ordinal) => rule.clone().with_ordinal(ordinal),
+                            None => rule.clone(),
+                        };
+                        let routes = compile_rule_routes(family, 0, &rule);
+                        assert_eq!(routes.len(), 1);
+                        assert_eq!(
+                            routes[0].disposition(),
+                            FamilyThemeDisposition::Unsupported,
+                            "family={family}, variant={variant:?}, ordinal={ordinal:?}, paint={paint:?}"
+                        );
+                    }
                 }
             }
         }
@@ -7087,6 +7089,7 @@ mod tests {
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
             DiagramFamilyId::ER,
+            DiagramFamilyId::KANBAN,
             DiagramFamilyId::SANKEY,
         ] {
             for paint_kind in [

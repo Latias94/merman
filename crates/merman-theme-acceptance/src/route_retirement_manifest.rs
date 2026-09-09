@@ -9,15 +9,19 @@ use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{ThemeTarget, ThemeVariant};
 use sha2::{Digest as _, Sha256};
 
-const RETIREMENT_MANIFEST_VERSION: u16 = 3;
+const RETIREMENT_MANIFEST_VERSION: u16 = 4;
 const V1_RETIREMENT_BASELINE_REVISION: &str = "a4b1db26d315f044140a33378723ca8834452a75";
 const V2_RETIREMENT_BASELINE_REVISION: &str = "4c3a2d839584555d506792aa76c4ee3a7332a9c8";
 const V3_RETIREMENT_BASELINE_REVISION: &str = "dab18e2e5351be8605fd8d696075bca87953d29b";
+const V4_RETIREMENT_BASELINE_REVISION: &str = "5a2b644c88076b3bd09a504e4a9d4f97d1f823ad";
 const V1_EXPECTED_RETIREMENT_COUNT: usize = 56;
 const V2_EXPECTED_RETIREMENT_COUNT: usize = 2;
 const V3_EXPECTED_RETIREMENT_COUNT: usize = 2;
-const EXPECTED_RETIREMENT_COUNT: usize =
-    V1_EXPECTED_RETIREMENT_COUNT + V2_EXPECTED_RETIREMENT_COUNT + V3_EXPECTED_RETIREMENT_COUNT;
+const V4_EXPECTED_RETIREMENT_COUNT: usize = 2;
+const EXPECTED_RETIREMENT_COUNT: usize = V1_EXPECTED_RETIREMENT_COUNT
+    + V2_EXPECTED_RETIREMENT_COUNT
+    + V3_EXPECTED_RETIREMENT_COUNT
+    + V4_EXPECTED_RETIREMENT_COUNT;
 const EXPECTED_VALUE_PROBE_COUNT: usize = EXPECTED_RETIREMENT_COUNT * 2;
 
 // Acceptance-owned authority. Update only after reviewing the independent historical witness,
@@ -42,17 +46,21 @@ const EXPECTED_V3_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
     77, 14, 211, 72, 42, 177, 86, 75, 205, 18, 73, 188, 163, 105, 200, 220, 180, 214, 208, 139,
     213, 84, 151, 23, 58, 153, 18, 251, 31, 132, 175, 5,
 ];
+const EXPECTED_V4_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
+    45, 73, 78, 143, 139, 186, 233, 236, 223, 233, 49, 105, 137, 162, 201, 52, 117, 1, 27, 142,
+    133, 19, 156, 105, 120, 27, 72, 61, 44, 209, 1, 65,
+];
 const EXPECTED_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
-    237, 19, 91, 44, 153, 97, 209, 33, 188, 18, 101, 113, 63, 49, 156, 133, 117, 32, 144, 121, 152,
-    143, 104, 126, 60, 97, 24, 16, 212, 189, 216, 214,
+    188, 183, 118, 111, 24, 91, 111, 110, 91, 32, 209, 116, 152, 89, 153, 94, 180, 141, 71, 111,
+    61, 190, 0, 118, 120, 6, 77, 91, 136, 198, 14, 223,
 ];
 const EXPECTED_PRODUCTION_INVENTORY_DIGEST: [u8; 32] = [
-    123, 200, 145, 162, 227, 44, 217, 200, 225, 192, 200, 171, 248, 7, 216, 221, 36, 142, 27, 126,
-    76, 50, 249, 42, 155, 3, 170, 18, 121, 26, 251, 17,
+    145, 193, 246, 163, 184, 54, 229, 154, 220, 118, 248, 237, 164, 239, 15, 205, 185, 6, 129, 253,
+    148, 172, 230, 177, 160, 214, 102, 98, 28, 84, 230, 82,
 ];
 const EXPECTED_RECEIPT_REPORT_DIGEST: [u8; 32] = [
-    226, 19, 52, 137, 33, 190, 125, 175, 188, 146, 213, 23, 163, 160, 6, 212, 222, 30, 133, 93,
-    171, 79, 70, 1, 76, 180, 104, 109, 123, 149, 146, 84,
+    158, 163, 209, 11, 26, 207, 127, 107, 204, 148, 147, 85, 32, 38, 165, 143, 134, 244, 66, 5, 92,
+    22, 155, 174, 29, 103, 93, 146, 194, 47, 240, 73,
 ];
 
 /// Successful authorization of the independently frozen KTD23 retirement boundary.
@@ -501,6 +509,16 @@ const JOURNEY_RETIREMENTS: &[HistoricalRetirementPattern] = &[pattern(
 
 const V3_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[JOURNEY_RETIREMENTS];
 
+const KANBAN_RETIREMENTS: &[HistoricalRetirementPattern] = &[pattern(
+    DiagramFamilyId::KANBAN,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+    TITLE_FILL,
+)];
+
+const V4_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[KANBAN_RETIREMENTS];
+
 const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
     HistoricalRetirementBatchSpec {
         version: 1,
@@ -519,6 +537,12 @@ const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
         baseline_revision: V3_RETIREMENT_BASELINE_REVISION,
         expected_count: V3_EXPECTED_RETIREMENT_COUNT,
         groups: V3_RETIREMENT_GROUPS,
+    },
+    HistoricalRetirementBatchSpec {
+        version: 4,
+        baseline_revision: V4_RETIREMENT_BASELINE_REVISION,
+        expected_count: V4_EXPECTED_RETIREMENT_COUNT,
+        groups: V4_RETIREMENT_GROUPS,
     },
 ];
 
@@ -564,16 +588,19 @@ pub fn authorize_legacy_projection_retirements()
     let v1_batch = historical_retirement_batch(&batches, 1)?;
     let v2_batch = historical_retirement_batch(&batches, 2)?;
     let v3_batch = historical_retirement_batch(&batches, 3)?;
+    let v4_batch = historical_retirement_batch(&batches, 4)?;
     let historical_witness_digest = historical_witness_digest(&batches);
     let v1_historical_witness_digest = historical_batch_digest(v1_batch);
     let v2_historical_witness_digest = historical_batch_digest(v2_batch);
     let v3_historical_witness_digest = historical_batch_digest(v3_batch);
+    let v4_historical_witness_digest = historical_batch_digest(v4_batch);
     let cumulative_production_inventory_digest = production_inventory_digest(&production_inventory);
     let v1_production_inventory = production_inventory_for_batch(v1_batch, &production_inventory);
     let v1_production_inventory_digest = production_inventory_digest(&v1_production_inventory);
     if v1_historical_witness_digest != EXPECTED_V1_HISTORICAL_WITNESS_DIGEST
         || v2_historical_witness_digest != EXPECTED_V2_HISTORICAL_WITNESS_DIGEST
         || v3_historical_witness_digest != EXPECTED_V3_HISTORICAL_WITNESS_DIGEST
+        || v4_historical_witness_digest != EXPECTED_V4_HISTORICAL_WITNESS_DIGEST
         || historical_witness_digest != EXPECTED_HISTORICAL_WITNESS_DIGEST
         || v1_production_inventory_digest != EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST
         || cumulative_production_inventory_digest != EXPECTED_PRODUCTION_INVENTORY_DIGEST
@@ -581,13 +608,15 @@ pub fn authorize_legacy_projection_retirements()
         return Err(LegacyProjectionVerificationError::new(
             "legacy-projection-authority",
             format!(
-                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; v3 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
+                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; v3 historical expected {}, observed {}; v4 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
                 hex_digest(EXPECTED_V1_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v1_historical_witness_digest),
                 hex_digest(EXPECTED_V2_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v2_historical_witness_digest),
                 hex_digest(EXPECTED_V3_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v3_historical_witness_digest),
+                hex_digest(EXPECTED_V4_HISTORICAL_WITNESS_DIGEST),
+                hex_digest(v4_historical_witness_digest),
                 hex_digest(EXPECTED_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(historical_witness_digest),
                 hex_digest(EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST),
@@ -1136,6 +1165,23 @@ mod tests {
         }));
         assert_eq!(
             v3.retirements
+                .iter()
+                .map(|retirement| retirement.selector)
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
+
+        let v4 = historical_retirement_batch(&batches, 4).expect("v4 batch exists");
+        assert_eq!(v4.baseline_revision, V4_RETIREMENT_BASELINE_REVISION);
+        assert_eq!(v4.retirements.len(), V4_EXPECTED_RETIREMENT_COUNT);
+        assert!(v4.retirements.iter().all(|retirement| {
+            retirement.family_id == DiagramFamilyId::KANBAN
+                && retirement.target == ThemeTarget::Title
+                && retirement.facet == ThemeLegacyRouteFacet::Fill
+                && retirement.former_projections == TITLE_FILL
+        }));
+        assert_eq!(
+            v4.retirements
                 .iter()
                 .map(|retirement| retirement.selector)
                 .collect::<Vec<_>>(),

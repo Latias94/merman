@@ -9,9 +9,9 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
     let authorization = runner()
         .expect("KTD23 must compare current probes with the independent historical witness");
 
-    assert_eq!(authorization.manifest_version(), 3);
-    assert_eq!(authorization.retirement_count(), 60);
-    assert_eq!(authorization.value_probe_count(), 120);
+    assert_eq!(authorization.manifest_version(), 4);
+    assert_eq!(authorization.retirement_count(), 62);
+    assert_eq!(authorization.value_probe_count(), 124);
     assert_ne!(authorization.manifest_digest(), &[0; 32]);
     assert_ne!(authorization.historical_witness_digest(), &[0; 32]);
     assert_ne!(authorization.production_inventory_digest(), &[0; 32]);
@@ -21,8 +21,8 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 #[test]
 fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        24, 188, 239, 13, 126, 185, 204, 157, 12, 249, 110, 191, 121, 180, 113, 133, 22, 173, 20,
-        146, 3, 115, 185, 173, 125, 55, 126, 58, 172, 181, 161, 147,
+        199, 28, 101, 19, 103, 199, 29, 249, 186, 70, 152, 42, 201, 1, 32, 149, 142, 159, 40, 217,
+        97, 142, 166, 116, 214, 109, 90, 208, 165, 60, 168, 200,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
         95, 1, 209, 154, 147, 189, 235, 158, 138, 101, 210, 238, 227, 0, 170, 189, 150, 121, 25,
@@ -36,7 +36,7 @@ fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert_eq!(status.matrix_route_count(), 250);
+    assert_eq!(status.matrix_route_count(), 246);
     assert_eq!(status.matrix_family_count(), 13);
     assert_eq!(status.dispatched_family_count(), 13);
     assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);

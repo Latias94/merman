@@ -1346,6 +1346,146 @@ fn kanban_task_radius_rejects_qualified_rules_but_accepts_mixed_direct_paint() {
 }
 
 #[test]
+fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
+    let baseline_theme = kanban_task_rules_theme([]);
+    for source in [
+        "kanban\n",
+        "kanban\n  todo[Todo]\n    task[Task]\n",
+        "---\ntitle: Metadata title\n---\nkanban\n  todo[Todo]\n    task[Task]\n",
+        "kanban\n  title Release\n    task[Task]\n",
+    ] {
+        let baseline = render_kanban_with_theme_and_engine(
+            source,
+            &baseline_theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for paint in [
+                CanvasPaint::solid("#987654").expect("valid retired title fill"),
+                CanvasPaint::Transparent,
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let rendered = render_kanban_with_theme_and_engine(
+                    source,
+                    &kanban_task_rules_theme([rule]),
+                    Engine::new(),
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                assert_eq!(rendered.svg(), baseline.svg(), "source={source:?}");
+                let document =
+                    roxmltree::Document::parse(rendered.svg()).expect("valid Kanban SVG");
+                assert!(
+                    !document
+                        .descendants()
+                        .any(|node| { node.is_text() && node.text() == Some("Metadata title") })
+                );
+                if source.contains("  title Release\n") {
+                    let column_label = document
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some("cluster-label"))
+                        .expect("literal title statement creates a column label");
+                    assert!(
+                        column_label
+                            .descendants()
+                            .any(|node| { node.is_text() && node.text() == Some("title Release") })
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn kanban_legacy_title_color_has_no_consumer_while_text_color_styles_labels() {
+    let source = concat!(
+        "---\ntitle: Metadata title\n---\n",
+        "kanban\n  title Release\n    task[Task]\n",
+    );
+    let render = |title_color: &str, text_color: &str| {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {
+                    "titleColor": title_color,
+                    "textColor": text_color
+                }
+            })))
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse ordinary configured Kanban")
+            .expect("detect Kanban");
+        assert_eq!(
+            parsed
+                .metadata()
+                .effective_config
+                .get_str("themeVariables.titleColor"),
+            Some(title_color),
+            "the legacy config probe must reach the effective configuration"
+        );
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin unthemed Kanban session");
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+            .expect("prepare ordinary configured Kanban");
+        render_kanban_artifact(artifact)
+            .expect("render ordinary configured Kanban")
+            .1
+    };
+    let first = render("#123456", "#abcdef");
+    let second = render("#987654", "#abcdef");
+    assert_eq!(first, second, "titleColor must not change any emitted SVG");
+    let changed_text = render("#123456", "#fedcba");
+    assert_ne!(first, changed_text, "textColor has real label consumers");
+    for (svg, text_color) in [(&first, "#abcdef"), (&changed_text, "#fedcba")] {
+        let document = roxmltree::Document::parse(svg).expect("valid configured Kanban SVG");
+        let stylesheet = document
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("root Kanban stylesheet");
+        assert!(stylesheet.contains(&format!(
+            "#kanban-markdown .cluster-label,#kanban-markdown .label{{color:{text_color};fill:{text_color};}}"
+        )));
+        let column_label = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("cluster-label"))
+            .expect("visible column label");
+        assert!(
+            column_label
+                .descendants()
+                .any(|node| { node.is_text() && node.text() == Some("title Release") })
+        );
+        let card = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("kanban-markdown-task"))
+            .expect("visible task card");
+        assert!(
+            card.descendants()
+                .any(|node| { node.is_text() && node.text() == Some("Task") })
+        );
+        assert!(
+            !document
+                .descendants()
+                .any(|node| { node.is_text() && node.text() == Some("Metadata title") })
+        );
+    }
+}
+
+#[test]
 fn kanban_task_radius_is_not_applicable_without_items() {
     render_kanban_svg_with_theme(
         "kanban\n  todo[Todo]\n",

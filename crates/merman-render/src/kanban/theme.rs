@@ -604,10 +604,18 @@ impl KanbanTaskTheme {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Task,
-                TerminalVariantDomain::uniform(item_count, ThemeVariant::Default),
-            )],
+            &[
+                UnsupportedTerminalDomain::fallbacks_only(
+                    ThemeTarget::Task,
+                    TerminalVariantDomain::uniform(item_count, ThemeVariant::Default),
+                ),
+                // Kanban emits column and card labels, but no independent diagram title.
+                // Frontmatter and literal node labels do not create a Title occurrence.
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(0, ThemeVariant::Default),
+                ),
+            ],
             work_meter,
         )?;
 

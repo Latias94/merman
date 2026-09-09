@@ -12,12 +12,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 20/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 13/33; 250 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 13/33; 246 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 49 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 50 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v54; 300 routes / 338 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v3; 60 routes / 120 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
 output files. Version 54 adds four Journey Text.fill routes with Classic witnesses. The four C4
@@ -86,6 +86,10 @@ Important boundaries that a family-level count cannot express:
   `themeVariables.titleColor` styles only nonexistent cluster text. `Title.fill` is Unsupported;
   a visible title with no local color owner leaves a theme residual, while an absent title or
   explicit nonempty `journey.titleColor` is `NotApplicable`. No typed Title consumer is implied.
+- Kanban has no independent diagram-title terminal. KTD23 v4 retires the unused
+  `title.fill` projection to `themeVariables.titleColor`; Title rules are Unsupported and
+  NotApplicable, including documents with frontmatter titles. Column labels use Text paint and
+  card labels use TaskLabel paint. The Text compatibility projection and Kanban bridge remain.
 - C4 static unqualified/Default Text.fill owns the root inherited color and optional diagram title.
   Shape, boundary, and relationship labels retain independent colors. Explicit
   `themeVariables.textColor` owns the root; a title-less document with statically owned label colors

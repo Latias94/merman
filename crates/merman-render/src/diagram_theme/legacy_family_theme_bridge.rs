@@ -884,10 +884,6 @@ fn compile_kanban_family(
             ("taskTextColor", reader.text_fill(ThemeTarget::Text)),
         ],
     );
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
 
     contributions.finish_into(builder)
 }
@@ -2324,14 +2320,14 @@ mod tests {
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 250);
+        assert_eq!(status.matrix_route_count(), 246);
         assert_eq!(status.matrix_family_count(), 13);
         assert_eq!(status.dispatched_family_count(), 13);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                24, 188, 239, 13, 126, 185, 204, 157, 12, 249, 110, 191, 121, 180, 113, 133, 22,
-                173, 20, 146, 3, 115, 185, 173, 125, 55, 126, 58, 172, 181, 161, 147
+                199, 28, 101, 19, 103, 199, 29, 249, 186, 70, 152, 42, 201, 1, 32, 149, 142, 159,
+                40, 217, 97, 142, 166, 116, 214, 109, 90, 208, 165, 60, 168, 200
             ]
         );
         assert_eq!(
@@ -2430,6 +2426,7 @@ mod tests {
             DiagramFamilyId::ARCHITECTURE,
             DiagramFamilyId::C4,
             DiagramFamilyId::CYNEFIN,
+            DiagramFamilyId::KANBAN,
             DiagramFamilyId::SANKEY,
         ] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -2798,6 +2795,60 @@ mod tests {
         ] {
             assert!(!kanban.contribution_ids.contains(retired_id));
         }
+    }
+
+    #[test]
+    fn unsupported_kanban_title_fill_preserves_text_bridge_and_explicit_compatibility() {
+        const SOURCE: &str = "kanban\n  todo[Todo]\n    task[Task]\n";
+        for paint in [CanvasPaint::Transparent, solid("#9333ea")] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint.clone()),
+                )
+                .for_family(DiagramFamilyId::KANBAN);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let bridge_instance = bridge(&spec);
+                let artifact = bridge_instance.compile_for_family(DiagramFamilyId::KANBAN);
+                assert!(artifact.overlay.is_empty());
+                assert!(artifact.contribution_ids.is_empty());
+                assert!(
+                    !bridge_instance
+                        .owns_contribution_id("merman.legacy-family-theme.v1.kanban.title.fill")
+                );
+
+                let compatibility = MermaidThemeCompatibility::default()
+                    .with_variable("titleColor", "#445566")
+                    .expect("valid explicit Kanban compatibility title color");
+                let spec = spec.with_mermaid_compatibility(compatibility);
+                let parsed =
+                    parse_with_compatibility(&spec, SOURCE, spec.mermaid().to_mermaid_config());
+                assert_eq!(
+                    parsed.effective_config.get_str("themeVariables.titleColor"),
+                    Some("#445566")
+                );
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+            }
+        }
+
+        let spec = DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(solid("#16a34a")),
+                )
+                .for_family(DiagramFamilyId::KANBAN),
+            ),
+        );
+        let parsed = parse(&spec, SOURCE);
+        for path in ["themeVariables.textColor", "themeVariables.taskTextColor"] {
+            assert_eq!(parsed.effective_config.get_str(path), Some("#16a34a"));
+        }
+        assert_eq!(fallback_contribution_count(&parsed), 1);
     }
 
     #[test]

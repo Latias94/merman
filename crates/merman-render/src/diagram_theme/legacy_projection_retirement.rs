@@ -344,7 +344,7 @@ struct LegacyProjectionRetirementPattern {
     former_projections: &'static [ThemeLegacyProjectionKey],
 }
 
-const EXPECTED_RETIREMENT_COUNT: usize = 60;
+const EXPECTED_RETIREMENT_COUNT: usize = 62;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -668,6 +668,14 @@ const JOURNEY_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[patt
     TITLE_FILL,
 )];
 
+const KANBAN_RETIREMENT_PATTERNS: &[LegacyProjectionRetirementPattern] = &[pattern(
+    DiagramFamilyId::KANBAN,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+    TITLE_FILL,
+)];
+
 const RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
     CLASS_RETIREMENT_PATTERNS,
     MINDMAP_RETIREMENT_PATTERNS,
@@ -675,6 +683,7 @@ const RETIREMENT_PATTERN_GROUPS: &[&[LegacyProjectionRetirementPattern]] = &[
     GIT_GRAPH_RETIREMENT_PATTERNS,
     ER_RETIREMENT_PATTERNS,
     JOURNEY_RETIREMENT_PATTERNS,
+    KANBAN_RETIREMENT_PATTERNS,
 ];
 
 const fn projection(
@@ -993,6 +1002,33 @@ mod tests {
         );
         assert!(
             journey_title
+                .iter()
+                .all(|descriptor| { descriptor.former_projections() == TITLE_FILL })
+        );
+    }
+
+    #[test]
+    fn kanban_title_fill_is_in_the_v4_ktd23_inventory() {
+        let descriptors = legacy_projection_retirement_inventory().expect("valid KTD23 inventory");
+        let kanban_title = descriptors
+            .iter()
+            .filter(|descriptor| {
+                descriptor.id().family_id() == DiagramFamilyId::KANBAN
+                    && descriptor.id().target() == ThemeTarget::Title
+                    && descriptor.id().facet() == ThemeLegacyRouteFacet::Fill
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(kanban_title.len(), 2);
+        assert_eq!(
+            kanban_title
+                .iter()
+                .map(|descriptor| descriptor.id().selector())
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
+        assert!(
+            kanban_title
                 .iter()
                 .all(|descriptor| { descriptor.former_projections() == TITLE_FILL })
         );

@@ -125,7 +125,7 @@ struct TombstonePattern {
     selectors: &'static [ThemeLegacyRouteSelector],
 }
 
-const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 60;
+const EXPECTED_KTD23_TOMBSTONE_COUNT: usize = 62;
 
 const UNQUALIFIED_AND_DEFAULT: &[ThemeLegacyRouteSelector] = &[
     ThemeLegacyRouteSelector::StaticUnqualified,
@@ -347,6 +347,13 @@ const JOURNEY_TOMBSTONES: &[TombstonePattern] = &[pattern(
     UNQUALIFIED_AND_DEFAULT,
 )];
 
+const KANBAN_TOMBSTONES: &[TombstonePattern] = &[pattern(
+    DiagramFamilyId::KANBAN,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+)];
+
 const TOMBSTONE_GROUPS: &[&[TombstonePattern]] = &[
     CLASS_TOMBSTONES,
     MINDMAP_TOMBSTONES,
@@ -354,6 +361,7 @@ const TOMBSTONE_GROUPS: &[&[TombstonePattern]] = &[
     GIT_GRAPH_TOMBSTONES,
     ER_TOMBSTONES,
     JOURNEY_TOMBSTONES,
+    KANBAN_TOMBSTONES,
 ];
 
 const fn pattern(
@@ -435,6 +443,18 @@ mod tests {
                 .iter()
                 .filter(|route| {
                     route.family_id() == DiagramFamilyId::JOURNEY
+                        && route.target() == ThemeTarget::Title
+                        && route.facet() == ThemeLegacyRouteFacet::Fill
+                })
+                .map(|route| route.selector())
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
+        assert_eq!(
+            routes
+                .iter()
+                .filter(|route| {
+                    route.family_id() == DiagramFamilyId::KANBAN
                         && route.target() == ThemeTarget::Title
                         && route.facet() == ThemeLegacyRouteFacet::Fill
                 })
