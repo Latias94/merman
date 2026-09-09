@@ -204,7 +204,7 @@ const RUNTIME_CATALOG = {
     ],
     system_adapter_ids: [],
     text_measurement: {
-      protocol_version: 1,
+      protocol_version: 2,
       provider_ids: ["deterministic"],
     },
   },
