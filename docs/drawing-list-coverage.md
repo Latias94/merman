@@ -243,6 +243,15 @@ and public transform edits. The focused 32 renderer/Gantt/effect tests, two faca
 renderer Clippy check pass. Gantt remains outside canonical admission pending the remaining
 full-family DOM and presentation work.
 
+Single-primitive task scopes now project their public semantic identity, accessible name and
+description onto the actual rectangle, path or text instead of adding a synthetic group. Linked
+bars and labels keep separate anchors so every bar still precedes every label. The protocol scope
+remains on the serializer stack; hidden nodes, unnamed labels and edited scopes containing extra
+commands retain the generic semantic group. Regression coverage checks escaped public metadata,
+milestone geometry edits, links, painter order and those generic fallbacks. All 86 focused family,
+document serializer, Gantt SVG and effect tests pass. This does not establish complete upstream
+link DOM or accessibility-tree parity, change comparator rules, or admit Gantt as canonical.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

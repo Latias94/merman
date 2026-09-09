@@ -2111,6 +2111,17 @@ mod tests {
             assert!(rect.has_tag_name("rect"));
             assert_eq!(rect.attribute("rx"), Some("3"));
             assert_eq!(rect.attribute("stroke-width"), Some("2"));
+            assert_eq!(
+                rect.attribute("data-merman-semantic-id"),
+                Some("gantt.task.0")
+            );
+            assert!(rect.attribute("aria-label").is_some());
+            assert!(
+                rect.parent()
+                    .unwrap()
+                    .attribute("data-merman-semantic-id")
+                    .is_none()
+            );
             let matrix = rect.attribute("transform").unwrap().to_owned();
             assert!(matrix.starts_with("matrix("));
             let label = xml
@@ -2138,6 +2149,34 @@ mod tests {
                 .find(|node| node.attribute("data-merman-resource") == Some(path_id))
                 .unwrap();
             assert_ne!(rect.attribute("transform"), Some(matrix.as_str()));
+            let path = document
+                .public
+                .resources
+                .iter_mut()
+                .find_map(|resource| match resource {
+                    DrawingResource::Path(path) if path.id.as_str() == path_id => Some(path),
+                    _ => None,
+                })
+                .unwrap();
+            let PathSegment::MoveTo { to } = &mut path.segments[0] else {
+                unreachable!()
+            };
+            to.x += 1.0;
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let path = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            assert!(
+                path.has_tag_name("path"),
+                "edited geometry no longer projects as a rectangle"
+            );
+            assert_eq!(
+                path.attribute("data-merman-semantic-id"),
+                Some("gantt.task.0")
+            );
+            assert!(path.attribute("aria-label").is_some());
         }
     }
 
@@ -2414,7 +2453,7 @@ mod tests {
         let parsed = Engine::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({"securityLevel": "loose"})))
             .parse_diagram_for_render_model_sync(
-                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\nclick a href \"https://example.com/task\"\n",
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\nOther :b, 2026-01-03, 1d\nclick a href \"https://example.com/task\"\n",
                 ParseOptions::strict(),
             ).unwrap().unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
@@ -2426,6 +2465,12 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
+        for semantic in &mut document.public.semantics {
+            if semantic.id == "gantt.task.0" || semantic.id == "gantt.task.0.label" {
+                semantic.title = Some("Public <task> & label".to_owned());
+                semantic.description = Some("Public description".to_owned());
+            }
+        }
         let rendered = crate::svg::render_document_svg(
             &document,
             &SvgRenderOptions {
@@ -2510,6 +2555,13 @@ mod tests {
                 .descendants()
                 .find(|node| node.attribute("id") == Some(id))
                 .unwrap();
+            assert!(node.parent().unwrap().has_tag_name("a"));
+            assert_eq!(node.attribute("aria-label"), Some("Public <task> & label"));
+            assert_eq!(
+                node.attribute("aria-description"),
+                Some("Public description")
+            );
+            assert!(node.attribute("data-merman-semantic-id").is_some());
             assert!(node.ancestors().any(|ancestor| {
                 ancestor.has_tag_name("a")
                     && ancestor.attribute("href") == Some("https://example.com/task")
@@ -2519,6 +2571,21 @@ mod tests {
                     .is_some_and(|class| class.contains("clickable"))
             );
         }
+        let other = svg
+            .descendants()
+            .find(|node| node.attribute("id") == Some("compact-b"))
+            .unwrap();
+        let tasks = other.parent().unwrap();
+        assert!(tasks.has_tag_name("g"));
+        assert!(tasks.attribute("data-merman-semantic-id").is_none());
+        assert_eq!(
+            tasks
+                .children()
+                .filter(|node| node.is_element())
+                .map(|node| node.tag_name().name())
+                .collect::<Vec<_>>(),
+            ["a", "rect", "a", "text"]
+        );
         for command in &mut document.public.commands {
             match command {
                 merman_display_list::DrawingCommand::BeginLayer {
@@ -2626,6 +2693,91 @@ mod tests {
                 .any(|node| node.attribute("class") == Some("tick")),
             "other ticks keep their valid projection"
         );
+        // New commands inside a task scope retain the full semantic wrapper and their effect.
+        use merman_display_list::DrawingCommand;
+        let bar = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+                    DrawingCommand::DrawPath { path, .. } if path.as_str() == "gantt.task.1.bar"
+                )
+            })
+            .unwrap();
+        document.public.commands.insert(bar, DrawingCommand::Save);
+        document
+            .public
+            .commands
+            .insert(bar + 1, DrawingCommand::SetOpacity { opacity: 0.4 });
+        document
+            .public
+            .commands
+            .insert(bar + 3, DrawingCommand::Restore);
+        let expanded = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&expanded).unwrap();
+        let bar = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some("gantt.task.1.bar"))
+            .unwrap();
+        assert_eq!(bar.attribute("opacity"), Some("0.4"));
+        let group = bar.parent().unwrap();
+        assert!(group.has_tag_name("g"));
+        assert_eq!(
+            group.attribute("data-merman-semantic-id"),
+            Some("gantt.task.1")
+        );
+        assert!(group.children().any(|node| node.has_tag_name("title")));
+        assert!(group.children().any(|node| node.has_tag_name("desc")));
+        for title in [None, Some("   ".to_owned())] {
+            document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|semantic| semantic.id == "gantt.task.0.label")
+                .unwrap()
+                .title = title;
+            let hidden = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions {
+                    include_nodes: false,
+                    ..Default::default()
+                },
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&hidden).unwrap();
+            let bar = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some("gantt.task.0"))
+                .unwrap();
+            assert_eq!(bar.attribute("display"), Some("none"));
+            let label = xml
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-merman-semantic-id") == Some("gantt.task.0.label")
+                })
+                .unwrap();
+            assert!(
+                label.has_tag_name("g"),
+                "unnamed labels retain their readable text, not an unnamed image role"
+            );
+            assert!(
+                label
+                    .children()
+                    .any(|node| node.has_tag_name("text") && node.attribute("role").is_none())
+            );
+            assert!(label.ancestors().any(|node| node.has_tag_name("a")));
+        }
     }
 
     #[test]

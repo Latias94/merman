@@ -3,6 +3,125 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn begin_gantt_task(&mut self, semantic_id: &str) -> Result<bool> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return Ok(false);
+        };
+        if !semantic_id.starts_with("gantt.task.") {
+            return Ok(false);
+        }
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .copied()
+            .ok_or_else(|| invalid("Gantt task has no semantic annotation"))?;
+        if !self.debug_visibility(semantic.role)
+            || semantic
+                .title
+                .as_deref()
+                .is_none_or(|title| title.trim().is_empty())
+        {
+            // Native text remains readable inside the generic group when there is no authored
+            // accessible name for the single graphic. Do not turn it into an unnamed image.
+            return Ok(false);
+        }
+        let Some(commands) = self.document.commands.get(self.command_index + 1..) else {
+            return Ok(false);
+        };
+        let projected = match commands {
+            [
+                DrawingCommand::DrawPath { path, .. },
+                DrawingCommand::EndSemanticGroup,
+                ..,
+            ]
+            | [
+                DrawingCommand::Save,
+                DrawingCommand::ConcatTransform { .. },
+                DrawingCommand::DrawPath { path, .. },
+                DrawingCommand::Restore,
+                DrawingCommand::EndSemanticGroup,
+                ..,
+            ] => {
+                semantic.role == SemanticRole::Node
+                    && path.as_str().strip_suffix(".bar") == Some(semantic_id)
+                    && body.dom_ids.contains_key(path.as_str())
+            }
+            [
+                DrawingCommand::DrawText { run },
+                DrawingCommand::EndSemanticGroup,
+                ..,
+            ] => {
+                semantic.role == SemanticRole::Label
+                    && semantic_id.ends_with(".label")
+                    && body.dom_ids.contains_key(semantic_id)
+                    && matches!(run.obligation, TextObligation::HostText { .. })
+            }
+            _ => false,
+        };
+        if !projected {
+            return Ok(false);
+        }
+        let security = MermaidNavigationSecurity::from_security_level_loose(
+            self.effective_config
+                .get("securityLevel")
+                .and_then(Value::as_str)
+                == Some("loose"),
+        );
+        let link = semantic
+            .link
+            .as_deref()
+            .and_then(|link| prepare_mermaid_navigation_uri(link, security));
+        if let Some(link) = &link {
+            self.output.push_str("<a href=\"")?;
+            output::escape_attr(&mut self.output, link)?;
+            self.output.push_str("\">")?;
+        }
+        // Keep the logical scope on the stack. Its one visual element owns the semantic
+        // attributes; independent anchors preserve all-bars-before-labels paint ordering.
+        self.groups.push(GroupKind::Semantic {
+            linked: link.is_some(),
+            emitted: false,
+            semantic_id: semantic_id.to_owned(),
+            projected_transform: Transform::IDENTITY,
+        });
+        Ok(true)
+    }
+
+    pub(super) fn write_gantt_task_semantics(&mut self) -> Result<()> {
+        let Some(GroupKind::Semantic {
+            emitted: false,
+            semantic_id,
+            ..
+        }) = self.groups.last()
+        else {
+            return Ok(());
+        };
+        if !semantic_id.starts_with("gantt.task.") {
+            return Ok(());
+        }
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .copied()
+            .ok_or_else(|| invalid("Gantt task has no semantic annotation"))?;
+        write!(
+            self.output,
+            " role=\"img\" data-merman-semantic-id=\"{}\"",
+            escaped_attr(semantic_id)
+        )?;
+        if let Some(title) = &semantic.title {
+            write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
+        }
+        if let Some(description) = &semantic.description {
+            write!(
+                self.output,
+                " aria-description=\"{}\"",
+                escaped_attr(description)
+            )?;
+        }
+        Ok(())
+    }
+
     pub(super) fn emit_gantt_section_text(&mut self, index: usize) -> Result<Option<usize>> {
         let SvgStructureBody::Gantt(body) = self.svg_body else {
             return Ok(None);

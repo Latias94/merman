@@ -1576,6 +1576,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         if self.begin_venn_semantic_group(semantic_id, semantic)? {
             return Ok(());
         }
+        if self.begin_gantt_task(semantic_id)? {
+            return Ok(());
+        }
         if self.begin_gantt_collection(semantic_id)? {
             return Ok(());
         }
@@ -2088,9 +2091,9 @@ impl<'a> DocumentSvgEncoder<'a> {
                 }
                 if emitted {
                     self.output.push_str("</g>")?;
-                    if linked {
-                        self.output.push_str("</a>")?;
-                    }
+                }
+                if linked {
+                    self.output.push_str("</a>")?;
                 }
                 if matches!(self.svg_body, SvgStructureBody::Mindmap(_))
                     && semantic_id == "mindmap.document"
@@ -3917,6 +3920,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push('-')?;
         output::escape_attr(&mut self.output, raw_id.as_str())?;
         self.output.push('"')?;
+        self.write_gantt_task_semantics()?;
         Ok(())
     }
 
