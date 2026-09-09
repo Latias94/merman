@@ -99,7 +99,7 @@ struct DocumentSvgEncoder<'a> {
     tree_view_icons: Option<tree_view_icon::IconProjection>,
     tree_view_unknown_icons: BTreeMap<usize, tree_view_unknown_icon::UnknownIcon<'a>>,
     tree_view_asset_viewports: BTreeMap<usize, tree_view_asset::AssetViewport<'a>>,
-    tree_view_asset_scopes: BTreeMap<usize, &'a crate::drawing_list::AssetScope>,
+    tree_view_asset_scopes: tree_view_asset::ScopeProjections<'a>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -269,7 +269,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             tree_view_asset_scopes: if let SvgStructureBody::TreeView(body) = &document.svg.body {
                 tree_view_asset::scope_projections(&document.public, body, session)?
             } else {
-                BTreeMap::new()
+                Default::default()
             },
             resources,
             resource_svg_ids,

@@ -124,6 +124,17 @@ All 80 focused TreeView/icon tests, Clippy, formatting, and the required full SV
 pass for this change. The gate uses the existing admission matrix; it does not certify registered
 asset candidate parity.
 
+Direct-child group paint promotion is now conservative and public-state based. A group is promoted
+only when its complete direct path set has one current `PathStyle`, no resource paint, no nested
+scope promotion, and no non-path command. The source group retains only fixed presentation/inline
+property placement; values are emitted from the shared public style. Leaves omit only properties
+actually supplied by that group and not explicitly declared on the leaf. An edited leaf disables
+promotion, while matching edits can promote the new public paint. A Chromium receipt
+`target/compare/asset-group-paint-browser-result.json` covers default rendering, host CSS overrides,
+and group CSS overrides. Group opacity remains unsupported and is not distributed across leaves.
+The follow-up adds one family-level shared-paint regression alongside the existing 80 TreeView/icon
+tests; all focused tests, Clippy, formatting, and the full SVG structure gate pass.
+
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
 root geometry, style, DOM/a11y obligations, and effect disposition remain source-backed.  ZenUML

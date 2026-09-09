@@ -2421,6 +2421,141 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_registered_groups_project_shared_public_paint() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        let pack = serde_json::json!({"prefix":"test","width":24,"height":24,"icons":{"groups":{"body":r##"<g id="outer" fill="#234567"><g id="shared" fill="#123456" stroke="#654321" stroke-width="2" fill-opacity="0.5" style="stroke-linecap:round"><path d="M0 0H4V4Z"/><path fill="#123456" fill-opacity="0.5" d="M5 0H9V4Z"/></g><g id="overridden" fill="#abcdef"><path fill="#123456" d="M0 5H4V9Z"/></g></g>"##}}});
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            &serde_json::to_vec(&pack).unwrap(),
+        )])
+        .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(test:groups)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_icon_registry(registry)
+            .begin_session()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let legacy = render_legacy_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+        let legacy_xml = roxmltree::Document::parse(&legacy).unwrap();
+        let ids: Vec<_> = legacy_xml
+            .descendants()
+            .filter(|node| node.has_tag_name("g"))
+            .filter_map(|node| node.attribute("id"))
+            .collect();
+        assert_eq!(ids.len(), 3);
+        let candidate = render(&document);
+        let xml = roxmltree::Document::parse(&candidate).unwrap();
+        let group = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(ids[1]))
+            .unwrap();
+        for property in ["fill", "stroke", "stroke-width", "style"] {
+            let source = legacy_xml
+                .descendants()
+                .find(|node| node.attribute("id") == Some(ids[1]))
+                .unwrap();
+            assert_eq!(
+                group.attribute(property).map(|s| s.trim_end_matches(';')),
+                source.attribute(property),
+                "{property}"
+            );
+        }
+        assert_eq!(group.attribute("fill-opacity"), Some("0.5019607843137255"));
+        let children: Vec<_> = group.children().filter(|node| node.is_element()).collect();
+        assert_eq!(children.len(), 2);
+        for property in [
+            "fill",
+            "stroke",
+            "stroke-width",
+            "stroke-linecap",
+            "fill-opacity",
+        ] {
+            assert_eq!(
+                children[0].attribute(property),
+                None,
+                "inherited {property}"
+            );
+        }
+        assert_eq!(
+            children[1].attribute("fill"),
+            Some("#123456"),
+            "explicit child declarations stay local"
+        );
+        assert_eq!(
+            children[1].attribute("fill-opacity"),
+            Some("0.5019607843137255")
+        );
+        for id in [ids[0], ids[2]] {
+            assert_eq!(
+                xml.descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap()
+                    .attribute("fill"),
+                None,
+                "nested or fully overridden source paint is not reconstructed"
+            );
+        }
+        // A changed leaf invalidates sharing. The unaffected leaf must still paint the old color.
+        let first = document.public.commands.iter().position(|command| matches!(command, DrawingCommand::DrawPath { path, .. } if path.as_str().ends_with(".asset.shape.0"))).unwrap();
+        if let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[first] {
+            style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 128)));
+        }
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let group = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(ids[1]))
+            .unwrap();
+        assert_eq!(group.attribute("fill"), None);
+        let children: Vec<_> = group.children().filter(|node| node.is_element()).collect();
+        assert_eq!(children[0].attribute("fill"), Some("#ff0000"));
+        assert_eq!(children[1].attribute("fill"), Some("#123456"));
+        // Matching edits recover the shared source placement using the new public color.
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str().ends_with(".asset.shape.1")
+            {
+                style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 128)));
+            }
+        }
+        let edited = render(&document);
+        let xml = roxmltree::Document::parse(&edited).unwrap();
+        let group = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some(ids[1]))
+            .unwrap();
+        assert_eq!(group.attribute("fill"), Some("#ff0000"));
+    }
+
+    #[test]
     fn tree_view_registered_inline_styles_project_current_public_paint() {
         use merman_display_list::{
             BlendMode, Color, DrawingCommand, DrawingResource, Paint, PathSegment,

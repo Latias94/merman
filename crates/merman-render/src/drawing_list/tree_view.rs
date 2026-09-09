@@ -470,6 +470,7 @@ impl<'a> TreeViewBuilder<'a> {
                         transform: Some(super::icon_asset::AssetTransform::Alias(geometry)),
                         dom_id: None,
                         kind: super::icon_asset::AssetScopeKind::Group,
+                        style: Default::default(),
                     },
                 );
                 self.output.push_control(DrawingCommand::Restore)?;

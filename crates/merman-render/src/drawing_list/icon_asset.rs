@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AssetStructure {
     pub(crate) primitives: BTreeMap<String, PrimitiveGeometry>,
-    pub(crate) inline_styles: BTreeMap<String, AssetInlineStyle>,
+    pub(crate) styles: BTreeMap<String, AssetStylePlacement>,
     pub(crate) dom_ids: BTreeMap<String, String>,
     pub(crate) scopes: BTreeMap<usize, AssetScope>,
 }
@@ -28,7 +28,7 @@ pub(crate) struct AssetStructure {
 impl AssetStructure {
     pub(crate) fn extend(&mut self, other: Self) {
         self.primitives.extend(other.primitives);
-        self.inline_styles.extend(other.inline_styles);
+        self.styles.extend(other.styles);
         self.dom_ids.extend(other.dom_ids);
         self.scopes.extend(other.scopes);
     }
@@ -36,10 +36,29 @@ impl AssetStructure {
 
 /// Declaration placement only: values always come from the current public path/state.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct AssetInlineStyle(u16);
+pub(crate) struct AssetStyleProperties(u16);
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct AssetStylePlacement {
+    pub(crate) attributes: AssetStyleProperties,
+    pub(crate) inline: AssetStyleProperties,
+}
+
+impl AssetStylePlacement {
+    pub(crate) fn all(self) -> AssetStyleProperties {
+        self.attributes.union(self.inline)
+    }
+
+    pub(crate) fn retain(self, properties: AssetStyleProperties) -> Self {
+        Self {
+            attributes: self.attributes.intersection(properties),
+            inline: self.inline.intersection(properties),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum AssetInlineProperty {
+pub(crate) enum AssetStyleProperty {
     Fill,
     Stroke,
     FillOpacity,
@@ -54,7 +73,7 @@ pub(crate) enum AssetInlineProperty {
     Opacity,
 }
 
-impl AssetInlineProperty {
+impl AssetStyleProperty {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Fill => "fill",
@@ -73,20 +92,43 @@ impl AssetInlineProperty {
     }
 }
 
-impl AssetInlineStyle {
-    const PROPERTIES: [AssetInlineProperty; 12] = [
-        AssetInlineProperty::Fill,
-        AssetInlineProperty::Stroke,
-        AssetInlineProperty::FillOpacity,
-        AssetInlineProperty::StrokeOpacity,
-        AssetInlineProperty::FillRule,
-        AssetInlineProperty::StrokeWidth,
-        AssetInlineProperty::StrokeLineCap,
-        AssetInlineProperty::StrokeLineJoin,
-        AssetInlineProperty::StrokeMiterLimit,
-        AssetInlineProperty::StrokeDashArray,
-        AssetInlineProperty::StrokeDashOffset,
-        AssetInlineProperty::Opacity,
+impl AssetStyleProperties {
+    pub(crate) const ALL: Self = Self((1 << 12) - 1);
+
+    pub(crate) fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+    pub(crate) fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+    pub(crate) fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
+    }
+    pub(crate) fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    pub(crate) fn of(properties: &[AssetStyleProperty]) -> Self {
+        let mut result = Self::default();
+        for property in properties {
+            result.insert(property.name());
+        }
+        result
+    }
+
+    const PROPERTIES: [AssetStyleProperty; 12] = [
+        AssetStyleProperty::Fill,
+        AssetStyleProperty::Stroke,
+        AssetStyleProperty::FillOpacity,
+        AssetStyleProperty::StrokeOpacity,
+        AssetStyleProperty::FillRule,
+        AssetStyleProperty::StrokeWidth,
+        AssetStyleProperty::StrokeLineCap,
+        AssetStyleProperty::StrokeLineJoin,
+        AssetStyleProperty::StrokeMiterLimit,
+        AssetStyleProperty::StrokeDashArray,
+        AssetStyleProperty::StrokeDashOffset,
+        AssetStyleProperty::Opacity,
     ];
 
     fn insert(&mut self, name: &str) {
@@ -98,7 +140,7 @@ impl AssetInlineStyle {
         }
     }
 
-    pub(crate) fn properties(self) -> impl Iterator<Item = AssetInlineProperty> {
+    pub(crate) fn properties(self) -> impl Iterator<Item = AssetStyleProperty> {
         Self::PROPERTIES
             .into_iter()
             .enumerate()
@@ -112,6 +154,7 @@ pub(crate) struct AssetScope {
     pub(crate) transform: Option<AssetTransform>,
     pub(crate) dom_id: Option<String>,
     pub(crate) kind: AssetScopeKind,
+    pub(crate) style: AssetStylePlacement,
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +237,7 @@ impl AssetScope {
             transform,
             dom_id,
             kind,
+            style: AssetStylePlacement::default(),
         })
     }
 }
@@ -433,7 +477,7 @@ pub(crate) fn lower_icon_asset(
                 if tag != "g" && node.children().any(|child| child.is_element()) {
                     return Err(context.unsupported(format!("nested content in <{tag}>")));
                 }
-                let (next, inline) = context.style(node, state)?;
+                let (next, placement) = context.style(node, state)?;
                 let mut dom_id = if node.attribute("id").is_some() {
                     let id = identity
                         .svg_scope
@@ -452,16 +496,24 @@ pub(crate) fn lower_icon_asset(
                 stack.push((state, start));
                 state = next;
                 if tag == "g" {
-                    structure.scopes.insert(
+                    let mut scope = AssetScope::capture(
+                        node,
                         start,
-                        AssetScope::capture(
-                            node,
-                            start,
-                            dom_id.take(),
-                            AssetScopeKind::Group,
-                            session,
-                        )?,
-                    );
+                        dom_id.take(),
+                        AssetScopeKind::Group,
+                        session,
+                    )?;
+                    // currentColor has no standalone public color property. Do not pretend
+                    // a descendant's resolved color was the source group's declaration.
+                    let mut excluded = AssetStyleProperties::of(&[AssetStyleProperty::Opacity]);
+                    if matches!(state.fill, IconPaint::CurrentColor) {
+                        excluded.insert("fill");
+                    }
+                    if matches!(state.stroke, IconPaint::CurrentColor) {
+                        excluded.insert("stroke");
+                    }
+                    scope.style = placement.retain(AssetStyleProperties::ALL.without(excluded));
+                    structure.scopes.insert(start, scope);
                 }
                 if let Some(value) = node.attribute("transform") {
                     for token in svgtypes::TransformListParser::from(value) {
@@ -481,9 +533,7 @@ pub(crate) fn lower_icon_asset(
                         style,
                         |emit| context.geometry(tag, |name| node.attribute(name), emit),
                     )? {
-                        if inline.0 != 0 {
-                            structure.inline_styles.insert(id.clone(), inline);
-                        }
+                        structure.styles.insert(id.clone(), placement);
                         if let Some(dom_id) = dom_id {
                             structure.dom_ids.insert(id.clone(), dom_id);
                         }
@@ -565,9 +615,9 @@ impl Context<'_> {
         &self,
         node: Node<'a, '_>,
         inherited: Style<'a>,
-    ) -> Result<(Style<'a>, AssetInlineStyle)> {
+    ) -> Result<(Style<'a>, AssetStylePlacement)> {
         let mut style = inherited;
-        let mut placement = AssetInlineStyle::default();
+        let mut placement = AssetStylePlacement::default();
         for attribute in node.attributes() {
             self.session.checkpoint(OperationPhase::Emit)?;
             if attribute.namespace().is_some() {
@@ -588,6 +638,7 @@ impl Context<'_> {
             };
             if !geometry {
                 self.property(&mut style, key, attribute.value(), inherited)?;
+                placement.attributes.insert(key);
             }
         }
         if let Some(inline) = node.attribute("style") {
@@ -603,7 +654,7 @@ impl Context<'_> {
                     .split_once(':')
                     .ok_or_else(|| self.unsupported("malformed style declaration"))?;
                 self.property(&mut style, key.trim(), value.trim(), inherited)?;
-                placement.insert(key.trim());
+                placement.inline.insert(key.trim());
             }
         }
         Ok((style, placement))

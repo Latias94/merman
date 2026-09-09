@@ -1,18 +1,37 @@
 //! Registered icon viewport structure, with public clipping and matrix compensation.
 
 use super::*;
+use crate::drawing_list::{
+    AssetStylePlacement, AssetStyleProperties, AssetStyleProperty as Property,
+};
+
+#[derive(Default)]
+pub(super) struct ScopeProjections<'a> {
+    scopes: BTreeMap<usize, &'a crate::drawing_list::AssetScope>,
+    paints: BTreeMap<usize, (&'a PathStyle, AssetStylePlacement)>,
+    leaf_omissions: BTreeMap<usize, AssetStyleProperties>,
+}
+
+struct SharedPaint<'a> {
+    style: Option<&'a PathStyle>,
+    uniform: bool,
+    inherited: AssetStyleProperties,
+}
 
 /// Match scopes once, rather than rescanning a subtree for each source group.
 pub(super) fn scope_projections<'a>(
-    document: &DrawingListDocument,
+    document: &'a DrawingListDocument,
     body: &'a crate::drawing_list::TreeViewSvgBody,
     session: &RenderSession,
-) -> Result<BTreeMap<usize, &'a crate::drawing_list::AssetScope>> {
-    let mut result = BTreeMap::new();
+) -> Result<ScopeProjections<'a>> {
+    let mut result = ScopeProjections::default();
     if body.assets.scopes.is_empty() {
         return Ok(result);
     }
     let mut saves = Vec::new();
+    let mut current_group = None;
+    let mut paints: BTreeMap<usize, SharedPaint<'_>> = BTreeMap::new();
+    let mut leaves = BTreeMap::new();
     for (index, command) in document.commands.iter().enumerate() {
         session.checkpoint(OperationPhase::Emit)?;
         match command {
@@ -22,17 +41,108 @@ pub(super) fn scope_projections<'a>(
                     .map_err(|_| crate::Error::DrawingListAllocationFailed {
                         collection: "icon SVG scopes",
                     })?;
-                saves.push(index);
+                saves.push((index, current_group));
+                if body.assets.scopes.get(&index).is_some_and(|scope| {
+                    matches!(scope.kind, crate::drawing_list::AssetScopeKind::Group)
+                }) {
+                    // Nested groups are boundaries: the inner group may be promoted independently.
+                    if let Some(parent) = current_group.and_then(|index| paints.get_mut(&index)) {
+                        parent.uniform = false;
+                    }
+                    current_group = Some(index);
+                    paints.insert(
+                        index,
+                        SharedPaint {
+                            style: None,
+                            uniform: true,
+                            inherited: AssetStyleProperties::default(),
+                        },
+                    );
+                }
             }
             DrawingCommand::Restore => {
-                if let Some(start) = saves.pop()
-                    && let Some(group) = body.assets.scopes.get(&start)
-                    && group.end == index
+                if let Some((start, parent)) = saves.pop() {
+                    if let Some(group) = body.assets.scopes.get(&start)
+                        && group.end == index
+                    {
+                        result.scopes.insert(start, group);
+                    }
+                    current_group = parent;
+                }
+            }
+            DrawingCommand::DrawPath { path, style } => {
+                if let Some((group, candidate)) = current_group
+                    .and_then(|group| paints.get_mut(&group).map(|candidate| (group, candidate)))
                 {
-                    result.insert(start, group);
+                    let Some(placement) = body.assets.styles.get(path.as_str()) else {
+                        candidate.uniform = false;
+                        continue;
+                    };
+                    if matches!(style.fill, Some(Paint::Resource { .. }))
+                        || style
+                            .stroke
+                            .as_ref()
+                            .is_some_and(|s| matches!(s.paint, Paint::Resource { .. }))
+                    {
+                        candidate.uniform = false;
+                    }
+                    if candidate.style.is_some_and(|existing| existing != style) {
+                        candidate.uniform = false;
+                    }
+                    candidate.style.get_or_insert(style);
+                    candidate.inherited = candidate
+                        .inherited
+                        .union(AssetStyleProperties::ALL.without(placement.all()));
+                    leaves.insert(index, (group, placement.all()));
+                }
+            }
+            DrawingCommand::DrawText { .. }
+            | DrawingCommand::DrawImage { .. }
+            | DrawingCommand::DrawRasterSubtree { .. }
+            | DrawingCommand::BeginLayer { .. }
+            | DrawingCommand::BeginSemanticGroup { .. }
+            | DrawingCommand::ClipPath { .. } => {
+                if let Some(candidate) = current_group.and_then(|index| paints.get_mut(&index)) {
+                    candidate.uniform = false;
                 }
             }
             _ => {}
+        }
+    }
+    for (index, candidate) in paints {
+        session.checkpoint(OperationPhase::Emit)?;
+        let (Some(scope), Some(style)) = (result.scopes.get(&index), candidate.style) else {
+            continue;
+        };
+        if !candidate.uniform {
+            continue;
+        }
+        let mut inherited = candidate.inherited;
+        if style.fill.is_none() {
+            inherited = inherited.without(AssetStyleProperties::of(&[Property::FillOpacity]));
+        }
+        if style.stroke.is_none() {
+            inherited = inherited.without(AssetStyleProperties::of(&[
+                Property::StrokeOpacity,
+                Property::StrokeWidth,
+                Property::StrokeLineCap,
+                Property::StrokeLineJoin,
+                Property::StrokeMiterLimit,
+                Property::StrokeDashArray,
+                Property::StrokeDashOffset,
+            ]));
+        }
+        let placement = scope.style.retain(inherited);
+        if !placement.all().is_empty() {
+            result.paints.insert(index, (style, placement));
+        }
+    }
+    for (index, (group, local)) in leaves {
+        session.checkpoint(OperationPhase::Emit)?;
+        if let Some((_, placement)) = result.paints.get(&group) {
+            result
+                .leaf_omissions
+                .insert(index, placement.all().without(local));
         }
     }
     Ok(result)
@@ -150,7 +260,7 @@ fn compensate_view_box(viewport: Rect, view_box: Rect, public: Transform) -> Opt
 
 impl DocumentSvgEncoder<'_> {
     pub(super) fn emit_tree_view_asset_scope(&mut self, index: usize) -> Result<Option<usize>> {
-        let Some(&group) = self.tree_view_asset_scopes.get(&index) else {
+        let Some(&group) = self.tree_view_asset_scopes.scopes.get(&index) else {
             return Ok(None);
         };
         let commands = &self.document.commands[index + 1..group.end];
@@ -199,6 +309,10 @@ impl DocumentSvgEncoder<'_> {
         }
         self.output.push_str("<g")?;
         self.write_asset_scope_attrs(group, parent, prefix.is_some())?;
+        if let Some(&(style, placement)) = self.tree_view_asset_scopes.paints.get(&index) {
+            self.write_asset_style_attributes(style, placement.attributes)?;
+            self.write_asset_inline_properties(style, placement.inline, None)?;
+        }
         self.output.push('>')?;
         // Only the current public matrix moves onto the group. Paint/opacity stay on leaves.
         self.state.transform = Transform::IDENTITY;
@@ -260,9 +374,20 @@ impl DocumentSvgEncoder<'_> {
             output::escape_attr(&mut self.output, path_d(&path.segments))?;
             self.output.push('"')?;
         }
-        self.write_path_style(style)?;
+        self.write_asset_path_style(path_id, style)?;
         self.write_transform()?;
-        if self.state.opacity != 1.0 {
+        if self.state.opacity != 1.0
+            || body
+                .assets
+                .styles
+                .get(path_id.as_str())
+                .is_some_and(|placement| {
+                    !placement
+                        .attributes
+                        .intersection(AssetStyleProperties::of(&[Property::Opacity]))
+                        .is_empty()
+                })
+        {
             write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
         }
         self.write_tree_view_asset_inline_style(path_id, style)?;
@@ -277,95 +402,180 @@ impl DocumentSvgEncoder<'_> {
         path_id: &ResourceId,
         style: &PathStyle,
     ) -> Result<()> {
-        use crate::drawing_list::AssetInlineProperty as Property;
         let SvgStructureBody::TreeView(body) = self.svg_body else {
             return Ok(());
         };
-        let placement = body.assets.inline_styles.get(path_id.as_str()).copied();
+        let placement = body
+            .assets
+            .styles
+            .get(path_id.as_str())
+            .map(|p| p.inline)
+            .unwrap_or_default();
         let blend = blend_css(self.state.blend_mode);
-        if placement.is_none() && blend.is_none() {
+        self.write_asset_inline_properties(style, placement, blend)
+    }
+
+    fn write_asset_path_style(&mut self, path_id: &ResourceId, style: &PathStyle) -> Result<()> {
+        let mut attributes =
+            AssetStyleProperties::of(&[Property::FillRule, Property::Fill, Property::Stroke]);
+        let mut available = attributes;
+        if style.fill.is_some() {
+            available = available.union(AssetStyleProperties::of(&[Property::FillOpacity]));
+        }
+        if matches!(style.fill, Some(Paint::Solid { color }) if color.alpha != u8::MAX) {
+            attributes = attributes.union(AssetStyleProperties::of(&[Property::FillOpacity]));
+        }
+        if let Some(stroke) = &style.stroke {
+            available = available.union(AssetStyleProperties::of(&[
+                Property::StrokeWidth,
+                Property::StrokeLineCap,
+                Property::StrokeLineJoin,
+                Property::StrokeMiterLimit,
+                Property::StrokeOpacity,
+                Property::StrokeDashArray,
+                Property::StrokeDashOffset,
+            ]));
+            attributes = attributes.union(AssetStyleProperties::of(&[
+                Property::StrokeWidth,
+                Property::StrokeLineCap,
+                Property::StrokeLineJoin,
+                Property::StrokeMiterLimit,
+            ]));
+            if matches!(stroke.paint, Paint::Solid { color } if color.alpha != u8::MAX) {
+                attributes = attributes.union(AssetStyleProperties::of(&[Property::StrokeOpacity]));
+            }
+            if !stroke.dash_array.is_empty() {
+                attributes =
+                    attributes.union(AssetStyleProperties::of(&[Property::StrokeDashArray]));
+            }
+            if stroke.dash_offset != 0.0 {
+                attributes =
+                    attributes.union(AssetStyleProperties::of(&[Property::StrokeDashOffset]));
+            }
+        }
+        if let SvgStructureBody::TreeView(body) = self.svg_body
+            && let Some(placement) = body.assets.styles.get(path_id.as_str())
+        {
+            // Explicit defaults must not become inherited. Inactive paint parameters
+            // have no public representation and are not reconstructed from source.
+            attributes = attributes.union(placement.attributes.intersection(available));
+        }
+        let omit = self
+            .tree_view_asset_scopes
+            .leaf_omissions
+            .get(&self.command_index)
+            .copied()
+            .unwrap_or_default();
+        self.write_asset_style_attributes(style, attributes.without(omit))
+    }
+
+    fn write_asset_style_attributes(
+        &mut self,
+        style: &PathStyle,
+        properties: AssetStyleProperties,
+    ) -> Result<()> {
+        for property in properties.properties() {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            self.output.push(' ')?;
+            self.output.push_str(property.name())?;
+            self.output.push_str("=\"")?;
+            self.write_asset_style_value(style, property)?;
+            self.output.push('"')?;
+        }
+        Ok(())
+    }
+
+    fn write_asset_inline_properties(
+        &mut self,
+        style: &PathStyle,
+        placement: AssetStyleProperties,
+        blend: Option<&str>,
+    ) -> Result<()> {
+        if placement.is_empty() && blend.is_none() {
             return Ok(());
         }
         self.output.push_str(" style=\"")?;
-        for property in placement
-            .into_iter()
-            .flat_map(|placement| placement.properties())
-        {
+        for property in placement.properties() {
             self.session.checkpoint(OperationPhase::Emit)?;
             self.output.push_str(property.name())?;
             self.output.push(':')?;
-            let stroke = style.stroke.as_ref();
-            match property {
-                Property::Fill | Property::Stroke => {
-                    let paint = if matches!(property, Property::Fill) {
-                        style.fill.as_ref()
-                    } else {
-                        stroke.map(|s| &s.paint)
-                    };
-                    match paint {
-                        Some(Paint::Solid { color }) => self.output.push_str(&color_css(*color))?,
-                        Some(Paint::Resource { id }) => {
-                            let svg_id = self.svg_resource_id(id.as_str())?;
-                            write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
-                        }
-                        None => self.output.push_str("none")?,
-                    }
-                }
-                Property::FillOpacity | Property::StrokeOpacity => {
-                    let paint = if matches!(property, Property::FillOpacity) {
-                        style.fill.as_ref()
-                    } else {
-                        stroke.map(|s| &s.paint)
-                    };
-                    let opacity = match paint {
-                        Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
-                        _ => 1.0,
-                    };
-                    write!(self.output, "{}", fmt(opacity))?;
-                }
-                Property::FillRule => self.output.push_str(fill_rule_name(style.fill_rule))?,
-                Property::StrokeWidth => {
-                    write!(self.output, "{}", fmt(stroke.map_or(0.0, |s| s.width)))?
-                }
-                Property::StrokeLineCap => self
-                    .output
-                    .push_str(stroke.map_or("butt", |s| line_cap(s.line_cap)))?,
-                Property::StrokeLineJoin => self
-                    .output
-                    .push_str(stroke.map_or("miter", |s| line_join(s.line_join)))?,
-                Property::StrokeMiterLimit => write!(
-                    self.output,
-                    "{}",
-                    fmt(stroke.map_or(4.0, |s| s.miter_limit))
-                )?,
-                Property::StrokeDashOffset => write!(
-                    self.output,
-                    "{}",
-                    fmt(stroke.map_or(0.0, |s| s.dash_offset))
-                )?,
-                Property::StrokeDashArray => {
-                    if let Some(stroke) = stroke
-                        && !stroke.dash_array.is_empty()
-                    {
-                        for (index, value) in stroke.dash_array.iter().enumerate() {
-                            self.session.checkpoint(OperationPhase::Emit)?;
-                            if index != 0 {
-                                self.output.push(',')?;
-                            }
-                            write!(self.output, "{}", fmt(*value))?;
-                        }
-                    } else {
-                        self.output.push_str("none")?;
-                    }
-                }
-                Property::Opacity => write!(self.output, "{}", fmt(self.state.opacity))?,
-            }
+            self.write_asset_style_value(style, property)?;
             self.output.push(';')?;
         }
         if let Some(blend) = blend {
             write!(self.output, "mix-blend-mode:{blend};")?;
         }
         self.output.push('"')?;
+        Ok(())
+    }
+
+    fn write_asset_style_value(&mut self, style: &PathStyle, property: Property) -> Result<()> {
+        let stroke = style.stroke.as_ref();
+        match property {
+            Property::Fill | Property::Stroke => {
+                let paint = if matches!(property, Property::Fill) {
+                    style.fill.as_ref()
+                } else {
+                    stroke.map(|s| &s.paint)
+                };
+                match paint {
+                    Some(Paint::Solid { color }) => self.output.push_str(&color_css(*color))?,
+                    Some(Paint::Resource { id }) => {
+                        let svg_id = self.svg_resource_id(id.as_str())?;
+                        write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
+                    }
+                    None => self.output.push_str("none")?,
+                }
+            }
+            Property::FillOpacity | Property::StrokeOpacity => {
+                let paint = if matches!(property, Property::FillOpacity) {
+                    style.fill.as_ref()
+                } else {
+                    stroke.map(|s| &s.paint)
+                };
+                let opacity = match paint {
+                    Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
+                    _ => 1.0,
+                };
+                write!(self.output, "{}", fmt(opacity))?;
+            }
+            Property::FillRule => self.output.push_str(fill_rule_name(style.fill_rule))?,
+            Property::StrokeWidth => {
+                write!(self.output, "{}", fmt(stroke.map_or(0.0, |s| s.width)))?
+            }
+            Property::StrokeLineCap => self
+                .output
+                .push_str(stroke.map_or("butt", |s| line_cap(s.line_cap)))?,
+            Property::StrokeLineJoin => self
+                .output
+                .push_str(stroke.map_or("miter", |s| line_join(s.line_join)))?,
+            Property::StrokeMiterLimit => write!(
+                self.output,
+                "{}",
+                fmt(stroke.map_or(4.0, |s| s.miter_limit))
+            )?,
+            Property::StrokeDashOffset => write!(
+                self.output,
+                "{}",
+                fmt(stroke.map_or(0.0, |s| s.dash_offset))
+            )?,
+            Property::StrokeDashArray => {
+                if let Some(stroke) = stroke
+                    && !stroke.dash_array.is_empty()
+                {
+                    for (index, value) in stroke.dash_array.iter().enumerate() {
+                        self.session.checkpoint(OperationPhase::Emit)?;
+                        if index != 0 {
+                            self.output.push(',')?;
+                        }
+                        write!(self.output, "{}", fmt(*value))?;
+                    }
+                } else {
+                    self.output.push_str("none")?;
+                }
+            }
+            Property::Opacity => write!(self.output, "{}", fmt(self.state.opacity))?,
+        }
         Ok(())
     }
 
