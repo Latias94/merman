@@ -3,9 +3,9 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
-    DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRuleSet, ThemeTarget, ThemeTextStyle,
-    TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -34,6 +34,17 @@ fn radar_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
             TypographySpec::default().with_family_style(DiagramFamilyId::RADAR, typography),
         ))
         .expect("compile Radar typography theme")
+}
+
+fn radar_title_fill_theme(fill: CanvasPaint) -> DiagramTheme {
+    let rule = ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(fill),
+    )
+    .for_family(DiagramFamilyId::RADAR);
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+        .expect("compile Radar title fill theme")
 }
 
 fn render_radar_with_theme_requirement(
@@ -181,6 +192,26 @@ curve score{1,2,3}
     );
     assert!(body_svg.contains(">Body radar</text>"));
     assert!(!body_svg.contains(">Frontmatter radar</text>"));
+}
+
+#[test]
+fn radar_typed_title_fill_reaches_the_title_terminal() {
+    let theme = radar_title_fill_theme(CanvasPaint::solid("#123456").expect("valid fill"));
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\ntitle Themed radar\naxis A,B,C\ncurve Current{3,4,2}\n",
+        &theme,
+        Engine::new(),
+    );
+
+    let stylesheet = radar_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("#radar .radarTitle{font-size:16px;color:#123456;"),
+        "Radar title stylesheet did not contain typed fill: {stylesheet}"
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

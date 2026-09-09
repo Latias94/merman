@@ -8,6 +8,7 @@ fn write_radar_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     theme: &'a RadarTheme,
+    title_theme: &'a crate::radar::RadarTitleThemePlan,
     typography: &'a crate::radar::RadarTypographyThemePlan,
     series_colors: &[String],
     mut record_series_rule: impl FnMut(usize, &str),
@@ -19,6 +20,7 @@ where
     let diagram_id = super::super::util::css_selector_diagram_id(diagram_id);
     let font_family_css = typography.font_family_css();
     let font_size_css = typography.font_size_css();
+    let title_fill_css = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
     let base_font_emission = write_mermaid_base_css_prefix_with_font_emission(
         out,
         diagram_id,
@@ -36,7 +38,7 @@ where
     let _ = write!(
         out,
         r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        diagram_id, font_size_css, theme.title_color
+        diagram_id, font_size_css, title_fill_css
     );
     out.checkpoint()?;
     let _ = write!(
@@ -158,10 +160,12 @@ pub(crate) fn render_radar_diagram_svg_model(
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let series_paint = crate::radar::RadarSeriesPaintPlan::baseline(&effective_config, model);
     let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
+    let title_theme = crate::radar::RadarTitleThemePlan::baseline();
     render_radar_diagram_svg_model_with_theme_plans(
         layout,
         model,
         &series_paint,
+        &title_theme,
         &typography,
         effective_config.as_value(),
         diagram_title,
@@ -173,6 +177,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,
     series_paint: &crate::radar::RadarSeriesPaintPlan,
+    title_theme: &crate::radar::RadarTitleThemePlan,
     typography: &crate::radar::RadarTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -243,12 +248,14 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     out.push_str("<style>");
     out.checkpoint()?;
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
+    let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let mut typography_receipt =
         typography.begin_terminal_receipt(layout.axes.len(), layout.legend_items.len());
     let typography_css_emission = write_radar_css(
         &mut out,
         diagram_id,
         &theme,
+        title_theme,
         typography,
         series_paint.colors(),
         |rule_index, color| {
@@ -263,6 +270,12 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     out.checkpoint()?;
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_css_emission(typography_css_emission);
+    }
+    if let Some(receipt) = title_theme_receipt.as_mut() {
+        receipt.record_stylesheet(
+            "radarTitle",
+            title_theme.fill_css().unwrap_or(theme.title_color.as_str()),
+        );
     }
 
     let _ = write!(
@@ -398,6 +411,9 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_title(title_visible);
     }
+    if let Some(receipt) = title_theme_receipt.as_mut() {
+        receipt.record_title_text("radarTitle");
+    }
 
     out.push_str("</g></svg>\n");
     let rooted = root_document.complete(out.finish()?)?;
@@ -413,6 +429,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     {
         return Err(crate::Error::InvalidModel {
             message: "Radar typography receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if let Some(receipt) = title_theme_receipt
+        && !title_theme.record_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Radar title paint receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted)
@@ -437,6 +460,7 @@ mod tests {
             &mut css,
             "radar",
             &theme,
+            &crate::radar::RadarTitleThemePlan::baseline(),
             &typography,
             &series_colors,
             |_, _| {},

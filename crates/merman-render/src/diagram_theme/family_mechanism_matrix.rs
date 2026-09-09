@@ -574,7 +574,8 @@ fn legacy_bridge_projections(
             DiagramFamilyId::RAILROAD
             | DiagramFamilyId::TREEMAP
             | DiagramFamilyId::VENN
-            | DiagramFamilyId::ZENUML,
+            | DiagramFamilyId::ZENUML
+            | DiagramFamilyId::RADAR,
             ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
@@ -2316,6 +2317,18 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
+    if family == DiagramFamilyId::RADAR
+        && target == ThemeTarget::Title
+        && matches!(selector, FamilyThemeSelectorShape::Static { variant: None })
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if family == DiagramFamilyId::BLOCK
         && target == ThemeTarget::Node
         && matches!(
@@ -2660,9 +2673,15 @@ fn legacy_paint_variants(
             (Target::PieSlice, Stroke) => DEFAULT,
             _ => &[],
         },
-        Family::XY_CHART | Family::QUADRANT_CHART | Family::RADAR => match (target, channel) {
+        Family::XY_CHART | Family::QUADRANT_CHART => match (target, channel) {
             (Target::Text | Target::Title | Target::Axis, Fill) => DEFAULT,
             (Target::Axis, Stroke) => DEFAULT,
+            _ => &[],
+        },
+        Family::RADAR => match (target, channel) {
+            (Target::Text | Target::Axis, Fill) => DEFAULT,
+            (Target::Axis, Stroke) => DEFAULT,
+            (Target::Title, Fill) => &[Variant::Default],
             _ => &[],
         },
         Family::TIMELINE => match (target, channel) {
@@ -4262,6 +4281,29 @@ mod tests {
             compile_ordinal_palette_route(DiagramFamilyId::RADAR, ThemeTarget::ChartSeries)
                 .disposition(),
             FamilyThemeDisposition::TypedAdapter
+        );
+    }
+
+    #[test]
+    fn radar_title_fill_is_typed_only_when_unqualified() {
+        let solid = FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid);
+        let unqualified = FamilyThemeSelectorShape::Static { variant: None };
+        let default = FamilyThemeSelectorShape::Static {
+            variant: Some(ThemeVariant::Default),
+        };
+
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Title,
+                unqualified,
+                solid
+            ),
+            FamilyThemeDisposition::TypedAdapter
+        );
+        assert_eq!(
+            classify_rule_facet(DiagramFamilyId::RADAR, ThemeTarget::Title, default, solid),
+            FamilyThemeDisposition::LegacyCompatibility
         );
     }
 

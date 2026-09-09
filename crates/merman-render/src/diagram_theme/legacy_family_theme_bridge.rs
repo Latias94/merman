@@ -800,8 +800,8 @@ fn compile_chart_family(
             contributions.add_theme_variables(
                 "chart.text",
                 [
-                    ("textColor", text),
                     ("titleColor", title),
+                    ("textColor", text),
                     ("lineColor", axis_line.clone()),
                 ],
             );
@@ -2145,14 +2145,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 198);
+        assert_eq!(status.matrix_route_count(), 196);
         assert_eq!(status.matrix_family_count(), 10);
         assert_eq!(status.dispatched_family_count(), 10);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                15, 233, 12, 4, 194, 121, 245, 110, 138, 243, 85, 124, 67, 36, 157, 111, 159, 156,
-                78, 248, 108, 237, 41, 168, 66, 195, 24, 221, 55, 8, 113, 119
+                196, 20, 123, 90, 218, 127, 243, 249, 139, 42, 11, 142, 108, 46, 47, 3, 35, 82, 96,
+                103, 64, 104, 72, 35, 229, 128, 30, 92, 120, 76, 152, 133
             ]
         );
         assert_eq!(

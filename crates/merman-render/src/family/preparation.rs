@@ -669,6 +669,7 @@ fn prepare_radar_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let effective_title = crate::radar::effective_title(&model, meta.title.as_deref());
     let series_paint = crate::radar::RadarSeriesPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -685,10 +686,17 @@ fn prepare_radar_family(
         execution.resolved_theme(),
         &meta.effective_config,
     );
+    let title_theme = crate::radar::RadarTitleThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        effective_title,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Radar(Box::new(
         RadarFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             series_paint,
+            title_theme,
             typography_theme,
         },
     )))
