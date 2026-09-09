@@ -3540,9 +3540,21 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
+        assert_eq!(
+            document
+                .public
+                .semantics
+                .iter()
+                .find(|semantic| semantic.id == "gantt.today")
+                .unwrap()
+                .title,
+            None
+        );
         for (title, description) in [
-            ("Today", None),
-            ("Edited marker", Some("Public description")),
+            (None, None),
+            (Some("Today"), None),
+            (Some("Edited marker"), Some("Public description")),
+            (None, Some("Description without a name")),
         ] {
             let semantic = document
                 .public
@@ -3550,7 +3562,7 @@ mod tests {
                 .iter_mut()
                 .find(|semantic| semantic.id == "gantt.today")
                 .unwrap();
-            semantic.title = Some(title.to_owned());
+            semantic.title = title.map(str::to_owned);
             semantic.description = description.map(str::to_owned);
             let svg = crate::svg::render_document_svg(
                 &document,
@@ -3565,7 +3577,12 @@ mod tests {
                 .descendants()
                 .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("today"))
                 .unwrap();
-            assert_eq!(group.attribute("aria-label"), Some(title));
+            assert_eq!(group.attribute("id"), None);
+            assert_eq!(
+                group.attribute("role"),
+                (title.is_some() || description.is_some()).then_some("group")
+            );
+            assert_eq!(group.attribute("aria-label"), title);
             assert_eq!(group.attribute("aria-description"), description);
             let children: Vec<_> = group
                 .children()
@@ -3603,6 +3620,18 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
+        for id in ["gantt.axis.bottom", "gantt.axis.top", "gantt.today"] {
+            assert_eq!(
+                baseline
+                    .public
+                    .semantics
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .unwrap()
+                    .title,
+                None
+            );
+        }
         for id in [
             "gantt.document",
             "gantt.title",
@@ -3713,7 +3742,19 @@ mod tests {
                 .all(|node| node.attribute("aria-label").is_none()
                     && node.attribute("role").is_none())
         );
-        for id in ["gantt.section.0", "gantt.axis.bottom.tick.0"] {
+        for grid in xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("grid"))
+        {
+            assert_eq!(grid.attribute("aria-label"), None);
+            assert_eq!(grid.attribute("role"), None);
+        }
+        for id in [
+            "gantt.section.0",
+            "gantt.axis.bottom.tick.0",
+            "gantt.today",
+            "gantt.axis.bottom",
+        ] {
             let mut document = baseline.clone();
             document
                 .public

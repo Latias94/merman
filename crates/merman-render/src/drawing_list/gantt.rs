@@ -474,7 +474,8 @@ impl<'a> GanttBuilder<'a> {
         self.document.push_mermaid_semantic(SemanticAnnotation {
             id: axis_semantic_id,
             role: SemanticRole::Group,
-            title: Some(format!("{} axis", if bottom { "Bottom" } else { "Top" })),
+            // The source names ticks, not the axis collection itself.
+            title: None,
             description: None,
             link: None,
         })?;
@@ -778,7 +779,8 @@ impl<'a> GanttBuilder<'a> {
         self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "gantt.today".to_string(),
             role: SemanticRole::Label,
-            title: Some("Today".to_string()),
+            // Mermaid renders an unnamed marker; hosts may supply an explicit name.
+            title: None,
             description: None,
             link: None,
         })?;

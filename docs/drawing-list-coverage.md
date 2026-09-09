@@ -382,7 +382,8 @@ The public Gantt route remains a legacy bridge; no structural normalization was 
 
 Collection projection now retains public navigation, descriptions, roles and independent names:
 when source-shaped wrappers cannot express those fields, the existing semantic serializer handles
-the scope. Axes and ticks retain their public accessible names, and a root name independent of
+the scope. Axes retain explicitly supplied accessible names and ticks retain their visible-text
+names; a root name independent of
 the public title is exposed even when the original source lacked `accTitle`. This intentionally
 adds observable accessibility attributes rather than dropping semantics to reduce a DOM diff.
 Focused regressions exercise ten collection scopes and name-only edits separately; the earlier
@@ -391,7 +392,7 @@ strict comparison predates these semantic corrections and is not current admissi
 The full canonical-route probe at `f42805334` selected 157 fixtures: 150 rendered canonically and
 all 150 still failed strict structure comparison, five retained existing skips, and two produced
 explicit unsupported-effect legacy routes (`stoke` and `themeCSS`) rejected by the route gate.
-`target/compare/gantt_f42805334_canonical_structure.md` is the current full structure report;
+`target/compare/gantt_f42805334_canonical_structure.md` records that historical full structure run;
 temporary admission was removed afterward. It does not cover root parity or browser rendering.
 Inspection of its raw SVGs exposed a visual defect: a task rounded to zero width became a stroked
 closed path, unlike Mermaid's non-rendering zero-width rectangle. Zero-extent task commands now
@@ -487,6 +488,21 @@ Cynefin assertions passed after source-backed corrections. The full run also req
 two test measurers with the previously introduced normal-line metrics operation; 27 existing tests
 remain skipped. C4's future expanded-marker candidate evidence still needs explicit diagnostics or
 source marker reconstruction; default comparison remains fail-closed when marker evidence is absent.
+
+The builder no longer invents fixed English names for unnamed axis/today scopes. Their public IDs,
+roles and commands remain; tick names and authored root accessibility are unchanged. The today
+source wrapper has no synthetic ID, and it gains ARIA only for an explicit public name or description.
+Explicit `"Today"`, description-only edits, links and changed roles remain observable. All 48 focused
+Gantt/metadata/diagnostic tests pass. This changes the shared document's default semantics instead
+of teaching the serializer to discard nonempty public names.
+
+The full follow-up `target/compare/gantt_3287556d0_candidate_structure.md` selected 157 fixtures:
+150 rendered canonically, six passed strict structure and 144 failed; five existing skips and two
+explicit unsupported-effect routes (`stoke` and `themeCSS`) remain. The milestone fixture now passes.
+Most remaining attribute differences are task section descriptions with their accessibility names,
+exclude paint attributes, zero-radius attributes, and a few whitespace/opacity attributes; linked
+fixtures also differ in element structure. This is the current full structure report, not root or
+browser evidence. Temporary admission was removed; Gantt remains a legacy bridge publicly.
 
 ### Journey color correction
 

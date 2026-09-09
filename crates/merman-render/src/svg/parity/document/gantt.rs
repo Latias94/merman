@@ -884,14 +884,12 @@ impl DocumentSvgEncoder<'_> {
             {
                 return Ok(false);
             }
-            // Mermaid's today collection contains only its marker. Keep accessible metadata
-            // as attributes, so a synthetic title does not change its direct-child contract.
-            let svg_id = self.semantic_svg_id(semantic_id)?;
-            write!(
-                self.output,
-                "<g class=\"today\" id=\"{}\" role=\"group\"",
-                escaped_attr(&svg_id)
-            )?;
+            // Source today chrome is unnamed. Explicit public metadata still belongs on this
+            // group; no generated ID is needed for its inline accessibility attributes.
+            self.output.push_str("<g class=\"today\"")?;
+            if semantic.title.is_some() || semantic.description.is_some() {
+                self.output.push_str(" role=\"group\"")?;
+            }
             write_semantic_metadata(&mut self.output, self.debug, semantic_id)?;
             if let Some(title) = &semantic.title {
                 write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
