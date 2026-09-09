@@ -70,8 +70,12 @@ which accumulates in row positions. These are not hidden by pixel adjustments or
 Registry assets now have a direct portable primitive lowerer, shared Iconify alias geometry,
 explicit viewport clipping, and the source unknown-icon fallback. Filters, resource references,
 asset text, nontrivial group opacity, and other unsupported asset effects remain explicit errors.
-Registry-asset SVG DOM projection is not yet admitted. TreeView therefore remains bridged;
-historical legacy parity reports and focused adapter tests are not canonical admission evidence.
+The `0c39d1af8` full-family candidate comparison renders all 17 inputs through the canonical
+document without a bridge: 12 pass and the 5 registry/unknown-icon inputs have SVG DOM differences
+(root clip definitions and icon containers). Evidence:
+`target/compare/treeView_registry_assets_parity_root.md`. Registry-asset SVG DOM projection is
+not yet admitted. TreeView therefore remains bridged; historical legacy parity reports and
+focused adapter tests are not canonical admission evidence.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that
