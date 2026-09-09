@@ -2232,6 +2232,22 @@ mod tests {
                 .any(|node| node.attribute("data-merman-resource") == Some("treeView.background"))
         );
 
+        let icons = xml
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("treeView-node-icon"))
+            .collect::<Vec<_>>();
+        assert_eq!(icons.len(), 2);
+        for icon in icons {
+            let transform = icon.attribute("transform").unwrap();
+            let tokens = svgtypes::TransformListParser::from(transform)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .expect("icon positioning must be a valid SVG transform");
+            assert!(matches!(
+                tokens.as_slice(),
+                [svgtypes::TransformListToken::Translate { .. }]
+            ));
+        }
+
         for command in &mut document.public.commands {
             match command {
                 DrawingCommand::DrawText { run } if run.text == "main.rs" => {

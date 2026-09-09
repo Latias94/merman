@@ -59,8 +59,15 @@ The candidate now projects paint and font attributes from public commands withou
 TreeView theme CSS. Its exact full-viewport white background can use root CSS; edited or
 removed backgrounds keep their public paint semantics. Public text preserves whitespace and
 `middle` baseline semantics. A mutation test verifies config independence, edited text paint,
-and background edits/removal. Root/semantic grouping, source icon structure, and registry-icon
-support remain unfinished. Historical legacy parity reports are not canonical admission evidence.
+and background edits/removal. Source containers now carry equivalent semantic scopes without
+extra wrappers or duplicate accessible names; edited names, descriptions, and links retain generic
+semantic projection. A full-family candidate comparison at `558f7316e` still passed none of the
+17 fixtures (12 canonical outputs with differences; 5 registry-icon bridges). Its report is
+`target/compare/treeView_558f7316e_scopes_parity_root.md`. Root/container and a11y ordering
+converged, but public style attributes and icon path representation still differ. The report also
+exposed a missing closing parenthesis in the icon translation, now covered by transform parsing.
+Style projection, source icon structure, and registry-icon support remain unfinished.
+Historical legacy parity reports are not canonical admission evidence.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

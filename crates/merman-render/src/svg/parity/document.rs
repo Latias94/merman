@@ -2894,7 +2894,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let path_data = path_d(&path.segments);
         self.output
             .push_str("<g class=\"treeView-node-icon\" transform=\"translate(")?;
-        write!(self.output, "{},{}\">", fmt(transform.e), fmt(transform.f))?;
+        write!(self.output, "{},{})\">", fmt(transform.e), fmt(transform.f))?;
         if self.state.opacity != 1.0 || self.state.blend_mode != BlendMode::Normal {
             // The icon group is emitted inside the current state, so preserve state attributes on
             // the nested SVG rather than changing the path's resolved geometry.
