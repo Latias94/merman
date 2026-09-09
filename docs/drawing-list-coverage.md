@@ -252,6 +252,16 @@ milestone geometry edits, links, painter order and those generic fallbacks. All 
 document serializer, Gantt SVG and effect tests pass. This does not establish complete upstream
 link DOM or accessibility-tree parity, change comparator rules, or admit Gantt as canonical.
 
+The next source-backed paint correction resolves numbered section background classes after the
+generic `section` token instead of accidentally falling back to `textColor`. Task label colors
+now follow the exact built-in CSS importance, specificity and declaration order: clickable labels
+override active/done inside colors, done-outside labels override clickable colors, and
+`activeCritText` overrides `vertText` only after the more-specific rules. Vertical marker labels
+also retain the final middle anchor when layout classifies their text as outside. An eight-case
+regression checks public text paint, weight and anchor, distinct section fills, and direct candidate
+SVG output. The active-clickable case failed before the fix; this remains focused evidence, not
+full-family canonical admission.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

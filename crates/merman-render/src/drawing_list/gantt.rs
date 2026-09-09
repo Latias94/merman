@@ -587,18 +587,16 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            let label_color = self.task_text_style(source, &task.label.class);
+            let label_class = task_label_classes(task, source, self.layout);
+            let label_color = self.task_text_style(&label_class);
             let label_size = if source.vert {
                 15.0
             } else {
                 task.label.font_size
             };
-            let anchor = label_anchor(&task.label.class);
+            let anchor = label_anchor(&label_class);
             let clickable = source.classes.iter().any(|class| class == "clickable");
-            self.text_classes.insert(
-                semantic_id.clone(),
-                task_label_classes(task, source, self.layout),
-            );
+            self.text_classes.insert(semantic_id.clone(), label_class);
             self.dom_ids
                 .insert(semantic_id.clone(), task.label.id.clone());
             self.emit_text(
@@ -918,30 +916,47 @@ impl GanttBuilder<'_> {
         (fill, border, 2.0)
     }
 
-    fn task_text_style(&self, task: &GanttRenderTask, class: &str) -> Color {
-        if task.vert {
-            return self.vert_line;
+    fn task_text_style(&self, class: &str) -> Color {
+        let has = |name| class.split_whitespace().any(|token| token == name);
+        // Mermaid defines numbered paint rules only for sections 0..3. Resolve those exact
+        // rules here, rather than inferring a style from flags that may not have a CSS rule.
+        let numbered = |prefix| {
+            class.split_whitespace().any(|token| {
+                token
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| matches!(suffix, "0" | "1" | "2" | "3"))
+            })
+        };
+        let outside = has("taskTextOutsideLeft") || has("taskTextOutsideRight");
+        let done = numbered("doneText") || numbered("doneCritText");
+        // Both selectors have two classes and !important; the done-outside rule is later.
+        if outside && done {
+            return self.task_text_outside_fill;
         }
-        let outside =
-            class.contains("taskTextOutsideLeft") || class.contains("taskTextOutsideRight");
-        if task.done {
-            return if outside {
-                self.task_text_outside_fill
-            } else {
-                self.task_text_dark_fill
-            };
-        }
-        if task.active {
-            return self.task_text_dark_fill;
-        }
-        if task.classes.iter().any(|value| value == "clickable") {
+        if has("clickable") && (outside || has("taskText")) {
             return self.task_text_clickable_fill;
         }
-        if outside {
-            self.task_text_outside_fill
-        } else {
-            self.task_text_fill
+        // Of the one-class !important rules, activeCritText follows vertText, which follows
+        // activeText/doneText/doneCritText. Preserve that order even for combined task tags.
+        if numbered("activeCritText") {
+            return self.task_text_dark_fill;
         }
+        if has("vertText") {
+            return self.vert_line;
+        }
+        if done || numbered("activeText") {
+            return self.task_text_dark_fill;
+        }
+        if numbered("taskTextOutside") {
+            return self.task_text_outside_fill;
+        }
+        if numbered("taskText") {
+            return self.task_text_fill;
+        }
+        if outside {
+            return self.task_text_dark_fill;
+        }
+        self.text_fill
     }
 
     fn resolve_today_marker(&self, marker: &str) -> Result<(Color, f64, f64)> {
@@ -1161,12 +1176,13 @@ fn gantt_insert_before_width(base: &str, insert: &str) -> String {
 fn class_suffix(class: &str) -> Option<usize> {
     class
         .split_whitespace()
-        .find_map(|value| value.strip_prefix("section"))
-        .and_then(|value| value.parse::<usize>().ok())
+        .find_map(|value| value.strip_prefix("section")?.parse::<usize>().ok())
 }
 
 fn label_anchor(class: &str) -> TextAnchor {
-    if class.contains("taskTextOutsideLeft") {
+    if class.split_whitespace().any(|token| token == "vertText") {
+        TextAnchor::Middle
+    } else if class.contains("taskTextOutsideLeft") {
         TextAnchor::End
     } else if class.contains("taskTextOutsideRight") {
         TextAnchor::Start

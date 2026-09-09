@@ -2007,6 +2007,139 @@ mod tests {
     }
 
     #[test]
+    fn gantt_resolves_section_and_task_label_cascade_before_serialization() {
+        use merman_display_list::{Color, DrawingCommand, Paint, TextAnchor};
+        // Source CSS combines specificity, importance and declaration order. In particular,
+        // clickable wins over active/done inside labels, but done-outside wins over clickable.
+        for (tags, duration, linked, expected) in [
+            ("active", "30d", true, "#330000"),
+            ("done", "30d", true, "#330000"),
+            ("done", "1d", true, "#440000"),
+            ("active", "1d", false, "#220000"),
+            ("vert", "1d", false, "#550000"),
+            ("vert", "1d", true, "#330000"),
+            ("vert, active, crit", "1d", false, "#220000"),
+            ("vert, done", "1d", false, "#440000"),
+        ] {
+            let link = if linked {
+                "click a href \"https://example.com/task\"\n"
+            } else {
+                ""
+            };
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection First\nLabel :{tags}, a, 2026-01-02, {duration}\n{link}section Second\nHorizon :h, 2026-01-01, 100d\nsection Third\nOther :o, 2026-01-04, 1d\n"
+            );
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "securityLevel": "loose",
+                    "gantt": { "useWidth": 800 },
+                    "themeVariables": {
+                        "textColor": "#660000", "taskTextColor": "#110000",
+                        "taskTextDarkColor": "#220000", "taskTextClickableColor": "#330000",
+                        "taskTextOutsideColor": "#440000", "vertLineColor": "#550000",
+                        "sectionBkgColor": "#001100", "altSectionBkgColor": "#002200",
+                        "sectionBkgColor2": "#003300"
+                    }
+                })))
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let BuiltinFamilyArtifact::Gantt(pair) = &artifact.family else {
+                panic!("Gantt")
+            };
+            let task = pair
+                .layout()
+                .tasks
+                .iter()
+                .find(|task| task.id == "a")
+                .unwrap();
+            let outside = task.label.class.contains("taskTextOutside");
+            assert_eq!(
+                outside,
+                duration == "1d",
+                "fixture must exercise the intended placement"
+            );
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let run = document
+                .public
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == task.label.text => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            let red = u8::from_str_radix(&expected[1..3], 16).unwrap();
+            assert_eq!(
+                run.style.fill,
+                Paint::solid(Color::rgba(red, 0, 0, 255)),
+                "{tags}, {duration}, linked={linked}"
+            );
+            assert_eq!(run.style.font.weight, if linked { 700 } else { 400 });
+            if tags.contains("vert") {
+                assert_eq!(run.anchor, TextAnchor::Middle);
+                assert_eq!(run.style.font_size, 15.0);
+            }
+            for (index, row) in pair.layout().rows.iter().enumerate() {
+                let green = if row.class.contains("section0") {
+                    0x11
+                } else if row.class.contains("section1") {
+                    0x22
+                } else {
+                    0x33
+                };
+                let style = document
+                    .public
+                    .commands
+                    .iter()
+                    .find_map(|command| match command {
+                        DrawingCommand::DrawPath { path, style }
+                            if path.as_str() == format!("gantt.row.{index}") =>
+                        {
+                            Some(style)
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(
+                    style.fill,
+                    Some(Paint::solid(Color::rgba(0, green, 0, 255))),
+                    "{}",
+                    row.class
+                );
+            }
+            let rendered = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions {
+                    diagram_id: Some("cascade".to_owned()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&rendered).unwrap();
+            let label = xml
+                .descendants()
+                .find(|node| node.attribute("id") == Some("cascade-a-text"))
+                .unwrap();
+            assert_eq!(label.attribute("fill"), Some(expected));
+            if tags.contains("vert") {
+                assert_eq!(label.attribute("text-anchor"), Some("middle"));
+            }
+        }
+    }
+
+    #[test]
     fn gantt_milestones_transform_rectangles_and_strokes_without_transforming_labels() {
         use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Point};
         for tags in ["milestone", "milestone, vert"] {
