@@ -1555,7 +1555,6 @@ pub(super) fn record_style_winners(
     winners.extend(
         style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
 }

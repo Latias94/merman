@@ -466,7 +466,6 @@ impl VennTitleThemePlan {
 
                     observation.applicable = true;
                     if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                        observation.fill_config_owned = true;
                         continue;
                     }
                     match (route.disposition(), selector, facet) {
@@ -532,8 +531,6 @@ impl VennTitleThemePlan {
             } else if observation.fill_pending {
                 debug_assert!(pending_fill_key.is_none());
                 pending_fill_key = Some(key);
-            } else if observation.fill_config_owned {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -648,7 +645,6 @@ impl VennTitleThemeReceipt {
 #[derive(Debug, Default)]
 struct VennTitleRuleObservation {
     applicable: bool,
-    fill_config_owned: bool,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
     fill_pending: bool,

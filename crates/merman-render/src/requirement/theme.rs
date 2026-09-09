@@ -157,7 +157,7 @@ impl RequirementPaintThemePlan {
         let mut expected_capabilities =
             BTreeMap::<(usize, ResolvedStyleProperty), ThemeCapability>::new();
 
-        for node_index in 0..node_count {
+        for (node_index, expectation) in expectations.iter_mut().enumerate() {
             let style = theme.style_with_work_meter(
                 ThemeTarget::Requirement,
                 ThemeVariant::Default,
@@ -172,14 +172,14 @@ impl RequirementPaintThemePlan {
                     (expected.rule_index(), ResolvedStyleProperty::Fill),
                     expected.capability(),
                 );
-                expectations[node_index].fill = Some(expected);
+                expectation.fill = Some(expected);
             }
             if let Some(expected) = typed_stroke_expectation(theme, &style, mermaid_owns_stroke) {
                 expected_capabilities.insert(
                     (expected.rule_index(), ResolvedStyleProperty::Stroke),
                     expected.capability(),
                 );
-                expectations[node_index].stroke = Some(expected);
+                expectation.stroke = Some(expected);
             }
         }
 

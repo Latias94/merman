@@ -17,11 +17,12 @@ pub(super) struct ArchitectureRenderSettings {
 }
 
 impl ArchitectureRenderSettings {
+    #[cfg(test)]
     pub(super) fn from_config(
         diagram_id: SvgDiagramId<'_>,
         effective_config: &serde_json::Value,
     ) -> Self {
-        Self::from_config_for_id(diagram_id, effective_config)
+        Self::from_config_parts(diagram_id, effective_config, None, None)
     }
 
     pub(super) fn from_config_with_typography(
@@ -35,13 +36,6 @@ impl ArchitectureRenderSettings {
             Some(typography.font_family_css()),
             Some((typography.font_size_px(), typography.font_size_css())),
         )
-    }
-
-    fn from_config_for_id(
-        diagram_id: impl std::fmt::Display + Copy,
-        effective_config: &serde_json::Value,
-    ) -> Self {
-        Self::from_config_parts(diagram_id, effective_config, None, None)
     }
 
     fn from_config_parts(
@@ -117,7 +111,7 @@ mod tests {
             }
         });
 
-        let settings = ArchitectureRenderSettings::from_config_for_id("arch", &cfg);
+        let settings = ArchitectureRenderSettings::from_config_parts("arch", &cfg, None, None);
 
         assert_eq!(
             settings.text_style.font_family.as_deref(),

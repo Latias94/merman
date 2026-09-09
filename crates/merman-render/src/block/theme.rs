@@ -480,6 +480,7 @@ impl BlockNodePaintThemePlan {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn baseline(layout: &BlockDiagramLayout) -> Self {
         let (node_indices, expectations) = terminal_domain(layout);
         Self::baseline_from_domain(node_indices, expectations)
@@ -632,7 +633,6 @@ fn observe_node_style(
     winner_properties.extend(
         style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
     if let Some(expected) = typed_fill_expectation(theme, style, mermaid_owns_fill) {

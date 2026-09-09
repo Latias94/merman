@@ -90,6 +90,7 @@ pub(crate) fn layout_railroad_diagram_typed(
     layout_railroad_diagram_typed_for_type(model, "railroad", effective_config, measurer)
 }
 
+#[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed_for_type(
     model: &RailroadDiagramRenderModel,
     diagram_type: &str,

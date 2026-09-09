@@ -1025,9 +1025,9 @@ fn validate_element(
             fe_image_href_seen = true;
             fe_image_href = Some(value.to_string());
         }
-        if semantic_name == "href" && !element_name.eq_ignore_ascii_case("a") {
-            observe_terminal_resource_url(resource_closure, &value);
-        } else if semantic_name == "src" {
+        if (semantic_name == "href" && !element_name.eq_ignore_ascii_case("a"))
+            || semantic_name == "src"
+        {
             observe_terminal_resource_url(resource_closure, &value);
         }
         let marker_slot = if semantic_name == "marker-start" && !marker_start_seen {

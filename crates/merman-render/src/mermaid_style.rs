@@ -320,12 +320,12 @@ fn observe_css_font_family_ownership(
         "font-family" => {
             if declaration.inherits_property_value() {
                 Some(CssFontFamilyOwnership::Inherited)
-            } else if declaration.analysis().has_dynamic_reference_function() {
-                Some(CssFontFamilyOwnership::Unverified)
-            } else if matches!(
-                declaration.analysis().single_ident(),
-                Some("initial" | "revert" | "revert-layer")
-            ) {
+            } else if declaration.analysis().has_dynamic_reference_function()
+                || matches!(
+                    declaration.analysis().single_ident(),
+                    Some("initial" | "revert" | "revert-layer")
+                )
+            {
                 Some(CssFontFamilyOwnership::Unverified)
             } else if is_static_css_font_family_list(declaration.value()) {
                 Some(CssFontFamilyOwnership::SourceOwned)

@@ -36,25 +36,6 @@ fn ceil_to_usize(value: f64) -> Option<usize> {
     Some(value.ceil() as usize)
 }
 
-fn hand_drawn_path_budget(
-    path_data: &str,
-    hachure_gap: f32,
-    roughness: f32,
-) -> Option<HandDrawnPathBudget> {
-    let bounds = crate::svg::parity::path_bounds::svg_path_bounds_from_d(path_data)?;
-    let path_length = crate::svg::parity::path_bounds::svg_path_length_from_d(path_data)?;
-    let width = (bounds.max_x - bounds.min_x).abs();
-    let height = (bounds.max_y - bounds.min_y).abs();
-    hand_drawn_geometry_budget(
-        path_length,
-        width,
-        height,
-        hachure_gap,
-        roughness,
-        path_data.len(),
-    )
-}
-
 fn hand_drawn_geometry_budget(
     path_length: f64,
     width: f64,
@@ -806,6 +787,25 @@ mod tests {
         OperationWorkError, RenderResourcePolicy, ResourceLimitId, ResourceLimitPhase,
     };
     use merman_core::OperationControl;
+
+    fn hand_drawn_path_budget(
+        path_data: &str,
+        hachure_gap: f32,
+        roughness: f32,
+    ) -> Option<HandDrawnPathBudget> {
+        let bounds = crate::svg::parity::path_bounds::svg_path_bounds_from_d(path_data)?;
+        let path_length = crate::svg::parity::path_bounds::svg_path_length_from_d(path_data)?;
+        let width = (bounds.max_x - bounds.min_x).abs();
+        let height = (bounds.max_y - bounds.min_y).abs();
+        hand_drawn_geometry_budget(
+            path_length,
+            width,
+            height,
+            hachure_gap,
+            roughness,
+            path_data.len(),
+        )
+    }
 
     fn randomness() -> RoughRandomness {
         RoughRandomness::new(

@@ -305,8 +305,11 @@ impl StateNativeLabelGeometry {
     }
 
     pub(crate) fn baseline_y_px(&self, line_index: usize) -> Option<f64> {
-        (line_index < self.line_count)
-            .then(|| self.first_baseline_y_px + self.line_height_px * line_index as f64)
+        if line_index < self.line_count {
+            Some(self.first_baseline_y_px + self.line_height_px * line_index as f64)
+        } else {
+            None
+        }
     }
 
     pub(crate) fn measured_lines(&self) -> Option<impl ExactSizeIterator<Item = &str> + '_> {

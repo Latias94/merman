@@ -343,9 +343,7 @@ impl CynefinTypographyThemePlan {
             }
         }
         for (key, rule_index) in &self.text_fill_routes {
-            if self.config_owns_text_fill {
-                evidence.mark_not_applicable(key.clone());
-            } else if !receipt.has_visible_text_fill_surface() {
+            if self.config_owns_text_fill || !receipt.has_visible_text_fill_surface() {
                 evidence.mark_not_applicable(key.clone());
             } else if self
                 .text_fill

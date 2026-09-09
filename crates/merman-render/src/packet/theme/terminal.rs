@@ -327,7 +327,6 @@ impl PacketTerminalWinnerLedger {
         self.record_winners(
             style
                 .winner_rule_properties()
-                .into_iter()
                 .map(|(property, origin)| (origin.rule_index(), property)),
             fill_owned_by_config,
         );
@@ -455,7 +454,6 @@ fn packet_style_winners(
 ) -> Box<[(usize, ResolvedStyleProperty)]> {
     style
         .winner_rule_properties()
-        .into_iter()
         .map(|(property, origin)| (origin.rule_index(), property))
         .collect::<Vec<_>>()
         .into_boxed_slice()

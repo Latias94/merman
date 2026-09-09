@@ -141,6 +141,7 @@ fn journey_actor_legend_line_width_px(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_journey_diagram_typed(
     model: &JourneyDiagramRenderModel,
     effective_config: &serde_json::Value,

@@ -7,7 +7,9 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::{MermaidConfig, ParsedDiagramRender, RenderSemanticModel};
+use merman_core::MermaidConfig;
+#[cfg(test)]
+use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::sync::Arc;
@@ -734,6 +736,7 @@ fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
 /// model alone (for example an authored `&lt;` versus a literal `<`). Accepting the parsed artifact
 /// keeps that provenance paired with the effective configuration and prevents diagnostics from
 /// silently measuring a different createText payload than the normal render pipeline.
+#[cfg(test)]
 pub(crate) fn build_flowchart_elk_graph(
     parsed: &ParsedDiagramRender,
     measurer: &dyn TextMeasurer,
@@ -774,6 +777,7 @@ fn build_flowchart_elk_graph_from_semantic(
     )
 }
 
+#[cfg(test)]
 fn build_flowchart_elk_graph_with_render_labels(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
@@ -968,14 +972,14 @@ fn project_collapsed_flowchart_model(
         .nodes
         .iter()
         .enumerate()
-        .filter_map(|(owner_index, node)| {
+        .filter(|(_, node)| {
             render_label_sources
                 .collapsed_replacement(node.id.as_str())
                 .is_none()
-                .then(|| {
-                    node_owner_indices.push(owner_index);
-                    node.clone()
-                })
+        })
+        .map(|(owner_index, node)| {
+            node_owner_indices.push(owner_index);
+            node.clone()
         })
         .collect();
     let mut edge_owner_indices = Vec::with_capacity(model.edges.len());
@@ -984,9 +988,8 @@ fn project_collapsed_flowchart_model(
         .iter()
         .enumerate()
         .filter_map(|(owner_index, edge)| {
-            super::project_flowchart_edge(edge, render_label_sources).map(|projected| {
+            super::project_flowchart_edge(edge, render_label_sources).inspect(|_| {
                 edge_owner_indices.push(owner_index);
-                projected
             })
         })
         .collect();

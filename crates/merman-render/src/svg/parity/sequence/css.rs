@@ -207,11 +207,14 @@ pub(super) fn write_sequence_css_with_theme_adapter(
     let final_note_fill = typed.note_fill.unwrap_or(note_fill);
     let final_note_stroke = typed.note_stroke.unwrap_or(note_border);
     let legacy_surface_fill = |surface, fill: &str| {
-        typography_for_surface(&typed, surface)
+        if typography_for_surface(&typed, surface)
             .and_then(|typography| typography.typed_fill_for(surface))
             .is_none()
-            .then(|| format!("fill:{fill};"))
-            .unwrap_or_default()
+        {
+            format!("fill:{fill};")
+        } else {
+            String::new()
+        }
     };
     let mut emission = SequenceThemeCssEmission {
         sequence_number_fill: final_sequence_number_fill.to_owned(),

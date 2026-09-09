@@ -1083,7 +1083,7 @@ pub(super) fn render_state_node_svg(
                 let rect_radius = radius_override
                     .unwrap_or_else(|| if effective_look == "neo" { 3.0 } else { 5.0 })
                     .max(0.0);
-                let rect_style = escape_xml_display(&shape_style_attr);
+                let rect_style = escape_xml_display(shape_style_attr);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
                     let prepared_token_attr = state_prepared_html_label_token_attr(prepared_label);
@@ -1105,7 +1105,7 @@ pub(super) fn render_state_node_svg(
                         fmt_display(-h / 2.0),
                         fmt_display(w),
                         fmt_display(h),
-                        escape_xml_display(&text_style_attr),
+                        escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         prepared_token_attr,
@@ -1134,7 +1134,7 @@ pub(super) fn render_state_node_svg(
                         fmt_display(-h / 2.0),
                         fmt_display(w),
                         fmt_display(h),
-                        escape_xml_display(&text_style_attr),
+                        escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
                         label_dom,
@@ -1200,7 +1200,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
                     escape_xml_display(stroke_path_style_attr),
-                    escape_xml_display(&text_style_attr),
+                    escape_xml_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     prepared_token_attr,
@@ -1228,7 +1228,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(stroke_attr),
                     fmt_display(stroke_width_attr),
                     escape_xml_display(stroke_path_style_attr),
-                    escape_xml_display(&text_style_attr),
+                    escape_xml_display(text_style_attr),
                     fmt_display(-lw / 2.0),
                     fmt_display(-lh / 2.0),
                     label_dom,

@@ -94,7 +94,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 emitted_styles.emitted_shape_source_residuals(edge.id.as_str(), false);
             if ctx.resolved_theme.is_some() || !source_residuals.is_empty() {
                 ctx.theme_evidence.record_edge_emission(
-                    &ctx.edge_theme,
+                    ctx.edge_theme,
                     crate::flowchart::FlowchartEdgeThemeEmission {
                         stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                             stroke_precedence,
@@ -179,7 +179,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         emitted_styles.emitted_edge_source_residuals(edge.id.as_str(), hand_drawn);
     if ctx.resolved_theme.is_some() || !source_residuals.is_empty() {
         ctx.theme_evidence.record_edge_emission(
-            &ctx.edge_theme,
+            ctx.edge_theme,
             crate::flowchart::FlowchartEdgeThemeEmission {
                 stroke: crate::flowchart::FlowchartThemeFacetEmission::new(
                     stroke_precedence,

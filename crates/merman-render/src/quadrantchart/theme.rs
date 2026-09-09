@@ -522,7 +522,6 @@ fn winner_properties(
 ) -> BTreeSet<(usize, ResolvedStyleProperty)> {
     style
         .winner_rule_properties()
-        .into_iter()
         .map(|(property, origin)| (origin.rule_index(), property))
         .collect()
 }
@@ -758,7 +757,7 @@ impl QuadrantChartPointThemeReceipt {
         let fill_matches = expected
             .fill
             .as_ref()
-            .map_or(true, |fill| emitted_fill == fill.css.as_ref());
+            .is_none_or(|fill| emitted_fill == fill.css.as_ref());
         let terminal_matches = radius_matches && fill_matches;
         self.attributes_match &= terminal_matches;
 

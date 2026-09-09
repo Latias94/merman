@@ -977,15 +977,15 @@ fn prepare_class_family(
                 && route.disposition() == crate::diagram_theme::FamilyThemeDisposition::Unsupported
         })
     });
-    let table_group_lengths = needs_unsupported_table_evidence
-        .then(|| {
-            model
-                .classes
-                .values()
-                .flat_map(|class| [class.members.len(), class.methods.len()])
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let table_group_lengths = if needs_unsupported_table_evidence {
+        model
+            .classes
+            .values()
+            .flat_map(|class| [class.members.len(), class.methods.len()])
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let relation_theme = crate::class::ClassRelationThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,

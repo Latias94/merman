@@ -230,6 +230,7 @@ impl FamilyStyleResidual {
         }
     }
 
+    #[cfg(test)]
     pub fn raw(&self) -> &str {
         &self.raw
     }
@@ -238,30 +239,37 @@ impl FamilyStyleResidual {
         self.property.as_deref()
     }
 
+    #[cfg(test)]
     pub fn owner_id(&self) -> &str {
         &self.owner_id
     }
 
+    #[cfg(test)]
     pub fn class_id(&self) -> Option<&str> {
         self.class_id.as_deref()
     }
 
+    #[cfg(test)]
     pub const fn origin(&self) -> FamilyStyleOrigin {
         self.origin
     }
 
+    #[cfg(test)]
     pub const fn channel(&self) -> FamilyStyleChannel {
         self.channel
     }
 
+    #[cfg(test)]
     pub const fn assignment_ordinal(&self) -> Option<usize> {
         self.assignment_ordinal
     }
 
+    #[cfg(test)]
     pub const fn declaration_ordinal(&self) -> usize {
         self.declaration_ordinal
     }
 
+    #[cfg(test)]
     pub const fn reason(&self) -> FamilyStyleResidualReason {
         self.reason
     }
@@ -409,6 +417,7 @@ impl FamilyStyleReport {
         self.family_id
     }
 
+    #[cfg(test)]
     pub const fn evaluation(&self) -> FamilyStyleEvaluation {
         self.evaluation
     }
@@ -418,11 +427,13 @@ impl FamilyStyleReport {
         self.output_mutated
     }
 
+    #[cfg(test)]
     pub fn residuals(&self) -> &[FamilyStyleResidual] {
         &self.residuals
     }
 
     /// Returns typed mechanisms the family adapter explicitly emitted or consumed.
+    #[cfg(test)]
     pub fn theme_applied_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
         &self.theme_applied
     }
@@ -442,16 +453,19 @@ impl FamilyStyleReport {
 
     /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
     /// target, variant, or ordinal.
+    #[cfg(test)]
     pub fn theme_not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
         &self.theme_not_applicable
     }
 
     /// Returns typed semantic mechanisms that remain outside this adapter's proof boundary.
+    #[cfg(test)]
     pub fn theme_residuals(&self) -> &[FamilyThemeResidual] {
         &self.theme_residuals
     }
 
     /// Returns temporary family-local Mermaid compatibility contributions used by this operation.
+    #[cfg(test)]
     pub const fn compatibility_residual_count(&self) -> usize {
         self.compatibility_residual_count
     }
@@ -516,6 +530,7 @@ impl FamilyStyleReport {
         }
     }
 
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
     pub fn is_verified(&self) -> bool {
         self.verification() == FamilyStyleVerification::Verified
     }
@@ -629,6 +644,7 @@ impl FamilyRenderReport {
         self.style.family_id()
     }
 
+    #[cfg(any(test, feature = "internal-theme-acceptance"))]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style
     }
@@ -2920,10 +2936,12 @@ impl RenderedFamilySvg {
         &self.required_capabilities
     }
 
+    #[cfg(test)]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style_report
     }
 
+    #[cfg(test)]
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }
@@ -3195,10 +3213,12 @@ impl RenderedResvgCompatibleSvg {
         self.style_report.family_id()
     }
 
+    #[cfg(test)]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style_report
     }
 
+    #[cfg(test)]
     pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
         &self.root_theme
     }

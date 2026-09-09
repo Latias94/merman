@@ -445,12 +445,11 @@ pub(super) fn measure_sequence_label_for_layout_with_prepared(
     mode: SequenceMathHeightMode,
     checkpoints: SequenceTextCheckpoints<'_>,
 ) -> Result<(f64, f64)> {
-    if text.contains("$$") {
-        if let Some(metrics) =
+    if text.contains("$$")
+        && let Some(metrics) =
             measure_prepared_sequence_math_label(prepared, style, mode, checkpoints)?
-        {
-            return Ok(metrics);
-        }
+    {
+        return Ok(metrics);
     }
     if let Some(metrics) = measure_sequence_math_label(
         measurer,

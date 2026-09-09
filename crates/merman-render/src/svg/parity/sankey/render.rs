@@ -10,7 +10,7 @@ impl std::fmt::Display for SankeyScopedId<'_> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.diagram_id {
             Some(diagram_id) => write!(formatter, "{diagram_id}-{}", self.local_id),
-            None => formatter.write_str(&self.local_id),
+            None => formatter.write_str(self.local_id),
         }
     }
 }
@@ -163,7 +163,7 @@ fn write_sankey_nodes(
             y = fmt(y),
             h = fmt(h),
             w = fmt(w),
-            fill = escape_attr(&fill),
+            fill = escape_attr(fill),
         );
         out.checkpoint()?;
         if let Some(receipt) = receipt.as_deref_mut() {
@@ -249,8 +249,8 @@ fn write_sankey_links(
                     id = escape_attr_display(scoped_gradient_id),
                     x1 = fmt(sx),
                     x2 = fmt(tx),
-                    c1 = escape_attr(&source_color),
-                    c2 = escape_attr(&target_color),
+                    c1 = escape_attr(source_color),
+                    c2 = escape_attr(target_color),
                 );
                 out.checkpoint()?;
                 format!("url(#{})", scoped_gradient_id)
@@ -396,12 +396,12 @@ pub(crate) fn render_sankey_diagram_svg(
     )?;
     out.push_str("</g>");
     out.checkpoint()?;
-    if let Some(receipt) = node_palette_receipt {
-        if !node_palette.record_terminal(receipt) {
-            return Err(Error::InvalidModel {
-                message: "Sankey node palette receipt did not match the terminal SVG".to_string(),
-            });
-        }
+    if let Some(receipt) = node_palette_receipt
+        && !node_palette.record_terminal(receipt)
+    {
+        return Err(Error::InvalidModel {
+            message: "Sankey node palette receipt did not match the terminal SVG".to_string(),
+        });
     }
 
     let _ = write!(
@@ -484,12 +484,12 @@ pub(crate) fn render_sankey_diagram_svg(
     }
     out.push_str("</g>");
     out.checkpoint()?;
-    if let Some(receipt) = typography_receipt {
-        if !typography_theme.record_terminal(receipt) {
-            return Err(Error::InvalidModel {
-                message: "Sankey typography receipt did not match the terminal SVG".to_string(),
-            });
-        }
+    if let Some(receipt) = typography_receipt
+        && !typography_theme.record_terminal(receipt)
+    {
+        return Err(Error::InvalidModel {
+            message: "Sankey typography receipt did not match the terminal SVG".to_string(),
+        });
     }
 
     out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);

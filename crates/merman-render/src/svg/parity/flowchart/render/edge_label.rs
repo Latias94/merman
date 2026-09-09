@@ -324,7 +324,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     );
     let span_style_attr = OptionalStyleXmlAttr(compiled_label_styles.label_style.as_str());
     let div_style_prefix = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
-        &compiled_label_styles,
+        compiled_label_styles,
         false,
     );
     let typography_applicable = !crate::flowchart::flowchart_label_text_is_empty_for_mode(

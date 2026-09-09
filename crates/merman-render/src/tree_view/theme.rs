@@ -208,9 +208,6 @@ impl TreeViewThemePlan {
         let (node_count, expected_line_count) = tree_view_terminal_counts(&model.root);
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(Some(theme), effective_config);
-        let label_color;
-        let line_color;
-        let icon_color;
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -227,7 +224,6 @@ impl TreeViewThemePlan {
         )?;
         let static_winners = static_style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
         let static_line_thickness_candidate = (!mermaid_owns_line_thickness)
@@ -260,7 +256,6 @@ impl TreeViewThemePlan {
                     occurrence_winners.extend(
                         style
                             .winner_rule_properties()
-                            .into_iter()
                             .map(|(property, origin)| (origin.rule_index(), property)),
                     );
                     static_width_wins_every_line &= style
@@ -299,7 +294,7 @@ impl TreeViewThemePlan {
         let icon_terminal_owned = icon_config_owned || icon_compatibility_owned;
 
         // Text is the broad fallback; a NodeLabel winner is the terminal-specific winner.
-        label_color = resolve_tree_view_paint(
+        let label_color = resolve_tree_view_paint(
             theme,
             work_meter,
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
@@ -309,7 +304,7 @@ impl TreeViewThemePlan {
         )?;
         // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
         // fallback for themes that do not provide a stroke assignment.
-        line_color = resolve_tree_view_paint(
+        let line_color = resolve_tree_view_paint(
             theme,
             work_meter,
             &[ThemeTarget::Edge],
@@ -318,7 +313,7 @@ impl TreeViewThemePlan {
             &mut paint_residuals,
         )?;
         // Marker is explicit when present; otherwise icon paint inherits the resolved Edge line.
-        icon_color = resolve_tree_view_paint(
+        let icon_color = resolve_tree_view_paint(
             theme,
             work_meter,
             &[ThemeTarget::Marker],
@@ -449,19 +444,20 @@ impl TreeViewThemePlan {
                         | ThemeTarget::Marker,
                     facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
                     ..
-                } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
-                    if !selected_paint_keys.contains(&key) && !paint_residuals.contains_key(&key) {
-                        evidence.mark_not_applicable(key);
-                    }
+                } if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && !selected_paint_keys.contains(&key)
+                    && !paint_residuals.contains_key(&key) =>
+                {
+                    evidence.mark_not_applicable(key);
                 }
                 FamilyThemeMechanism::RuleFacet {
                     target: ThemeTarget::Edge,
                     facet: FamilyThemeRuleFacet::StrokeWidth,
                     ..
-                } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
-                    if pending_stroke_width_key.as_ref() != Some(&key) {
-                        evidence.mark_not_applicable(key);
-                    }
+                } if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && pending_stroke_width_key.as_ref() != Some(&key) =>
+                {
+                    evidence.mark_not_applicable(key);
                 }
                 _ => {}
             }
@@ -532,24 +528,24 @@ impl TreeViewThemePlan {
             if let Some(key) = self.pending_stroke_width_key.clone() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
             }
-            if let Some(assignment) = &self.label_color {
-                if receipt.label_color_matches(assignment.paint.css()) {
-                    evidence.mark_applied_with_capabilities(
-                        assignment.key.clone(),
-                        [assignment.paint.capability(), ThemeCapability::SolidPaint],
-                    );
-                }
+            if let Some(assignment) = &self.label_color
+                && receipt.label_color_matches(assignment.paint.css())
+            {
+                evidence.mark_applied_with_capabilities(
+                    assignment.key.clone(),
+                    [assignment.paint.capability(), ThemeCapability::SolidPaint],
+                );
             }
-            if let Some(assignment) = &self.line_color {
-                if receipt.line_color_matches(assignment.paint.css()) {
-                    evidence.mark_applied_with_capabilities(
-                        assignment.key.clone(),
-                        [
-                            assignment.paint.capability(),
-                            ThemeCapability::BorderStyling,
-                        ],
-                    );
-                }
+            if let Some(assignment) = &self.line_color
+                && receipt.line_color_matches(assignment.paint.css())
+            {
+                evidence.mark_applied_with_capabilities(
+                    assignment.key.clone(),
+                    [
+                        assignment.paint.capability(),
+                        ThemeCapability::BorderStyling,
+                    ],
+                );
             }
             if let Some(assignment) = &self.icon_color {
                 if receipt.expected_icon_count == 0 {
@@ -605,7 +601,7 @@ impl TreeViewThemePlan {
         self.icon_color
             .as_ref()
             .map(|assignment| assignment.paint.css())
-            .or_else(|| self.icon_fallback_color.as_deref())
+            .or(self.icon_fallback_color.as_deref())
             .unwrap_or(baseline)
     }
 
@@ -633,7 +629,7 @@ impl TreeViewThemePlan {
                 .icon_color
                 .as_ref()
                 .map(|assignment| assignment.paint.css()))
-            .or_else(|| self.icon_fallback_color.as_deref()),
+            .or(self.icon_fallback_color.as_deref()),
             self.inherited_font_stack.font_family_css(),
             label_count,
             icon_count,

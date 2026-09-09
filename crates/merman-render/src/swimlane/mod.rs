@@ -109,12 +109,10 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .edges
         .iter()
         .map(|edge| {
-            let curve = edge
-                .interpolate
+            edge.interpolate
                 .as_deref()
                 .filter(|curve| !curve.is_empty())
-                .unwrap_or(default_curve);
-            curve
+                .unwrap_or(default_curve)
         })
         .collect::<Vec<_>>();
 

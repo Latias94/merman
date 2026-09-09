@@ -393,7 +393,11 @@ impl RadarSeriesPaintPlan {
                     return Ok(plan);
                 }
 
-                for curve_index in 0..model.curves.len() {
+                for (curve_index, color_scale_path) in RADAR_COLOR_SCALE_PATHS
+                    .iter()
+                    .enumerate()
+                    .take(model.curves.len())
+                {
                     let style = theme.style_with_work_meter(
                         ThemeTarget::ChartSeries,
                         ThemeVariant::Default,
@@ -404,7 +408,7 @@ impl RadarSeriesPaintPlan {
                         || style.stroke_resolution().winner().is_some()
                         || merman_core::__private::config_path_overrides_typed_default(
                             effective_config,
-                            RADAR_COLOR_SCALE_PATHS[curve_index],
+                            color_scale_path,
                         )
                     {
                         continue;

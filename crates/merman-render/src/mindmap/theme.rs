@@ -391,7 +391,6 @@ impl MindmapNodePalettePlan {
         }
         let static_winners = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property))
             .collect::<BTreeSet<_>>();
         let has_ordinal_node_rules = theme
@@ -409,7 +408,6 @@ impl MindmapNodePalettePlan {
                 occurrence_winners.extend(
                     occurrence_style
                         .winner_rule_properties()
-                        .into_iter()
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
             }
@@ -596,7 +594,6 @@ impl MindmapNodePalettePlan {
             winner_properties.extend(
                 static_style
                     .winner_rule_properties()
-                    .into_iter()
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
         } else {
@@ -610,7 +607,6 @@ impl MindmapNodePalettePlan {
                 winner_properties.extend(
                     style
                         .winner_rule_properties()
-                        .into_iter()
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
                 expectation.winning_stroke_rule = style

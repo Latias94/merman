@@ -1422,12 +1422,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if let Some(receipt) = edge_stroke_receipt {
-        if !node_palette.record_edge_terminal(receipt) {
-            return Err(crate::Error::InvalidModel {
-                message: "Mindmap Edge stroke terminal receipt could not be sealed".to_string(),
-            });
-        }
+    if let Some(receipt) = edge_stroke_receipt
+        && !node_palette.record_edge_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Mindmap Edge stroke terminal receipt could not be sealed".to_string(),
+        });
     }
     if !node_palette.record_terminal(node_palette_receipt) {
         return Err(crate::Error::InvalidModel {

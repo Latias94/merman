@@ -286,7 +286,11 @@ fn icon_render_work_units(
         .ok_or_else(|| crate::Error::icon_processing("icon edit work estimate overflowed"))?;
     let projected_work = ceil_div(projected_svg_bytes, WORK_BYTES_PER_UNIT);
     let sanitizer_work = ceil_div(sanitizer_ceiling, WORK_BYTES_PER_UNIT);
-    let paint_scan_work = observe_paint_fact.then_some(sanitizer_work).unwrap_or(0);
+    let paint_scan_work = if observe_paint_fact {
+        sanitizer_work
+    } else {
+        0
+    };
     let element_work = icon.body.element_count().checked_mul(3).ok_or_else(|| {
         crate::Error::icon_processing("icon sanitizer element work estimate overflowed")
     })?;

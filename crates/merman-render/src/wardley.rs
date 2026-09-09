@@ -651,6 +651,7 @@ fn build_arrow(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn layout_wardley_diagram_typed(
     model: &WardleyDiagramRenderModel,
     diagram_title: Option<&str>,

@@ -118,6 +118,7 @@ pub(crate) struct RootThemeResidual {
 }
 
 impl RootThemeResidual {
+    #[cfg(test)]
     pub const fn key(&self) -> &RootThemeMechanismKey {
         &self.key
     }
@@ -155,14 +156,12 @@ impl RootThemeMechanismEvidence {
         &self.key
     }
 
+    #[cfg(test)]
     pub fn required_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
         self.required_capabilities.iter().copied()
     }
 
-    pub fn applied_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.applied_capabilities.iter().copied()
-    }
-
+    #[cfg(test)]
     pub fn residual_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
         self.residual_capabilities.iter().copied()
     }
@@ -333,6 +332,7 @@ impl RootThemeReport {
         }
     }
 
+    #[cfg(test)]
     pub const fn evaluation(&self) -> RootThemeEvaluation {
         self.evaluation
     }
@@ -341,16 +341,13 @@ impl RootThemeReport {
         &self.required_mechanisms
     }
 
+    #[cfg(test)]
     pub fn mechanisms(&self) -> &[RootThemeMechanismEvidence] {
         &self.mechanisms
     }
 
     pub fn applied_mechanisms(&self) -> &[RootThemeMechanismKey] {
         &self.applied_mechanisms
-    }
-
-    pub fn required_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
-        self.required_capabilities.iter().copied()
     }
 
     pub fn applied_capabilities(&self) -> impl ExactSizeIterator<Item = ThemeCapability> + '_ {
@@ -395,10 +392,6 @@ impl RootThemeReport {
                 }
             }
         }
-    }
-
-    pub fn is_verified(&self) -> bool {
-        self.verification() == RootThemeVerification::Verified
     }
 
     /// Invalidates positive root evidence after an untrusted SVG transformation.

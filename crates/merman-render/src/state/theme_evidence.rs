@@ -677,14 +677,12 @@ impl StateTerminalSurfaceObservation {
             StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id) => {
                 self.observe_html_descendant(node, context);
                 if context.label_data_id == Some(edge_id.as_str()) {
-                    if tag == "rect"
+                    if (tag == "rect"
                         && !context.in_foreign_object
-                        && node_has_class(node, "background")
-                    {
-                        record_style(node, &mut self.background_styles);
-                    } else if tag == "div"
-                        && context.parent_is_foreign_object
-                        && node_has_class(node, "labelBkg")
+                        && node_has_class(node, "background"))
+                        || (tag == "div"
+                            && context.parent_is_foreign_object
+                            && node_has_class(node, "labelBkg"))
                     {
                         record_style(node, &mut self.background_styles);
                     } else if tag == "foreignObject"

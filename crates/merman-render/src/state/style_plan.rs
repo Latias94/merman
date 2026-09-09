@@ -104,23 +104,23 @@ impl ResolvedLabelTypography {
     }
 
     fn canonicalize_emission(&self, out: &mut IndexMap<String, EmittedDeclaration>) {
-        if out.contains_key("font-family") {
-            if let Some(family) = self.text_style.font_family.as_deref() {
-                insert_emitted(out, "font-family", family);
-            }
+        if out.contains_key("font-family")
+            && let Some(family) = self.text_style.font_family.as_deref()
+        {
+            insert_emitted(out, "font-family", family);
         }
         if out.contains_key("font-size") {
             insert_emitted(out, "font-size", format!("{}px", self.text_style.font_size));
         }
-        if out.contains_key("font-weight") {
-            if let Some(weight) = self.text_style.font_weight.as_deref() {
-                insert_emitted(out, "font-weight", weight);
-            }
+        if out.contains_key("font-weight")
+            && let Some(weight) = self.text_style.font_weight.as_deref()
+        {
+            insert_emitted(out, "font-weight", weight);
         }
-        if out.contains_key("font-style") {
-            if let Some(font_style) = self.text_style.font_style.as_deref() {
-                insert_emitted(out, "font-style", font_style);
-            }
+        if out.contains_key("font-style")
+            && let Some(font_style) = self.text_style.font_style.as_deref()
+        {
+            insert_emitted(out, "font-style", font_style);
         }
         if self.prepared_typography.is_none() {
             out.shift_remove("letter-spacing");
@@ -1890,7 +1890,6 @@ impl StateThemeEvidenceBuilder<'_> {
         let use_id = StateThemeUseId(self.uses.len());
         let properties = style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| StateThemePropertyUse {
                 rule_index: origin.rule_index(),
                 property,
@@ -2838,18 +2837,18 @@ fn prepare_node(
                 .map(|style| style.typography().clone())
         })
         .flatten();
-    if target == ThemeTarget::Composite {
-        if let Some(style) = semantic_label.as_ref() {
-            if let Some(theme) = resolved_theme {
-                append_theme_base_text_emission(theme, &mut composite_header_text_emission);
-            }
-            append_semantic_text_emission(style, &mut composite_header_text_emission);
-            let color = (!label_fill_owned)
-                .then(|| text_paint_value(style.fill_resolution()))
-                .flatten();
-            if let Some(color) = color {
-                insert_emitted(&mut composite_header_text_emission, "color", color);
-            }
+    if target == ThemeTarget::Composite
+        && let Some(style) = semantic_label.as_ref()
+    {
+        if let Some(theme) = resolved_theme {
+            append_theme_base_text_emission(theme, &mut composite_header_text_emission);
+        }
+        append_semantic_text_emission(style, &mut composite_header_text_emission);
+        let color = (!label_fill_owned)
+            .then(|| text_paint_value(style.fill_resolution()))
+            .flatten();
+        if let Some(color) = color {
+            insert_emitted(&mut composite_header_text_emission, "color", color);
         }
     }
     let mut cluster_label_typography = ResolvedLabelTypography::new(

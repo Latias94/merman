@@ -48,7 +48,6 @@ impl EventModelingTextOccurrences {
 #[derive(Debug, Default)]
 struct EventModelingTextRuleObservation {
     applicable: bool,
-    config_owned: bool,
     pending_fill: Option<ThemeCapability>,
     incomplete: bool,
     residual: Option<FamilyThemeResidualReason>,
@@ -143,7 +142,6 @@ impl EventModelingTextThemePlan {
                     }
                     if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
                         observation.applicable = true;
-                        observation.config_owned = true;
                         continue;
                     }
 
@@ -256,8 +254,6 @@ impl EventModelingTextThemePlan {
                 // Mixed rules remain fail-closed until every winning facet has a terminal owner.
             } else if let Some(capability) = observation.pending_fill {
                 pending.insert(key, capability);
-            } else if observation.config_owned {
-                evidence.mark_not_applicable(key);
             } else {
                 evidence.mark_not_applicable(key);
             }

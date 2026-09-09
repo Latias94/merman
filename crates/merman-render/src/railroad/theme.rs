@@ -807,9 +807,10 @@ impl RailroadTypographyThemePlan {
             }
         }
         for key in &self.title_fill_routes {
-            if self.title_fill_config_owned || self.title_fill.is_none() {
-                evidence.mark_not_applicable(key.clone());
-            } else if receipt.rule_name_count == 0 {
+            if self.title_fill_config_owned
+                || self.title_fill.is_none()
+                || receipt.rule_name_count == 0
+            {
                 evidence.mark_not_applicable(key.clone());
             } else if receipt.title_fill_proved() {
                 if let Some(capability) = self.title_fill_capability_for(key) {

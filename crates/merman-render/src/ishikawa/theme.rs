@@ -432,7 +432,6 @@ fn observe_text_style(
     winner_properties.extend(
         style
             .winner_rule_properties()
-            .into_iter()
             .map(|(property, origin)| (origin.rule_index(), property)),
     );
     if let Some(fill) = typed_fill_expectation(theme, style, mermaid_owns_fill) {

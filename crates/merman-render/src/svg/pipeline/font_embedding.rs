@@ -249,10 +249,10 @@ impl SvgTextContentTracker {
     }
 
     pub(super) fn observe_content(&mut self, content: &str) {
-        if !content.is_empty() {
-            if let Some(text_element) = self.open_text_stack.last_mut() {
-                text_element.has_character_content = true;
-            }
+        if !content.is_empty()
+            && let Some(text_element) = self.open_text_stack.last_mut()
+        {
+            text_element.has_character_content = true;
         }
     }
 
@@ -855,29 +855,26 @@ fn emitted_font_descriptor(style: &str) -> Option<EmittedFontDescriptor> {
                 }
                 family = Some(stack.families()[0].clone());
             }
-            "font-weight" => {
+            "font-weight"
                 if weight
                     .replace(parse_emitted_font_weight(parsed.value())?)
-                    .is_some()
-                {
-                    return None;
-                }
+                    .is_some() =>
+            {
+                return None;
             }
-            "font-style" => {
+            "font-style"
                 if font_style
                     .replace(parse_emitted_font_style(parsed.value())?)
-                    .is_some()
-                {
-                    return None;
-                }
+                    .is_some() =>
+            {
+                return None;
             }
-            "font-stretch" => {
+            "font-stretch"
                 if width
                     .replace(parse_emitted_font_width(parsed.value())?)
-                    .is_some()
-                {
-                    return None;
-                }
+                    .is_some() =>
+            {
+                return None;
             }
             _ => {}
         }
@@ -1000,12 +997,12 @@ fn css_contains_font_face<'i, 't>(
             Token::Function(_)
             | Token::ParenthesisBlock
             | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
+            | Token::CurlyBracketBlock
                 if input.parse_nested_block(|nested| {
                     css_contains_font_face(nested, depth.saturating_add(1))
-                })? {
-                    return Ok(true);
-                }
+                })? =>
+            {
+                return Ok(true);
             }
             _ => {}
         }
