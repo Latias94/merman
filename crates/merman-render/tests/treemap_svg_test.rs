@@ -1495,20 +1495,14 @@ fn treemap_huge_source_font_finishes_height_fitting() {
 }
 
 #[test]
-fn treemap_huge_overwide_source_font_rejects_nonprogress_without_a_work_limit() {
-    struct WideTextHost(AtomicUsize);
+fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit() {
+    struct WideTextHost(Arc<AtomicUsize>);
     impl HostTextMeasurer for WideTextHost {
         fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
             if request.operation != TextMeasurementOperation::ComputedLength {
                 return Ok(None);
             }
-            if request.style.font_size >= 1e19 {
-                // Bound the regression itself: a stalled fitter must fail this test, not hang.
-                assert!(
-                    self.0.fetch_add(1, Ordering::Relaxed) < 4,
-                    "font fitting stalled"
-                );
-            }
+            self.0.fetch_add(1, Ordering::Relaxed);
             Ok(Some(HostTextMeasurement::Length(
                 request.style.font_size.min(1_000_000.0),
             )))
@@ -1524,24 +1518,26 @@ fn treemap_huge_overwide_source_font_rejects_nonprogress_without_a_work_limit() 
         "1",
     )
     .unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let host: Arc<dyn HostTextMeasurer> = Arc::new(WideTextHost(Arc::clone(&calls)));
     let session = RenderEnvironment::deterministic()
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .with_text_measurement_policy(TextMeasurementPolicy::host_display(
             identity,
-            Arc::new(WideTextHost(AtomicUsize::new(0))),
+            host,
             TextMeasurementPhase::ALL,
         ))
         .begin_session()
         .unwrap();
-    let error = family::prepare(parsed, &LayoutOptions::default(), session)
+    let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
         .unwrap()
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .err()
-        .expect("non-progressing font fitting must be rejected");
+        .expect("bounded width fitting must finish");
+    let label = text_tag_by_text(rendered.svg(), "Leaf");
+    assert!(font_size_px(label).is_some_and(|size| size >= 8.0 && size < 1000.0));
     assert!(
-        matches!(error, merman_render::Error::InvalidModel { ref message }
-        if message.contains("font size cannot decrease")),
-        "{error:?}"
+        calls.load(Ordering::Relaxed) < 128,
+        "width fitting should remain logarithmic for huge source sizes"
     );
 }
 

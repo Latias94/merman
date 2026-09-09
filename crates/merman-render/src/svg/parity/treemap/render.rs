@@ -337,6 +337,51 @@ fn fit_treemap_label_height(
     }
 }
 
+fn fit_treemap_label_width(
+    font_size: f64,
+    available_width: f64,
+    min_label_size: f64,
+    text: &str,
+    style: &mut crate::text::TextStyle,
+    initial_style: &crate::treemap::TreemapResolvedTextStyle,
+    measurer: &dyn crate::text::TextMeasurer,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> Result<(f64, bool)> {
+    let mut measurement_matches = initial_style.matches_measurement(style);
+    if measure_treemap_computed_length(measurer, text, style, work_meter)? <= available_width
+        || font_size <= min_label_size
+    {
+        return Ok((font_size, measurement_matches));
+    }
+
+    // The Mermaid loop walks down by one CSS pixel. Preserve its result for the monotone text
+    // measurement used by the renderer, but search the integer range in logarithmic work so a
+    // huge authored font size cannot force millions of host measurements.
+    let mut fitting = min_label_size;
+    let mut too_large = font_size;
+    loop {
+        work_meter.charge_emit_work(1)?;
+        let candidate = (fitting + (too_large - fitting) / 2.0).floor();
+        if candidate <= fitting || candidate >= too_large {
+            break;
+        }
+        style.font_size = candidate;
+        measurement_matches &= initial_style
+            .with_font_size_px(candidate)
+            .matches_measurement(style);
+        if measure_treemap_computed_length(measurer, text, style, work_meter)? <= available_width {
+            fitting = candidate;
+        } else {
+            too_large = candidate;
+        }
+    }
+    style.font_size = fitting;
+    measurement_matches &= initial_style
+        .with_font_size_px(fitting)
+        .matches_measurement(style);
+    Ok((fitting, measurement_matches))
+}
+
 fn write_treemap_leaf_group_open(
     out: &mut impl SvgOutput,
     group_class: &str,
@@ -1180,41 +1225,16 @@ pub(crate) fn render_treemap_diagram_svg(
             label_hidden = true;
         } else {
             let mut style = leaf_label_initial_style.style().clone();
-            let mut expected_style = leaf_label_initial_style.clone();
-            let mut width_fit_iterations = 0usize;
-
-            loop {
-                label_measurement_matches &= expected_style.matches_measurement(&style);
-                if measure_treemap_computed_length(
-                    &computed_length_measurer,
-                    &leaf.name,
-                    &style,
-                    options.work_meter(),
-                )? <= available_w
-                    || label_font_size <= min_label_font_size
-                {
-                    break;
-                }
-                width_fit_iterations = width_fit_iterations.saturating_add(1);
-                if width_fit_iterations > 64 {
-                    return Err(crate::Error::InvalidModel {
-                        message: "Treemap label width fitting exceeded its iteration budget"
-                            .to_owned(),
-                    });
-                }
-                let next_font_size = label_font_size - 1.0;
-                if next_font_size >= label_font_size {
-                    // A host measurer need not be monotone, so do not replace its fitting
-                    // sequence with binary search or retry an unchanged floating-point size.
-                    return Err(crate::Error::InvalidModel {
-                        message: "Treemap label font size cannot decrease during width fitting"
-                            .to_owned(),
-                    });
-                }
-                label_font_size = next_font_size;
-                style.font_size = label_font_size;
-                expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
-            }
+            (label_font_size, label_measurement_matches) = fit_treemap_label_width(
+                label_font_size,
+                available_w,
+                min_label_font_size,
+                &leaf.name,
+                &mut style,
+                &leaf_label_initial_style,
+                &computed_length_measurer,
+                options.work_meter(),
+            )?;
 
             label_font_size = fit_treemap_label_height(
                 label_font_size,
@@ -1225,7 +1245,6 @@ pub(crate) fn render_treemap_diagram_svg(
                 spacing_between_label_and_value,
                 options.work_meter(),
             )?;
-            expected_style = leaf_label_initial_style.with_font_size_px(label_font_size);
 
             style.font_size = label_font_size;
             if is_complex_treemap {
@@ -1233,7 +1252,9 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             } else {
-                label_measurement_matches &= expected_style.matches_measurement(&style);
+                label_measurement_matches &= leaf_label_initial_style
+                    .with_font_size_px(label_font_size)
+                    .matches_measurement(&style);
                 if measure_treemap_computed_length(
                     &computed_length_measurer,
                     &leaf.name,
