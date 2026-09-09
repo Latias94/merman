@@ -12,6 +12,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 mod normal_text;
+mod source_text;
 
 /// Operation-local owner for one bounded DrawingList candidate.
 ///
@@ -1269,6 +1270,51 @@ mod tests {
             })
         ));
         assert_eq!(builder.commands.len(), 1);
+    }
+
+    #[test]
+    fn source_text_resolution_admits_final_bytes_and_keeps_metadata_separate() {
+        let environment = RenderEnvironment::deterministic();
+        let control = OperationControl::new();
+        let session = make_session(&environment, control.clone());
+        let mut builder = DrawingListBuilder::new(
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits {
+                max_text_bytes: 1,
+                ..Default::default()
+            },
+            &session,
+        );
+        let resolved = builder.resolve_mermaid_text("ﬂ°quot¶ß").unwrap();
+        assert_eq!(resolved, "\"");
+        builder.draw_host_text(&resolved, host_text_run).unwrap();
+        builder
+            .push_mermaid_semantic(SemanticAnnotation {
+                id: "title".into(),
+                role: merman_display_list::SemanticRole::Label,
+                title: Some("ﬂ°quot¶ß".into()),
+                description: None,
+                link: None,
+            })
+            .unwrap();
+        assert_eq!(builder.semantics[0].title.as_deref(), Some("\""));
+        assert!(matches!(
+            builder.resolve_mermaid_text("ﬂ°quot¶ß"),
+            Err(Error::DrawingListContract(
+                DrawingListError::ResourceLimit {
+                    resource: "text_bytes",
+                    actual: 2,
+                    maximum: 1,
+                }
+            ))
+        ));
+        assert_eq!(builder.command_count(), 1);
+        control.cancel();
+        assert!(matches!(
+            builder.resolve_mermaid_text("ﬂ°quot¶ß"),
+            Err(Error::Cancelled(_))
+        ));
+        assert_eq!(builder.command_count(), 1);
     }
 
     #[test]

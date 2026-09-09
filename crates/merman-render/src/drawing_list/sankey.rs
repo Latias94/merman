@@ -107,7 +107,7 @@ impl<'a> SankeyBuilder<'a> {
     }
 
     fn build(mut self) -> Result<RenderDocument> {
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: "sankey.document".to_string(),
             role: SemanticRole::Document,
             title: self.metadata.title.clone(),
@@ -223,7 +223,7 @@ impl<'a> SankeyBuilder<'a> {
                 })?;
             self.emit_label_text(&label, &text, background)?;
             self.output.push_control(DrawingCommand::EndSemanticGroup)?;
-            self.output.push_semantic(SemanticAnnotation {
+            self.output.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(text),
@@ -237,7 +237,7 @@ impl<'a> SankeyBuilder<'a> {
     fn begin_collection(&mut self, id: &str, class: &str) -> Result<()> {
         self.semantic_classes
             .insert(id.to_owned(), class.to_owned());
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: id.to_owned(),
             role: SemanticRole::Group,
             title: None,
@@ -304,7 +304,7 @@ impl<'a> SankeyBuilder<'a> {
         }
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_control(DrawingCommand::Restore)?;
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
             title: {
@@ -323,6 +323,8 @@ impl<'a> SankeyBuilder<'a> {
         text: &str,
         background: bool,
     ) -> Result<()> {
+        let resolved = self.output.resolve_mermaid_text(text)?;
+        let text = resolved.as_ref();
         if text.is_empty() {
             return Ok(());
         }
@@ -417,7 +419,7 @@ impl<'a> SankeyBuilder<'a> {
             self.output.push_control(DrawingCommand::EndSemanticGroup)?;
             self.output.push_control(DrawingCommand::Restore)?;
         }
-        self.output.push_semantic(SemanticAnnotation {
+        self.output.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Edge,
             title: Some(format!("{} → {}", link.source, link.target)),

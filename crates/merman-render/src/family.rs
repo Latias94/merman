@@ -2007,6 +2007,188 @@ mod tests {
     }
 
     #[test]
+    fn gantt_source_whitespace_does_not_consume_final_text_quota() {
+        let source = format!(
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection {}\nTask :a, 2026-01-01, 1d\n",
+            "#32;".repeat(1024),
+        );
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let build = |limits| {
+            crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                limits,
+                &artifact.session,
+            )
+        };
+        let document = build(DrawingListLimits::default()).unwrap();
+        let text_bytes: usize = document
+            .public
+            .commands
+            .iter()
+            .map(|command| match command {
+                merman_display_list::DrawingCommand::DrawText { run } => run.text.len(),
+                _ => 0,
+            })
+            .sum();
+        assert!(text_bytes < 1024);
+        let bounded = build(DrawingListLimits {
+            max_text_bytes: text_bytes,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(document.public.commands, bounded.public.commands);
+    }
+
+    #[test]
+    fn canonical_producers_resolve_source_entities_before_public_text() {
+        use merman_display_list::DrawingCommand;
+        for source in [
+            "packet\n0-7: \"#quot; #35;quot; &quot;\"\n",
+            "pie\n\"#quot; #35;quot; &quot;\": 1\n",
+            "sankey-beta\n#quot; #35;quot; &quot;,B,1\n",
+            "cynefin-beta\nclear\n  \"#quot; #35;quot; &quot;\"\n",
+            "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection #quot; #35;quot; &quot;\nTask :a, 2026-01-01, 1d\n",
+        ] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "sankey": { "showValues": false }
+                })))
+                .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            let expected = "\" #quot; &quot;";
+            assert!(
+                document
+                    .public
+                    .commands
+                    .iter()
+                    .any(|command| matches!(command,
+                        DrawingCommand::DrawText { run } if run.text == expected
+                    )),
+                "missing resolved public text for {source:?}"
+            );
+            assert!(
+                document
+                    .public
+                    .semantics
+                    .iter()
+                    .any(|annotation| annotation.title.as_deref() == Some(expected)),
+                "missing resolved semantic title for {source:?}"
+            );
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert!(
+                xml.descendants()
+                    .any(|node| node.is_text() && node.text() == Some(expected)),
+                "missing literal canonical text for {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn gantt_candidate_preserves_literal_public_text_and_accessibility() {
+        use merman_display_list::DrawingCommand;
+        let source = "gantt\ntitle #; Title\naccTitle: #; Accessible\naccDescr: #; Description\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection #; Phase\n#; Task :a, 2026-01-01, 1d\n";
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions {
+                    diagram_id: Some("literal".to_owned()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        for text in [
+            "#; Title",
+            "#; Accessible",
+            "#; Description",
+            "#; Phase",
+            "#; Task ",
+        ] {
+            assert!(
+                xml.descendants()
+                    .any(|node| node.is_text() && node.text() == Some(text)),
+                "missing literal {text:?}"
+            );
+        }
+        let literal = "#quot; &nbsp; &#160; ﬂ°quot¶ß A]]>B";
+        let run = document
+            .public
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run } if run.text.starts_with("#; Task") => Some(run),
+                _ => None,
+            })
+            .unwrap();
+        run.text = literal.to_owned();
+        document
+            .public
+            .semantics
+            .iter_mut()
+            .find(|s| s.id == "gantt.document")
+            .unwrap()
+            .description = Some(literal.to_owned());
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            xml.descendants()
+                .find(|node| node.attribute("id") == Some("literal-a-text"))
+                .unwrap()
+                .text(),
+            Some(literal)
+        );
+        assert_eq!(
+            xml.descendants()
+                .find(|node| node.has_tag_name("desc"))
+                .unwrap()
+                .text(),
+            Some(literal)
+        );
+    }
+
+    #[test]
     fn gantt_rectangles_clamp_horizontal_and_vertical_corner_radii_independently() {
         use merman_display_list::{DrawingResource, PathSegment};
         for height in [20.0, 4.0] {

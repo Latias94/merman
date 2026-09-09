@@ -182,7 +182,7 @@ impl<'a> GanttBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "gantt.document".to_string(),
             role: SemanticRole::Document,
             title: acc_title
@@ -279,7 +279,7 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn begin_collection(&mut self, id: &str) -> Result<()> {
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: id.to_owned(),
             role: SemanticRole::Group,
             title: None,
@@ -378,6 +378,7 @@ impl<'a> GanttBuilder<'a> {
         )?;
 
         for (index, tick) in ticks.iter().enumerate() {
+            let label = self.document.resolve_mermaid_text(&tick.label)?;
             let text_y = if bottom { 13.0 } else { -3.0 };
             let text_spec = TextEmitSpec {
                 origin: Point::new(0.0, text_y),
@@ -388,7 +389,7 @@ impl<'a> GanttBuilder<'a> {
                 baseline: TextBaseline::Alphabetic,
                 italic: false,
             };
-            let text_bounds = self.measure_text_bounds(&tick.label, &text_spec)?;
+            let text_bounds = self.measure_text_bounds(&label, &text_spec)?;
             // The source applies opacity to the tick group after painting both children.
             // A layer retains that compositing order rather than fading each child separately.
             let left = text_bounds.x.min(-0.5);
@@ -435,7 +436,7 @@ impl<'a> GanttBuilder<'a> {
             )?;
             self.emit_text_in_bounds(
                 &format!("{tick_semantic_id}.label"),
-                &tick.label,
+                &label,
                 text_spec,
                 text_bounds,
             )?;
@@ -443,7 +444,7 @@ impl<'a> GanttBuilder<'a> {
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_control(DrawingCommand::Restore)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: tick_semantic_id,
                 role: SemanticRole::Label,
                 title: Some(tick.label.clone()),
@@ -454,7 +455,7 @@ impl<'a> GanttBuilder<'a> {
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.document.push_control(DrawingCommand::Restore)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: axis_semantic_id,
             role: SemanticRole::Group,
             title: Some(format!("{} axis", if bottom { "Bottom" } else { "Top" })),
@@ -562,7 +563,7 @@ impl<'a> GanttBuilder<'a> {
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(source.task.clone()),
@@ -615,7 +616,7 @@ impl<'a> GanttBuilder<'a> {
             )?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(source.task.clone()),
@@ -639,16 +640,22 @@ impl<'a> GanttBuilder<'a> {
                 .push_control(DrawingCommand::BeginSemanticGroup {
                     semantic_id: semantic_id.clone(),
                 })?;
-            let last_text = section
-                .lines
-                .iter()
-                .rposition(|line| crate::gantt::section_line_has_text(line));
+            let mut last_text = None;
+            for (index, line) in section.lines.iter().enumerate().rev() {
+                let line = self.document.resolve_mermaid_layout_text(line)?;
+                if crate::gantt::section_line_has_text(&line) {
+                    last_text = Some(index);
+                    break;
+                }
+            }
             let mut cursor = crate::gantt::GanttSectionLineCursor::new(
                 section.y,
                 self.layout.section_font_size,
                 section.lines.len(),
             );
             for (line_index, line) in section.lines.iter().enumerate() {
+                let resolved = self.document.resolve_mermaid_layout_text(line)?;
+                let line = resolved.as_ref();
                 let has_later_text = last_text.is_some_and(|last| line_index < last);
                 let parts = cursor.normalized_parts(line, has_later_text);
                 let y = cursor.next_line(line, has_later_text);
@@ -672,7 +679,7 @@ impl<'a> GanttBuilder<'a> {
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Label,
                 title: Some(section.section.clone()),
@@ -737,7 +744,7 @@ impl<'a> GanttBuilder<'a> {
         self.document.push_control(DrawingCommand::Restore)?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "gantt.today".to_string(),
             role: SemanticRole::Label,
             title: Some("Today".to_string()),
@@ -769,7 +776,7 @@ impl<'a> GanttBuilder<'a> {
         )?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "gantt.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
@@ -780,6 +787,8 @@ impl<'a> GanttBuilder<'a> {
     }
 
     fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let resolved = self.document.resolve_mermaid_text(text)?;
+        let text = resolved.as_ref();
         if text.is_empty() {
             return Ok(());
         }

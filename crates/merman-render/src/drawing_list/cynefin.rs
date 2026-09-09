@@ -149,7 +149,7 @@ impl<'a> CynefinBuilder<'a> {
             .title
             .clone()
             .or_else(|| self.metadata.title.clone());
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "cynefin.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -231,7 +231,7 @@ impl<'a> CynefinBuilder<'a> {
     fn begin_container(&mut self, id: &str, class: &str) -> Result<()> {
         self.semantic_classes
             .insert(id.to_string(), class.to_string());
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: id.to_string(),
             role: SemanticRole::Group,
             title: None,
@@ -537,7 +537,7 @@ impl<'a> CynefinBuilder<'a> {
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_control(DrawingCommand::Restore)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
                 title: Some(item.label.clone()),
@@ -624,7 +624,7 @@ impl<'a> CynefinBuilder<'a> {
             }
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Edge,
                 title: transition.label.clone(),
@@ -658,7 +658,7 @@ impl<'a> CynefinBuilder<'a> {
         )?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "cynefin.title".to_string(),
             role: SemanticRole::Label,
             title: Some(title.to_string()),
@@ -686,7 +686,7 @@ impl<'a> CynefinBuilder<'a> {
         self.emit_text(semantic_id, text, spec)?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: semantic_id.to_string(),
             role: SemanticRole::Label,
             title: Some(text.to_string()),
@@ -697,6 +697,8 @@ impl<'a> CynefinBuilder<'a> {
     }
 
     fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
+        let resolved = self.document.resolve_mermaid_text(text)?;
+        let text = resolved.as_ref();
         let TextEmitSpec {
             origin,
             font_size,

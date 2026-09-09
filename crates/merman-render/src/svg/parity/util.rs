@@ -589,7 +589,23 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
         }
 
         let decoded = decode_mermaid_entities_for_render_text(self.0);
-        let text = decoded.as_ref();
+        escape_xml_raw_display(decoded.as_ref()).fmt(f)
+    }
+}
+
+/// Escapes final text content without interpreting Mermaid or HTML entity spellings.
+pub(super) fn escape_xml_raw_display(text: &str) -> EscapeXmlRawDisplay<'_> {
+    EscapeXmlRawDisplay(text)
+}
+
+pub(super) struct EscapeXmlRawDisplay<'a>(&'a str);
+
+impl std::fmt::Display for EscapeXmlRawDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self.0;
+        if xml_raw_text_is_plain_ascii(text) {
+            return f.write_str(text);
+        }
         let mut start = 0usize;
         for (i, ch) in text.char_indices() {
             let replacement = if ch == '>' && text[..i].ends_with("]]") {

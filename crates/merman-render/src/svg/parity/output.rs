@@ -144,8 +144,12 @@ pub(super) fn escape_attr(out: &mut impl SvgBuffer, text: impl fmt::Display) -> 
     out.append_fmt(format_args!("{}", super::util::escape_attr_display(text)))
 }
 
+/// Writes already resolved document text. Source entity decoding belongs to its producer.
 pub(super) fn escape_xml(out: &mut impl SvgBuffer, text: &str) -> Result<()> {
-    out.append_fmt(format_args!("{}", super::util::escape_xml_display(text)))
+    out.append_fmt(format_args!(
+        "{}",
+        super::util::escape_xml_raw_display(text)
+    ))
 }
 
 #[cfg(test)]
@@ -154,6 +158,25 @@ mod tests {
     use crate::environment::RenderEnvironment;
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use merman_core::OperationControl;
+
+    #[test]
+    fn output_escapes_public_text_without_decoding_entity_spellings() {
+        let environment = RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        for text in [
+            "#; #quot; #35;quot; ﬂ°quot¶ß",
+            "&nbsp; &#160; &amp; <literal> A]]>B",
+            "中文 é 😀",
+        ] {
+            let mut output = SvgOutput::new(&session);
+            output.push_str("<text>").unwrap();
+            escape_xml(&mut output, text).unwrap();
+            output.push_str("</text>").unwrap();
+            let svg = output.finish().unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            assert_eq!(xml.root_element().text(), Some(text));
+        }
+    }
 
     #[test]
     fn output_admits_exact_bytes_without_double_charging_icon_reservations() {

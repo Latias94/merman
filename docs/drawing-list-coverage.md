@@ -282,6 +282,23 @@ Regression coverage exercises narrow bars, tall vertical markers and a short bar
 the saturated-radius floating-point boundary; all 88 focused family, document, Gantt and effect
 tests pass. Gantt remains outside canonical admission.
 
+Canonical text serialization now XML-escapes public strings without decoding them again. Packet,
+Pie, Sankey, Cynefin and the Gantt candidate resolve Mermaid preprocessing placeholders in their
+source adapters before emitting public text and accessibility metadata. Literal `#;`, ordinary
+`&quot;` and the final `#quot;` produced by `#35;quot;` retain their intended spelling; public document
+edits are never reinterpreted as Mermaid source. Error and Info emit fixed text, not authored labels.
+The shared source resolver visits fragments with cancellation checkpoints and preflights resolved
+text bytes before allocating its temporary string. Metadata uses its separate admission path,
+not the visible-text quota. Gantt's pre-collapse section strings use operation work admission;
+only their final normalized fragments consume text quota. An all-space entity section is tested
+at the exact final document text length. This does not claim a bound on all adapter metadata
+allocations.
+
+The source-to-document-to-SVG regression checks those five families directly, and a Gantt mutation
+test verifies literal public text and accessible descriptions. Existing legacy renderers retain
+their separate source escaping helper. This addresses the `#;` mismatch in the historical report;
+it neither refreshes that full-family report nor admits Gantt or the remaining bridged families.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

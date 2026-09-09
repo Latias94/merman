@@ -138,7 +138,7 @@ impl<'a> PacketBuilder<'a> {
                 stroke: None,
             },
         )?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "packet.document".to_string(),
             role: SemanticRole::Document,
             title: self
@@ -153,7 +153,7 @@ impl<'a> PacketBuilder<'a> {
 
         for (word_index, word) in self.layout.words.iter().enumerate() {
             let word_id = format!("packet.word.{word_index}");
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: word_id.clone(),
                 role: SemanticRole::Group,
                 title: None,
@@ -240,10 +240,11 @@ impl<'a> PacketBuilder<'a> {
         )?;
 
         let label = svg_plain_text(&block.label);
-        let semantic_title = (!label.is_empty()).then(|| label.clone());
+        let resolved_label = self.document.resolve_mermaid_text(&label)?;
+        let semantic_title = (!resolved_label.is_empty()).then(|| resolved_label.to_string());
         let font = &self.font;
         let text_obligation = &self.text_obligation;
-        self.document.draw_host_text(&label, |text| {
+        self.document.draw_host_text(&resolved_label, |text| {
             packet_text_run(
                 text,
                 Point::new(block.x + block.width / 2.0, block.y + block.height / 2.0),
@@ -332,6 +333,7 @@ impl<'a> PacketBuilder<'a> {
 
     fn emit_title(&mut self) -> Result<()> {
         let title = self.title.take().unwrap_or_default();
+        let resolved_title = self.document.resolve_mermaid_text(&title)?;
         self.session.checkpoint(OperationPhase::Emit)?;
         let semantic_id = "packet.title".to_string();
         let total_row_height = self.layout.row_height + self.layout.padding_y;
@@ -342,7 +344,7 @@ impl<'a> PacketBuilder<'a> {
             })?;
         let font = &self.font;
         let text_obligation = &self.text_obligation;
-        self.document.draw_host_text(&title, |text| {
+        self.document.draw_host_text(&resolved_title, |text| {
             packet_text_run(
                 text,
                 Point::new(self.layout.width / 2.0, y),
@@ -365,7 +367,7 @@ impl<'a> PacketBuilder<'a> {
         self.document.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Label,
-            title: Some(title),
+            title: Some(resolved_title.into_owned()),
             description: None,
             link: None,
         })?;

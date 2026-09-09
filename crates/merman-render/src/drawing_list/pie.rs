@@ -177,14 +177,14 @@ impl<'a> PieBuilder<'a> {
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "pie.content".to_string(),
             })?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "pie.content".to_string(),
             role: SemanticRole::Group,
             title: None,
             description: None,
             link: None,
         })?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "pie.document".to_string(),
             role: SemanticRole::Document,
             title: self.model.acc_title.clone(),
@@ -235,7 +235,7 @@ impl<'a> PieBuilder<'a> {
 
     fn emit_plot(&mut self) -> Result<()> {
         self.session.checkpoint(OperationPhase::Emit)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "pie.plot".to_string(),
             role: SemanticRole::Group,
             title: Some("Pie chart".to_string()),
@@ -350,7 +350,7 @@ impl<'a> PieBuilder<'a> {
                     semantic_id: semantic_id.clone(),
                 })?;
             self.emit_text(
-                &[&text],
+                &[&text, ""],
                 Point::new(slice.text_x, slice.text_y),
                 self.section_font_size,
                 self.section_color,
@@ -377,7 +377,7 @@ impl<'a> PieBuilder<'a> {
         self.text_classes
             .insert("pie.title".to_string(), "pieTitleText".to_string());
         self.emit_text(
-            &[raw_title],
+            &[raw_title, ""],
             Point::new(0.0, PIE_TITLE_Y),
             self.title_font_size,
             self.title_color,
@@ -385,7 +385,7 @@ impl<'a> PieBuilder<'a> {
         )?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
-        self.document.push_semantic(SemanticAnnotation {
+        self.document.push_mermaid_semantic(SemanticAnnotation {
             id: "pie.title".to_string(),
             role: SemanticRole::Label,
             title: Some(raw_title.to_string()),
@@ -447,7 +447,7 @@ impl<'a> PieBuilder<'a> {
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_control(DrawingCommand::Restore)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
                 title: Some(item.label.clone()),
@@ -464,17 +464,21 @@ impl<'a> PieBuilder<'a> {
 
     fn emit_text(
         &mut self,
-        parts: &[&str],
+        parts: &[&str; 2],
         origin: Point,
         font_size: f64,
         color: Color,
         anchor: TextAnchor,
     ) -> Result<()> {
         let session = self.session;
+        // Callers provide a label and, optionally, its generated numeric suffix.
+        let first = self.document.resolve_mermaid_text(parts[0])?;
+        let second = self.document.resolve_mermaid_text(parts[1])?;
+        let resolved = [first.as_ref(), second.as_ref()];
         let font_family_css = &self.font_family_css;
         let font = &self.font;
         let obligation = &self.text_obligation;
-        self.document.draw_host_text_parts(parts, |text| {
+        self.document.draw_host_text_parts(&resolved, |text| {
             let measurement_style = MeasurementTextStyle {
                 font_family: Some(font_family_css.clone()),
                 font_size,
@@ -522,14 +526,14 @@ impl<'a> PieBuilder<'a> {
         // legend text has passed admission; command references are validated when finishing.
         for (index, slice) in self.layout.slices.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: format!("pie.slice.{index}"),
                 role: SemanticRole::Node,
                 title: Some(slice.label.clone()),
                 description: Some(format!("{}% ({})", slice.percent, slice.value)),
                 link: None,
             })?;
-            self.document.push_semantic(SemanticAnnotation {
+            self.document.push_mermaid_semantic(SemanticAnnotation {
                 id: format!("pie.slice.{index}.percentage"),
                 role: SemanticRole::Label,
                 title: Some(format!("{}%", slice.percent)),
