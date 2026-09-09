@@ -67,8 +67,11 @@ record. The current source and generated contract are authoritative for these su
   the four static unqualified/Default Node.fill routes with the same three looks. Raw ownership
   of primaryColor, mainBkg, and tagLabelBackground is captured before fallback projection;
   derived colors cannot suppress the typed default. Writer receipts require actual state,
-  tag, or theme-dependent branch/highlight consumers. Only Node.stroke still requires the
-  GitGraph bridge. KTD23 gains no retirement rows.
+  tag, or theme-dependent branch/highlight consumers. KTD17 v60 replaces Node.stroke through
+  the same node paint plan, with independent primaryBorderColor/nodeBorder/tagLabelBorder
+  ownership and the same three looks. Color-generated geometry/text and existing gradient
+  fallback semantics remain intact; unused CSS/defs do not prove application. GitGraph no
+  longer needs a family bridge dispatch. KTD23 gains no retirement rows.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

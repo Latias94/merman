@@ -258,7 +258,7 @@ title: GitGraph inherited text
 gitGraph
   commit id: "visible commit" tag: "visible tag"
 "#;
-const GITGRAPH_NODE_FILL_SOURCE: &str = r#"gitGraph
+const GITGRAPH_NODE_PAINT_SOURCE: &str = r#"gitGraph
   commit id: "state" type: REVERSE tag: "visible tag"
 "#;
 const GITGRAPH_EDGE_SOURCE: &str = r#"gitGraph
@@ -586,9 +586,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_PAINT_SOURCE)
         }
-        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
-            Ok(GITGRAPH_NODE_FILL_SOURCE)
-        }
+        (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::Node,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(GITGRAPH_NODE_PAINT_SOURCE),
         (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
@@ -1591,11 +1593,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_324_routes_and_410_artifact_witnesses() {
+    fn route_inventory_retains_328_routes_and_422_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 324);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 410);
+        assert_eq!(inventory.len(), 328);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 422);
     }
 
     #[test]
@@ -1733,10 +1735,19 @@ mod tests {
                 .filter(|route| {
                     route.family_id() == family
                         && route.target() == target
-                        && route.facet() == ThemeRouteCutoverFacet::Fill
+                        && (route.facet() == ThemeRouteCutoverFacet::Fill
+                            || (family == DiagramFamilyId::GIT_GRAPH
+                                && target == ThemeTarget::Node))
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(routes.len(), 4);
+            assert_eq!(
+                routes.len(),
+                if family == DiagramFamilyId::GIT_GRAPH && target == ThemeTarget::Node {
+                    8
+                } else {
+                    4
+                }
+            );
             for route in routes {
                 for profile in [
                     CutoverWitnessProfile::ClassicStatic,

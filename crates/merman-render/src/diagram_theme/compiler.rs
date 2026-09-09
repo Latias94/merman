@@ -81,12 +81,13 @@ impl DiagramThemeCompiler {
                 && rule
                     .family()
                     .is_none_or(|family| family == crate::DiagramFamilyId::GIT_GRAPH)
-                && !matches!(rule.style().paint.fill, super::Specified::Unspecified)
+                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
+                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
         }) {
             parse_compatibility = parse_compatibility
                 .try_with_post_detection_default_paths(
                     crate::DiagramFamilyId::GIT_GRAPH.as_str(),
-                    &crate::gitgraph::GITGRAPH_NODE_FILL_PATHS,
+                    &crate::gitgraph::GITGRAPH_NODE_PAINT_PATHS,
                 )
                 .expect("GitGraph writer default paths satisfy the bounded core contract");
         }

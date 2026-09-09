@@ -441,6 +441,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_FILL)
         }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_NODE_STROKE)
+        }
         (
             DiagramFamilyId::GIT_GRAPH,
             ThemeTarget::EdgeLabelBackground,
@@ -1698,7 +1701,8 @@ pub(super) fn classify_rule_facet(
                     variant: None | Some(ThemeVariant::Default)
                 }
             )))
-        && target == ThemeTarget::Edge
+        && (target == ThemeTarget::Edge
+            || (family == DiagramFamilyId::GIT_GRAPH && target == ThemeTarget::Node))
         && matches!(
             facet,
             FamilyThemeRuleFacet::Stroke(
@@ -5646,6 +5650,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Node,
+                Stroke,
+                Transparent,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Node,
+                Stroke,
+                Solid,
+                vec!["node.stroke"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
                 ThemeTarget::NodeLabel,
                 Fill,
                 Transparent,
@@ -6495,7 +6513,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 160);
+        assert_eq!(qualified.len(), 162);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6609,7 +6627,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
                 .count(),
-            14
+            16
         );
         assert_eq!(
             qualified
@@ -6786,6 +6804,9 @@ mod tests {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {
                         vec![ThemeRouteCutoverProjection::NodeFill]
+                    }
+                    (ThemeTarget::Node, ThemeRouteCutoverFacet::Stroke) => {
+                        vec![ThemeRouteCutoverProjection::NodeStroke]
                     }
                     (
                         ThemeTarget::Edge,

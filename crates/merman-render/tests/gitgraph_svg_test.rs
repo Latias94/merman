@@ -1763,9 +1763,9 @@ fn gitgraph_node_palette_strokes_survive_static_node_stroke_on_its_actual_tag_su
         &theme,
         Engine::new(),
         "git-palette-static-stroke",
-        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
     )
-    .expect("best-effort GitGraph should retain the direct palette beside compatibility stroke");
+    .expect("GitGraph Node palette and static stroke must both be portable");
     let document = roxmltree::Document::parse(rendered.svg())
         .expect("valid GitGraph palette and static stroke SVG");
     let css = gitgraph_stylesheet(rendered.svg());
@@ -1810,14 +1810,16 @@ fn gitgraph_node_palette_strokes_survive_static_node_stroke_on_its_actual_tag_su
         .expect("GitGraph tag-label background rule");
     assert!(
         tag_rule.contains("stroke:#654321;"),
-        "the compatibility-owned static Node stroke must remain on its tag surface: {tag_rule}"
+        "the direct static Node stroke must remain on its tag surface: {tag_rule}"
     );
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -3095,7 +3097,550 @@ fn gitgraph_node_fill_requires_an_unowned_visible_fill_terminal() {
 }
 
 #[test]
-fn gitgraph_node_fill_remains_portable_with_owned_legacy_stroke_in_the_same_rule() {
+fn gitgraph_node_stroke_reaches_tag_terminal_without_compatibility_residuals() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    for theme_name in ["base", "default"] {
+        let rendered = try_render_gitgraph_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({"theme": theme_name}))),
+            "git-node-stroke-terminal",
+        )
+        .expect("direct GitGraph Node stroke must satisfy RequirePortable");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for class in ["commit-reverse", "tag-label-bkg"] {
+            assert!(document.descendants().any(|node| has_class(&node, class)));
+        }
+        let css = gitgraph_stylesheet(rendered.svg());
+        assert_eq!(
+            css_property_winner(
+                &gitgraph_css_rule(&css, "#git-node-stroke-terminal .tag-label-bkg"),
+                "stroke"
+            ),
+            Some("#654321"),
+            "{theme_name}: Node stroke must reach the visible tag border"
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{theme_name}");
+        assert_eq!(evidence.applied_count(), 1, "{theme_name}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{theme_name}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{theme_name}");
+        assert_eq!(evidence.compatibility_residual_count(), 0, "{theme_name}");
+    }
+}
+
+#[test]
+fn gitgraph_node_stroke_preserves_state_fill_across_themes_and_default_selectors() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    for theme_name in [
+        "base",
+        "default",
+        "neo",
+        "neo-dark",
+        "redux",
+        "redux-color",
+        "redux-dark-color",
+    ] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, color) in [
+                (CanvasPaint::solid("#654321").unwrap(), "#654321"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_stroke(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let config = json!({"theme": theme_name});
+                let render = |theme: &DiagramTheme| {
+                    render_gitgraph_with_theme_and_engine(
+                        source,
+                        theme,
+                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        "git-node-stroke-selectors",
+                    )
+                };
+                let baseline = render(&gitgraph_edge_rules_theme([]));
+                let rendered = render(&gitgraph_edge_rules_theme([rule]));
+                let css = gitgraph_stylesheet(rendered.svg());
+                let baseline_css = gitgraph_stylesheet(baseline.svg());
+                let tag = gitgraph_css_rule(&css, "#git-node-stroke-selectors .tag-label-bkg");
+                assert_eq!(css_property_winner(&tag, "stroke"), Some(color));
+                for class in ["commit-reverse", "tag-label-bkg"] {
+                    let selector = format!("#git-node-stroke-selectors .{class}");
+                    assert_eq!(
+                        css_property_winner(&gitgraph_css_rule(&css, &selector), "fill"),
+                        css_property_winner(&gitgraph_css_rule(&baseline_css, &selector), "fill"),
+                        "{theme_name}/{variant:?}/{color}: stroke must preserve {class} fill"
+                    );
+                }
+                let reverse = "#git-node-stroke-selectors .commit-reverse";
+                assert_eq!(
+                    css_property_winner(&gitgraph_css_rule(&css, reverse), "stroke"),
+                    css_property_winner(&gitgraph_css_rule(&baseline_css, reverse), "stroke"),
+                    "{theme_name}/{variant:?}/{color}: the reverse outline follows its state fill"
+                );
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_stroke_respects_only_the_selected_source_or_config_owner() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    for theme_name in ["base", "default", "neo", "redux", "redux-color"] {
+        for explicit_path in [
+            "primaryBorderColor",
+            "nodeBorder",
+            "tagLabelBorder",
+            "mainBkg",
+            "primaryColor",
+            "tagLabelBackground",
+        ] {
+            let config = json!({
+                "theme": theme_name,
+                "themeVariables": {"useGradient": false, explicit_path: "#abcdef"}
+            });
+            let selected_path = if matches!(theme_name, "base" | "default") {
+                "tagLabelBorder"
+            } else {
+                "nodeBorder"
+            };
+            let owned = explicit_path == selected_path;
+            render_source_and_site_config_cases(
+                source,
+                config,
+                &theme,
+                "git-node-stroke-owner",
+                |owner, rendered| {
+                    let css = gitgraph_stylesheet(rendered.svg());
+                    let tag = gitgraph_css_rule(
+                        &css,
+                        &format!("#git-node-stroke-owner-{owner} .tag-label-bkg"),
+                    );
+                    assert_eq!(
+                        css_property_winner(&tag, "stroke"),
+                        Some(if owned { "#abcdef" } else { "#654321" }),
+                        "{theme_name}/{explicit_path}/{owner}"
+                    );
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.applied_count(), usize::from(!owned));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(owned));
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                    assert_eq!(evidence.compatibility_residual_count(), 0);
+                },
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_stroke_requires_a_visible_unowned_terminal() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    for (case, source, config) in [
+        ("empty", "gitGraph\n", json!({})),
+        ("ordinary", "gitGraph\n  commit id: \"A\"\n", json!({})),
+        (
+            "reverse",
+            "gitGraph\n  commit id: \"A\" type: REVERSE\n",
+            json!({}),
+        ),
+        (
+            "owned-tag",
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            json!({"themeVariables": {"tagLabelBorder": "#abcdef"}}),
+        ),
+        (
+            "empty-color-gen",
+            "gitGraph\n",
+            json!({"theme": "neo", "gitGraph": {"showBranches": false}}),
+        ),
+    ] {
+        render_source_and_site_config_cases(
+            source,
+            config,
+            &theme,
+            "git-node-stroke-absent",
+            |owner, rendered| {
+                roxmltree::Document::parse(rendered.svg()).unwrap();
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1, "{case}/{owner}");
+                assert_eq!(evidence.applied_count(), 0, "{case}/{owner}");
+                assert_eq!(evidence.not_applicable_count(), 1, "{case}/{owner}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{case}/{owner}");
+                assert_eq!(evidence.compatibility_residual_count(), 0, "{case}/{owner}");
+            },
+        );
+    }
+}
+
+#[test]
+fn gitgraph_node_stroke_respects_gradient_fallback_and_explicit_stop_owners() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    for (case, gradient_start, primary_border, expected, applied) in [
+        ("fallback", json!(false), None, "#654321", true),
+        (
+            "owned-fallback",
+            json!(false),
+            Some("#fedcba"),
+            "#fedcba",
+            false,
+        ),
+        ("explicit-stop", json!("#abcdef"), None, "#abcdef", false),
+    ] {
+        let mut config = json!({
+            "theme": "neo",
+            "themeVariables": {
+                "useGradient": true,
+                "gradientStart": gradient_start,
+                "gradientStop": "#123456",
+                "nodeBorder": "#112233",
+                "tagLabelBorder": "#445566"
+            }
+        });
+        if let Some(primary_border) = primary_border {
+            config["themeVariables"]["primaryBorderColor"] = json!(primary_border);
+        }
+        // Null overrides are ignored during config/theme merging. A boolean survives explicit
+        // replay and makes the renderer select its string-only primaryBorderColor fallback.
+        render_source_and_site_config_cases(
+            source,
+            config.clone(),
+            &gitgraph_edge_rules_theme([]),
+            "git-node-stroke-gradient-baseline",
+            |owner, rendered| {
+                let effective = &rendered.metadata().effective_config;
+                let gradient_start = effective.get_str("themeVariables.gradientStart");
+                let baseline_start = if case == "explicit-stop" {
+                    assert_eq!(gradient_start, Some("#abcdef"));
+                    "#abcdef"
+                } else {
+                    assert_eq!(
+                        effective.as_value()["themeVariables"]["gradientStart"],
+                        json!(false),
+                        "{case}/{owner}: the fallback fixture must survive theme materialization"
+                    );
+                    assert_eq!(gradient_start, None);
+                    effective
+                        .get_str("themeVariables.primaryBorderColor")
+                        .expect("the fallback fixture must have a materialized primary border")
+                };
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let first_stop = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("linearGradient"))
+                    .and_then(|gradient| gradient.children().find(|node| node.has_tag_name("stop")))
+                    .expect("baseline gradient start stop");
+                assert_eq!(
+                    first_stop.attribute("stop-color"),
+                    Some(baseline_start),
+                    "{case}/{owner}: the unthemed renderer must select the witnessed config source"
+                );
+            },
+        );
+        render_source_and_site_config_cases(
+            source,
+            config,
+            &theme,
+            "git-node-stroke-gradient",
+            |owner, rendered| {
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert!(
+                    document
+                        .descendants()
+                        .any(|node| has_class(&node, "label0"))
+                );
+                let gradient = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("linearGradient"))
+                    .expect("configured Neo gradient");
+                let stops = gradient
+                    .children()
+                    .filter(|node| node.has_tag_name("stop"))
+                    .collect::<Vec<_>>();
+                assert_eq!(stops.len(), 2);
+                assert_eq!(
+                    stops[0].attribute("stop-color"),
+                    Some(expected),
+                    "{case}/{owner}"
+                );
+                assert_eq!(stops[1].attribute("stop-color"), Some("#123456"));
+                let css = gitgraph_stylesheet(rendered.svg());
+                let diagram_id = format!("git-node-stroke-gradient-{owner}");
+                assert_eq!(
+                    css_property_winner(
+                        &gitgraph_css_rule(&css, &format!("#{diagram_id} .label0")),
+                        "stroke"
+                    ),
+                    Some(format!("url(#{diagram_id}-gradient)").as_str())
+                );
+                assert_eq!(
+                    css_property_winner(
+                        &gitgraph_css_rule(&css, &format!("#{diagram_id} .tag-label-bkg")),
+                        "stroke"
+                    ),
+                    Some("#112233")
+                );
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1, "{case}/{owner}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(applied),
+                    "{case}/{owner}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!applied),
+                    "{case}/{owner}"
+                );
+                assert_eq!(evidence.theme_residual_count(), 0, "{case}/{owner}");
+                assert_eq!(evidence.compatibility_residual_count(), 0, "{case}/{owner}");
+            },
+        );
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_and_stroke_do_not_certify_an_unsupported_font() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    for include_fill in [false, true] {
+        for owned in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap());
+            if include_fill {
+                patch = patch.with_fill(CanvasPaint::solid("#123456").unwrap());
+            }
+            patch.typography.font_stack =
+                Specified::Value(FontStack::single("UnsupportedNodeFont").unwrap());
+            let theme = gitgraph_edge_rules_theme([ThemeRule::new(ThemeTarget::Node, patch)]);
+            let config = if owned {
+                json!({"themeVariables": {
+                    "primaryColor": "#abcdef", "mainBkg": "#abcdef",
+                    "tagLabelBackground": "#abcdef", "primaryBorderColor": "#fedcba",
+                    "nodeBorder": "#fedcba", "tagLabelBorder": "#fedcba"
+                }})
+            } else {
+                json!({})
+            };
+            let engine =
+                || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+            let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+                source,
+                &theme,
+                engine(),
+                "git-node-paint-font",
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let css = gitgraph_stylesheet(rendered.svg());
+            let tag = gitgraph_css_rule(&css, "#git-node-paint-font .tag-label-bkg");
+            assert_eq!(
+                css_property_winner(&tag, "stroke"),
+                Some(if owned { "#fedcba" } else { "#654321" })
+            );
+            if include_fill {
+                for class in ["commit-reverse", "tag-label-bkg"] {
+                    assert_eq!(
+                        css_property_winner(
+                            &gitgraph_css_rule(&css, &format!("#git-node-paint-font .{class}")),
+                            "fill"
+                        ),
+                        Some(if owned { "#abcdef" } else { "#123456" })
+                    );
+                }
+            }
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+            let error = match try_render_gitgraph_with_theme_and_engine(
+                source,
+                &theme,
+                engine(),
+                "git-node-paint-font-strict",
+            ) {
+                Ok(_) => panic!("supported Node paints must not certify an unsupported font"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::GIT_GRAPH, 1))
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_static_node_stroke_and_palette_keep_terminal_ownership_in_either_order() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    for theme_name in ["default", "neo", "redux", "redux-color"] {
+        let mut previous_svg = None;
+        for palette_first in [true, false] {
+            let palette =
+                OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap();
+            let rule = ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            );
+            let styles = if palette_first {
+                ThemeRuleSet::default()
+                    .with_ordinal_palette(ThemeTarget::Node, palette)
+                    .with_rule(rule)
+            } else {
+                ThemeRuleSet::default()
+                    .with_rule(rule)
+                    .with_ordinal_palette(ThemeTarget::Node, palette)
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(styles))
+                .unwrap();
+            let rendered = render_gitgraph_with_theme_and_engine(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                    "theme": theme_name, "themeVariables": {"useGradient": false}
+                }))),
+                "git-node-stroke-palette",
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| has_class(&node, "commit0"))
+            );
+            let css = gitgraph_stylesheet(rendered.svg());
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, "#git-node-stroke-palette .tag-label-bkg"),
+                    "stroke"
+                ),
+                Some("#654321"),
+                "{theme_name}/palette_first={palette_first}"
+            );
+            let (_, palette_rule) = css
+                .rsplit_once("#git-node-stroke-palette .commit0{")
+                .unwrap();
+            let (palette_rule, _) = palette_rule.split_once('}').unwrap();
+            assert_eq!(css_property_winner(palette_rule, "stroke"), Some("#abcdef"));
+            if let Some(previous_svg) = previous_svg.as_ref() {
+                assert_eq!(rendered.svg(), previous_svg, "{theme_name}");
+            }
+            previous_svg = Some(rendered.svg().to_owned());
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), 2);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_and_stroke_preserve_property_level_source_and_config_owners() {
+    let source = "gitGraph\n  commit id: \"A\" type: REVERSE tag: \"v1\"\n";
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Node,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+    )]);
+    for theme_name in ["base", "neo"] {
+        for fill_owned in [false, true] {
+            for stroke_owned in [false, true] {
+                let mut config = json!({
+                    "theme": theme_name, "themeVariables": {"useGradient": false}
+                });
+                if fill_owned {
+                    for key in ["primaryColor", "mainBkg", "tagLabelBackground"] {
+                        config["themeVariables"][key] = json!("#abcdef");
+                    }
+                }
+                if stroke_owned {
+                    for key in ["primaryBorderColor", "nodeBorder", "tagLabelBorder"] {
+                        config["themeVariables"][key] = json!("#fedcba");
+                    }
+                }
+                render_source_and_site_config_cases(
+                    source,
+                    config,
+                    &theme,
+                    "git-node-paint-owners",
+                    |owner, rendered| {
+                        let css = gitgraph_stylesheet(rendered.svg());
+                        for class in ["commit-reverse", "tag-label-bkg"] {
+                            assert_eq!(
+                                css_property_winner(
+                                    &gitgraph_css_rule(
+                                        &css,
+                                        &format!("#git-node-paint-owners-{owner} .{class}")
+                                    ),
+                                    "fill"
+                                ),
+                                Some(if fill_owned { "#abcdef" } else { "#123456" })
+                            );
+                        }
+                        assert_eq!(
+                            css_property_winner(
+                                &gitgraph_css_rule(
+                                    &css,
+                                    &format!("#git-node-paint-owners-{owner} .tag-label-bkg")
+                                ),
+                                "stroke"
+                            ),
+                            Some(if stroke_owned { "#fedcba" } else { "#654321" })
+                        );
+                        let completion = rendered.into_completion();
+                        let evidence =
+                            merman_render::__private::family_evidence(completion.report());
+                        let entirely_owned = fill_owned && stroke_owned;
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.applied_count(), usize::from(!entirely_owned));
+                        assert_eq!(evidence.not_applicable_count(), usize::from(entirely_owned));
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                        assert_eq!(evidence.compatibility_residual_count(), 0);
+                    },
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_fill_and_stroke_are_independently_portable_in_the_same_rule() {
     let theme = gitgraph_edge_rules_theme([ThemeRule::new(
         ThemeTarget::Node,
         ThemeStylePatch::default()
@@ -3120,7 +3665,7 @@ fn gitgraph_node_fill_remains_portable_with_owned_legacy_stroke_in_the_same_rule
             "git-node-fill-owned-stroke",
             portability,
         )
-        .expect("owned compatibility stroke must not reject portable Node fill");
+        .expect("owned stroke must not reject portable Node fill");
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let css = gitgraph_stylesheet(rendered.svg());
         for class in ["commit-reverse", "tag-label-bkg"] {
@@ -3133,6 +3678,13 @@ fn gitgraph_node_fill_remains_portable_with_owned_legacy_stroke_in_the_same_rule
                 Some("#123456")
             );
         }
+        assert_eq!(
+            css_property_winner(
+                &gitgraph_css_rule(&css, "#git-node-fill-owned-stroke .tag-label-bkg"),
+                "stroke"
+            ),
+            Some("#abcdef")
+        );
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.required_count(), 1);
@@ -3166,27 +3718,26 @@ fn gitgraph_node_fill_remains_portable_with_owned_legacy_stroke_in_the_same_rule
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 
-    let error = match try_render_gitgraph_with_theme_and_engine(
+    let rendered = try_render_gitgraph_with_theme_and_engine(
         source,
         &theme,
         Engine::new(),
         "git-node-fill-unowned-stroke-strict",
-    ) {
-        Ok(_) => panic!("unowned Node stroke must retain its compatibility residual"),
-        Err(error) => error,
-    };
-    match error {
-        merman_render::Error::LegacyFamilyThemeCompatibility {
-            family_id,
-            residual_count,
-        } => {
-            assert_eq!(family_id, DiagramFamilyId::GIT_GRAPH);
-            assert_eq!(residual_count, 1);
-        }
-        other => panic!("expected GitGraph legacy compatibility residual, got {other}"),
-    }
+    )
+    .expect("one rule with direct Node fill and stroke must satisfy strict portability");
+    let css = gitgraph_stylesheet(rendered.svg());
+    let tag = gitgraph_css_rule(&css, "#git-node-fill-unowned-stroke-strict .tag-label-bkg");
+    assert_eq!(css_property_winner(&tag, "fill"), Some("#123456"));
+    assert_eq!(css_property_winner(&tag, "stroke"), Some("#654321"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

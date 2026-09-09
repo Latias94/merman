@@ -10,17 +10,21 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::model::GitGraphDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::{GITGRAPH_PALETTE_SLOT_COUNT, GitGraphCommitKind, palette_slot};
 
-pub(crate) const GITGRAPH_NODE_FILL_PATHS: [&str; 3] = [
+pub(crate) const GITGRAPH_NODE_PAINT_PATHS: [&str; 6] = [
     "themeVariables.primaryColor",
     "themeVariables.mainBkg",
     "themeVariables.tagLabelBackground",
+    "themeVariables.primaryBorderColor",
+    "themeVariables.nodeBorder",
+    "themeVariables.tagLabelBorder",
 ];
 
 #[derive(Debug, Default)]
@@ -31,8 +35,9 @@ struct Observation {
 }
 
 #[derive(Debug)]
-pub(crate) struct GitGraphNodeFillPlan {
+pub(crate) struct GitGraphNodePaintPlan {
     fill: Option<DirectStaticPaint>,
+    stroke: Option<DirectStaticPaint>,
     available_sources: u8,
     observations: BTreeMap<FamilyThemeMechanismKey, Observation>,
     terminal: OnceLock<TerminalFacts>,
@@ -44,7 +49,7 @@ struct TerminalFacts {
     nodes_visible: bool,
 }
 
-impl GitGraphNodeFillPlan {
+impl GitGraphNodePaintPlan {
     pub(crate) fn resolve(
         theme: &ResolvedDiagramTheme,
         config: &MermaidConfig,
@@ -53,7 +58,7 @@ impl GitGraphNodeFillPlan {
         let requested = theme.family_mechanism_routes().iter().any(|route| {
             matches!(route.mechanism(), FamilyThemeMechanism::RuleFacet {
                 target: ThemeTarget::Node, facet, ..
-            } if resolved_style_property_for_facet(facet) == ResolvedStyleProperty::Fill)
+            } if matches!(resolved_style_property_for_facet(facet), ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke))
         });
         if !requested {
             return Ok(None);
@@ -61,16 +66,16 @@ impl GitGraphNodeFillPlan {
         let style =
             theme.style_with_work_meter(ThemeTarget::Node, ThemeVariant::Default, None, work)?;
         // Capture is mandatory: a materialized/derived value cannot establish raw ownership.
-        let blocked: [Option<bool>; 3] = std::array::from_fn(|i| {
+        let blocked: [Option<bool>; 6] = std::array::from_fn(|i| {
             merman_core::__private::config_post_detection_default_blocked(
                 config,
-                GITGRAPH_NODE_FILL_PATHS[i],
+                GITGRAPH_NODE_PAINT_PATHS[i],
             )
         });
         let available_sources = blocked.iter().enumerate().fold(0, |mask, (i, ownership)| {
             mask | if *ownership == Some(false) { 1 << i } else { 0 }
         });
-        let fill = (available_sources != 0)
+        let fill = (available_sources & 0b111 != 0)
             .then(|| {
                 resolve_direct_static_fill(
                     theme,
@@ -80,8 +85,19 @@ impl GitGraphNodeFillPlan {
                 )
             })
             .flatten();
+        let stroke = (available_sources & 0b111000 != 0)
+            .then(|| {
+                resolve_direct_static_stroke(
+                    theme,
+                    &style,
+                    &[ThemeTarget::Node],
+                    DirectStaticSelectorDomain::Default,
+                )
+            })
+            .flatten();
         let mut plan = Self {
             fill,
+            stroke,
             available_sources,
             observations: BTreeMap::new(),
             terminal: OnceLock::new(),
@@ -120,22 +136,28 @@ impl GitGraphNodeFillPlan {
             if !won && !unproved_ordinal {
                 continue;
             }
-            if property != ResolvedStyleProperty::Fill {
+            if !matches!(
+                property,
+                ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+            ) {
                 observation
                     .other
                     .get_or_insert(unsupported_residual_for_facet(facet));
                 continue;
             }
-            for (i, ownership) in blocked.iter().enumerate() {
-                if *ownership == Some(true) {
+            let (sources, paint) = if property == ResolvedStyleProperty::Fill {
+                (0..3, plan.fill.as_ref())
+            } else {
+                (3..6, plan.stroke.as_ref())
+            };
+            for i in sources {
+                let ownership = blocked[i];
+                if ownership == Some(true) {
                     continue;
                 }
                 if route.disposition() == FamilyThemeDisposition::TypedAdapter
                     && available_sources & (1 << i) != 0
-                    && plan
-                        .fill
-                        .as_ref()
-                        .is_some_and(|fill| fill.rule_index() == rule_index)
+                    && paint.is_some_and(|paint| paint.rule_index() == rule_index)
                 {
                     observation.direct |= 1 << i;
                 } else {
@@ -146,12 +168,15 @@ impl GitGraphNodeFillPlan {
         Ok(Some(plan))
     }
 
-    pub(crate) fn css_values(&self) -> [Option<&str>; 3] {
+    pub(crate) fn css_values(&self) -> [Option<&str>; 6] {
         std::array::from_fn(|i| {
-            self.fill
-                .as_ref()
-                .filter(|_| self.available_sources & (1 << i) != 0)
-                .map(DirectStaticPaint::css)
+            (if i < 3 {
+                self.fill.as_ref()
+            } else {
+                self.stroke.as_ref()
+            })
+            .filter(|_| self.available_sources & (1 << i) != 0)
+            .map(DirectStaticPaint::css)
         })
     }
 
@@ -160,46 +185,53 @@ impl GitGraphNodeFillPlan {
         layout: &'a GitGraphDiagramLayout,
         branches: &'a HashMap<&'a str, i64>,
         palette_fill_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
-    ) -> GitGraphNodeFillReceipt<'a> {
-        GitGraphNodeFillReceipt {
+        palette_stroke_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+        css: &'a GitGraphNodePaintCss,
+    ) -> GitGraphNodePaintReceipt<'a> {
+        let expected = self.css_values();
+        let valid = css.valid
+            && css.complete
+            && css.values.iter().enumerate().all(|(i, value)| {
+                value
+                    .as_deref()
+                    .is_none_or(|value| expected[i].is_none_or(|expected| value == expected))
+            });
+        GitGraphNodePaintReceipt {
             plan: self,
             layout,
             branches,
             palette_fill_masked,
-            state_source: None,
-            tag_source: None,
-            branch_sources: [None; GITGRAPH_PALETTE_SLOT_COUNT],
-            outer_sources: [None; GITGRAPH_PALETTE_SLOT_COUNT],
+            palette_stroke_masked,
+            css,
             next_branch: 0,
+            next_commit: 0,
+            next_arrow: 0,
+            next_label: 0,
             next_state: 0,
             next_outer: 0,
             tag_commit: 0,
             next_tag: 0,
-            css_recorded: false,
-            valid: true,
+            valid,
             facts: TerminalFacts::default(),
         }
     }
 
-    pub(crate) fn record_terminal(&self, mut receipt: GitGraphNodeFillReceipt<'_>) -> bool {
+    pub(crate) fn record_terminal(&self, mut receipt: GitGraphNodePaintReceipt<'_>) -> bool {
         let complete = std::ptr::eq(self, receipt.plan)
             && receipt.valid
-            && receipt.css_recorded
             && receipt.next_branch
                 == if receipt.layout.show_branches {
                     receipt.layout.branches.len()
                 } else {
                     0
                 }
+            && receipt.next_commit == receipt.layout.commits.len()
+            && receipt.next_arrow == receipt.layout.arrows.len()
+            && receipt.next_label_commit().is_none()
             && receipt.next_state_commit(false).is_none()
             && receipt.next_state_commit(true).is_none()
             && receipt.next_tag_event().is_none();
-        if complete {
-            receipt.facts.nodes_visible |= !receipt.layout.commits.is_empty();
-            self.terminal.set(receipt.facts).is_ok()
-        } else {
-            false
-        }
+        complete && self.terminal.set(receipt.facts).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self, evidence: &mut FamilyThemeEvidence) {
@@ -217,7 +249,13 @@ impl GitGraphNodeFillPlan {
             } else if observation.direct & facts.sources != 0 {
                 evidence.mark_applied_with_capabilities(
                     key.clone(),
-                    self.fill.as_ref().map(DirectStaticPaint::capability),
+                    [self.fill.as_ref(), self.stroke.as_ref()]
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(i, _)| {
+                            observation.direct & facts.sources & (0b111 << (i * 3)) != 0
+                        })
+                        .filter_map(|(_, paint)| paint.map(DirectStaticPaint::capability)),
                 );
             } else {
                 evidence.mark_not_applicable(key.clone());
@@ -226,58 +264,79 @@ impl GitGraphNodeFillPlan {
     }
 }
 
-/// Streaming checks borrow layout identities; CSS facts are bounded by the eight visible slots.
-pub(crate) struct GitGraphNodeFillReceipt<'a> {
-    plan: &'a GitGraphNodeFillPlan,
+/// Bounded CSS facts are recorded alongside their declarations, never recovered from SVG.
+#[derive(Debug)]
+pub(crate) struct GitGraphNodePaintCss {
+    values: [Option<String>; 6],
+    valid: bool,
+    pub(crate) complete: bool,
+    pub(crate) state: u8,
+    pub(crate) tag: u8,
+    // Branch background fill, background stroke, and branch text fill.
+    pub(crate) branches: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 3],
+    // Commit and highlight outer fill/stroke remain independent under palette overrides.
+    pub(crate) commits: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+    pub(crate) outers: [[u8; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+    pub(crate) arrows: [u8; GITGRAPH_PALETTE_SLOT_COUNT],
+    pub(crate) cherry: u8,
+    pub(crate) commit_label: u8,
+}
+
+impl Default for GitGraphNodePaintCss {
+    fn default() -> Self {
+        Self {
+            values: std::array::from_fn(|_| None),
+            valid: true,
+            complete: false,
+            state: 0,
+            tag: 0,
+            branches: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 3],
+            commits: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+            outers: [[0; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+            arrows: [0; GITGRAPH_PALETTE_SLOT_COUNT],
+            cherry: 0,
+            commit_label: 0,
+        }
+    }
+}
+
+impl GitGraphNodePaintCss {
+    pub(crate) fn source(&mut self, source: usize, value: &str) -> u8 {
+        if let Some(expected) = self.values[source].as_ref() {
+            self.valid &= expected == value;
+        } else {
+            self.values[source] = Some(value.to_owned());
+        }
+        1 << source
+    }
+}
+
+/// Streaming checks borrow layout identities without retaining per-node state.
+pub(crate) struct GitGraphNodePaintReceipt<'a> {
+    plan: &'a GitGraphNodePaintPlan,
     layout: &'a GitGraphDiagramLayout,
     branches: &'a HashMap<&'a str, i64>,
     palette_fill_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
-    state_source: Option<usize>,
-    tag_source: Option<usize>,
-    branch_sources: [Option<usize>; GITGRAPH_PALETTE_SLOT_COUNT],
-    outer_sources: [Option<usize>; GITGRAPH_PALETTE_SLOT_COUNT],
+    palette_stroke_masked: [[bool; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+    css: &'a GitGraphNodePaintCss,
     next_branch: usize,
+    next_commit: usize,
+    next_arrow: usize,
+    next_label: usize,
     next_state: usize,
     next_outer: usize,
     tag_commit: usize,
     next_tag: usize,
-    css_recorded: bool,
     valid: bool,
     facts: TerminalFacts,
 }
 
-impl GitGraphNodeFillReceipt<'_> {
-    pub(crate) fn record_css(
-        &mut self,
-        state: (usize, &str),
-        tag: (usize, &str),
-        branches: [Option<(usize, &str)>; GITGRAPH_PALETTE_SLOT_COUNT],
-        outers: [Option<(usize, &str)>; GITGRAPH_PALETTE_SLOT_COUNT],
-    ) {
-        self.valid &= !self.css_recorded;
-        for (source, value) in [Some(state), Some(tag)]
-            .into_iter()
-            .chain(branches)
-            .chain(outers)
-            .flatten()
-        {
-            self.valid &= self
-                .plan
-                .css_values()
-                .get(source)
-                .is_some_and(|fill| fill.is_none_or(|fill| fill == value));
-        }
-        self.state_source = Some(state.0);
-        self.tag_source = Some(tag.0);
-        self.branch_sources = branches.map(|emission| emission.map(|(source, _)| source));
-        self.outer_sources = outers.map(|emission| emission.map(|(source, _)| source));
-        self.css_recorded = true;
-    }
-
-    fn consume(&mut self, source: Option<usize>) {
-        if let Some(source) = source {
-            self.facts.sources |= 1 << source;
-        }
+impl GitGraphNodePaintReceipt<'_> {
+    fn consume(&mut self, sources: u8) {
+        // Every consumed bit must name a declaration whose exact value was captured.
+        self.valid &=
+            (0..6).all(|source| sources & (1 << source) == 0 || self.css.values[source].is_some());
+        self.facts.sources |= sources;
         self.facts.nodes_visible = true;
     }
 
@@ -289,11 +348,80 @@ impl GitGraphNodeFillReceipt<'_> {
                 .branches
                 .get(index)
                 .is_some_and(|branch| palette_slot(branch.index) == slot);
-        self.facts.nodes_visible = true;
-        if self.palette_fill_masked[1].get(slot).copied() == Some(false) {
-            self.consume(self.branch_sources.get(slot).copied().flatten());
+        if slot < GITGRAPH_PALETTE_SLOT_COUNT {
+            let fill = if self.palette_fill_masked[1][slot] {
+                0
+            } else {
+                self.css.branches[0][slot]
+            };
+            self.consume(fill | self.css.branches[1][slot] | self.css.branches[2][slot]);
         }
         self.next_branch += 1;
+    }
+
+    fn commit_slot_matches(&self, index: usize, slot: usize) -> bool {
+        self.layout.commits.get(index).is_some_and(|commit| {
+            palette_slot(
+                self.branches
+                    .get(commit.branch.as_str())
+                    .copied()
+                    .unwrap_or(0),
+            ) == slot
+        })
+    }
+
+    pub(crate) fn record_commit(&mut self, index: usize, slot: usize) {
+        self.valid &= index == self.next_commit && self.commit_slot_matches(index, slot);
+        if let Some(commit) = self.layout.commits.get(index) {
+            match GitGraphCommitKind::from_layout(commit) {
+                GitGraphCommitKind::CherryPick => self.consume(self.css.cherry),
+                GitGraphCommitKind::Highlight => self.facts.nodes_visible = true,
+                _ if slot < GITGRAPH_PALETTE_SLOT_COUNT => {
+                    let fill = if self.palette_fill_masked[0][slot] {
+                        0
+                    } else {
+                        self.css.commits[0][slot]
+                    };
+                    let stroke = if self.palette_stroke_masked[0][slot] {
+                        0
+                    } else {
+                        self.css.commits[1][slot]
+                    };
+                    self.consume(fill | stroke);
+                }
+                _ => {}
+            }
+        }
+        self.next_commit += 1;
+    }
+
+    pub(crate) fn record_arrow(&mut self, index: usize, slot: usize) {
+        self.valid &= index == self.next_arrow
+            && self
+                .layout
+                .arrows
+                .get(index)
+                .is_some_and(|arrow| palette_slot(arrow.class_index) == slot);
+        if slot < GITGRAPH_PALETTE_SLOT_COUNT && !self.palette_stroke_masked[1][slot] {
+            self.consume(self.css.arrows[slot]);
+        }
+        self.next_arrow += 1;
+    }
+
+    fn next_label_commit(&mut self) -> Option<usize> {
+        while let Some(commit) = self.layout.commits.get(self.next_label) {
+            let index = self.next_label;
+            self.next_label += 1;
+            if super::gitgraph_commit_label_is_visible(self.layout, commit) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn record_commit_label(&mut self, index: usize) {
+        self.valid &= self.next_label_commit() == Some(index);
+        self.consume(self.css.commit_label);
     }
 
     fn next_state_commit(&mut self, outer: bool) -> Option<usize> {
@@ -321,18 +449,13 @@ impl GitGraphNodeFillReceipt<'_> {
 
     pub(crate) fn record_state(&mut self, index: usize, slot: usize, outer: bool) {
         self.valid &= self.next_state_commit(outer) == Some(index);
-        self.valid &= self.layout.commits.get(index).is_some_and(|commit| {
-            palette_slot(
-                self.branches
-                    .get(commit.branch.as_str())
-                    .copied()
-                    .unwrap_or(0),
-            ) == slot
-        });
-        if outer {
-            self.consume(self.outer_sources.get(slot).copied().flatten());
-        } else if self.palette_fill_masked[0].get(slot).copied() == Some(false) {
-            self.consume(self.state_source);
+        self.valid &= self.commit_slot_matches(index, slot);
+        if slot < GITGRAPH_PALETTE_SLOT_COUNT {
+            if outer {
+                self.consume(self.css.outers[0][slot] | self.css.outers[1][slot]);
+            } else if !self.palette_fill_masked[0][slot] || !self.palette_stroke_masked[0][slot] {
+                self.consume(self.css.state);
+            }
         }
     }
 
@@ -351,7 +474,7 @@ impl GitGraphNodeFillReceipt<'_> {
 
     pub(crate) fn record_tag(&mut self, index: usize, output_index: usize) {
         self.valid &= self.next_tag_event() == Some((index, output_index));
-        self.consume(self.tag_source);
+        self.consume(self.css.tag);
     }
 }
 
@@ -365,11 +488,13 @@ mod tests {
     use crate::resources::RenderResourcePolicy;
 
     #[test]
-    fn node_fill_receipt_requires_exact_css_and_complete_ordered_terminals() {
+    fn node_paint_receipt_requires_exact_css_and_complete_ordered_terminals() {
         let layout: GitGraphDiagramLayout = serde_json::from_value(serde_json::json!({
             "bounds": null, "direction": "LR", "rotate_commit_label": false,
-            "show_branches": false, "show_commit_label": false, "parallel_commits": false,
-            "diagram_padding": 0.0, "max_pos": 0.0, "branches": [], "arrows": [],
+            "show_branches": true, "show_commit_label": true, "parallel_commits": false,
+            "diagram_padding": 0.0, "max_pos": 0.0,
+            "branches": [{"name": "main", "index": 0, "pos": 0.0, "bbox_width": 5.0, "bbox_height": 5.0}],
+            "arrows": [{"from": "A", "to": "A", "class_index": 0, "d": "M0 0L1 1"}],
             "commits": [{"id": "A", "message": "", "seq": 0, "commit_type": 2,
                 "custom_id": true, "tags": ["v1"], "parents": [], "branch": "main",
                 "pos": 0.0, "pos_with_offset": 0.0, "x": 0.0, "y": 0.0}]
@@ -381,7 +506,8 @@ mod tests {
                     ThemeRuleSet::default().with_rule(ThemeRule::new(
                         ThemeTarget::Node,
                         ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
                     )),
                 ),
             )
@@ -396,6 +522,16 @@ mod tests {
             "valid",
             "missing-css",
             "wrong-css",
+            "wrong-stroke-css",
+            "missing-source",
+            "missing-branch",
+            "wrong-branch",
+            "missing-arrow",
+            "wrong-arrow",
+            "missing-commit",
+            "wrong-commit",
+            "missing-label",
+            "wrong-label",
             "missing-state",
             "missing-outer",
             "duplicate-state",
@@ -403,37 +539,67 @@ mod tests {
             "missing-tag",
             "wrong-tag",
         ] {
-            let plan = GitGraphNodeFillPlan {
+            let plan = GitGraphNodePaintPlan {
                 fill: resolve_direct_static_fill(
                     &theme,
                     &style,
                     &[ThemeTarget::Node],
                     DirectStaticSelectorDomain::Default,
                 ),
-                available_sources: 0b111,
+                stroke: resolve_direct_static_stroke(
+                    &theme,
+                    &style,
+                    &[ThemeTarget::Node],
+                    DirectStaticSelectorDomain::Default,
+                ),
+                available_sources: 0b111111,
                 observations: BTreeMap::new(),
                 terminal: OnceLock::new(),
             };
             assert!(plan.fill.is_some());
+            let mut css = GitGraphNodePaintCss::default();
+            css.state = css.source(
+                0,
+                if case == "wrong-css" {
+                    "#abcdef"
+                } else {
+                    "#123456"
+                },
+            );
+            let stroke = css.source(
+                4,
+                if case == "wrong-stroke-css" {
+                    "#abcdef"
+                } else {
+                    "#654321"
+                },
+            );
+            css.tag = css.source(2, "#123456") | stroke;
+            css.branches[2][0] = stroke;
+            css.arrows[0] = stroke;
+            css.commit_label = stroke;
+            if case == "missing-source" {
+                css.values[4] = None;
+            }
+            css.complete = case != "missing-css";
             let mut receipt = plan.begin_terminal_receipt(
                 &layout,
                 &branches,
                 [[false; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+                [[false; GITGRAPH_PALETTE_SLOT_COUNT]; 2],
+                &css,
             );
-            if case != "missing-css" {
-                receipt.record_css(
-                    (
-                        0,
-                        if case == "wrong-css" {
-                            "#abcdef"
-                        } else {
-                            "#123456"
-                        },
-                    ),
-                    (2, "#123456"),
-                    [None; GITGRAPH_PALETTE_SLOT_COUNT],
-                    [None; GITGRAPH_PALETTE_SLOT_COUNT],
-                );
+            if case != "missing-branch" {
+                receipt.record_branch(usize::from(case == "wrong-branch"), 0);
+            }
+            if case != "missing-arrow" {
+                receipt.record_arrow(usize::from(case == "wrong-arrow"), 0);
+            }
+            if case != "missing-commit" {
+                receipt.record_commit(usize::from(case == "wrong-commit"), 0);
+            }
+            if case != "missing-label" {
+                receipt.record_commit_label(usize::from(case == "wrong-label"));
             }
             if case != "missing-outer" {
                 receipt.record_state(0, 0, true);

@@ -516,6 +516,11 @@ impl InfoCssWriter {
         self
     }
 
+    pub(super) fn with_node_border(mut self, node_border: &str) -> Self {
+        self.values.neo.node_border = node_border.to_owned();
+        self
+    }
+
     pub(super) fn into_parts<I>(self, diagram_id: I) -> InfoCssParts
     where
         I: Copy + std::fmt::Display,

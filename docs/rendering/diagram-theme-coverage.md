@@ -11,16 +11,17 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 21/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 12/33; 222 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 22/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 11/33; 218 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 55 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v59; 324 routes / 410 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 56 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v60; 328 routes / 422 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 59 adds four GitGraph Node.fill routes with Classic, Neo, and HandDrawn
+output files. Version 60 adds four GitGraph Node.stroke routes with Classic, Neo, and HandDrawn
+witnesses covering tag outlines. Version 59 added four GitGraph Node.fill routes with Classic, Neo, and HandDrawn
 witnesses covering state glyphs and tag backgrounds. Version 58 added four GitGraph Edge.fill routes with Classic, Neo, and HandDrawn
 witnesses for branch-line stroke. Version 57 added eight GitGraph NodeLabel.fill/EdgeLabel.fill routes with Classic,
 Neo, and HandDrawn witnesses covering visible tag and commit labels. Version 56 added four
@@ -50,7 +51,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Block | Typed | Typed | Required |
 | Mindmap | Typed | Unsupported | None |
 | Tree View | Typed | Unsupported | None |
-| GitGraph | Typed | Typed | Required |
+| GitGraph | Typed | Typed | None |
 | Gantt | Typed | Unsupported | None |
 | Kanban | Typed | Typed | None |
 | Requirement | Typed | Typed | Required |
@@ -110,7 +111,11 @@ Important boundaries that a family-level count cannot express:
   `primaryColor`, `mainBkg`, and `tagLabelBackground` owners captured before fallback projection.
   Materialized derived colors do not become explicit owners. The writer records the actual
   state glyph, tag background, and theme-dependent branch/highlight sources; absent consumers
-  are NotApplicable. Only Node.stroke still requires the GitGraph bridge.
+  are NotApplicable. KTD17 v60 replaces the remaining Node.stroke projection. The same node paint
+  plan owns `primaryBorderColor`, `nodeBorder`, and `tagLabelBorder` independently, including
+  color-generated text/geometry and the gradient fallback where the writer actually consumes it.
+  Existing gradient colors are not rederived, and unused CSS/defs do not establish application.
+  GitGraph no longer has a family-owned legacy route or bridge dispatch.
   KTD23 gains no historical retirement rows.
 - Kanban has no independent diagram-title terminal. KTD23 v4 retires the unused
   `title.fill` projection to `themeVariables.titleColor`; Title rules are Unsupported and

@@ -15,14 +15,14 @@ use crate::model::{GitGraphCommitLayout, GitGraphDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod branch_stroke;
-mod node_fill;
+mod node_paint;
 mod static_paint;
 mod text_paint;
 mod typography;
 
 use branch_stroke::GitGraphBranchStrokePlan;
 pub(crate) use branch_stroke::GitGraphBranchStrokeReceipt;
-pub(crate) use node_fill::GITGRAPH_NODE_FILL_PATHS;
+pub(crate) use node_paint::{GITGRAPH_NODE_PAINT_PATHS, GitGraphNodePaintCss};
 pub(crate) use static_paint::GitGraphStaticPaintPlan;
 use text_paint::GitGraphTextPaintPlan;
 pub(crate) use typography::{

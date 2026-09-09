@@ -14,16 +14,10 @@ struct GitGraphCss {
     // These facts are set alongside the exact CSS declarations that mask root inheritance.
     root_geometry: [[bool; 8]; 4],
     root_cherry_pick: bool,
-    node_fill: Option<GitGraphNodeFillCss>,
+    node_paint: Option<GitGraphNodePaintCss>,
 }
 
-// Source identities and values are recorded at the declaration that emits them.
-struct GitGraphNodeFillCss {
-    state: (usize, String),
-    tag: (usize, String),
-    branches: [Option<(usize, String)>; GITGRAPH_PALETTE_SLOT_COUNT],
-    outers: [Option<(usize, String)>; GITGRAPH_PALETTE_SLOT_COUNT],
-}
+use crate::gitgraph::GitGraphNodePaintCss;
 
 impl GitGraphCss {
     fn typography_emission(&self) -> crate::gitgraph::GitGraphTypographyCssEmission<'_> {
@@ -95,7 +89,11 @@ fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<
         .unwrap_or_default()
 }
 
-fn gitgraph_defs<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
+fn gitgraph_defs<I>(
+    diagram_id: I,
+    effective_config: &serde_json::Value,
+    primary_border: Option<&str>,
+) -> String
 where
     I: Copy + std::fmt::Display,
 {
@@ -103,6 +101,7 @@ where
 
     if config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
         let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
+            .or_else(|| primary_border.map(str::to_owned))
             .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
             .unwrap_or_else(|| "#9370DB".to_string());
         let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
@@ -149,6 +148,10 @@ fn gitgraph_css(
 ) -> GitGraphCss {
     let id = crate::svg::escape_css_identifier(diagram_id);
     let fragment_id = escape_xml(diagram_id);
+    let node_paint_values = static_paint
+        .node_paint()
+        .map(|plan| plan.css_values())
+        .unwrap_or([None; 6]);
     let css = super::super::css::InfoCssWriter::with_resolved_typography(
         effective_config,
         typography_theme.font_family_css(),
@@ -156,6 +159,10 @@ fn gitgraph_css(
     );
     let css = match text_colors.and_then(|colors| colors[0]) {
         Some(color) => css.with_text_color(color),
+        None => css,
+    };
+    let css = match node_paint_values[4] {
+        Some(border) => css.with_node_border(border),
         None => css,
     };
     let parts = css.into_parts(diagram_id);
@@ -213,11 +220,7 @@ fn gitgraph_css(
         .and_then(|colors| colors[1])
         .map(str::to_owned)
         .unwrap_or_else(|| theme_token(effective_config, "tagLabelColor", "#131300"));
-    let node_fill_values = static_paint
-        .node_fill()
-        .map(|plan| plan.css_values())
-        .unwrap_or([None; 3]);
-    let tag_label_background = node_fill_values[2].map_or_else(
+    let tag_label_background = node_paint_values[2].map_or_else(
         || {
             Cow::Owned(theme_token(
                 effective_config,
@@ -227,11 +230,13 @@ fn gitgraph_css(
         },
         Cow::Borrowed,
     );
-    let tag_label_border = theme_token(
-        effective_config,
-        "tagLabelBorder",
-        "hsl(240, 60%, 86.2745098039%)",
-    );
+    let tag_label_border = node_paint_values[5].map(str::to_owned).unwrap_or_else(|| {
+        theme_token(
+            effective_config,
+            "tagLabelBorder",
+            "hsl(240, 60%, 86.2745098039%)",
+        )
+    });
     let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
         .map(|value| {
             let value = if value.is_nan() {
@@ -251,12 +256,14 @@ fn gitgraph_css(
         .map(str::to_owned)
         .or_else(|| config_string(effective_config, &["themeVariables", "commitLineColor"]))
         .unwrap_or_else(|| parts.line_color.clone());
-    let primary_color = node_fill_values[0].map_or_else(
+    let primary_color = node_paint_values[0].map_or_else(
         || Cow::Owned(theme_token(effective_config, "primaryColor", "#ECECFF")),
         Cow::Borrowed,
     );
-    let node_border = theme_token(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = node_fill_values[1].map_or_else(
+    let node_border = node_paint_values[4]
+        .map(str::to_owned)
+        .unwrap_or_else(|| theme_token(effective_config, "nodeBorder", "#9370DB"));
+    let main_bkg = node_paint_values[1].map_or_else(
         || Cow::Owned(theme_token(effective_config, "mainBkg", "#ECECFF")),
         Cow::Borrowed,
     );
@@ -280,7 +287,7 @@ fn gitgraph_css(
     let border_color_array = gitgraph_theme_array(effective_config, "borderColorArray");
     // gitGraph owns its draw path instead of using rendering-util/render.ts, so it must append the
     // configured root gradient itself for every theme. Several classic themes enable gradients.
-    let defs = gitgraph_defs(diagram_id, effective_config);
+    let defs = gitgraph_defs(diagram_id, effective_config, node_paint_values[3]);
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
@@ -289,12 +296,9 @@ fn gitgraph_css(
     );
     let mut root_geometry = [[true; 8]; 4];
     let mut root_cherry_pick = true;
-    let mut node_fill = static_paint.node_fill().map(|_| GitGraphNodeFillCss {
-        state: (0, String::new()),
-        tag: (0, String::new()),
-        branches: std::array::from_fn(|_| None),
-        outers: std::array::from_fn(|_| None),
-    });
+    let mut node_paint = static_paint
+        .node_paint()
+        .map(|_| GitGraphNodePaintCss::default());
     for i in 0..theme_color_limit {
         if i < 8 {
             root_geometry[3][i] = false;
@@ -332,17 +336,44 @@ fn gitgraph_css(
                         i,
                         node_border
                     );
+                    if let Some(facts) = node_paint.as_mut() {
+                        let border = facts.source(4, &node_border);
+                        facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                        facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                        facts.cherry = border;
+                        facts.branches[2][0] = border;
+                        facts.commits[1][0] = border;
+                        facts.outers[1][0] = border;
+                        facts.arrows[0] = border;
+                    }
                     if use_gradient {
+                        let primary_border = if node_paint.is_some()
+                            && config_string(effective_config, &["themeVariables", "gradientStart"])
+                                .is_none()
+                        {
+                            Some(node_paint_values[3].map(Cow::Borrowed).unwrap_or_else(|| {
+                                Cow::Owned(theme_token(
+                                    effective_config,
+                                    "primaryBorderColor",
+                                    "#9370DB",
+                                ))
+                            }))
+                        } else {
+                            None
+                        };
                         for label_i in 0..theme_color_limit {
                             let _ = write!(
                                 &mut out,
                                 r#"#{} .label{}{{fill:{};stroke:url(#{}-gradient);stroke-width:{};}}"#,
                                 id, label_i, main_bkg, fragment_id, stroke_width
                             );
-                            if let Some(facts) = node_fill.as_mut()
+                            if let Some(facts) = node_paint.as_mut()
                                 && label_i < GITGRAPH_PALETTE_SLOT_COUNT
                             {
-                                facts.branches[label_i] = Some((1, main_bkg.to_string()));
+                                facts.branches[0][label_i] = facts.source(1, &main_bkg);
+                                if let Some(primary_border) = primary_border.as_deref() {
+                                    facts.branches[1][label_i] = facts.source(3, primary_border);
+                                }
                             }
                         }
                     }
@@ -364,6 +395,12 @@ fn gitgraph_css(
                         r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
                         id, i, branch_label, id, i, git, git, id, i, git_inv, git_inv, id, i, git
                     );
+                    if let Some(facts) = node_paint.as_mut()
+                        && i < GITGRAPH_PALETTE_SLOT_COUNT
+                    {
+                        facts.commits[0][i] = 0;
+                        facts.outers[0][i] = 0;
+                    }
                 }
             } else if !use_color_theme {
                 let _ = write!(
@@ -395,10 +432,19 @@ fn gitgraph_css(
                     i,
                     node_border
                 );
-                if let Some(facts) = node_fill.as_mut()
-                    && i < GITGRAPH_PALETTE_SLOT_COUNT
-                {
-                    facts.branches[i] = Some((1, main_bkg.to_string()));
+                if let Some(facts) = node_paint.as_mut() {
+                    let border = facts.source(4, &node_border);
+                    facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.cherry = border;
+                    if i < GITGRAPH_PALETTE_SLOT_COUNT {
+                        facts.branches[0][i] = facts.source(1, &main_bkg);
+                        facts.branches[1][i] = border;
+                        facts.branches[2][i] = border;
+                        facts.commits[1][i] = border;
+                        facts.outers[1][i] = border;
+                        facts.arrows[i] = border;
+                    }
                 }
             } else if i == 0 {
                 let _ = write!(
@@ -427,9 +473,19 @@ fn gitgraph_css(
                     id,
                     node_border
                 );
-                if let Some(facts) = node_fill.as_mut() {
-                    facts.branches[0] = Some((1, main_bkg.to_string()));
-                    facts.outers[0] = Some((1, main_bkg.to_string()));
+                if let Some(facts) = node_paint.as_mut() {
+                    let border = facts.source(4, &node_border);
+                    let background = facts.source(1, &main_bkg);
+                    facts.commits[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.outers[0] = [border; GITGRAPH_PALETTE_SLOT_COUNT];
+                    facts.cherry = border;
+                    facts.branches[0][0] = background;
+                    facts.branches[1][0] = border;
+                    facts.branches[2][0] = border;
+                    facts.outers[0][0] = background;
+                    facts.outers[1][0] = border;
+                    facts.commits[1][0] = border;
+                    facts.arrows[0] = border;
                 }
             } else {
                 let border_color = border_color_array
@@ -465,11 +521,27 @@ fn gitgraph_css(
                     i,
                     border_color
                 );
-                if let Some(facts) = node_fill.as_mut()
-                    && use_dark_theme
+                if let Some(facts) = node_paint.as_mut()
                     && i < GITGRAPH_PALETTE_SLOT_COUNT
                 {
-                    facts.branches[i] = Some((1, label_fill.to_owned()));
+                    let border = facts.source(4, &node_border);
+                    let slot_border = if border_color_array.is_empty() {
+                        border
+                    } else {
+                        0
+                    };
+                    facts.branches[0][i] = if use_dark_theme {
+                        facts.source(1, label_fill)
+                    } else {
+                        slot_border
+                    };
+                    facts.branches[1][i] = slot_border;
+                    facts.branches[2][i] = border;
+                    facts.commits[0][i] = slot_border;
+                    facts.commits[1][i] = slot_border;
+                    facts.outers[0][i] = slot_border;
+                    facts.outers[1][i] = slot_border;
+                    facts.arrows[i] = slot_border;
                 }
             }
         } else {
@@ -601,12 +673,14 @@ fn gitgraph_css(
         parts.text_color
     );
     out.push_str(&parts.root_rule);
-    if let Some(facts) = node_fill.as_mut() {
-        facts.state = (usize::from(use_color_gen), state_fill.to_owned());
-        facts.tag = (
-            if use_color_gen { 1 } else { 2 },
-            tag_label_bkg_fill.to_owned(),
-        );
+    if let Some(facts) = node_paint.as_mut() {
+        facts.state = facts.source(usize::from(use_color_gen), state_fill);
+        facts.tag = facts.source(if use_color_gen { 1 } else { 2 }, tag_label_bkg_fill)
+            | facts.source(if use_color_gen { 4 } else { 5 }, tag_label_bkg_stroke);
+        if use_color_gen {
+            facts.commit_label = facts.source(4, commit_label_fill);
+        }
+        facts.complete = true;
     }
     GitGraphCss {
         css: out,
@@ -627,7 +701,7 @@ fn gitgraph_css(
         }),
         root_geometry,
         root_cherry_pick,
-        node_fill,
+        node_paint,
     }
 }
 
@@ -1016,37 +1090,35 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         branch_idx.insert(b.name.as_str(), b.index);
     }
 
-    let mut node_fill_receipt = static_paint.node_fill().map(|plan| {
-        let masked = [
-            crate::gitgraph::GitGraphPaletteSurface::Commit,
-            crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
-        ]
-        .map(|surface| {
-            std::array::from_fn(|slot| {
-                node_palette
-                    .terminal_fill_css(surface, slot, node_palette_ownership)
-                    .is_some()
-            })
-        });
-        let mut receipt = plan.begin_terminal_receipt(layout, &branch_idx, masked);
-        if let Some(facts) = css.node_fill.as_ref() {
-            receipt.record_css(
-                (facts.state.0, &facts.state.1),
-                (facts.tag.0, &facts.tag.1),
-                std::array::from_fn(|i| {
-                    facts.branches[i]
-                        .as_ref()
-                        .map(|(source, value)| (*source, value.as_str()))
-                }),
-                std::array::from_fn(|i| {
-                    facts.outers[i]
-                        .as_ref()
-                        .map(|(source, value)| (*source, value.as_str()))
-                }),
-            );
-        }
-        receipt
-    });
+    let mut node_paint_receipt =
+        static_paint
+            .node_paint()
+            .zip(css.node_paint.as_ref())
+            .map(|(plan, facts)| {
+                let fill_masked = [
+                    crate::gitgraph::GitGraphPaletteSurface::Commit,
+                    crate::gitgraph::GitGraphPaletteSurface::BranchLabelBackground,
+                ]
+                .map(|surface| {
+                    std::array::from_fn(|slot| {
+                        node_palette
+                            .terminal_fill_css(surface, slot, node_palette_ownership)
+                            .is_some()
+                    })
+                });
+                let stroke_masked = [
+                    crate::gitgraph::GitGraphPaletteSurface::Commit,
+                    crate::gitgraph::GitGraphPaletteSurface::Arrow,
+                ]
+                .map(|surface| {
+                    std::array::from_fn(|slot| {
+                        node_palette
+                            .terminal_stroke_css(surface, slot, node_palette_ownership)
+                            .is_some()
+                    })
+                });
+                plan.begin_terminal_receipt(layout, &branch_idx, fill_masked, stroke_masked, facts)
+            });
 
     let text_paint = node_palette.text_paint();
     let mut text_receipt = if text_paint.is_requested() {
@@ -1291,7 +1363,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             if let Some(receipt) = node_palette_receipt.as_mut() {
                 receipt.record_branch_label(node_palette, idx);
             }
-            if let Some(receipt) = node_fill_receipt.as_mut() {
+            if let Some(receipt) = node_paint_receipt.as_mut() {
                 receipt.record_branch(branch_index, idx);
             }
             if let Some(receipt) = typography_receipt.as_mut() {
@@ -1320,7 +1392,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     out.push_str(r#"<g class="commit-arrows">"#);
-    for a in &layout.arrows {
+    for (arrow_index, a) in layout.arrows.iter().enumerate() {
         let idx = crate::gitgraph::palette_slot(a.class_index);
         let _ = write!(
             &mut out,
@@ -1331,6 +1403,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         out.checkpoint()?;
         if let Some(receipt) = node_palette_receipt.as_mut() {
             receipt.record_arrow(node_palette, idx);
+        }
+        if let Some(receipt) = node_paint_receipt.as_mut() {
+            receipt.record_arrow(arrow_index, idx);
         }
     }
     out.push_str("</g>");
@@ -1357,7 +1432,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
-            if let Some(receipt) = node_fill_receipt.as_mut() {
+            if let Some(receipt) = node_paint_receipt.as_mut() {
                 receipt.record_state(commit_index, idx, true);
             }
             let _ = write!(
@@ -1370,7 +1445,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx,
                 type_class = type_class
             );
-            if let Some(receipt) = node_fill_receipt.as_mut() {
+            if let Some(receipt) = node_paint_receipt.as_mut() {
                 receipt.record_state(commit_index, idx, false);
             }
             if let (Some(receipt), Some(role)) = (
@@ -1463,7 +1538,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
-                if let Some(receipt) = node_fill_receipt.as_mut() {
+                if let Some(receipt) = node_paint_receipt.as_mut() {
                     receipt.record_state(commit_index, idx, false);
                 }
                 if let (Some(receipt), Some(role)) =
@@ -1493,7 +1568,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     id = id,
                     idx = idx
                 );
-                if let Some(receipt) = node_fill_receipt.as_mut() {
+                if let Some(receipt) = node_paint_receipt.as_mut() {
                     receipt.record_state(commit_index, idx, false);
                 }
                 if let (Some(receipt), Some(role)) =
@@ -1504,6 +1579,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             }
         }
         out.checkpoint()?;
+        if let Some(receipt) = node_paint_receipt.as_mut() {
+            receipt.record_commit(commit_index, idx);
+        }
         if let Some(receipt) = text_receipt.as_mut() {
             let root_inherited = match commit_kind {
                 crate::gitgraph::GitGraphCommitKind::CherryPick => css.root_cherry_pick,
@@ -1607,6 +1685,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             }
             if let Some(receipt) = text_receipt.as_mut() {
                 receipt.record_commit_label(commit_index, &c.id);
+            }
+            if let Some(receipt) = node_paint_receipt.as_mut() {
+                receipt.record_commit_label(commit_index);
             }
         }
 
@@ -1714,7 +1795,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 if let Some(receipt) = text_receipt.as_mut() {
                     receipt.record_tag(commit_index, i, tag_value);
                 }
-                if let Some(receipt) = node_fill_receipt.as_mut() {
+                if let Some(receipt) = node_paint_receipt.as_mut() {
                     receipt.record_tag(commit_index, i);
                 }
             }
@@ -1785,7 +1866,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         out.replace_range(close_start..close_start, &title_element)?;
     }
     let rooted_svg = root_document.complete(out.finish()?)?;
-    if let (Some(plan), Some(receipt)) = (static_paint.node_fill(), node_fill_receipt) {
+    if let (Some(plan), Some(receipt)) = (static_paint.node_paint(), node_paint_receipt) {
         // A complete empty receipt proves NotApplicable; missing proof remains a residual.
         plan.record_terminal(receipt);
     }

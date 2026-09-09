@@ -364,7 +364,7 @@ const NODE_DEFAULT_PATHS: &[&str] = &[
     "themeVariables.tagLabelBackground",
     "themeVariables.primaryBorderColor",
     "themeVariables.nodeBorder",
-    "themeVariables.tagBorderColor",
+    "themeVariables.tagLabelBorder",
 ];
 
 fn node_default_plan(config: Value) -> crate::__private::ThemeCompatibilityPlan {

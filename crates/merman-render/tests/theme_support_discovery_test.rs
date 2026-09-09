@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 55);
+    assert_eq!(support.claim_revision(), 56);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -643,19 +643,20 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
-fn gitgraph_edge_text_and_label_fill_are_typed_partial_surfaces() {
-    for target in [
-        ThemeTarget::Node,
-        ThemeTarget::Text,
-        ThemeTarget::NodeLabel,
-        ThemeTarget::EdgeLabel,
-        ThemeTarget::Edge,
+fn gitgraph_node_paint_edge_and_label_fill_are_typed_partial_surfaces() {
+    for (target, facet) in [
+        (ThemeTarget::Node, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Node, ThemeRuleFacetV1::StrokePaint),
+        (ThemeTarget::Text, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::NodeLabel, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::EdgeLabel, ThemeRuleFacetV1::Fill),
+        (ThemeTarget::Edge, ThemeRuleFacetV1::Fill),
     ] {
         let query = ThemeSupportQueryV1::known(
             DiagramFamilyId::GIT_GRAPH.as_str(),
             ThemeSupportOutputV1::StandaloneSvg,
             target.id(),
-            ThemeRuleFacetV1::Fill,
+            facet,
         );
 
         let support = describe_theme_support(&query);

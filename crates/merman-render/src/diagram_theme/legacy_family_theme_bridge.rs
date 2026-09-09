@@ -190,9 +190,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Node => {
             compile_node_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::GitGraph => {
-            compile_gitgraph_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::Sequence => {
             compile_sequence_family(&mut builder, &reader)?;
         }
@@ -221,7 +218,6 @@ fn compile_selected_family(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LegacyFamilyDispatch {
     Node,
-    GitGraph,
     Sequence,
     Requirement,
     Er,
@@ -517,7 +513,6 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
-        DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
         DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
@@ -526,6 +521,7 @@ fn legacy_family_dispatch(
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
         DiagramFamilyId::STATE
+        | DiagramFamilyId::GIT_GRAPH
         | DiagramFamilyId::C4
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::PACKET
@@ -723,30 +719,6 @@ fn compile_node_family(
                 "tertiaryTextColor",
                 reader.text_fill(ThemeTarget::ClusterLabel),
             ),
-        ],
-    );
-
-    contributions.finish_into(builder)
-}
-
-/// Projects only GitGraph variables that its terminal writer actually consumes.
-///
-/// GitGraph arrows are node-palette surfaces, not SVG markers, and its title inherits
-/// `textColor`. Keeping this mapping family-local prevents the generic node bridge from
-/// resurrecting terminal-less marker, cluster, and title projections.
-fn compile_gitgraph_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    let node_stroke = reader.stroke(ThemeTarget::Node);
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NodeStroke.contribution_id(),
-        [
-            ("primaryBorderColor", node_stroke.clone()),
-            ("nodeBorder", node_stroke.clone()),
-            ("tagLabelBorder", node_stroke),
         ],
     );
 
@@ -1848,15 +1820,15 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_retired_node_fill_leaves_only_independent_stroke_assignments() {
+    fn gitgraph_retired_node_paint_preserves_materialized_config() {
         const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
-        const PATHS: [(&str, &str, bool); 6] = [
-            ("primaryColor", "#123456", false),
-            ("mainBkg", "#123456", false),
-            ("tagLabelBackground", "#123456", false),
-            ("primaryBorderColor", "#abcdef", true),
-            ("nodeBorder", "#abcdef", true),
-            ("tagLabelBorder", "#abcdef", true),
+        const PATHS: [&str; 6] = [
+            "primaryColor",
+            "mainBkg",
+            "tagLabelBackground",
+            "primaryBorderColor",
+            "nodeBorder",
+            "tagLabelBorder",
         ];
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(
@@ -1889,8 +1861,7 @@ mod tests {
             "redux-color",
             "redux-dark-color",
         ] {
-            for explicit in std::iter::once(None).chain(PATHS.iter().map(|(key, _, _)| Some(*key)))
-            {
+            for explicit in std::iter::once(None).chain(PATHS.iter().copied().map(Some)) {
                 let mut config = serde_json::json!({"theme": theme_name});
                 if let Some(key) = explicit {
                     config["themeVariables"] = serde_json::json!({key: "#fedcba"});
@@ -1898,28 +1869,22 @@ mod tests {
                 let engine =
                     merman_core::Engine::new().with_site_config(MermaidConfig::from_value(config));
                 let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
-                let mut expected = baseline.effective_config.as_value().clone();
-                for (key, color, retained_in_bridge) in PATHS {
-                    if explicit != Some(key) && retained_in_bridge {
-                        expected["themeVariables"][key] = serde_json::json!(color);
-                    }
-                }
                 let parsed = install_theme_compatibility(engine, &plan)
                     .parse_metadata_sync(SOURCE)
                     .unwrap();
                 assert_eq!(
                     parsed.effective_config.as_value(),
-                    &expected,
-                    "{theme_name}/{explicit:?}: only unowned stroke paths remain in the bridge; retired fill must not rederive other colors"
+                    baseline.effective_config.as_value(),
+                    "{theme_name}/{explicit:?}: retired node paint must not mutate materialized config"
                 );
-                for (key, _, retained_in_bridge) in PATHS {
+                for key in PATHS {
                     let path = format!("themeVariables.{key}");
                     assert_eq!(
                         merman_core::__private::fallback_overlay_owns_path(
                             &parsed.effective_config,
                             &path
                         ),
-                        explicit != Some(key) && retained_in_bridge,
+                        false,
                         "{theme_name}/{explicit:?}/{key}"
                     );
                 }
@@ -1932,8 +1897,10 @@ mod tests {
                         parsed
                             .effective_config
                             .get_str("themeVariables.primaryBorderColor"),
-                        Some("#abcdef"),
-                        "a derived owner is distinct from the directly authored owner used by post-detection defaults"
+                        baseline
+                            .effective_config
+                            .get_str("themeVariables.primaryBorderColor"),
+                        "derived config remains untouched after bridge retirement"
                     );
                 }
             }
@@ -1976,14 +1943,6 @@ gitGraph
             &baseline.effective_config,
             "themeVariables.primaryBorderColor"
         ));
-        let mut expected = baseline.effective_config.as_value().clone();
-        for (key, value) in [
-            ("primaryBorderColor", "#abcdef"),
-            ("nodeBorder", "#abcdef"),
-            ("tagLabelBorder", "#abcdef"),
-        ] {
-            expected["themeVariables"][key] = serde_json::json!(value);
-        }
         let resolver = bridge(&spec);
         let plan = ThemeCompatibilityPlan::try_new(
             [0x6d; 32],
@@ -1996,13 +1955,13 @@ gitGraph
             .unwrap();
         assert_eq!(
             parsed.effective_config.as_value(),
-            &expected,
-            "source theme reselection precedes the independent post-detection assignments"
+            baseline.effective_config.as_value(),
+            "retired node paint preserves source theme reselection"
         );
     }
 
     #[test]
-    fn gitgraph_legacy_paint_keeps_only_node_stroke_projections() {
+    fn gitgraph_direct_paint_leaves_no_legacy_projections() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -2066,7 +2025,7 @@ gitGraph
             ("themeVariables.nodeBorder", node_stroke),
             ("themeVariables.tagLabelBorder", node_stroke),
         ] {
-            assert_eq!(
+            assert_ne!(
                 parsed.effective_config.get_str(path),
                 Some(value),
                 "path={path}"
@@ -2106,14 +2065,7 @@ gitGraph
                 assert_eq!(assignments.insert(path, value), None, "path={path}");
             }
         }
-        assert_eq!(
-            assignments,
-            std::collections::BTreeMap::from([
-                ("themeVariables.nodeBorder", node_stroke),
-                ("themeVariables.primaryBorderColor", node_stroke),
-                ("themeVariables.tagLabelBorder", node_stroke),
-            ])
-        );
+        assert!(assignments.is_empty());
         assert!(
             !assignments.contains_key("themeVariables.commitLabelBackground"),
             "the typed route must not leave a compatibility overlay assignment"
@@ -2413,6 +2365,7 @@ gitGraph
             actual,
             BTreeSet::from([
                 DiagramFamilyId::STATE,
+                DiagramFamilyId::GIT_GRAPH,
                 DiagramFamilyId::C4,
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
@@ -2440,27 +2393,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            32, 61, 200, 12, 197, 179, 211, 112, 190, 184, 99, 134, 153, 120, 255, 231, 98, 137,
-            180, 212, 24, 73, 196, 69, 241, 104, 127, 240, 83, 127, 59, 172,
+            119, 27, 234, 146, 148, 96, 38, 254, 94, 205, 65, 124, 152, 42, 232, 20, 84, 251, 179,
+            97, 34, 113, 121, 124, 148, 89, 241, 20, 201, 122, 143, 238,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 222);
-        assert_eq!(status.matrix_family_count(), 12);
-        assert_eq!(status.dispatched_family_count(), 12);
+        assert_eq!(status.matrix_route_count(), 218);
+        assert_eq!(status.matrix_family_count(), 11);
+        assert_eq!(status.dispatched_family_count(), 11);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                41, 195, 178, 225, 121, 255, 229, 238, 166, 43, 129, 19, 186, 13, 103, 218, 159,
-                54, 4, 100, 178, 36, 214, 23, 222, 41, 48, 183, 247, 196, 34, 143
+                242, 127, 181, 198, 156, 227, 236, 27, 151, 238, 119, 222, 36, 94, 138, 245, 21,
+                36, 109, 59, 122, 110, 69, 127, 234, 10, 244, 39, 199, 89, 210, 99
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                91, 27, 202, 7, 158, 53, 61, 66, 95, 36, 207, 106, 68, 220, 36, 142, 204, 152, 173,
-                16, 228, 112, 136, 136, 99, 106, 241, 17, 148, 246, 28, 84
+                155, 101, 159, 135, 15, 217, 60, 122, 93, 212, 77, 155, 157, 202, 95, 218, 183, 31,
+                207, 230, 32, 53, 128, 48, 205, 123, 138, 115, 195, 2, 151, 32
             ]
         );
         assert_eq!(
