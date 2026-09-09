@@ -121,7 +121,6 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 y = fmt(y)
             );
 
-            let has_title = svc.title.is_some_and(|title| !title.trim().is_empty());
             let has_icon_text =
                 svc.icon.is_none() && svc.icon_text.is_some_and(|text| !text.trim().is_empty());
             let service_title_style = surface_theme_receipt.as_deref().and_then(|receipt| {
@@ -135,29 +134,29 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     .map(ToOwned::to_owned)
             });
             let service_title_emission =
-                if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
-                    // Mermaid uses `width = iconSize * 1.5` for service titles.
-                    Some(write_architecture_service_title(
-                        out,
-                        title,
-                        x,
-                        y,
-                        settings.icon_size_px,
-                        settings.icon_size_px * 1.5,
-                        text_measurer,
-                        &settings.text_style,
-                        service_title_style.as_deref(),
-                    ))
-                } else {
-                    None
-                };
-            if has_title {
-                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
-                    receipt.record_native_svg_text_terminal(
-                        settings.font_family_css.as_str(),
-                        settings.text_style.font_size,
-                    );
-                }
+                svc.title
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(|title| {
+                        // Mermaid uses `width = iconSize * 1.5` for service titles.
+                        write_architecture_service_title(
+                            out,
+                            title,
+                            x,
+                            y,
+                            settings.icon_size_px,
+                            settings.icon_size_px * 1.5,
+                            text_measurer,
+                            &settings.text_style,
+                            service_title_style.as_deref(),
+                        )
+                    });
+            let has_title = service_title_emission.is_some();
+            if has_title && let Some(receipt) = typography_theme_receipt.as_deref_mut() {
+                receipt.record_native_svg_text_terminal(
+                    settings.font_family_css.as_str(),
+                    settings.text_style.font_size,
+                );
             }
             let service_title_bounds = service_title_emission
                 .as_ref()
@@ -214,10 +213,9 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     );
                     out.push_str(&sanitized);
                     out.push_str("</div></div></foreignObject></g>");
-                    if has_icon_text {
-                        if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
-                            receipt.record_icon_text_terminal();
-                        }
+                    if has_icon_text && let Some(receipt) = typography_theme_receipt.as_deref_mut()
+                    {
+                        receipt.record_icon_text_terminal();
                     }
                 }
                 (None, None) => {

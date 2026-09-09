@@ -280,7 +280,7 @@ fn parse_css_spacing_px(
 ) -> Result<f32, TextLayoutError> {
     let value = match parse_css_typography_scalar(value) {
         Some(CssTypographyScalar::Ident(value)) if value == "normal" => 0.0,
-        Some(CssTypographyScalar::Number(value)) if value == 0.0 => 0.0,
+        Some(CssTypographyScalar::Number(0.0)) => 0.0,
         Some(CssTypographyScalar::Px(value)) => value,
         Some(CssTypographyScalar::Em(value)) => value * font_size_px,
         _ => return Err(TextLayoutError::InvalidRequest(field)),
@@ -1699,10 +1699,9 @@ impl PreparedTextVerticalExtents {
     pub fn new(top_px: f64, bottom_px: f64) -> Result<Self, TextLayoutError> {
         if !top_px.is_finite()
             || !bottom_px.is_finite()
-            || top_px < -MAX_PREPARED_TEXT_GEOMETRY_PX
-            || top_px > MAX_PREPARED_TEXT_GEOMETRY_PX
-            || bottom_px < -MAX_PREPARED_TEXT_GEOMETRY_PX
-            || bottom_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || !(-MAX_PREPARED_TEXT_GEOMETRY_PX..=MAX_PREPARED_TEXT_GEOMETRY_PX).contains(&top_px)
+            || !(-MAX_PREPARED_TEXT_GEOMETRY_PX..=MAX_PREPARED_TEXT_GEOMETRY_PX)
+                .contains(&bottom_px)
             || top_px > bottom_px
             || bottom_px - top_px > MAX_PREPARED_TEXT_GEOMETRY_PX
         {
@@ -1760,8 +1759,7 @@ impl PreparedTextLine {
     ) -> Result<Self, TextLayoutError> {
         let text = text.into();
         if !computed_length_px.is_finite()
-            || computed_length_px < 0.0
-            || computed_length_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || !(0.0..=MAX_PREPARED_TEXT_GEOMETRY_PX).contains(&computed_length_px)
             || !bbox_x.0.is_finite()
             || !bbox_x.1.is_finite()
             || bbox_x.0 < 0.0
@@ -1857,8 +1855,7 @@ impl PreparedTextLineResponse {
         let text = text.into();
         if text.len() > MAX_TEXT_PROJECTION_BYTES
             || !computed_length_px.is_finite()
-            || computed_length_px < 0.0
-            || computed_length_px > MAX_PREPARED_TEXT_GEOMETRY_PX
+            || !(0.0..=MAX_PREPARED_TEXT_GEOMETRY_PX).contains(&computed_length_px)
             || !bbox_x.0.is_finite()
             || !bbox_x.1.is_finite()
             || bbox_x.0 < 0.0
@@ -2478,7 +2475,7 @@ impl PreparedTextResponseBuilder {
             || line_height_px <= 0.0
             || line_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
             || raw_width_px.is_some_and(|width| {
-                !width.is_finite() || width < 0.0 || width > MAX_PREPARED_TEXT_GEOMETRY_PX
+                !width.is_finite() || !(0.0..=MAX_PREPARED_TEXT_GEOMETRY_PX).contains(&width)
             })
         {
             return Err(TextLayoutError::InvalidPreparedText);
@@ -2691,7 +2688,7 @@ impl PreparedText {
             || line_height_px <= 0.0
             || line_height_px > MAX_PREPARED_TEXT_GEOMETRY_PX
             || raw_width_px.is_some_and(|width| {
-                !width.is_finite() || width < 0.0 || width > MAX_PREPARED_TEXT_GEOMETRY_PX
+                !width.is_finite() || !(0.0..=MAX_PREPARED_TEXT_GEOMETRY_PX).contains(&width)
             })
         {
             return Err(TextLayoutError::InvalidPreparedText);
@@ -4674,7 +4671,8 @@ struct FaceSelector {
     requested_style: String,
 }
 
-struct CompiledStructuredTextRequest {
+struct CompiledStructuredTextRequest<'a> {
+    backend_request: &'a PreparedTextBackendRequest,
     features: Vec<Feature>,
     variations: Vec<Variation>,
     requested_script: Option<BuzzScript>,
@@ -5308,7 +5306,7 @@ impl ProjectedVisibleLine {
         self.visible_range
     }
 
-    fn text<'a>(self, visible: &'a str) -> Result<&'a str, TextLayoutError> {
+    fn text(self, visible: &str) -> Result<&str, TextLayoutError> {
         visible
             .get(self.visible_range.as_range())
             .ok_or(TextLayoutError::InvalidPreparedText)
@@ -5727,11 +5725,12 @@ impl NativeCatalogTextMeasurer {
         })
     }
 
-    fn compile_structured_request(
+    fn compile_structured_request<'a>(
         &self,
-        request: &PrepareTextRequest,
+        backend_request: &'a PreparedTextBackendRequest,
         budget: &mut StructuredShapingBudget<'_>,
-    ) -> Result<CompiledStructuredTextRequest, TextLayoutError> {
+    ) -> Result<CompiledStructuredTextRequest<'a>, TextLayoutError> {
+        let request = backend_request.request();
         let features = request
             .features()
             .map(|feature| {
@@ -5770,6 +5769,7 @@ impl NativeCatalogTextMeasurer {
             metrics.coverage_lane = 1;
         }
         Ok(CompiledStructuredTextRequest {
+            backend_request,
             features,
             variations,
             requested_script,
@@ -5900,8 +5900,7 @@ impl NativeCatalogTextMeasurer {
         span_index: usize,
         coverage_lane: usize,
         style: &CompiledStructuredTextStyle,
-        request: &PrepareTextRequest,
-        compiled: &CompiledStructuredTextRequest,
+        compiled: &CompiledStructuredTextRequest<'_>,
         script: Option<BuzzScript>,
         coverage_cache: &mut StructuredCoverageCache,
         budget: &mut StructuredShapingBudget<'_>,
@@ -5917,7 +5916,7 @@ impl NativeCatalogTextMeasurer {
             let covers = self.face_shapes_cluster(
                 index,
                 text,
-                request.direction(),
+                compiled.backend_request.request().direction(),
                 script,
                 compiled.language.clone(),
                 &compiled.features,
@@ -6012,10 +6011,8 @@ impl NativeCatalogTextMeasurer {
         &self,
         text: &str,
         line_range: TextByteRange,
-        projection: &TextProjection,
-        request: &PrepareTextRequest,
         typography: &ThemeTextStyle,
-        compiled: &CompiledStructuredTextRequest,
+        compiled: &CompiledStructuredTextRequest<'_>,
         style: &CompiledStructuredTextStyle,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
@@ -6024,13 +6021,10 @@ impl NativeCatalogTextMeasurer {
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
         self.shape_structured_line_internal(
             text,
-            projection,
             line_range,
-            request,
             typography,
             compiled,
             style,
-            true,
             StructuredShapingPass::Metrics,
             coverage_cache,
             span_cursor,
@@ -6042,19 +6036,18 @@ impl NativeCatalogTextMeasurer {
     fn shape_structured_line_internal(
         &self,
         text: &str,
-        projection: &TextProjection,
         line_range: TextByteRange,
-        request: &PrepareTextRequest,
         typography: &ThemeTextStyle,
-        compiled: &CompiledStructuredTextRequest,
+        compiled: &CompiledStructuredTextRequest<'_>,
         style: &CompiledStructuredTextStyle,
-        emit_evidence: bool,
         pass: StructuredShapingPass,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
         budget: &mut StructuredShapingBudget<'_>,
         mut response_builder: Option<&mut PreparedTextResponseBuilder>,
     ) -> Result<ShapedStructuredLine, TextLayoutError> {
+        let emit_evidence = response_builder.is_some();
+        let projection = compiled.backend_request.projection();
         let line_visible_start = line_range.start();
         let line_visible_end = line_range.end();
         if line_visible_end.saturating_sub(line_visible_start) != text.len()
@@ -6113,7 +6106,6 @@ impl NativeCatalogTextMeasurer {
                     span_index,
                     coverage_lane,
                     style,
-                    request,
                     compiled,
                     script,
                     coverage_cache,
@@ -6126,7 +6118,6 @@ impl NativeCatalogTextMeasurer {
                     current_face,
                     current_script,
                     &run,
-                    request,
                     typography,
                     compiled,
                     pass,
@@ -6175,7 +6166,6 @@ impl NativeCatalogTextMeasurer {
                 face_index,
                 current_script,
                 &run,
-                request,
                 typography,
                 compiled,
                 pass,
@@ -6191,7 +6181,6 @@ impl NativeCatalogTextMeasurer {
             );
             if emit_evidence {
                 response_builder
-                    .as_deref_mut()
                     .expect("evidence shaping requires a response builder")
                     .push_run(PreparedTextRunResponse::new(
                         TextByteRange::new(
@@ -6225,9 +6214,8 @@ impl NativeCatalogTextMeasurer {
         face_index: usize,
         script: Option<BuzzScript>,
         text: &str,
-        request: &PrepareTextRequest,
         typography: &ThemeTextStyle,
-        compiled: &CompiledStructuredTextRequest,
+        compiled: &CompiledStructuredTextRequest<'_>,
         pass: StructuredShapingPass,
         budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<ShapedStructuredRun, TextLayoutError> {
@@ -6239,7 +6227,12 @@ impl NativeCatalogTextMeasurer {
         let mut buffer = UnicodeBuffer::new();
         buffer.push_str(text);
         buffer.guess_segment_properties();
-        if let Some(direction) = request.direction().to_rustybuzz() {
+        if let Some(direction) = compiled
+            .backend_request
+            .request()
+            .direction()
+            .to_rustybuzz()
+        {
             buffer.set_direction(direction);
         }
         if let Some(script) = script {
@@ -6396,23 +6389,20 @@ impl NativeCatalogTextMeasurer {
     fn shape_wrap_line(
         &self,
         source: ProjectedVisibleLine,
-        projection: &TextProjection,
-        request: &PrepareTextRequest,
-        compiled: &CompiledStructuredTextRequest,
+        compiled: &CompiledStructuredTextRequest<'_>,
         coverage_cache: &mut StructuredCoverageCache,
         span_cursor: &mut ProjectionSpanCursor,
         budget: &mut StructuredShapingBudget<'_>,
     ) -> Result<ShapedWrapLine, TextLayoutError> {
+        let request = compiled.backend_request.request();
+        let projection = compiled.backend_request.projection();
         let text = source.text(projection.visible())?;
         let shaped = self.shape_structured_line_internal(
             text,
-            projection,
             source.visible_range(),
-            request,
             request.wrapping_typography(),
             compiled,
             &compiled.wrapping,
-            false,
             StructuredShapingPass::Wrapping,
             coverage_cache,
             span_cursor,
@@ -6593,7 +6583,7 @@ impl NativeCatalogTextMeasurer {
         let response = (|| {
             let request = backend_request.request();
             let projection = backend_request.projection();
-            let compiled = self.compile_structured_request(request, &mut budget)?;
+            let compiled = self.compile_structured_request(backend_request, &mut budget)?;
             let coverage_cache_slots = projection
                 .spans()
                 .len()
@@ -6620,8 +6610,6 @@ impl NativeCatalogTextMeasurer {
                     } => {
                         let shaped = self.shape_wrap_line(
                             source,
-                            projection,
-                            request,
                             &compiled,
                             &mut coverage_cache,
                             &mut wrapping_span_cursor,
@@ -6641,8 +6629,6 @@ impl NativeCatalogTextMeasurer {
                     PreparedTextWrap::HtmlLike { max_width_px } => {
                         let shaped = self.shape_wrap_line(
                             source,
-                            projection,
-                            request,
                             &compiled,
                             &mut coverage_cache,
                             &mut wrapping_span_cursor,
@@ -6682,8 +6668,6 @@ impl NativeCatalogTextMeasurer {
                 let shaped = self.shape_structured_line_with_evidence(
                     text,
                     line.visible_range(),
-                    projection,
-                    request,
                     request.metrics_typography(),
                     &compiled,
                     &compiled.metrics,
@@ -6731,7 +6715,7 @@ impl NativeCatalogTextMeasurer {
         }
         let glyphs = rustybuzz::shape(&font, &self.features, buffer);
         let units_per_em = f64::from(font.units_per_em().max(1));
-        let scale = f64::from(style.font_size.max(0.1)) / units_per_em;
+        let scale = style.font_size.max(0.1) / units_per_em;
         let mut metrics = ShapedLineMetrics::default();
         let mut pen_x = 0.0;
         for (info, position) in glyphs.glyph_infos().iter().zip(glyphs.glyph_positions()) {
