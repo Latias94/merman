@@ -2309,10 +2309,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Journey(_)) {
             let raw_id = path_id.as_str();
             let path = self.path_resource(path_id)?;
-            if (raw_id.ends_with(".line") || raw_id == "journey.activity.line")
+            if (raw_id.ends_with(".line") || raw_id.ends_with(".face.mouth"))
                 && let Some((start, end)) = line_from_path(path)
             {
                 return self.emit_line(path_id, start, end, style);
+            }
+            if self.emit_journey_curved_mouth(path_id, style)? {
+                return Ok(());
             }
             if (raw_id.ends_with(".circle")
                 || raw_id.ends_with(".face")

@@ -5812,6 +5812,292 @@ gantt
     }
 
     #[test]
+    fn journey_mouth_projection_preserves_edited_public_geometry() {
+        use merman_display_list::{
+            DrawingCommand, DrawingResource, PathResource, PathSegment, Point, Transform,
+        };
+        fn assert_curve(path: &PathResource, node: roxmltree::Node<'_, '_>, origin: Point) {
+            let parsed = svgtypes::PathParser::from(node.attribute("d").unwrap())
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .unwrap();
+            assert_eq!(parsed.len(), path.segments.len());
+            for (actual, expected) in parsed.iter().zip(&path.segments) {
+                let (x, y, to) = match (actual, expected) {
+                    (
+                        svgtypes::PathSegment::MoveTo { abs: true, x, y },
+                        PathSegment::MoveTo { to },
+                    )
+                    | (
+                        svgtypes::PathSegment::LineTo { abs: true, x, y },
+                        PathSegment::LineTo { to },
+                    ) => (*x, *y, to),
+                    (
+                        svgtypes::PathSegment::EllipticalArc {
+                            abs: true,
+                            rx,
+                            ry,
+                            x_axis_rotation,
+                            large_arc,
+                            sweep,
+                            x,
+                            y,
+                        },
+                        PathSegment::ArcTo {
+                            radius_x,
+                            radius_y,
+                            x_axis_rotation_degrees,
+                            large_arc: expected_large,
+                            sweep_clockwise,
+                            to,
+                        },
+                    ) => {
+                        assert_eq!(
+                            (*rx, *ry, *x_axis_rotation, *large_arc, *sweep),
+                            (
+                                *radius_x,
+                                *radius_y,
+                                *x_axis_rotation_degrees,
+                                *expected_large,
+                                *sweep_clockwise
+                            )
+                        );
+                        (*x, *y, to)
+                    }
+                    (svgtypes::PathSegment::ClosePath { .. }, PathSegment::Close) => continue,
+                    _ => panic!("public path segment was replaced"),
+                };
+                assert!((x + origin.x - to.x).abs() < 1e-9);
+                assert!((y + origin.y - to.y).abs() < 1e-9);
+            }
+        }
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "journey\nsection Work\nHappy: 5: Alice\nNeutral: 3: Alice\nSad: 1: Alice\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        for edited in [false, true] {
+            if edited {
+                for resource in &mut document.public.resources {
+                    if let DrawingResource::Path(path) = resource
+                        && path.id.as_str() == "journey.task.0.face.mouth"
+                    {
+                        for segment in &mut path.segments {
+                            match segment {
+                                PathSegment::MoveTo { to }
+                                | PathSegment::LineTo { to }
+                                | PathSegment::ArcTo { to, .. } => {
+                                    to.x += 13.0;
+                                    to.y -= 17.0;
+                                }
+                                _ => {}
+                            }
+                        }
+                        if let PathSegment::ArcTo {
+                            radius_x,
+                            x_axis_rotation_degrees,
+                            large_arc,
+                            ..
+                        } = &mut path.segments[1]
+                        {
+                            *radius_x = 9.0;
+                            *x_axis_rotation_degrees = 13.0;
+                            *large_arc = false;
+                        }
+                        if let PathSegment::LineTo { to } = &mut path.segments[2] {
+                            to.x += 2.0;
+                            to.y -= 3.0;
+                        }
+                    }
+                }
+            }
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                &json!({}),
+                &artifact.session,
+            )
+            .unwrap();
+            let native = crate::svg::SvgPipeline::resvg_safe()
+                .process_resvg_compatible(&svg, &artifact.session)
+                .unwrap();
+            for (output, width) in [(svg.as_str(), "1px"), (native.as_str(), "1")] {
+                let xml = roxmltree::Document::parse(output).unwrap();
+                for index in [0, 2] {
+                    let id = format!("journey.task.{index}.face.mouth");
+                    let path = document
+                        .public
+                        .resources
+                        .iter()
+                        .find_map(|resource| match resource {
+                            DrawingResource::Path(path) if path.id.as_str() == id => Some(path),
+                            _ => None,
+                        })
+                        .unwrap();
+                    let node = xml
+                        .descendants()
+                        .find(|node| node.attribute("data-merman-resource") == Some(id.as_str()))
+                        .unwrap();
+                    assert_eq!(node.attribute("class"), Some("mouth"));
+                    let translation = node
+                        .attribute("transform")
+                        .unwrap()
+                        .strip_prefix("translate(")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let (x, y) = translation.split_once(',').unwrap();
+                    assert_curve(
+                        path,
+                        node,
+                        Point::new(x.trim().parse().unwrap(), y.trim().parse().unwrap()),
+                    );
+                }
+                let neutral = xml
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-merman-resource") == Some("journey.task.1.face.mouth")
+                    })
+                    .unwrap();
+                assert!(neutral.has_tag_name("line"));
+                assert_eq!(neutral.attribute("class"), Some("mouth"));
+                assert_eq!(neutral.attribute("stroke-width"), Some(width));
+                assert_eq!(neutral.attribute("stroke"), Some("#666666"));
+            }
+        }
+        // A user-space gradient must not move with the optional local path basis.
+        let mut gradient_document = document.clone();
+        gradient_document
+            .public
+            .resources
+            .push(DrawingResource::LinearGradient(
+                merman_display_list::LinearGradientResource {
+                    id: "mouth-gradient".into(),
+                    start: Point::new(0.0, 0.0),
+                    end: Point::new(40.0, 0.0),
+                    transform: Transform::IDENTITY,
+                    spread: merman_display_list::GradientSpread::Pad,
+                    stops: vec![
+                        merman_display_list::GradientStop::new(
+                            0.0,
+                            merman_display_list::Color::rgba(255, 0, 0, 255),
+                        ),
+                        merman_display_list::GradientStop::new(
+                            1.0,
+                            merman_display_list::Color::rgba(0, 0, 255, 255),
+                        ),
+                    ],
+                },
+            ));
+        for command in &mut gradient_document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "journey.task.0.face.mouth"
+            {
+                style.fill = Some(merman_display_list::Paint::Resource {
+                    id: "mouth-gradient".into(),
+                });
+            }
+        }
+        let svg = crate::svg::render_document_svg(
+            &gradient_document,
+            &SvgRenderOptions::default(),
+            &drawing_list_svg_diagnostics(),
+            &json!({}),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let node = xml
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-resource") == Some("journey.task.0.face.mouth")
+            })
+            .unwrap();
+        assert!(node.attribute("transform").is_none());
+        assert!(node.attribute("fill").unwrap().starts_with("url(#"));
+        let path = document
+            .public
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "journey.task.0.face.mouth" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_curve(path, node, Point::new(0.0, 0.0));
+
+        let index = document
+            .public
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "journey.task.0.face.mouth")
+            })
+            .unwrap();
+        document
+            .public
+            .commands
+            .insert(index + 1, DrawingCommand::Restore);
+        document.public.commands.splice(
+            index..index,
+            [
+                DrawingCommand::Save,
+                DrawingCommand::ConcatTransform {
+                    transform: Transform {
+                        a: 2.0,
+                        d: 3.0,
+                        e: 11.0,
+                        f: 13.0,
+                        ..Transform::IDENTITY
+                    },
+                },
+            ],
+        );
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &drawing_list_svg_diagnostics(),
+            &json!({}),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let node = xml
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-resource") == Some("journey.task.0.face.mouth")
+            })
+            .unwrap();
+        assert_eq!(node.attribute("transform"), Some("matrix(2 0 0 3 11 13)"));
+        let path = document
+            .public
+            .resources
+            .iter()
+            .find_map(|resource| match resource {
+                DrawingResource::Path(path) if path.id.as_str() == "journey.task.0.face.mouth" => {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert_curve(path, node, Point::new(0.0, 0.0));
+    }
+
+    #[test]
     fn journey_primitive_styles_preserve_public_paint_and_compositing() {
         use merman_display_list::{
             BlendMode, Color, DrawingCommand, DrawingResource, GradientSpread, GradientStop,

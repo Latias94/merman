@@ -50,7 +50,9 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         }
         let task = path.as_str().starts_with("journey.task.") && path.as_str().ends_with(".line");
-        if !task && path.as_str() != "journey.activity.line" {
+        let mouth =
+            path.as_str().starts_with("journey.task.") && path.as_str().ends_with(".face.mouth");
+        if !task && !mouth && path.as_str() != "journey.activity.line" {
             return Ok(false);
         }
         if let Some(stroke) = &style.stroke {
@@ -59,7 +61,7 @@ impl DocumentSvgEncoder<'_> {
                 self.output,
                 " stroke-width=\"{}{}\"",
                 fmt(stroke.width),
-                if task { "px" } else { "" }
+                if task || mouth { "px" } else { "" }
             )?;
             if !stroke.dash_array.is_empty() {
                 self.output.push_str(" stroke-dasharray=\"")?;
@@ -74,6 +76,64 @@ impl DocumentSvgEncoder<'_> {
             }
         }
         self.write_journey_primitive_css(style)?;
+        Ok(true)
+    }
+
+    /// Rebase the public two-arc mouth without recovering a task score or source layout.
+    /// Non-default element transforms keep the ordinary absolute-path representation.
+    pub(super) fn emit_journey_curved_mouth(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Journey(_))
+            || !path_id.as_str().starts_with("journey.task.")
+            || !path_id.as_str().ends_with(".face.mouth")
+            || self.state.transform != Transform::IDENTITY
+            // Resource paint uses the element's user-space coordinate system. Rebasing just
+            // the path would move a gradient/pattern, so retain its absolute representation.
+            || matches!(style.fill, Some(Paint::Resource { .. }))
+            || style.stroke.as_ref().is_some_and(|stroke| matches!(stroke.paint, Paint::Resource { .. }))
+        {
+            return Ok(false);
+        }
+        let path = self.path_resource(path_id)?;
+        let [
+            PathSegment::MoveTo { to: start },
+            PathSegment::ArcTo { to: end, .. },
+            PathSegment::LineTo { .. },
+            PathSegment::ArcTo { .. },
+            PathSegment::Close,
+        ] = path.segments.as_slice()
+        else {
+            return Ok(false);
+        };
+        // This is a coordinate basis, not new geometry. Translating every public point by
+        // -origin and applying T(origin) preserves edited radii, flags, and endpoints too.
+        let origin = Point::new(start.x * 0.5 + end.x * 0.5, start.y * 0.5 + end.y * 0.5);
+        let local = offset_path_segments(&path.segments, -origin.x, -origin.y);
+        if !local.iter().all(|segment| match segment {
+            PathSegment::MoveTo { to }
+            | PathSegment::LineTo { to }
+            | PathSegment::ArcTo { to, .. } => to.x.is_finite() && to.y.is_finite(),
+            PathSegment::Close => true,
+            _ => false,
+        }) {
+            return Ok(false);
+        }
+        write!(
+            self.output,
+            "<path d=\"{}\" transform=\"translate({}, {})\"",
+            path_d(&local),
+            fmt(origin.x),
+            fmt(origin.y)
+        )?;
+        if let Some(class) = self.path_class(path_id) {
+            write!(self.output, " class=\"{}\"", escaped_attr(class.as_ref()))?;
+        }
+        self.write_journey_primitive_css(style)?;
+        write_resource_metadata(&mut self.output, self.debug, path_id.as_str())?;
+        self.output.push_str("/>")?;
         Ok(true)
     }
 

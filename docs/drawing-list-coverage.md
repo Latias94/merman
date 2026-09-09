@@ -1000,159 +1000,83 @@ their only reported differences are source span text versus the canonical positi
 Temporary Venn admission was removed after both invocations completed. The shell decision and
 its cross-consumer evidence remain required before admission.
 
-## September 9 Journey candidate at 61027ddf8
+## Journey candidate status — September 9
 
-The direct adapter now resolves `fo`, `old`, and tspan text placement separately, including
-literal markup, whitespace, fonts, colors, line positions, and names derived from final text.
-The bounded normal-text builder supports the source's expanding table-cell geometry without
-changing Venn's flex layout.
+Journey has a direct bounded DrawingList adapter and a canonical SVG candidate. Public SVG still
+uses the explicit legacy bridge. Full-family admission remains incomplete; focused tests and
+browser checks below do not substitute for that gate.
 
-A temporary canonical route selected all 26 Journey fixtures: 25 rendered canonically, with no
-skips; the title-font fixture containing `size: 2rem` fell back with the explicit non-finite face
-geometry reason. Both structure and parity-root passed **0/25**. Reports are
-`target/compare/journey_61027ddf8_candidate_structure.md` and
-`target/compare/journey_61027ddf8_candidate_parity_root.md`. The candidate adds root ARIA and semantic
-wrappers, omits source marker definitions, and does not yet preserve source text wrappers. These
-are migration failures, not accepted font residuals. Temporary admission was removed after both
-invocations exited; Journey remains a legacy bridge.
+### Public document and SVG projection
 
-The follow-up removes private root width/height: intrinsic SVG dimensions now derive from the
-public viewport, retaining the pinned source's 25px height addition and responsive/fixed sizing
-policy. Mutating the public viewport must update root dimensions; translating it must not resize
-the image. Ordinary headings no longer create redundant root ARIA; explicit accessibility
-metadata and independently edited public document names remain visible. Names are derived from
-final text, with placeholder decoding accounted through the existing bounded source resolver.
-These focused corrections do not constitute full-family admission.
+- `fo`, `old`, and tspan placement resolve literal markup, whitespace, fonts, colors, line origins,
+  and semantic names in the adapter. SVG does not wrap or measure those runs again.
+- Root dimensions derive from the public viewport, retaining the source's 25px intrinsic-height
+  addition. Explicit accessibility metadata and independently edited names remain visible.
+- Command order interleaves sections and tasks. The source section/task/expression groups and
+  actor-circle titles project public semantic scopes. Edited roles, links, descriptions, names,
+  and diagnostic visibility retain full semantic output.
+- The activity marker uses the source `(5,2)` reference in stroke-width units. Only an equivalent
+  public line/triangle pair can be folded into a marker. Geometry or compositing edits retain
+  separate commands. Circle recognition requires diameter endpoints, not just matching radii.
+- Marker and public clips share one root `defs`, with the marker first. Clip paths come from the
+  public resource table; no private label geometry is replayed.
+- `fo` labels have explicit public rectangular clips. Their XHTML identity shells consume those
+  clips and already-positioned text, using visible overflow so no second clipping rule applies.
+  The native pipeline promotes the marked SVG group with its clip and removes only the container
+  compensation. Edited/non-rectangular clips or graphics state keep the ordinary projection.
+- Legends retain `text > tspan`. The source container's fixed `x=40` is inert because the tspan
+  explicitly receives the public x coordinate; y, font, paint, language, and state remain public.
+- Task/activity lines, faces, eyes, actors, and mouth primitives use inline presentation derived
+  from public paint. Resource references and paint alpha remain separate from object opacity.
+  Opacity/blend share one CSS block, and each public transform applies once. The encoder never
+  reads the original theme or layout paint.
+- Neutral mouths project exact public line geometry. Two-arc mouths can use a local basis derived
+  from the first arc's public endpoints. Every point is translated by the inverse basis, preserving
+  edited radii, flags, and endpoints. Non-default transforms, resource paints, other shapes, or
+  non-finite rebasing retain the ordinary absolute path. Rebasing a gradient/pattern without also
+  transforming its user-space coordinates would change its appearance, so it is not admitted.
 
-## Journey source groups and marker follow-up
+### Focused verification
 
-The public command order now interleaves each section with its tasks, as in the pinned renderer.
-Ordinary root/legend/activity semantic scopes no longer introduce SVG wrappers, while section/task
-scopes retain the source groups. Names come from resolved public text; generated English scope
-prose is removed. Independently edited names, descriptions, links, roles, and diagnostic visibility
-still use the full semantic projection.
+The render tests cover independent viewport and semantic edits; marker/circle equivalence;
+shared definitions; source/readable/native text and clip mutation/removal; legend positions and
+styles; resource paint and translucent stroke with custom dash/cap/join, opacity, blend and
+transform; and mouth path equivalence through an independent SVG path parser. The mouth regression
+also changes arc flags, radius, and endpoints, then verifies generic output under a public transform
+and a user-space gradient. All 25 focused Journey render tests pass.
+The finalized native pipeline normalizes source `1px` widths to the equivalent numeric `1`.
 
-The activity triangle now respects the source marker reference `(5,2)` in stroke-width units:
-its tip extends one stroke width beyond the endpoint. Its paint and the filled mouth inherit the
-resolved text color, and the face stroke retains the source width of 2. SVG may fold an equivalent
-public line/triangle pair into a root marker; changed geometry or element opacity retains the
-separate commands. Neither raw labels nor private geometry are used to regenerate these shapes.
+### Browser evidence
 
-The candidate reports `journey_df95382ef_groups_markers_structure.md` and
-`journey_df95382ef_groups_markers_parity_root.md` under `target/compare/` include this working-tree
-follow-up. Both select 26 fixtures, render 25, and pass **0/25**, with the same explicit non-finite
-face bridge and no skips. Extra root `aria-labelledby` differences are gone; text wrappers,
-face subgroups, actor-circle titles, and source CSS/attribute representations still block admission.
-Temporary admission was removed after both processes exited. No comparison normalization or
-public canonical cohort changed.
+- `target/compare/journey-fo-overflow-probe.json` confirms pinned `foreignObject` overflow is hidden.
+  For a 150×50 box, long content expands the HTML table to about 613px wide or 1140px tall. Default
+  and explicit-hidden output match with no outside ink; visible overflow paints outside the box.
+  This is why clipping belongs in the public document.
+- `target/compare/journey-shell-ctm-probe.json` covers 3 fixtures, 16 shells and 18 text runs.
+  Ordinary/font-precedence cases have equal text/clip CTMs before and after native promotion.
+  The fractional long-label case differs by at most 0.007184px in CTM and 0.027736px in first-character
+  screen position, with matching text/clip displacement and unchanged styles. Its strict 0.001px
+  probe threshold fails; this recorded subpixel residual is not a claim of pixel identity.
+- `target/compare/journey-paint-browser-probe.json` covers 3 fixtures and 124 circles/lines.
+  The primitive-style migration preserves identities, titles, effective paint, stroke, dash,
+  opacity/blend, CTM and screen CTM exactly. Face, eye, task-line and actor colors match pinned SVG.
+  Source lines inherit a fill while canonical lines have `none`; a line does not paint its fill.
 
-Journey expression paths and task actor circles now have public semantic scopes. The source face
-subgroup is projected from the expression scope, and each actor circle owns its public title and
-optional description. Edited links, roles, or non-circle geometry retain the generic semantic
-projection. Parent label-name matching skips only fixed non-text child scopes, so it cannot hide
-nested text or introduce recursive document scans. Circle recognition also requires diameter
-endpoints: two shorter lens arcs must not be silently converted into a circle.
+- `target/compare/journey-mouth-browser-probe.json` covers 3 fixtures and 22 mouths, including all
+  three expressions. New primitive types, lengths, and 33 screen-space samples per path match
+  pinned SVG exactly; all pre/post paint and compositing properties are unchanged. Two old/new
+  arc comparisons exceed the strict 0.001 probe threshold (maximum screen delta 0.008976px and
+  length delta 0.024235), while the new paths match pinned values. This is recorded browser arc
+  arithmetic convergence, not a claim of zero pre/post numeric difference. Solid-paint sampling
+  does not replace the resource-paint regression that keeps gradients in absolute coordinates.
 
-Focused tests cover these DOM shapes and independent semantic edits. The complete Journey reports
-above predate this change and remain failure evidence, not current admission results.
+### Full-family gate and remaining work
 
-A Chromium probe of the pinned Journey foreignObjects confirms computed `overflow:hidden`.
-For a 150×50 box, table content expanded to about 613px wide for a long word and 1140px tall for
-many lines; default/explicit-hidden output had identical pixels and no text ink outside the box.
-Explicit-visible variants painted outside it. Evidence is
-`target/compare/journey-fo-overflow-probe.json`, with the temporary replay script at
-`target/journey-fo-overflow-probe.cjs`.
-
-The `fo` adapter therefore emits an explicit rectangular label clip through the bounded builder,
-retaining all text and semantic names. Backgrounds, faces, and actor circles are outside that clip;
-`old` and tspan text remain unclipped.
-
-The HTML identity shell now consumes the public `Save / ClipPath / DrawText* / Restore` sequence.
-Its dimensions come from that rectangular clip; the XHTML table and nested SVG use visible
-overflow, leaving the public clip as the only clipping authority. Positioned text is serialized
-once inside the existing native-text marker. Native conversion promotes that group, retaining its
-clip reference and removing only the outer container-coordinate compensation. No label source,
-private text box, browser rewrapping, or second fallback text is used. Non-rectangular or removed
-clips, changed graphics state, and interleaved control commands retain the ordinary projection.
-
-The focused pipeline regression changes text, font, paint, position, and clip geometry, then deletes
-the clip. It checks source SVG, readable SVG, and finalized resvg-safe SVG for the same text and
-clipping, including retention of the independently named semantic scope. Journey admission is
-unchanged pending the complete source comparison.
-
-The shell candidate was compared against all 26 pinned Journey fixtures. Both
-`target/compare/journey_fad0bdaa9_html_shell_structure.md` and
-`target/compare/journey_fad0bdaa9_html_shell_parity_root.md` record 25 canonical outputs,
-no skips, and **0/25 passes**; the remaining fixture retains the known non-finite face rejection.
-Root clip definitions, source CSS/attribute representation, positioned text children, and the
-removed duplicate switch fallback remain visible differences. Temporary runtime and fixture
-admission were removed after both commands exited. These are failure reports, not evidence for
-admitting Journey or changing comparator normalization.
-
-The Chromium shell-promotion probe covers three candidate fixtures, 16 HTML shells, and 18 text
-runs (`target/compare/journey-shell-ctm-probe.json`). Ordinary and font-precedence fixtures have
-identical text/clip CTMs before and after promotion. The fractional-coordinate long-label fixture
-has a maximum text/clip CTM delta of 0.007184px and a first-character screen delta of 0.027736px;
-text, font, paint, opacity, and clip references are unchanged. The matching text/clip displacement
-is consistent with HTML subpixel layout quantization, not proven pixel identity. The probe's
-0.001px threshold fails and has not been relaxed; no pixel screenshot comparison was performed.
-This bounded browser residual is recorded separately from the still-failing structural admission.
-
-## Journey shared definitions and legend text follow-up
-
-Journey's source marker and public clip definitions now share one root `defs`, with the marker
-first. This also keeps marker-only `old` text-placement output valid. Clip resources and their
-references are unchanged; no definition is inferred from private label geometry.
-
-Legend text retains the source `text > tspan` structure from `svgDrawCommon.drawText`. The source
-container's fixed `x=40` is inert: the only tspan explicitly receives the public `TextRun.origin.x`,
-while the parent receives the public y, font, paint, language, and graphics state. The serializer
-does not read `boxTextMargin` or measure text again. Edited or multi-line runs retain their public
-positions; multi-line runs use the ordinary host-text projection.
-
-The focused regression exercises default/old placement, a non-default source text margin, and
-independent public text/position/font/alpha/language edits through source and finalized native SVG.
-It checks the public semantic name survives the visible-text edit. These assertions complement,
-but do not replace, the complete candidate comparison.
-
-Fresh candidate reports are `target/compare/journey_051f6243a_defs_legend_structure.md` and
-`target/compare/journey_051f6243a_defs_legend_parity_root.md`: 26 selected, 25 canonical outputs,
-no skips, **0/25 passes** in both modes, with the same non-finite face rejection. Raw SVG has one
-root defs whose first child is the marker; the comparator's normalized defs order still exposes
-the added public clips. Legend tspan structure is restored, while explicit style attributes,
-HTML/native label structure, and source attribute spellings continue to differ. Runtime/fixture
-admission was withdrawn after the comparison processes exited; the public cohort is unchanged.
-
-## Journey primitive paint projection
-
-Task/activity lines, face and eye circles, and actor circles now retain their source primitive
-attributes while deriving a complete inline presentation from the current public `PathStyle`.
-Default cap/join/miter values move out of the source attribute set without becoming ambient
-inherited styles. Face `overflow=visible`, eye widths, task-line `px` widths, and spaced dash
-attributes retain the source shape. No original theme colors or layout paint are captured in the
-sidecar or reread during SVG emission.
-
-Inline paint preserves solid alpha and resource references independently of object opacity.
-The same CSS block owns opacity and blend, with the public matrix emitted once as a transform;
-there is no second state/style emission. Non-circular edited paths keep the ordinary path
-projection. Backgrounds and raw color/font spellings remain separate migration work.
-
-The focused regression checks theme-resolved face/line paint against conflicting serializer
-configuration, then edits a face to use a public gradient, translucent stroke, custom cap/join,
-miter, dash, offset, opacity, blend, and translation. Both source and finalized native SVG retain
-those values and the referenced gradient resource. All 24 focused Journey tests pass.
-
-The full candidate reports are `target/compare/journey_4e21f27cb_primitive_styles_structure.md`
-and `target/compare/journey_4e21f27cb_primitive_styles_parity_root.md`. Both select 26 fixtures,
-render 25 canonically, skip none, and pass **0/25**, retaining the known non-finite face rejection.
-The default stroke-attribute and face-overflow differences are reduced; background attributes,
-mouth coordinate representation, text shells, and color/font spellings still block admission.
-The temporary runtime/fixture admission has been removed. No comparator policy changed.
-
-Chromium before/after evidence (`target/compare/journey-paint-browser-probe.json`) covers three
-fixtures and 124 circles/lines. Primitive identities, titles, effective paint/stroke/dash,
-opacity/blend, CTM, and screen CTM have zero differences. Face, eye, task-line, and actor colors
-also match the pinned source; task lines remain textColor (#333), not the overridden #666 source
-attribute. Canonical lines have `fill:none` while source lines inherit #333, which does not paint
-a line. The source has one/three additional neutral-mouth line elements in two fixtures because
-the candidate still emits those paths; that pre-existing structural difference remains open.
+The latest full reports are `target/compare/journey_281a1951f_mouth_structure.md` and
+`target/compare/journey_281a1951f_mouth_parity_root.md`: 26 selected, 25 canonical outputs,
+no skips, **0/25 passes** in both modes. The `size: 2rem` title-font fixture retains the explicit
+non-finite face rejection. The reports still expose background attributes, added public clips,
+text shells, and color/font spellings. They are failure evidence, not admission.
+Temporary runtime and fixture admission were removed after the processes exited. No comparator
+normalization was relaxed. The reports predate the resource-paint guard added in the same change;
+their pure-solid mouth fixtures are unaffected by that guard.
