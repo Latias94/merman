@@ -2895,7 +2895,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        self.write_fill_stroke_style(style)?;
+        if !self.write_gantt_task_style(path_id, style)? {
+            self.write_fill_stroke_style(style)?;
+        }
         self.write_state_attrs()?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
@@ -2944,7 +2946,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius_x);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
-        self.write_fill_stroke_style(style)?;
+        if !self.write_gantt_task_style(path_id, style)? {
+            self.write_fill_stroke_style(style)?;
+        }
         self.write_state_attrs()?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;

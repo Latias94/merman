@@ -3,6 +3,68 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    /// Retain source CSS-shaped task paint without consulting the source stylesheet.
+    /// Resource paints and non-default strokes keep the general attribute projection.
+    pub(super) fn write_gantt_task_style(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            || !path_id.as_str().starts_with("gantt.task.")
+            || !path_id.as_str().ends_with(".bar")
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let fill = match style.fill {
+            Some(Paint::Solid { color }) => Some(color),
+            None => None,
+            _ => return Ok(false),
+        };
+        let stroke = match &style.stroke {
+            Some(stroke) => {
+                let Paint::Solid { color } = stroke.paint else {
+                    return Ok(false);
+                };
+                if !stroke.dash_array.is_empty()
+                    || stroke.dash_offset != 0.0
+                    || stroke.line_cap != merman_display_list::LineCap::Butt
+                    || stroke.line_join != merman_display_list::LineJoin::Miter
+                    || stroke.miter_limit != 4.0
+                {
+                    return Ok(false);
+                }
+                Some((color, stroke.width))
+            }
+            None => None,
+        };
+        self.output.push_str(" style=\"")?;
+        if let Some(color) = fill {
+            write!(
+                self.output,
+                "fill:{};fill-opacity:{};",
+                color_css(color),
+                fmt(f64::from(color.alpha) / 255.0)
+            )?;
+        } else {
+            self.output.push_str("fill:none;")?;
+        }
+        if let Some((color, width)) = stroke {
+            write!(
+                self.output,
+                "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;",
+                color_css(color),
+                fmt(f64::from(color.alpha) / 255.0),
+                fmt(width)
+            )?;
+        } else {
+            self.output.push_str("stroke:none;")?;
+        }
+        self.output.push('"')?;
+        Ok(true)
+    }
+
     pub(super) fn emit_gantt_task_text(
         &mut self,
         run: &TextRun,

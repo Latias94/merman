@@ -2537,7 +2537,9 @@ mod tests {
                 .unwrap();
             assert!(rect.has_tag_name("rect"));
             assert_eq!(rect.attribute("rx"), Some("3"));
-            assert_eq!(rect.attribute("stroke-width"), Some("2"));
+            assert!(rect.attribute("stroke-width").is_none());
+            assert!(rect.attribute("fill").is_none());
+            assert!(rect.attribute("style").unwrap().contains("stroke-width:2;"));
             assert_eq!(
                 rect.attribute("data-merman-semantic-id"),
                 Some("gantt.task.0")
@@ -2561,6 +2563,44 @@ mod tests {
                 .find(|node| node.attribute("data-merman-resource") == Some("gantt.task.1.bar"))
                 .unwrap();
             assert_eq!(next.attribute("transform"), None);
+            let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[index]
+            else {
+                unreachable!()
+            };
+            style.fill = Some(merman_display_list::Paint::solid(
+                merman_display_list::Color::rgba(18, 52, 86, 128),
+            ));
+            style.stroke.as_mut().unwrap().width = 5.0;
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            let css = rect.attribute("style").unwrap();
+            assert!(css.contains("fill:#123456;"));
+            assert!(css.contains("stroke-width:5;"));
+            let alpha = css
+                .split(';')
+                .find_map(|entry| entry.strip_prefix("fill-opacity:"))
+                .unwrap()
+                .parse::<f64>()
+                .unwrap();
+            assert!((alpha - 128.0 / 255.0).abs() < 1e-6);
+            // Non-default stroke semantics must survive via the general serializer.
+            let DrawingCommand::DrawPath { style, .. } = &mut document.public.commands[index]
+            else {
+                unreachable!()
+            };
+            style.stroke.as_mut().unwrap().dash_array = vec![3.0, 2.0];
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let rect = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-resource") == Some(path_id))
+                .unwrap();
+            assert_eq!(rect.attribute("stroke-dasharray"), Some("3,2"));
+            assert_eq!(rect.attribute("fill"), Some("#123456"));
             let DrawingCommand::ConcatTransform { transform } =
                 &mut document.public.commands[index - 1]
             else {

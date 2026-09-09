@@ -359,6 +359,17 @@ and native SVG consumers. Unsupported compact cases retain the generic text seri
 focused Gantt tests pass, including literal text and public position/style edits; this scoped change
 does not refresh the full-family structural report or admit Gantt as canonical.
 
+Task rectangles likewise project resolved solid paint into inline CSS, keeping color alpha,
+stroke width and public transforms independent. Resource paints, non-default strokes and blend
+modes retain the general serializer. The 39 focused Gantt tests pass, including public alpha/width
+edits and dashed-stroke fallback. A strict single-fixture canonical probe is recorded in
+`target/compare/gantt_b82482b07_task_paint_candidate_structure.md`: task paint attributes converge,
+but the fixture still fails on transform-origin, semantic metadata and other element attributes.
+Temporary admission was removed; this is neither full-family nor browser-visible parity evidence.
+The pinned source emits inert transform-origin values for non-milestone tasks based on the full
+date interval and task row, not necessarily the painted rectangle's center. Milestone transforms
+are already owned by public matrices; deriving every origin from rectangle bounds would be wrong.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
