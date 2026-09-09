@@ -140,7 +140,8 @@ impl KanbanTypographyPlan {
 /// Kanban task geometry and evidence resolved once for concrete item occurrences.
 #[derive(Debug)]
 pub(crate) struct KanbanTaskTheme {
-    items: Box<[KanbanTaskResolvedItem]>,
+    item_count: usize,
+    items: Option<Box<[KanbanTaskResolvedItem]>>,
     typography: KanbanTypographyPlan,
     evidence: FamilyThemeEvidence,
     pending_radius_key: Option<FamilyThemeMechanismKey>,
@@ -339,16 +340,13 @@ impl KanbanTaskOccurrence {
 
 impl KanbanTaskTheme {
     pub(crate) fn resolve_with_typography(
-        theme: Option<&ResolvedDiagramTheme>,
+        theme: &ResolvedDiagramTheme,
         occurrences: Vec<KanbanTaskOccurrence>,
         effective_config: &MermaidConfig,
         typography: KanbanTypographyPlan,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let item_count = occurrences.len();
-        let Some(theme) = theme else {
-            return Ok(Self::baseline_occurrences(occurrences, typography));
-        };
 
         let palette_disposition = theme.ordinal_palette_disposition(ThemeTarget::Task);
         let source_owned_card_fill = merman_core::__private::config_path_overrides_typed_default(
@@ -653,7 +651,8 @@ impl KanbanTaskTheme {
         }
 
         Ok(Self {
-            items: items.into_boxed_slice(),
+            item_count,
+            items: Some(items.into_boxed_slice()),
             typography,
             evidence,
             pending_radius_key,
@@ -665,22 +664,10 @@ impl KanbanTaskTheme {
         })
     }
 
-    pub(super) fn baseline_occurrences(
-        occurrences: Vec<KanbanTaskOccurrence>,
-        typography: KanbanTypographyPlan,
-    ) -> Self {
+    pub(super) fn baseline(item_count: usize, typography: KanbanTypographyPlan) -> Self {
         Self {
-            items: occurrences
-                .into_iter()
-                .map(|occurrence| KanbanTaskResolvedItem {
-                    occurrence,
-                    radius_px: MERMAID_TASK_RADIUS_PX,
-                    typed_fill: None,
-                    typed_stroke: None,
-                    palette_fill: None,
-                    label_foreground: None,
-                })
-                .collect(),
+            item_count,
+            items: None,
             typography,
             evidence: FamilyThemeEvidence::default(),
             pending_radius_key: None,
@@ -692,8 +679,15 @@ impl KanbanTaskTheme {
         }
     }
 
+    pub(crate) const fn item_count(&self) -> usize {
+        self.item_count
+    }
+
     pub(crate) fn radius_px(&self, item_index: usize) -> Option<f64> {
-        self.items.get(item_index).map(|item| item.radius_px)
+        match self.items.as_deref() {
+            Some(items) => items.get(item_index).map(|item| item.radius_px),
+            None => (item_index < self.item_count).then_some(MERMAID_TASK_RADIUS_PX),
+        }
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -713,15 +707,19 @@ impl KanbanTaskTheme {
     pub(crate) fn terminal_decisions(
         &self,
         config: &MermaidConfig,
-    ) -> crate::Result<Vec<KanbanTaskTerminalDecision>> {
+    ) -> crate::Result<Option<Vec<KanbanTaskTerminalDecision>>> {
+        let Some(items) = self.items.as_deref() else {
+            return Ok(None);
+        };
         let dark_mode = config
             .get_bool("darkMode")
             .or_else(|| config.get_bool("themeVariables.darkMode"))
             .unwrap_or(false);
-        self.items
+        items
             .iter()
             .map(|item| Self::terminal_decision(item, dark_mode))
-            .collect()
+            .collect::<crate::Result<Vec<_>>>()
+            .map(Some)
     }
 
     fn terminal_decision(
@@ -762,9 +760,10 @@ impl KanbanTaskTheme {
     pub(crate) fn begin_terminal_receipt(
         &self,
         decisions: &[KanbanTaskTerminalDecision],
-        typography_facts: KanbanTypographyFacts,
+        typography_facts: impl FnOnce() -> KanbanTypographyFacts,
         typography_layout: &super::KanbanTypographyLayoutReceipt,
     ) -> Option<KanbanTaskThemeReceipt> {
+        let items = self.items.as_deref()?;
         (self.pending_radius_key.is_some()
             || !self.pending_fill_keys.is_empty()
             || !self.pending_stroke_keys.is_empty()
@@ -773,10 +772,10 @@ impl KanbanTaskTheme {
             || self.typography.typography_requested())
         .then(|| {
             KanbanTaskThemeReceipt::from_typography_plan(
-                &self.items,
+                items,
                 decisions,
                 &self.typography,
-                typography_facts,
+                typography_facts(),
                 typography_layout,
             )
         })
@@ -937,7 +936,7 @@ impl KanbanTaskTheme {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct KanbanTaskTerminalDecision {
     fill_css: Option<String>,
     fill_capability: Option<ThemeCapability>,
@@ -1469,6 +1468,40 @@ mod tests {
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use merman_core::MermaidConfig;
 
+    #[test]
+    fn baseline_keeps_only_item_count_and_skips_terminal_evidence() {
+        let config = MermaidConfig::default();
+        for item_count in [0, 1, 4096] {
+            let theme =
+                KanbanTaskTheme::baseline(item_count, KanbanTypographyPlan::resolve(None, &config));
+            assert_eq!(theme.item_count(), item_count);
+            assert!(theme.items.is_none());
+            assert!(theme.terminal_decisions(&config).unwrap().is_none());
+            assert_eq!(theme.radius_px(item_count), None);
+            assert_eq!(theme.radius_px(usize::MAX), None);
+            if item_count > 0 {
+                assert_eq!(theme.radius_px(0), Some(MERMAID_TASK_RADIUS_PX));
+                assert_eq!(
+                    theme.radius_px(item_count - 1),
+                    Some(MERMAID_TASK_RADIUS_PX)
+                );
+            }
+            assert!(
+                theme
+                    .begin_terminal_receipt(
+                        &[],
+                        || panic!("baseline must not collect terminal typography facts"),
+                        &typography_layout(
+                            theme.font_family_css(),
+                            theme.typography.font_size_px(),
+                            item_count * 3,
+                        ),
+                    )
+                    .is_none()
+            );
+        }
+    }
+
     fn label_decision() -> KanbanTaskTerminalDecision {
         KanbanTaskTerminalDecision {
             fill_css: None,
@@ -1939,7 +1972,7 @@ mod tests {
 
         let config = MermaidConfig::default();
         let task_theme = KanbanTaskTheme::resolve_with_typography(
-            Some(&theme),
+            &theme,
             vec![KanbanTaskOccurrence::new("task", [])],
             &config,
             KanbanTypographyPlan::resolve(Some(&theme), &config),

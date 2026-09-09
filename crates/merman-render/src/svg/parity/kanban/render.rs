@@ -366,7 +366,16 @@ pub(crate) fn render_kanban_diagram_svg(
     let task_terminal_decisions = task_theme.terminal_decisions(effective_config)?;
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
-    debug_assert_eq!(layout.items.len(), task_terminal_decisions.len());
+    if layout.items.len() != task_theme.item_count()
+        || task_terminal_decisions
+            .as_ref()
+            .is_some_and(|decisions| decisions.len() != layout.items.len())
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Kanban task theme item count did not match the layout".to_string(),
+        });
+    }
+    let baseline_decision = crate::kanban::KanbanTaskTerminalDecision::default();
     let security_level_loose = effective_config.get_str("securityLevel") == Some("loose");
     let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id_or("merman");
@@ -402,10 +411,9 @@ pub(crate) fn render_kanban_diagram_svg(
             )?;
     options.checkpoint_emit()?;
 
-    let typography_facts = kanban_typography_facts(prepared_sections, prepared_items);
     let mut task_theme_receipt = task_theme.begin_terminal_receipt(
-        &task_terminal_decisions,
-        typography_facts,
+        task_terminal_decisions.as_deref().unwrap_or_default(),
+        || kanban_typography_facts(prepared_sections, prepared_items),
         prepared.typography_layout(),
     );
     out.push_str("<style>");
@@ -541,7 +549,10 @@ pub(crate) fn render_kanban_diagram_svg(
             x = fmt(n.center_x),
             y = fmt(n.center_y),
         );
-        let terminal_decision = &task_terminal_decisions[item_index];
+        let terminal_decision = match task_terminal_decisions.as_ref() {
+            Some(decisions) => &decisions[item_index],
+            None => &baseline_decision,
+        };
         let task_rect_emission = write_kanban_task_rect(
             &mut out,
             n,
@@ -999,6 +1010,58 @@ mod tests {
             ),
             "expected kanban label styling: {css}"
         );
+    }
+
+    #[test]
+    fn unthemed_writer_preserves_configured_css_and_baseline_geometry() {
+        let mut layout = ticket_layout("KAN-1");
+        layout.items[0].priority = Some("High".to_string());
+        let config = serde_json::json!({
+            "fontFamily": "RootFallback",
+            "themeVariables": {
+                "fontFamily": "Configured, monospace",
+                "fontSize": "22px",
+                "background": "#123456",
+                "nodeBorder": "#654321",
+                "textColor": "#abcdef"
+            }
+        });
+        let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
+
+        let document = roxmltree::Document::parse(&svg).expect("valid Kanban SVG");
+        let stylesheet = document
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("root stylesheet");
+        assert!(stylesheet.contains("#merman{font-family:Configured,monospace;font-size:22px;"));
+        assert!(stylesheet.contains(
+            "#merman .node rect,#merman .node circle,#merman .node ellipse,#merman .node polygon,#merman .node path{fill:#123456;stroke:#654321;stroke-width:1px;}"
+        ));
+        assert!(
+            stylesheet
+                .contains("#merman .cluster-label,#merman .label{color:#abcdef;fill:#abcdef;}")
+        );
+        let task = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-task"))
+            .expect("task node");
+        let rect = task
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("task shell");
+        assert_eq!(rect.attribute("style"), Some(""));
+        assert_eq!(rect.attribute("rx"), Some("5"));
+        assert_eq!(rect.attribute("ry"), Some("5"));
+        let priority = task
+            .children()
+            .find(|node| node.has_tag_name("line"))
+            .expect("task priority marker");
+        assert_eq!(priority.attribute("stroke-width"), Some("4"));
+        assert_eq!(priority.attribute("stroke"), Some("orange"));
+        assert_eq!(priority.attribute("y1"), Some("-26"));
+        assert_eq!(priority.attribute("y2"), Some("26"));
     }
 
     #[test]

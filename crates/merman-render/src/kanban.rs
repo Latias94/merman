@@ -416,7 +416,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         .sum();
     let item_width = (section_width - 1.5 * padding).max(1.0);
     let item_inner_max_width = (item_width - padding).max(0.0);
-    let mut task_occurrences = Vec::with_capacity(item_capacity);
+    let mut task_occurrences = Vec::with_capacity(if theme.is_some() { item_capacity } else { 0 });
     let mut prepared_task_labels = Vec::with_capacity(item_capacity);
     for (_, items) in &section_inputs {
         for node in model.nodes[items.start..items.end]
@@ -442,59 +442,65 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 &legend_style,
                 item_inner_max_width,
             );
-            let visible_labels = [
-                prepared_title
-                    .visible_style_facts
-                    .has_visible_runs()
+            if theme.is_some() {
+                let visible_labels = [
+                    prepared_title
+                        .visible_style_facts
+                        .has_visible_runs()
+                        .then_some(KanbanTaskLabelRole::Title),
+                    prepared_ticket
+                        .visible_style_facts
+                        .has_visible_runs()
+                        .then_some(KanbanTaskLabelRole::Ticket),
+                    prepared_assigned
+                        .visible_style_facts
+                        .has_visible_runs()
+                        .then_some(KanbanTaskLabelRole::Assigned),
+                ]
+                .into_iter()
+                .flatten();
+                let inheriting_labels = [
+                    (prepared_title.visible_style_facts.parse_valid()
+                        && prepared_title
+                            .visible_style_facts
+                            .inherited_color_run_count()
+                            > 0)
                     .then_some(KanbanTaskLabelRole::Title),
-                prepared_ticket
-                    .visible_style_facts
-                    .has_visible_runs()
-                    .then_some(KanbanTaskLabelRole::Ticket),
-                prepared_assigned
-                    .visible_style_facts
-                    .has_visible_runs()
-                    .then_some(KanbanTaskLabelRole::Assigned),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-            let inheriting_labels = [
-                (prepared_title.visible_style_facts.parse_valid()
-                    && prepared_title
+                    (prepared_ticket
                         .visible_style_facts
                         .inherited_color_run_count()
                         > 0)
-                .then_some(KanbanTaskLabelRole::Title),
-                (prepared_ticket
-                    .visible_style_facts
-                    .inherited_color_run_count()
-                    > 0)
-                .then_some(KanbanTaskLabelRole::Ticket),
-                (prepared_assigned
-                    .visible_style_facts
-                    .inherited_color_run_count()
-                    > 0)
-                .then_some(KanbanTaskLabelRole::Assigned),
-            ]
-            .into_iter()
-            .flatten();
-            task_occurrences.push(
-                KanbanTaskOccurrence::new(node.id.clone(), visible_labels)
-                    .with_inheriting_labels(inheriting_labels),
-            );
+                    .then_some(KanbanTaskLabelRole::Ticket),
+                    (prepared_assigned
+                        .visible_style_facts
+                        .inherited_color_run_count()
+                        > 0)
+                    .then_some(KanbanTaskLabelRole::Assigned),
+                ]
+                .into_iter()
+                .flatten();
+                task_occurrences.push(
+                    KanbanTaskOccurrence::new(node.id.clone(), visible_labels)
+                        .with_inheriting_labels(inheriting_labels),
+                );
+            }
             prepared_task_labels.push((prepared_title, prepared_ticket, prepared_assigned));
         }
     }
-    debug_assert_eq!(task_occurrences.len(), item_capacity);
+    if theme.is_some() {
+        debug_assert_eq!(task_occurrences.len(), item_capacity);
+    }
     debug_assert_eq!(prepared_task_labels.len(), item_capacity);
-    let task_theme = KanbanTaskTheme::resolve_with_typography(
-        theme,
-        task_occurrences,
-        effective_config,
-        typography,
-        work_meter,
-    )?;
+    let task_theme = match theme {
+        Some(theme) => KanbanTaskTheme::resolve_with_typography(
+            theme,
+            task_occurrences,
+            effective_config,
+            typography,
+            work_meter,
+        )?,
+        None => KanbanTaskTheme::baseline(item_capacity, typography),
+    };
     let mut max_label_height = KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX;
     let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_inputs.len());
     let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
@@ -742,12 +748,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         sections,
         items,
         typography_layout,
-        task_theme: KanbanTaskTheme::baseline_occurrences(
-            (0..layout.items.len())
-                .map(|index| KanbanTaskOccurrence::new(format!("item-{index}"), []))
-                .collect(),
-            typography,
-        ),
+        task_theme: KanbanTaskTheme::baseline(layout.items.len(), typography),
     }
 }
 
@@ -808,6 +809,71 @@ mod tests {
         assert_eq!(super::KANBAN_SECTION_PADDING_PX, 10.0);
         assert_eq!(super::KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, 24.0);
         assert_eq!(super::KANBAN_ITEM_LABEL_PADDING_Y_PX, 10.0);
+    }
+
+    #[test]
+    fn unthemed_preparation_preserves_visible_item_order_and_configured_typography() {
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                item("orphan", "Before any section", "todo"),
+                section("todo", "Todo"),
+                KanbanRenderNode::new("detached", "No parent"),
+                item("first", "First task", "todo"),
+                section("done", "Done"),
+                item("second", "Second task", "done"),
+            ],
+        };
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "fontFamily": "RootFallback",
+            "themeVariables": {
+                "fontFamily": "Configured, monospace",
+                "fontSize": "22px"
+            }
+        }));
+        let prepared = prepare_kanban_diagram_typed_with_work_meter(
+            &model,
+            &config,
+            None,
+            &CountingTextMeasurer::default(),
+            &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+        )
+        .unwrap();
+
+        let ids: Vec<_> = prepared
+            .layout
+            .items
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect();
+        assert_eq!(ids, ["first", "second"]);
+        assert_eq!(prepared.task_theme().item_count(), 2);
+        assert_eq!(prepared.items.len(), 2);
+        assert!(
+            prepared
+                .layout
+                .items
+                .iter()
+                .all(|item| item.rx == 5.0 && item.ry == 5.0)
+        );
+        assert_eq!(prepared.task_theme().radius_px(2), None);
+        assert!(
+            prepared
+                .task_theme()
+                .terminal_decisions(&config)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            prepared.typography_layout().font_family_css(),
+            "Configured,monospace"
+        );
+        assert_eq!(prepared.typography_layout().font_size_px(), 22.0);
+        assert!(
+            prepared
+                .task_theme()
+                .resolved_typography_for_css()
+                .is_none()
+        );
     }
 
     #[test]
