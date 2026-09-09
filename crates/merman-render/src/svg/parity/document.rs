@@ -372,9 +372,21 @@ impl<'a> DocumentSvgEncoder<'a> {
             ),
             SvgStructureBody::Gantt(body) => (
                 self.document_semantic().and_then(|semantic| {
-                    body.expose_accessibility_title
-                        .then(|| semantic.title.clone())
-                        .flatten()
+                    let visible_title = self
+                        .semantics
+                        .get("gantt.title")
+                        .and_then(|title| title.title.as_deref())
+                        .filter(|title| !title.is_empty())
+                        .unwrap_or(body.diagram_type.as_str());
+                    // The source omits a redundant root title, but an independent public name
+                    // cannot be suppressed merely because the original input lacked accTitle.
+                    (body.expose_accessibility_title
+                        || semantic
+                            .title
+                            .as_deref()
+                            .is_some_and(|title| title != visible_title))
+                    .then(|| semantic.title.clone())
+                    .flatten()
                 }),
                 self.document_semantic()
                     .and_then(|semantic| semantic.description.clone()),
@@ -3330,6 +3342,7 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         self.output.push_str("<text")?;
         self.write_gantt_text_space_attr(run, semantic_id.as_deref())?;
+        self.write_gantt_title_name(run)?;
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id)?;
             #[cfg(feature = "layout-cytoscape")]

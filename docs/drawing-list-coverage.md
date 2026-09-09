@@ -380,6 +380,14 @@ canonical probe before the empty-title repair: title and marker paint attributes
 transform-origin, semantic metadata and section whitespace attributes still block the fixture.
 The public Gantt route remains a legacy bridge; no structural normalization was relaxed.
 
+Collection projection now retains public navigation, descriptions, roles and independent names:
+when source-shaped wrappers cannot express those fields, the existing semantic serializer handles
+the scope. Axes and ticks retain their public accessible names, and a root name independent of
+the public title is exposed even when the original source lacked `accTitle`. This intentionally
+adds observable accessibility attributes rather than dropping semantics to reduce a DOM diff.
+Focused regressions exercise ten collection scopes and name-only edits separately; the earlier
+strict comparison predates these semantic corrections and is not current admission evidence.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

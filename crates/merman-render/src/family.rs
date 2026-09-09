@@ -2986,6 +2986,115 @@ mod tests {
     }
 
     #[test]
+    fn gantt_collection_projection_preserves_public_navigation_and_metadata() {
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "securityLevel": "loose", "gantt": { "topAxis": true }
+            })))
+            .parse_diagram_for_render_model_sync(
+                "gantt\ntitle Schedule\ndateFormat YYYY-MM-DD\nexcludes weekends\nsection Delivery\nTask :a, 2026-01-01, 3d\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let baseline = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        for id in [
+            "gantt.document",
+            "gantt.title",
+            "gantt.excludes",
+            "gantt.rows",
+            "gantt.tasks",
+            "gantt.sections",
+            "gantt.axis.bottom",
+            "gantt.axis.top",
+            "gantt.axis.bottom.tick.0",
+            "gantt.today",
+        ] {
+            let mut document = baseline.clone();
+            let semantic = document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap();
+            semantic.title = Some("Public <name>".to_owned());
+            semantic.description = Some("Public & description".to_owned());
+            semantic.link = Some("https://example.com/schedule?a=1&b=2".to_owned());
+            let rendered = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&rendered).unwrap();
+            let group = xml
+                .descendants()
+                .find(|node| node.attribute("data-merman-semantic-id") == Some(id))
+                .unwrap_or_else(|| panic!("missing public scope {id}"));
+            assert!(
+                group
+                    .ancestors()
+                    .any(|node| node.attribute("href")
+                        == Some("https://example.com/schedule?a=1&b=2")),
+                "missing link for {id}"
+            );
+            assert!(
+                group
+                    .children()
+                    .any(|node| node.has_tag_name("title") && node.text() == Some("Public <name>")),
+                "missing title for {id}"
+            );
+            assert!(
+                group
+                    .children()
+                    .any(|node| node.has_tag_name("desc")
+                        && node.text() == Some("Public & description")),
+                "missing description for {id}"
+            );
+        }
+        for id in [
+            "gantt.document",
+            "gantt.title",
+            "gantt.axis.bottom",
+            "gantt.axis.top",
+            "gantt.axis.bottom.tick.0",
+        ] {
+            let mut document = baseline.clone();
+            document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|entry| entry.id == id)
+                .unwrap()
+                .title = Some("Distinct accessible name".to_owned());
+            let rendered = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&rendered).unwrap();
+            assert!(
+                xml.descendants().any(|node| node.attribute("aria-label")
+                    == Some("Distinct accessible name")
+                    || node.has_tag_name("title")
+                        && node.text() == Some("Distinct accessible name")),
+                "missing independent name for {id}"
+            );
+        }
+    }
+
+    #[test]
     fn gantt_candidate_root_projects_public_collections_and_authored_accessibility() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 

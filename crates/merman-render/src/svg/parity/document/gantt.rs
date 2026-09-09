@@ -3,6 +3,26 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_gantt_title_name(&mut self, run: &TextRun) -> Result<()> {
+        if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            || !matches!(self.groups.last(), Some(GroupKind::Semantic {
+                semantic_id, emitted: false, ..
+            }) if semantic_id == "gantt.title")
+        {
+            return Ok(());
+        }
+        if let Some(name) = self
+            .semantics
+            .get("gantt.title")
+            .and_then(|s| s.title.as_deref())
+            && name != run.text
+        {
+            // An independently authored accessible name must survive visible-text edits.
+            write!(self.output, " aria-label=\"{}\"", escaped_attr(name))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn write_gantt_text_space_attr(
         &mut self,
         run: &TextRun,
@@ -129,6 +149,7 @@ impl DocumentSvgEncoder<'_> {
         let font = self.font_families(&run.style.font)?;
         self.output.push_str("<text")?;
         self.write_gantt_dom_id(id)?;
+        self.write_gantt_title_name(run)?;
         if task {
             write!(self.output, " font-size=\"{}\"", fmt(run.style.font_size))?;
         }
@@ -590,6 +611,19 @@ impl DocumentSvgEncoder<'_> {
             "<g class=\"tick\" opacity=\"{}\"",
             fmt(opacity)
         )?;
+        if let Some(DrawingCommand::BeginSemanticGroup { semantic_id }) =
+            self.document.commands.get(index)
+            && let Some(name) = self
+                .semantics
+                .get(semantic_id)
+                .and_then(|s| s.title.as_deref())
+        {
+            write!(
+                self.output,
+                " role=\"group\" aria-label=\"{}\"",
+                escaped_attr(name)
+            )?;
+        }
         self.write_gantt_group_transform()?;
         write_blend_style(&mut self.output, blend)?;
         self.output.push('>')?;
@@ -715,12 +749,27 @@ impl DocumentSvgEncoder<'_> {
             return Ok(true);
         }
         let axis = matches!(semantic_id, "gantt.axis.bottom" | "gantt.axis.top");
-        if axis
-            && self.semantics.get(semantic_id).is_some_and(|semantic| {
-                semantic.link.is_some()
-                    || semantic.description.is_some()
-                    || !self.debug_visibility(semantic.role)
-            })
+        let semantic = self
+            .semantics
+            .get(semantic_id)
+            .copied()
+            .ok_or_else(|| invalid("Gantt collection has no semantic annotation"))?;
+        let expected_role = match semantic_id {
+            "gantt.document" => SemanticRole::Document,
+            "gantt.title" => SemanticRole::Label,
+            _ if semantic_id.contains(".tick.") => SemanticRole::Label,
+            _ => SemanticRole::Group,
+        };
+        // Source collection wrappers cannot carry navigation or extra accessible descriptions.
+        // Let the general semantic serializer retain those public obligations and debug roles.
+        if semantic.link.is_some()
+            || (semantic_id != "gantt.document" && semantic.description.is_some())
+            || semantic.role != expected_role
+            || !self.debug_visibility(semantic.role)
+            || (matches!(
+                semantic_id,
+                "gantt.excludes" | "gantt.rows" | "gantt.tasks" | "gantt.sections"
+            ) && semantic.title.is_some())
         {
             return Ok(false);
         }
@@ -737,6 +786,13 @@ impl DocumentSvgEncoder<'_> {
             self.output.push_str(
                 "<g class=\"grid\" fill=\"none\" font-size=\"10\" font-family=\"sans-serif\" text-anchor=\"middle\"",
             )?;
+            if let Some(name) = &semantic.title {
+                write!(
+                    self.output,
+                    " role=\"group\" aria-label=\"{}\"",
+                    escaped_attr(name)
+                )?;
+            }
             self.write_gantt_group_transform()?;
             self.output.push('>')?;
             let transform = self.state.transform;
