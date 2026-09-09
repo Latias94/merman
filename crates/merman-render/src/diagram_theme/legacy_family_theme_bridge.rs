@@ -728,74 +728,6 @@ fn compile_sequence_family(
     let mut contributions = FamilyContributions::new();
 
     contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ActorFill.contribution_id(),
-        [("actorBkg", reader.fill(ThemeTarget::Actor))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ActorStroke.contribution_id(),
-        [("actorBorder", reader.stroke(ThemeTarget::Actor))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ActorLabelFill.contribution_id(),
-        [("actorTextColor", reader.text_fill(ThemeTarget::ActorLabel))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::LifelineStroke.contribution_id(),
-        [(
-            "actorLineColor",
-            reader.stroke_or_fill(ThemeTarget::Lifeline),
-        )],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::MessageStroke.contribution_id(),
-        [("signalColor", reader.stroke_or_fill(ThemeTarget::Message))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::MessageLabelFill.contribution_id(),
-        [(
-            "signalTextColor",
-            reader.text_fill(ThemeTarget::MessageLabel),
-        )],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::LoopFill.contribution_id(),
-        [("labelBoxBkgColor", reader.fill(ThemeTarget::Loop))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::LoopStroke.contribution_id(),
-        [("labelBoxBorderColor", reader.stroke(ThemeTarget::Loop))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::LoopLabelFill.contribution_id(),
-        [
-            ("labelTextColor", reader.text_fill(ThemeTarget::LoopLabel)),
-            ("loopTextColor", reader.text_fill(ThemeTarget::LoopLabel)),
-        ],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ActivationFill.contribution_id(),
-        [("activationBkgColor", reader.fill(ThemeTarget::Activation))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::ActivationStroke.contribution_id(),
-        [(
-            "activationBorderColor",
-            reader.stroke(ThemeTarget::Activation),
-        )],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NoteFill.contribution_id(),
-        [("noteBkgColor", reader.fill(ThemeTarget::Note))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NoteStroke.contribution_id(),
-        [("noteBorderColor", reader.stroke(ThemeTarget::Note))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::NoteLabelFill.contribution_id(),
-        [("noteTextColor", reader.text_fill(ThemeTarget::NoteLabel))],
-    );
-    contributions.add_theme_variables(
         "title.fill",
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
@@ -889,10 +821,6 @@ fn compile_timeline_family(
     reader: &FamilyStyleReader,
 ) -> BridgeResult<()> {
     let mut contributions = FamilyContributions::new();
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TimelineEventFill.contribution_id(),
-        [("mainBkg", reader.fill(ThemeTarget::TimelineEvent))],
-    );
     contributions.add_theme_variables(
         "event.stroke",
         [("nodeBorder", reader.stroke(ThemeTarget::TimelineEvent))],
