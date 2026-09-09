@@ -2965,7 +2965,12 @@ mod tests {
                 .children()
                 .find(|node| node.attribute("class") == Some("domain"))
                 .unwrap();
-            assert_eq!(domain.attribute("stroke"), Some("#000000"));
+            assert_eq!(domain.attribute("stroke"), Some("currentColor"));
+            assert_eq!(
+                domain.attribute("style"),
+                Some("color:#000000;fill:none;stroke-width:0;")
+            );
+            assert!(domain.attribute("data-merman-resource").is_none());
             assert!(domain.attribute("d").is_some());
             assert_eq!(domain.attribute("class"), Some("domain"));
             let tick = axis
@@ -2976,7 +2981,12 @@ mod tests {
                 .children()
                 .find(|node| node.has_tag_name("line"))
                 .unwrap();
-            assert_eq!(line.attribute("stroke"), Some("#000000"));
+            assert_eq!(line.attribute("stroke"), Some("currentColor"));
+            assert_eq!(
+                line.attribute("style"),
+                Some("color:#000000;fill:none;stroke-width:1;")
+            );
+            assert!(line.attribute("data-merman-resource").is_none());
             assert!(line.attribute("x1").is_none());
             let text = tick
                 .children()
@@ -2992,9 +3002,73 @@ mod tests {
             );
             assert_eq!(text.attribute("stroke"), Some("none"));
             assert_eq!(text.attribute("fill"), Some("#000000"));
-            assert_eq!(text.attribute("font-family"), Some("Courier"));
+            assert!(text.attribute("font-family").is_none());
+            assert!(
+                text.attribute("style")
+                    .unwrap()
+                    .contains("font-family:Courier;")
+            );
             assert!(text.attribute("data-merman-bounds").is_none());
         }
+        // A compact source-shaped element must still consume edited public paint and geometry.
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str() == "gantt.axis.bottom.domain"
+            {
+                style.stroke.as_mut().unwrap().paint = Paint::solid(Color::rgba(18, 52, 86, 255));
+            }
+        }
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str() == "gantt.axis.bottom.domain"
+            {
+                let merman_display_list::PathSegment::MoveTo { to } = &mut path.segments[0] else {
+                    panic!("domain start")
+                };
+                to.y = -17.0;
+            }
+        }
+        let edited_axis = render(&document);
+        let edited_xml = roxmltree::Document::parse(&edited_axis).unwrap();
+        let domain = edited_xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("domain"))
+            .unwrap();
+        assert_eq!(domain.attribute("stroke"), Some("currentColor"));
+        assert_eq!(
+            domain.attribute("style"),
+            Some("color:#123456;fill:none;stroke-width:0;")
+        );
+        assert!(domain.attribute("d").unwrap().starts_with("M0.5,-17V"));
+        let domain_index = document.public.commands.iter().position(|command| matches!(command,
+            DrawingCommand::DrawPath { path, .. } if path.as_str() == "gantt.axis.bottom.domain"
+        )).unwrap();
+        document
+            .public
+            .commands
+            .insert(domain_index, DrawingCommand::Save);
+        document.public.commands.insert(
+            domain_index + 1,
+            DrawingCommand::SetBlendMode {
+                blend_mode: merman_display_list::BlendMode::Multiply,
+            },
+        );
+        document
+            .public
+            .commands
+            .insert(domain_index + 3, DrawingCommand::Restore);
+        let blended = render(&document);
+        let blended_xml =
+            roxmltree::Document::parse(&blended).expect("blended axis must have valid attributes");
+        let blended_domain = blended_xml
+            .descendants()
+            .find(|node| node.attribute("class") == Some("domain"))
+            .unwrap();
+        assert_eq!(blended_domain.attribute("stroke"), Some("#123456"));
+        assert_eq!(
+            blended_domain.attribute("style"),
+            Some("mix-blend-mode: multiply;")
+        );
         let tick = document.public.commands.iter().position(|command| matches!(command,
             DrawingCommand::BeginSemanticGroup { semantic_id } if semantic_id == "gantt.axis.bottom.tick.0"
         )).unwrap();

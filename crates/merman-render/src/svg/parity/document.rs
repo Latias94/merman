@@ -2387,6 +2387,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            if self.emit_gantt_axis_path(path_id, style)? {
+                return Ok(());
+            }
             let raw_id = path_id.as_str();
             let path = self.path_resource(path_id)?;
             if raw_id == "gantt.background"

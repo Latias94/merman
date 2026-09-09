@@ -3,6 +3,84 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    /// Project D3's axis primitives only when the public stroke has SVG's simple defaults.
+    /// The inline color resolves currentColor from the document, never from ambient host CSS.
+    pub(super) fn emit_gantt_axis_path(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
+            || !path_id.as_str().starts_with("gantt.axis.")
+            || style.fill.is_some()
+            || self.state.blend_mode != BlendMode::Normal
+        {
+            return Ok(false);
+        }
+        let Some(stroke) = &style.stroke else {
+            return Ok(false);
+        };
+        let Paint::Solid { color } = stroke.paint else {
+            return Ok(false);
+        };
+        if color.alpha != 255
+            || !stroke.dash_array.is_empty()
+            || stroke.dash_offset != 0.0
+            || stroke.line_cap != merman_display_list::LineCap::Butt
+            || stroke.line_join != merman_display_list::LineJoin::Miter
+            || stroke.miter_limit != 4.0
+        {
+            return Ok(false);
+        }
+        let path = self.path_resource(path_id)?;
+        if path_id.as_str().ends_with(".domain") && stroke.width == 0.0 {
+            let [
+                PathSegment::MoveTo { to: a },
+                PathSegment::LineTo { to: b },
+                PathSegment::LineTo { to: c },
+                PathSegment::LineTo { to: d },
+            ] = path.segments.as_slice()
+            else {
+                return Ok(false);
+            };
+            if a.x != b.x || b.y != c.y || c.x != d.x {
+                return Ok(false);
+            }
+            write!(
+                self.output,
+                "<path class=\"domain\" stroke=\"currentColor\" d=\"M{},{}V{}H{}V{}\"",
+                fmt(a.x),
+                fmt(a.y),
+                fmt(b.y),
+                fmt(c.x),
+                fmt(d.y),
+            )?;
+        } else if path_id.as_str().contains(".tick.") && stroke.width == 1.0 {
+            let Some((start, end)) = line_from_path(path) else {
+                return Ok(false);
+            };
+            if start != Point::new(0.0, 0.0) || end.x != 0.0 {
+                return Ok(false);
+            }
+            write!(
+                self.output,
+                "<line stroke=\"currentColor\" y2=\"{}\"",
+                fmt(end.y)
+            )?;
+        } else {
+            return Ok(false);
+        }
+        write!(
+            self.output,
+            " style=\"color:{};fill:none;stroke-width:{};\"",
+            color_css(color),
+            fmt(stroke.width),
+        )?;
+        self.write_state_attrs()?;
+        self.output.push_str("/>")?;
+        Ok(true)
+    }
+
     pub(super) fn begin_gantt_task(&mut self, semantic_id: &str) -> Result<bool> {
         let SvgStructureBody::Gantt(body) = self.svg_body else {
             return Ok(false);
@@ -344,7 +422,7 @@ impl DocumentSvgEncoder<'_> {
         let font = self.font_families(&run.style.font)?;
         write!(
             self.output,
-            "<text fill=\"{}\" y=\"{}\" dy=\"{}em\" stroke=\"none\" font-size=\"{}\" font-family=\"{}\" style=\"text-anchor: {};\"",
+            "<text fill=\"{}\" y=\"{}\" dy=\"{}em\" stroke=\"none\" font-size=\"{}\" style=\"font-family:{};text-anchor: {};\"",
             color_css(match &run.style.fill {
                 Paint::Solid { color } => *color,
                 _ => return Ok(false),

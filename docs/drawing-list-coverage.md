@@ -215,14 +215,19 @@ integration contract explicitly defines layer bounds in the user space active at
 This resolves the redundant tick wrapper but not the remaining inherited-style/text-shell
 differences from the full candidate report; Gantt is still not admitted.
 
-The Gantt candidate now also retains D3's axis container defaults (`fill="none"`, 10px
-`sans-serif`, middle anchoring), compact tick line spelling, and bottom/top label `dy` behavior
-without reapplying external theme CSS. Compact projection is deliberately exact: a changed tick
-line start/end or a changed label origin, size, anchor, opacity, blend, or font shape falls back
-to the generic command serializer, preserving the edited public command instead of silently
-normalizing it back to a source-shaped axis. The focused candidate test covers both the unchanged
-source shell and edited line/text colors, opacity, geometry, and paint; this is not complete
-family admission evidence.
+The Gantt candidate also retains D3's axis container defaults (`fill="none"`, 10px `sans-serif`,
+middle anchoring), domain `M/V/H/V` paths, tick line spelling, and bottom/top label `dy` behavior.
+Simple axis strokes retain `stroke="currentColor"` while inline CSS resolves their color and width
+from public paint; axis label fonts similarly come from public text styles, not external theme CSS.
+Nonstandard line geometry, translucent/dashed strokes, blend modes, or changed label origins and
+font shapes use the generic command serializer rather than silently restoring source defaults.
+The existing mutation test covers edited domain geometry/color, blended output with valid XML
+attributes, and changed tick geometry, paint and text. The September 9 strict-route probe at
+`0a994df63` plus these changes selected 157 fixtures, rendered 150 canonically, retained five skips
+and rejected two unsupported effects. All 150 still have other structural differences, but the
+previous 2,083 `currentColor` mismatch diagnostics are gone
+(`target/compare/gantt_0a994df63_axis_candidate_structure.md`). Temporary admission was removed;
+this is not full-family readiness or a comparator normalization change.
 
 Source inspection during this projection found a pre-existing nondefault-padding error in both
 render paths: Mermaid's `makeGrid` places the bottom axis at `height - 50`, not
