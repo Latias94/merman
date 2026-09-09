@@ -487,6 +487,12 @@ pub(super) struct InfoCssWriter {
 }
 
 impl InfoCssWriter {
+    pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
+        Self {
+            values: InfoCssValues::new(effective_config, None),
+        }
+    }
+
     pub(super) fn with_resolved_typography(
         effective_config: &serde_json::Value,
         font_family: &str,

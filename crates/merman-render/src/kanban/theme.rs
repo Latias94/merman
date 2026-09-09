@@ -712,6 +712,13 @@ impl KanbanTaskTheme {
             .then_some((self.font_family_css(), self.font_size_css()))
     }
 
+    pub(crate) fn owns_label_foreground(&self, item_index: usize) -> bool {
+        self.items
+            .as_deref()
+            .and_then(|items| items.get(item_index))
+            .is_some_and(|item| item.label_foreground.is_some())
+    }
+
     pub(crate) fn terminal_decisions(
         &self,
         config: &MermaidConfig,

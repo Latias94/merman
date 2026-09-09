@@ -47,8 +47,10 @@ record. The current source and generated contract are authoritative for these su
   supersedes the historical Journey compatibility entries below without adding a Title consumer.
 - KTD23 v4 retires Kanban's unused static unqualified/Default Title.fill projection. Kanban
   has no independent diagram-title terminal; frontmatter metadata does not create one. Column
-  labels still consume Text paint, so the Text compatibility projection and family bridge remain.
-  Title is Unsupported and NotApplicable rather than a new typed column-label consumer.
+  labels consume Text paint. KTD17 v55 now replaces the static unqualified/Default Text.fill
+  projection with direct root/default-label paint, preserving config, TaskLabel, and source
+  ownership. Kanban no longer requires a family bridge. Title remains Unsupported and
+  NotApplicable rather than a new typed column-label consumer.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

@@ -2447,7 +2447,11 @@ impl BuiltinFamilyArtifact {
 
     fn kanban_theme_evidence(&self) -> Option<FamilyThemeEvidence> {
         match self {
-            Self::Kanban(pair) => Some(pair.layout().task_theme().finish_evidence()),
+            Self::Kanban(pair) => {
+                let mut evidence = pair.layout().task_theme().finish_evidence();
+                evidence.merge_accounted_from(pair.layout().text_paint().finish_evidence());
+                Some(evidence)
+            }
             _ => None,
         }
     }

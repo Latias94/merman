@@ -106,6 +106,14 @@ impl VisibleTextStyleFacts {
             .count()
     }
 
+    /// CSS classes may override inherited color without a locally known declaration.
+    pub(crate) fn unverified_color_run_count(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| matches!(run.color_owner, VisibleTextColorOwner::CssClass))
+            .count()
+    }
+
     pub(crate) fn inherited_font_family_run_count(&self) -> usize {
         self.runs
             .iter()

@@ -306,6 +306,10 @@ const TIMELINE_EVENT_FILL_SOURCE: &str = r#"timeline
 "#;
 const TREE_VIEW_PAINT_SOURCE: &str = "treeView-beta\nRoot/\n    Child\n";
 const TREE_VIEW_MARKER_PAINT_SOURCE: &str = "treeView-beta\nRoot icon(folder)\n";
+const KANBAN_TEXT_FILL_SOURCE: &str = r#"kanban
+  todo[Delivery]
+    task[Ship release]@{ ticket: MC-2038, assigned: 'Maintainer' }
+"#;
 const KANBAN_TASK_STROKE_SOURCE: &str = r#"kanban
   todo[Todo]
     first[First]
@@ -324,7 +328,7 @@ enum CutoverWitnessProfile {
 
 impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
-    const C4_TEXT: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::HandDrawnStatic];
+    const TEXT_LOOKS: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::HandDrawnStatic];
     const GANTT_WARNING: [Self; 2] = [Self::ClassicToday, Self::ClassicVertical];
     const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
     const EDGE: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::NeoAnimated];
@@ -355,8 +359,12 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
-        if route.family_id() == DiagramFamilyId::C4 && route.target() == ThemeTarget::Text {
-            return &Self::C4_TEXT;
+        if matches!(
+            route.family_id(),
+            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN
+        ) && route.target() == ThemeTarget::Text
+        {
+            return &Self::TEXT_LOOKS;
         }
         if route.family_id() == DiagramFamilyId::GANTT
             && route.target() == ThemeTarget::Task
@@ -598,6 +606,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(TREE_VIEW_PAINT_SOURCE),
         (DiagramFamilyId::TREE_VIEW, ThemeTarget::Marker, _) => Ok(TREE_VIEW_MARKER_PAINT_SOURCE),
+        (DiagramFamilyId::KANBAN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(KANBAN_TEXT_FILL_SOURCE)
+        }
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Ok(KANBAN_TASK_STROKE_SOURCE)
         }
@@ -1548,11 +1559,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_300_routes_and_338_artifact_witnesses() {
+    fn route_inventory_retains_304_routes_and_350_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 300);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 338);
+        assert_eq!(inventory.len(), 304);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 350);
     }
 
     #[test]
@@ -1673,35 +1684,35 @@ mod tests {
     }
 
     #[test]
-    fn c4_text_routes_require_each_look_specific_witness() {
+    fn text_routes_require_each_look_specific_witness() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
-        let routes = inventory
-            .iter()
-            .copied()
-            .filter(|route| {
-                route.family_id() == DiagramFamilyId::C4 && route.target() == ThemeTarget::Text
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(routes.len(), 4);
-        for route in routes {
-            for profile in [
-                CutoverWitnessProfile::ClassicStatic,
-                CutoverWitnessProfile::NeoStatic,
-                CutoverWitnessProfile::HandDrawnStatic,
-            ] {
-                let mut receipts = expected_cutover_witnesses(&inventory)
-                    .into_iter()
-                    .map(|witness| (witness, RouteCutoverReceipt { digest: [0x5a; 32] }))
-                    .collect::<BTreeMap<_, _>>();
-                assert!(
-                    receipts
-                        .remove(&CutoverWitnessId::new(route, profile))
-                        .is_some()
-                );
-                assert!(
-                    evaluate_route_receipts(inventory.clone(), receipts).is_err(),
-                    "missing {profile:?} C4 witness must reject authorization"
-                );
+        for family in [DiagramFamilyId::C4, DiagramFamilyId::KANBAN] {
+            let routes = inventory
+                .iter()
+                .copied()
+                .filter(|route| route.family_id() == family && route.target() == ThemeTarget::Text)
+                .collect::<Vec<_>>();
+            assert_eq!(routes.len(), 4);
+            for route in routes {
+                for profile in [
+                    CutoverWitnessProfile::ClassicStatic,
+                    CutoverWitnessProfile::NeoStatic,
+                    CutoverWitnessProfile::HandDrawnStatic,
+                ] {
+                    let mut receipts = expected_cutover_witnesses(&inventory)
+                        .into_iter()
+                        .map(|witness| (witness, RouteCutoverReceipt { digest: [0x5a; 32] }))
+                        .collect::<BTreeMap<_, _>>();
+                    assert!(
+                        receipts
+                            .remove(&CutoverWitnessId::new(route, profile))
+                            .is_some()
+                    );
+                    assert!(
+                        evaluate_route_receipts(inventory.clone(), receipts).is_err(),
+                        "missing {profile:?} {family} witness must reject authorization"
+                    );
+                }
             }
         }
     }

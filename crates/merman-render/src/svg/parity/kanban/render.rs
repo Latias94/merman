@@ -15,18 +15,27 @@ fn write_kanban_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     resolved_typography: Option<(&str, &str)>,
+    resolved_text_color: Option<&str>,
+    mut text_receipt: Option<&mut crate::kanban::KanbanTextPaintReceipt<'_>>,
 ) -> Result<KanbanCssEmission> {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let parts = match resolved_typography {
-        Some((font_family, font_size_css)) => info_css_parts_with_resolved_typography(
-            diagram_id,
-            effective_config,
-            font_family,
-            font_size_css,
-        ),
-        None => info_css_parts_with_config(diagram_id, effective_config),
+    let css = match resolved_typography {
+        Some((font_family, font_size_css)) => {
+            super::super::css::InfoCssWriter::with_resolved_typography(
+                effective_config,
+                font_family,
+                font_size_css,
+            )
+        }
+        None => super::super::css::InfoCssWriter::from_config(effective_config),
     };
+    let css = match resolved_text_color {
+        Some(text_color) => css.with_text_color(text_color),
+        None => css,
+    };
+    let parts = css.into_parts(diagram_id);
     let theme = MermaidThemeAdapter::new(effective_config).kanban()?;
+    let label_text_color = resolved_text_color.unwrap_or(theme.text_color.as_str());
     let emission = KanbanCssEmission {
         font_family: parts.font_family.clone().into_boxed_str(),
         font_size_css: parts.font_size_css.clone().into_boxed_str(),
@@ -102,21 +111,26 @@ fn write_kanban_css(
         diagram_id,
         diagram_id,
         diagram_id,
-        theme.text_color,
-        theme.text_color,
+        label_text_color,
+        label_text_color,
         diagram_id,
         diagram_id,
         diagram_id
     );
     out.push_str(&root_rule);
     out.checkpoint()?;
+    if let Some(receipt) = text_receipt.as_mut() {
+        receipt.record_css(&parts.text_color);
+        receipt.record_css(label_text_color);
+        receipt.record_css(label_text_color);
+    }
     Ok(emission)
 }
 
 #[cfg(test)]
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     let mut out = String::new();
-    write_kanban_css(&mut out, diagram_id, effective_config, None)?;
+    write_kanban_css(&mut out, diagram_id, effective_config, None, None, None)?;
     Ok(out)
 }
 
@@ -363,6 +377,8 @@ pub(crate) fn render_kanban_diagram_svg(
 ) -> Result<root_svg::RootedSvg> {
     let (layout, prepared_sections, prepared_items) = prepared.render_parts();
     let task_theme = prepared.task_theme();
+    let text_paint = prepared.text_paint();
+    let mut text_receipt = text_paint.begin_terminal_receipt();
     let task_terminal_decisions = task_theme.terminal_decisions(effective_config)?;
     debug_assert_eq!(layout.sections.len(), prepared_sections.len());
     debug_assert_eq!(layout.items.len(), prepared_items.len());
@@ -422,6 +438,8 @@ pub(crate) fn render_kanban_diagram_svg(
         diagram_id.semantic_str(),
         effective_config,
         task_theme.resolved_typography_for_css(),
+        text_paint.fill_css(),
+        text_receipt.as_mut(),
     )?;
     if let Some(receipt) = task_theme_receipt.as_mut() {
         receipt.record_typography_css(
@@ -482,6 +500,20 @@ pub(crate) fn render_kanban_diagram_svg(
             label = prepared_label.html.as_str(),
         );
         out.checkpoint()?;
+        if let Some(receipt) = text_receipt.as_mut() {
+            receipt.record_label(
+                crate::kanban::KanbanTextPaintRole::Section,
+                prepared_label.visible_style_facts.parse_valid(),
+                prepared_label.visible_style_facts.visible_run_count(),
+                prepared_label
+                    .visible_style_facts
+                    .inherited_color_run_count(),
+                prepared_label
+                    .visible_style_facts
+                    .unverified_color_run_count(),
+                false,
+            );
+        }
         record_kanban_typography_text(
             task_theme_receipt.as_mut(),
             prepared_label.visible_style_facts.parse_valid(),
@@ -610,6 +642,19 @@ pub(crate) fn render_kanban_diagram_svg(
             &title_emission,
             terminal_decision,
         );
+        if let Some(receipt) = text_receipt.as_mut() {
+            receipt.record_label(
+                crate::kanban::KanbanTextPaintRole::Title,
+                prepared_item.title.visible_style_facts.parse_valid(),
+                title_emission.visible_run_count,
+                title_emission.inherited_color_run_count,
+                prepared_item
+                    .title
+                    .visible_style_facts
+                    .unverified_color_run_count(),
+                terminal_decision.label_css().is_some(),
+            );
+        }
         record_kanban_typography_text(
             task_theme_receipt.as_mut(),
             prepared_item.title.visible_style_facts.parse_valid(),
@@ -677,6 +722,19 @@ pub(crate) fn render_kanban_diagram_svg(
                     &ticket_emission,
                     terminal_decision,
                 );
+                if let Some(receipt) = text_receipt.as_mut() {
+                    receipt.record_label(
+                        crate::kanban::KanbanTextPaintRole::Ticket,
+                        prepared_item.ticket.visible_style_facts.parse_valid(),
+                        ticket_emission.visible_run_count,
+                        ticket_emission.inherited_color_run_count,
+                        prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .unverified_color_run_count(),
+                        terminal_decision.label_css().is_some(),
+                    );
+                }
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
                     prepared_item.ticket.visible_style_facts.parse_valid(),
@@ -734,6 +792,19 @@ pub(crate) fn render_kanban_diagram_svg(
                     &ticket_emission,
                     terminal_decision,
                 );
+                if let Some(receipt) = text_receipt.as_mut() {
+                    receipt.record_label(
+                        crate::kanban::KanbanTextPaintRole::Ticket,
+                        prepared_item.ticket.visible_style_facts.parse_valid(),
+                        ticket_emission.visible_run_count,
+                        ticket_emission.inherited_color_run_count,
+                        prepared_item
+                            .ticket
+                            .visible_style_facts
+                            .unverified_color_run_count(),
+                        terminal_decision.label_css().is_some(),
+                    );
+                }
                 record_kanban_typography_text(
                     task_theme_receipt.as_mut(),
                     prepared_item.ticket.visible_style_facts.parse_valid(),
@@ -764,6 +835,16 @@ pub(crate) fn render_kanban_diagram_svg(
                     unverified_font_size_run_count: 0,
                 },
             )?;
+            if let Some(receipt) = text_receipt.as_mut() {
+                receipt.record_label(
+                    crate::kanban::KanbanTextPaintRole::Ticket,
+                    prepared_item.ticket.visible_style_facts.parse_valid(),
+                    0,
+                    0,
+                    0,
+                    terminal_decision.label_css().is_some(),
+                );
+            }
             record_kanban_typography_text(
                 task_theme_receipt.as_mut(),
                 prepared_item.ticket.visible_style_facts.parse_valid(),
@@ -833,6 +914,19 @@ pub(crate) fn render_kanban_diagram_svg(
             &assigned_emission,
             terminal_decision,
         );
+        if let Some(receipt) = text_receipt.as_mut() {
+            receipt.record_label(
+                crate::kanban::KanbanTextPaintRole::Assigned,
+                prepared_item.assigned.visible_style_facts.parse_valid(),
+                assigned_emission.visible_run_count,
+                assigned_emission.inherited_color_run_count,
+                prepared_item
+                    .assigned
+                    .visible_style_facts
+                    .unverified_color_run_count(),
+                terminal_decision.label_css().is_some(),
+            );
+        }
         record_kanban_typography_text(
             task_theme_receipt.as_mut(),
             prepared_item.assigned.visible_style_facts.parse_valid(),
@@ -881,6 +975,11 @@ pub(crate) fn render_kanban_diagram_svg(
     if task_theme_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
         return Err(crate::Error::InvalidModel {
             message: "Kanban task theme receipt did not match the terminal SVG".to_string(),
+        });
+    }
+    if text_receipt.is_some_and(|receipt| !text_paint.record_terminal(receipt)) {
+        return Err(crate::Error::InvalidModel {
+            message: "Kanban text paint receipt did not match the terminal SVG".to_string(),
         });
     }
     Ok(rooted_svg)
@@ -1072,6 +1171,8 @@ mod tests {
             "k",
             &serde_json::json!({}),
             Some(("Typed, sans-serif", "24px")),
+            None,
+            None,
         )
         .unwrap();
 

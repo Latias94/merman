@@ -11,13 +11,13 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 54;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 55;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    33, 52, 17, 94, 220, 176, 161, 170, 1, 36, 91, 93, 140, 237, 38, 20, 10, 16, 196, 238, 212,
-    126, 63, 209, 4, 165, 47, 40, 191, 235, 255, 134,
+    136, 206, 121, 175, 251, 204, 217, 67, 130, 177, 2, 17, 155, 172, 9, 163, 40, 244, 30, 84, 254,
+    19, 58, 155, 182, 156, 133, 34, 79, 216, 196, 156,
 ];
 
 const PROJECTION_ACTIONS: [(
@@ -365,7 +365,37 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 300] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 304] = [
+    route(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::KANBAN,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::JOURNEY,
         ThemeTarget::Text,
@@ -3396,6 +3426,34 @@ mod tests {
                     ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
                 )
         }));
+    }
+
+    #[test]
+    fn manifest_keeps_kanban_text_fill_projection_local() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::KANBAN
+                    && route.id.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Solid,
+                ThemeRouteCutoverValue::Transparent,
+            ] {
+                assert!(routes.iter().any(|route| {
+                    route.id.selector() == selector
+                        && route.id.facet() == ThemeRouteCutoverFacet::Fill
+                        && route.id.value() == value
+                        && route.projections == TEXT_FILL_PROJECTIONS
+                }));
+            }
+        }
     }
 
     #[test]

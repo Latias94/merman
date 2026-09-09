@@ -196,9 +196,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Sequence => {
             compile_sequence_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Kanban => {
-            compile_kanban_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::Requirement => {
             compile_requirement_family(&mut builder, &reader)?;
         }
@@ -226,7 +223,6 @@ enum LegacyFamilyDispatch {
     Node,
     GitGraph,
     Sequence,
-    Kanban,
     Requirement,
     Er,
     Chart,
@@ -523,7 +519,6 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
         DiagramFamilyId::GIT_GRAPH => LegacyFamilyDispatch::GitGraph,
         DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
-        DiagramFamilyId::KANBAN => LegacyFamilyDispatch::Kanban,
         DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
         DiagramFamilyId::ER => LegacyFamilyDispatch::Er,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
@@ -537,6 +532,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::GANTT
         | DiagramFamilyId::JOURNEY
+        | DiagramFamilyId::KANBAN
         | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
@@ -866,23 +862,6 @@ fn compile_sequence_family(
     contributions.add_theme_variables(
         "title.fill",
         [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
-
-    contributions.finish_into(builder)
-}
-
-fn compile_kanban_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-
-    contributions.add_theme_variables(
-        "text.fill",
-        [
-            ("textColor", reader.text_fill(ThemeTarget::Text)),
-            ("taskTextColor", reader.text_fill(ThemeTarget::Text)),
-        ],
     );
 
     contributions.finish_into(builder)
@@ -2293,6 +2272,7 @@ mod tests {
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::GANTT,
                 DiagramFamilyId::JOURNEY,
+                DiagramFamilyId::KANBAN,
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
@@ -2314,27 +2294,27 @@ mod tests {
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            60, 17, 50, 133, 113, 23, 86, 213, 61, 122, 154, 82, 57, 162, 209, 163, 171, 38, 78,
-            27, 46, 134, 46, 168, 9, 89, 242, 86, 45, 6, 193, 142,
+            32, 61, 200, 12, 197, 179, 211, 112, 190, 184, 99, 134, 153, 120, 255, 231, 98, 137,
+            180, 212, 24, 73, 196, 69, 241, 104, 127, 240, 83, 127, 59, 172,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 246);
-        assert_eq!(status.matrix_family_count(), 13);
-        assert_eq!(status.dispatched_family_count(), 13);
+        assert_eq!(status.matrix_route_count(), 242);
+        assert_eq!(status.matrix_family_count(), 12);
+        assert_eq!(status.dispatched_family_count(), 12);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                199, 28, 101, 19, 103, 199, 29, 249, 186, 70, 152, 42, 201, 1, 32, 149, 142, 159,
-                40, 217, 97, 142, 166, 116, 214, 109, 90, 208, 165, 60, 168, 200
+                77, 125, 131, 219, 133, 170, 153, 182, 147, 219, 243, 180, 102, 7, 199, 106, 129,
+                162, 224, 76, 60, 92, 170, 73, 39, 8, 140, 242, 79, 234, 143, 27
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                95, 1, 209, 154, 147, 189, 235, 158, 138, 101, 210, 238, 227, 0, 170, 189, 150,
-                121, 25, 116, 9, 7, 66, 54, 158, 166, 241, 23, 199, 118, 210, 184
+                91, 27, 202, 7, 158, 53, 61, 66, 95, 36, 207, 106, 68, 220, 36, 142, 204, 152, 173,
+                16, 228, 112, 136, 136, 99, 106, 241, 17, 148, 246, 28, 84
             ]
         );
         assert_eq!(
@@ -2465,6 +2445,7 @@ mod tests {
                     DiagramFamilyId::ARCHITECTURE
                         | DiagramFamilyId::C4
                         | DiagramFamilyId::CYNEFIN
+                        | DiagramFamilyId::KANBAN
                         | DiagramFamilyId::SANKEY
                 );
                 assert_eq!(
@@ -2798,7 +2779,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_kanban_title_fill_preserves_text_bridge_and_explicit_compatibility() {
+    fn unsupported_kanban_title_fill_preserves_explicit_compatibility() {
         const SOURCE: &str = "kanban\n  todo[Todo]\n    task[Task]\n";
         for paint in [CanvasPaint::Transparent, solid("#9333ea")] {
             for variant in [None, Some(ThemeVariant::Default)] {
@@ -2834,21 +2815,66 @@ mod tests {
                 assert_eq!(fallback_contribution_count(&parsed), 0);
             }
         }
+    }
 
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
+    #[test]
+    fn kanban_text_fill_retires_only_its_family_bridge_and_preserves_explicit_config() {
+        const SOURCE: &str = "kanban\n  todo[Todo]\n    task[Task]\n";
+        for paint in [CanvasPaint::Transparent, solid("#16a34a")] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut rule = ThemeRule::new(
                     ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(solid("#16a34a")),
-                )
-                .for_family(DiagramFamilyId::KANBAN),
-            ),
-        );
-        let parsed = parse(&spec, SOURCE);
-        for path in ["themeVariables.textColor", "themeVariables.taskTextColor"] {
-            assert_eq!(parsed.effective_config.get_str(path), Some("#16a34a"));
+                    ThemeStylePatch::default().with_fill(paint.clone()),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let bridge = bridge(&spec);
+                let artifact = bridge.compile_for_family(DiagramFamilyId::KANBAN);
+                assert!(artifact.overlay.is_empty());
+                assert!(artifact.contribution_ids.is_empty());
+                assert!(
+                    !bridge.owns_contribution_id("merman.legacy-family-theme.v1.kanban.text.fill")
+                );
+                let gitgraph = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
+                assert!(
+                    gitgraph
+                        .contribution_ids
+                        .contains("merman.legacy-family-theme.v1.gitGraph.text.fill")
+                );
+
+                let baseline = parse(&DiagramThemeSpec::new(), SOURCE);
+                let parsed = parse(&spec, SOURCE);
+                for path in ["themeVariables.textColor", "themeVariables.taskTextColor"] {
+                    assert_eq!(
+                        parsed.effective_config.get_str(path),
+                        baseline.effective_config.get_str(path)
+                    );
+                }
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+                let compatibility = MermaidThemeCompatibility::default()
+                    .with_variable("textColor", "#445566")
+                    .expect("valid explicit text color")
+                    .with_variable("taskTextColor", "#112233")
+                    .expect("valid explicit task text color");
+                let spec = spec.with_mermaid_compatibility(compatibility);
+                let parsed =
+                    parse_with_compatibility(&spec, SOURCE, spec.mermaid().to_mermaid_config());
+                assert_eq!(
+                    parsed.effective_config.get_str("themeVariables.textColor"),
+                    Some("#445566")
+                );
+                assert_eq!(
+                    parsed
+                        .effective_config
+                        .get_str("themeVariables.taskTextColor"),
+                    Some("#112233")
+                );
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+            }
         }
-        assert_eq!(fallback_contribution_count(&parsed), 1);
     }
 
     #[test]

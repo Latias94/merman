@@ -11,16 +11,17 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 20/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 13/33; 246 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 21/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 12/33; 242 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 50 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v54; 300 routes / 338 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 51 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v55; 304 routes / 350 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 54 adds four Journey Text.fill routes with Classic witnesses. The four C4
+output files. Version 55 adds four Kanban Text.fill routes with Classic, Neo, and HandDrawn
+witnesses. Version 54 added four Journey Text.fill routes with Classic witnesses. The four C4
 Text.fill routes retain Classic, Neo, and HandDrawn witnesses. Gantt Warning today and vertical
 strokes retain separate profiles.
 The today profile fixes the runtime clock to 2024-01-03 within the task interval; `todayMarker`
@@ -47,7 +48,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Tree View | Typed | Unsupported | None |
 | GitGraph | Typed | Typed | Required |
 | Gantt | Typed | Unsupported | None |
-| Kanban | Typed | Typed | Required |
+| Kanban | Typed | Typed | None |
 | Requirement | Typed | Typed | Required |
 | ER | Typed | Typed | Required |
 | Pie | Typed | Unsupported | None |
@@ -89,7 +90,11 @@ Important boundaries that a family-level count cannot express:
 - Kanban has no independent diagram-title terminal. KTD23 v4 retires the unused
   `title.fill` projection to `themeVariables.titleColor`; Title rules are Unsupported and
   NotApplicable, including documents with frontmatter titles. Column labels use Text paint and
-  card labels use TaskLabel paint. The Text compatibility projection and Kanban bridge remain.
+  card labels use TaskLabel paint. KTD17 v55 replaces the Text compatibility projection and
+  removes Kanban's final family bridge. Static unqualified/Default Text.fill updates the root and
+  default label colors; explicit textColor, TaskLabel, and source inline colors retain ownership.
+  With no inheriting visible labels Text.fill is NotApplicable; unverified source ownership and
+  unsupported winning sibling properties remain residuals.
 - C4 static unqualified/Default Text.fill owns the root inherited color and optional diagram title.
   Shape, boundary, and relationship labels retain independent colors. Explicit
   `themeVariables.textColor` owns the root; a title-less document with statically owned label colors

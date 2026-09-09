@@ -55,7 +55,10 @@ impl<'a> KanbanMarkdown<'a> {
 }
 
 mod config;
+mod text_paint;
 mod theme;
+
+pub(crate) use text_paint::{KanbanTextPaintPlan, KanbanTextPaintReceipt, KanbanTextPaintRole};
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) use theme::{
@@ -70,6 +73,7 @@ pub(crate) struct KanbanPreparedArtifact {
     items: Vec<KanbanPreparedItem>,
     typography_layout: KanbanTypographyLayoutReceipt,
     task_theme: KanbanTaskTheme,
+    text_paint: KanbanTextPaintPlan,
 }
 
 impl KanbanPreparedArtifact {
@@ -89,6 +93,10 @@ impl KanbanPreparedArtifact {
 
     pub(crate) const fn task_theme(&self) -> &KanbanTaskTheme {
         &self.task_theme
+    }
+
+    pub(crate) const fn text_paint(&self) -> &KanbanTextPaintPlan {
+        &self.text_paint
     }
 
     pub(crate) const fn typography_layout(&self) -> &KanbanTypographyLayoutReceipt {
@@ -665,12 +673,21 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         prepared_items.len(),
         prepared_items.len().saturating_mul(2),
     );
+    let text_paint = KanbanTextPaintPlan::resolve(
+        theme,
+        effective_config,
+        &prepared_sections,
+        &prepared_items,
+        &task_theme,
+        work_meter,
+    )?;
     Ok(KanbanPreparedArtifact {
         layout,
         sections: prepared_sections,
         items: prepared_items,
         typography_layout,
         task_theme,
+        text_paint,
     })
 }
 
@@ -749,6 +766,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
         items,
         typography_layout,
         task_theme: KanbanTaskTheme::baseline(layout.items.len(), typography),
+        text_paint: KanbanTextPaintPlan::baseline(),
     }
 }
 

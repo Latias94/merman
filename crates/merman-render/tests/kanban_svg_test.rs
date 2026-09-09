@@ -1346,6 +1346,271 @@ fn kanban_task_radius_rejects_qualified_rules_but_accepts_mixed_direct_paint() {
 }
 
 #[test]
+fn kanban_text_fill_replaces_the_legacy_default_without_changing_other_surfaces() {
+    let source =
+        "kanban\n  todo[Todo]\n    task[Task]@{ ticket: ABC-7, assigned: Core, priority: High }\n";
+    for look in ["classic", "neo", "handDrawn"] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, color) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(paint),
+                );
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let config = serde_json::json!({
+                    "look": look,
+                    "kanban": { "ticketBaseUrl": "https://example.test/#TICKET#" }
+                });
+                let rendered = render_kanban_with_theme_and_engine(
+                    source,
+                    &kanban_task_rules_theme([rule]),
+                    Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                let mut legacy_config = config;
+                legacy_config["themeVariables"] = serde_json::json!({
+                    "textColor": color,
+                    "taskTextColor": color,
+                });
+                let legacy = render_kanban_with_theme_and_engine(
+                    source,
+                    &kanban_task_rules_theme([]),
+                    Engine::new().with_site_config(MermaidConfig::from_value(legacy_config)),
+                    ThemePortabilityRequirement::RequirePortable,
+                );
+                assert_eq!(
+                    rendered.svg(),
+                    legacy.svg(),
+                    "look={look}, variant={variant:?}, color={color}"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let css = document
+                    .root_element()
+                    .children()
+                    .find(|node| node.has_tag_name("style"))
+                    .unwrap()
+                    .text()
+                    .unwrap();
+                assert!(css.contains(&format!(
+                    "#kanban-palette .cluster-label,#kanban-palette .label{{color:{color};fill:{color};}}"
+                )));
+                let root_rule = css
+                    .split('}')
+                    .find(|rule| rule.starts_with("#kanban-palette{"))
+                    .unwrap();
+                assert!(root_rule.contains(&format!("fill:{color};")));
+                for label in ["Todo", "Task", "ABC-7", "Core"] {
+                    assert!(
+                        document
+                            .descendants()
+                            .any(|node| node.is_text() && node.text() == Some(label)),
+                        "{label}"
+                    );
+                }
+                assert!(document.descendants().any(|node| {
+                    node.has_tag_name("a")
+                        && node
+                            .attributes()
+                            .any(|attr| attr.name() == "href" && attr.value().contains("ABC-7"))
+                }));
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn kanban_text_fill_preserves_config_and_more_specific_label_owners() {
+    let source = "kanban\n  todo[Todo]\n    task[Task]\n";
+    let text_rule = ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    );
+    let theme = kanban_task_rules_theme([text_rule, kanban_task_label_rule("#abcdef", 1)]);
+    for config_owned in [false, true] {
+        let config = if config_owned {
+            serde_json::json!({"themeVariables": {"textColor": "#fedcba"}})
+        } else {
+            serde_json::json!({})
+        };
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            kanban_task_label_style(&document, "kanban-palette-task"),
+            if config_owned {
+                "text-align:left !important"
+            } else {
+                "color:#abcdef;fill:#abcdef;text-align:left !important"
+            }
+        );
+        let css = document
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        let color = if config_owned { "#fedcba" } else { "#123456" };
+        assert!(css.contains(&format!(
+            "#kanban-palette .cluster-label,#kanban-palette .label{{color:{color};fill:{color};}}"
+        )));
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), if config_owned { 0 } else { 2 });
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if config_owned { 2 } else { 0 }
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn kanban_text_fill_has_no_application_without_inheriting_label_terminals() {
+    let theme = kanban_task_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for source in [
+        "kanban\n",
+        "---\ntitle: Metadata only\n---\nkanban\n",
+        "%%{init: {\"securityLevel\": \"loose\"}}%%\nkanban\n  todo[\"<span style='color:#abcdef'>Owned</span>\"]\n",
+    ] {
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1, "{source}");
+        assert_eq!(evidence.applied_count(), 0, "{source}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{source}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{source}");
+    }
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    );
+    let completion = rendered.into_completion();
+    assert_eq!(
+        merman_render::__private::family_evidence(completion.report()).applied_count(),
+        1
+    );
+}
+
+#[test]
+fn kanban_text_fill_does_not_certify_unsupported_siblings_or_unknown_source_color() {
+    let fill = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let mixed = ThemeStylePatch {
+        typography: merman_render::diagram_theme::TextStylePatch {
+            font_stack: Specified::Value(FontStack::single("UnsupportedRuleFont").unwrap()),
+            ..Default::default()
+        },
+        ..fill.clone()
+    };
+    for (source, patch) in [
+        ("kanban\n  todo[Todo]\n    task[Task]\n", mixed),
+        (
+            "%%{init: {\"securityLevel\": \"loose\"}}%%\nkanban\n  todo[\"Visible <span class='label'>Unknown</span>\"]\n",
+            fill,
+        ),
+    ] {
+        let theme = kanban_task_rules_theme([ThemeRule::new(ThemeTarget::Text, patch)]);
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let result = try_render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        assert!(matches!(
+            result,
+            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+        ));
+    }
+}
+
+#[test]
+fn kanban_text_effect_binding_requires_visible_text_before_reporting_a_residual() {
+    use merman_render::diagram_theme::{
+        DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+    };
+    let effects = DiagramEffectSet::default()
+        .with_graph(
+            EffectGraph::new(
+                "blur",
+                [EffectPrimitive::GaussianBlur {
+                    input: EffectInput::SourceGraphic,
+                    std_deviation: 1.0,
+                }],
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .with_binding(EffectBinding::new(ThemeTarget::Text, "blur").unwrap())
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_effects(effects))
+        .unwrap();
+    for (source, visible) in [("kanban\n", false), ("kanban\n  todo[Todo]\n", true)] {
+        let rendered = render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+        assert_eq!(evidence.theme_residual_count(), usize::from(visible));
+        let strict = try_render_kanban_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if visible {
+            assert!(matches!(
+                strict,
+                Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+            ));
+        } else {
+            strict.expect("empty Text domain is not applicable");
+        }
+    }
+}
+
+#[test]
 fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
     let baseline_theme = kanban_task_rules_theme([]);
     for source in [

@@ -464,6 +464,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::GANTT, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
         }
+        (DiagramFamilyId::KANBAN, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TEXT_FILL)
+        }
         (DiagramFamilyId::KANBAN, ThemeTarget::Task, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_KANBAN_TASK_STROKE)
         }
@@ -1897,7 +1900,7 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if family == DiagramFamilyId::JOURNEY
+    if matches!(family, DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN)
         && target == ThemeTarget::Text
         && matches!(
             selector,
@@ -3913,6 +3916,91 @@ mod tests {
     }
 
     #[test]
+    fn kanban_text_fill_cutover_is_static_scalar_and_family_local() {
+        for kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let selector = FamilyThemeSelectorShape::Static { variant };
+                let facet = FamilyThemeRuleFacet::Fill(kind);
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::KANBAN,
+                        ThemeTarget::Text,
+                        selector,
+                        facet
+                    ),
+                    FamilyThemeDisposition::TypedAdapter
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::GIT_GRAPH,
+                        ThemeTarget::Text,
+                        selector,
+                        facet
+                    ),
+                    FamilyThemeDisposition::LegacyCompatibility
+                );
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::KANBAN,
+                        ThemeTarget::Text,
+                        FamilyThemeSelectorShape::Ordinal {
+                            variant,
+                            selector: OrdinalSelector::exact(1).expect("valid ordinal"),
+                        },
+                        facet,
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
+        for kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::KANBAN,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(kind),
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::KANBAN,
+                ThemeTarget::Text,
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(ThemeVariant::Active)
+                },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
+            ),
+            FamilyThemeDisposition::Unsupported
+        );
+        let routes = legacy_replacing_typed_routes()
+            .expect("derive typed cutovers")
+            .into_iter()
+            .filter(|route| {
+                route.family_id() == DiagramFamilyId::KANBAN && route.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for route in routes {
+            assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
+            assert_eq!(
+                route.projections().iter().collect::<Vec<_>>(),
+                [ThemeRouteCutoverProjection::TextFill]
+            );
+        }
+    }
+
+    #[test]
     fn kanban_owns_the_task_ordinal_palette() {
         assert_eq!(
             compile_ordinal_palette_route(DiagramFamilyId::KANBAN, ThemeTarget::Task).disposition(),
@@ -5551,6 +5639,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::KANBAN,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::KANBAN,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill"],
+            ),
+            (
+                DiagramFamilyId::KANBAN,
                 ThemeTarget::Task,
                 Stroke,
                 Transparent,
@@ -6232,7 +6334,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 148);
+        assert_eq!(qualified.len(), 150);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7116,6 +7218,7 @@ mod tests {
                     | DiagramFamilyId::C4
                     | DiagramFamilyId::CYNEFIN
                     | DiagramFamilyId::ER
+                    | DiagramFamilyId::KANBAN
                     | DiagramFamilyId::SANKEY
             ) {
                 FamilyThemeDisposition::TypedAdapter
