@@ -2895,7 +2895,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
-        if !self.write_gantt_task_style(path_id, style)? {
+        if !self.write_gantt_primitive_style(path_id, style)? {
             self.write_fill_stroke_style(style)?;
         }
         self.write_state_attrs()?;
@@ -2946,7 +2946,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         let inline_radius = path_id.as_str().ends_with(".shape").then_some(radius_x);
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, inline_radius)?;
-        if !self.write_gantt_task_style(path_id, style)? {
+        if !self.write_gantt_primitive_style(path_id, style)? {
             self.write_fill_stroke_style(style)?;
         }
         self.write_state_attrs()?;
@@ -3077,7 +3077,9 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_wardley_marker_attributes(path_id.as_str())?;
         self.write_zenuml_path_attrs(path_id.as_str())?;
         self.write_block_inline_path_style(path_id, style)?;
-        self.write_fill_stroke_style(style)?;
+        if !self.write_gantt_primitive_style(path_id, style)? {
+            self.write_fill_stroke_style(style)?;
+        }
         self.write_state_attrs()?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
@@ -3264,7 +3266,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         {
             return Ok(());
         }
-        if self.emit_gantt_task_text(run, semantic_id.as_deref())? {
+        if self.emit_gantt_plain_text(run, semantic_id.as_deref())? {
             return Ok(());
         }
         if let Some(styles) = &self.packet_styles
@@ -3327,14 +3329,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         }
 
         self.output.push_str("<text")?;
-        if matches!(self.svg_body, SvgStructureBody::Gantt(_))
-            && semantic_id
-                .as_deref()
-                .is_some_and(|id| id.starts_with("gantt.section."))
-        {
-            // Section commands already contain the source's cross-tspan whitespace result.
-            self.output.push_str(" xml:space=\"preserve\"")?;
-        }
+        self.write_gantt_text_space_attr(run, semantic_id.as_deref())?;
         if let Some(semantic_id) = semantic_id.as_deref() {
             self.write_gantt_dom_id(semantic_id)?;
             #[cfg(feature = "layout-cytoscape")]

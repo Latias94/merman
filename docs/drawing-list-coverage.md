@@ -370,6 +370,16 @@ The pinned source emits inert transform-origin values for non-milestone tasks ba
 date interval and task row, not necessarily the painted rectangle's center. Milestone transforms
 are already owned by public matrices; deriving every origin from rectangle bounds would be wrong.
 
+The title and today-marker follow-up reuses those resolved text/paint projections. Title position,
+font and literal content remain public, including an empty text command for Mermaid's persistent
+empty `titleText` element. The retired title-only helper that skipped empty text was removed.
+Compact and generic text output share whitespace preservation, so changing a public title/task
+paint to a translucent color cannot collapse its significant spaces during serializer fallback.
+`target/compare/gantt_db772032c_chrome_candidate_structure.md` records a strict single-fixture
+canonical probe before the empty-title repair: title and marker paint attributes converge, while
+transform-origin, semantic metadata and section whitespace attributes still block the fixture.
+The public Gantt route remains a legacy bridge; no structural normalization was relaxed.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

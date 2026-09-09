@@ -223,9 +223,8 @@ impl<'a> GanttBuilder<'a> {
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.emit_today_marker()?;
-        if let Some(title) = title.as_deref().filter(|title| !title.is_empty()) {
-            self.emit_title(title)?;
-        }
+        // Mermaid keeps the title element even when its text is empty.
+        self.emit_title(title.as_deref().unwrap_or_default())?;
 
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
@@ -763,19 +762,18 @@ impl<'a> GanttBuilder<'a> {
             .push_control(DrawingCommand::BeginSemanticGroup {
                 semantic_id: "gantt.title".to_string(),
             })?;
-        self.emit_text(
-            "gantt.title",
-            title,
-            TextEmitSpec {
-                origin: Point::new(self.layout.title_x, self.layout.title_y),
-                font_size: 18.0,
-                weight: 400,
-                color: self.title_text_fill,
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Alphabetic,
-                italic: false,
-            },
-        )?;
+        let spec = TextEmitSpec {
+            origin: Point::new(self.layout.title_x, self.layout.title_y),
+            font_size: 18.0,
+            weight: 400,
+            color: self.title_text_fill,
+            anchor: TextAnchor::Middle,
+            baseline: TextBaseline::Alphabetic,
+            italic: false,
+        };
+        let resolved = self.document.resolve_mermaid_text(title)?;
+        let bounds = self.measure_text_bounds(resolved.as_ref(), &spec)?;
+        self.emit_text_in_bounds("gantt.title", resolved.as_ref(), spec, bounds)?;
         self.document
             .push_control(DrawingCommand::EndSemanticGroup)?;
         self.document.push_mermaid_semantic(SemanticAnnotation {
@@ -786,16 +784,6 @@ impl<'a> GanttBuilder<'a> {
             link: None,
         })?;
         Ok(())
-    }
-
-    fn emit_text(&mut self, semantic_id: &str, text: &str, spec: TextEmitSpec) -> Result<()> {
-        let resolved = self.document.resolve_mermaid_text(text)?;
-        let text = resolved.as_ref();
-        if text.is_empty() {
-            return Ok(());
-        }
-        let bounds = self.measure_text_bounds(text, &spec)?;
-        self.emit_text_in_bounds(semantic_id, text, spec, bounds)
     }
 
     fn measure_text_bounds(&self, text: &str, spec: &TextEmitSpec) -> Result<Rect> {

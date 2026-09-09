@@ -3,16 +3,40 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
-    /// Retain source CSS-shaped task paint without consulting the source stylesheet.
+    pub(super) fn write_gantt_text_space_attr(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+    ) -> Result<()> {
+        if !matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
+            return Ok(());
+        }
+        let Some(id) = semantic_id else {
+            return Ok(());
+        };
+        let preserve = id.starts_with("gantt.section.")
+            || ((id == "gantt.title" || id.starts_with("gantt.task."))
+                && (run.text.starts_with(' ')
+                    || run.text.ends_with(' ')
+                    || run.text.contains("  ")));
+        if preserve {
+            // Source whitespace is already resolved; paint fallback must not collapse it again.
+            // Native SVG consumers also need xml:space, not just CSS white-space.
+            self.output.push_str(" xml:space=\"preserve\"")?;
+        }
+        Ok(())
+    }
+
+    /// Retain source CSS-shaped paint without consulting the source stylesheet.
     /// Resource paints and non-default strokes keep the general attribute projection.
-    pub(super) fn write_gantt_task_style(
+    pub(super) fn write_gantt_primitive_style(
         &mut self,
         path_id: &ResourceId,
         style: &PathStyle,
     ) -> Result<bool> {
         if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
-            || !path_id.as_str().starts_with("gantt.task.")
-            || !path_id.as_str().ends_with(".bar")
+            || !(path_id.as_str().starts_with("gantt.task.") && path_id.as_str().ends_with(".bar")
+                || path_id.as_str() == "gantt.today.line")
             || self.state.blend_mode != BlendMode::Normal
         {
             return Ok(false);
@@ -65,7 +89,7 @@ impl DocumentSvgEncoder<'_> {
         Ok(true)
     }
 
-    pub(super) fn emit_gantt_task_text(
+    pub(super) fn emit_gantt_plain_text(
         &mut self,
         run: &TextRun,
         semantic_id: Option<&str>,
@@ -76,12 +100,13 @@ impl DocumentSvgEncoder<'_> {
         let Some(id) = semantic_id else {
             return Ok(false);
         };
-        if !id.starts_with("gantt.task.")
-            || !id.ends_with(".label")
+        let title = id == "gantt.title";
+        let task = id.starts_with("gantt.task.") && id.ends_with(".label");
+        if !(title || task)
             || !matches!(self.groups.last(), Some(GroupKind::Semantic {
                 semantic_id, emitted: false, ..
             }) if semantic_id == id)
-            || !body.dom_ids.contains_key(id)
+            || task && !body.dom_ids.contains_key(id)
             || run.baseline != TextBaseline::Alphabetic
             || run.direction != TextDirection::Auto
             || run.language.is_some()
@@ -104,31 +129,31 @@ impl DocumentSvgEncoder<'_> {
         let font = self.font_families(&run.style.font)?;
         self.output.push_str("<text")?;
         self.write_gantt_dom_id(id)?;
+        if task {
+            write!(self.output, " font-size=\"{}\"", fmt(run.style.font_size))?;
+        }
         write!(
             self.output,
-            " font-size=\"{}\" x=\"{}\" y=\"{}\" class=\"{}\"",
-            fmt(run.style.font_size),
+            " x=\"{}\" y=\"{}\" class=\"{}\"",
             fmt(run.origin.x),
             fmt(run.origin.y),
             escaped_attr(class),
         )?;
-        if self
-            .effective_config
-            .get("securityLevel")
-            .and_then(Value::as_str)
-            == Some("loose")
+        if task
+            && self
+                .effective_config
+                .get("securityLevel")
+                .and_then(Value::as_str)
+                == Some("loose")
         {
             write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))?;
         }
         // CSS is a projection of the resolved run, not a replay of source class/theme rules.
         // Preserve the public string literally; the adapter already resolved source whitespace.
-        if run.text.starts_with(' ') || run.text.ends_with(' ') || run.text.contains("  ") {
-            // Native SVG consumers also need xml:space; CSS white-space alone is insufficient.
-            self.output.push_str(" xml:space=\"preserve\"")?;
-        }
+        self.write_gantt_text_space_attr(run, semantic_id)?;
         write!(
             self.output,
-            " style=\"font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;text-anchor:{};dominant-baseline:alphabetic;fill:{};fill-opacity:1;stroke:none;\"",
+            " style=\"font-family:{};font-weight:{};font-style:{};letter-spacing:{}px;text-anchor:{};dominant-baseline:alphabetic;fill:{};fill-opacity:1;stroke:none;",
             escaped_attr(&font),
             run.style.font.weight,
             font_style(run.style.font.style),
@@ -136,6 +161,10 @@ impl DocumentSvgEncoder<'_> {
             text_anchor(run.anchor),
             color_css(color),
         )?;
+        if title {
+            write!(self.output, "font-size:{}px;", fmt(run.style.font_size))?;
+        }
+        self.output.push('"')?;
         self.write_state_attrs()?;
         self.output.push('>')?;
         output::escape_xml(&mut self.output, &run.text)?;

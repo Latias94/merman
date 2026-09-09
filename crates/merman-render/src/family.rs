@@ -2975,6 +2975,13 @@ mod tests {
             assert_eq!(children.len(), 1);
             assert!(children[0].has_tag_name("line"));
             assert_eq!(children[0].attribute("class"), Some("today"));
+            assert!(children[0].attribute("stroke").is_none());
+            assert!(
+                children[0]
+                    .attribute("style")
+                    .unwrap()
+                    .contains("stroke-width:")
+            );
         }
     }
 
@@ -2982,16 +2989,23 @@ mod tests {
     fn gantt_candidate_root_projects_public_collections_and_authored_accessibility() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 
-        for (accessibility, excludes, collection_offset) in [
-            ("", "", 0),
+        for (diagram_title, accessibility, excludes, collection_offset) in [
+            ("Example", "", "", 0),
             (
+                "Example",
                 "accTitle: Schedule\naccDescr: Delivery plan\n",
                 "excludes weekends\n",
                 1,
             ),
+            ("", "", "", 0),
         ] {
+            let title_source = if diagram_title.is_empty() {
+                String::new()
+            } else {
+                format!("title {diagram_title}\n")
+            };
             let source = format!(
-                "gantt\ntitle Example\n{accessibility}dateFormat YYYY-MM-DD\n{excludes}todayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\n"
+                "gantt\n{title_source}{accessibility}dateFormat YYYY-MM-DD\n{excludes}todayMarker off\nsection Core\nTask :a, 2026-01-01, 1d\n"
             );
             let parsed = Engine::new()
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
@@ -3057,9 +3071,20 @@ mod tests {
                     .descendants()
                     .any(|node| node.attribute("id") == Some("schedule-a"))
             );
+            let title = root
+                .children()
+                .find(|node| {
+                    node.has_tag_name("text") && node.attribute("class") == Some("titleText")
+                })
+                .unwrap();
+            assert_eq!(title.text().unwrap_or_default(), diagram_title);
+            assert!(title.attribute("font-size").is_none());
+            assert!(title.attribute("data-merman-bounds").is_none());
             assert!(
-                root.children().any(|node| node.has_tag_name("text")
-                    && node.attribute("class") == Some("titleText"))
+                title
+                    .attribute("style")
+                    .unwrap()
+                    .contains("font-size:18px;")
             );
             assert!(!svg.descendants().any(|node| {
                 node.has_tag_name("rect")
@@ -3090,6 +3115,73 @@ mod tests {
             assert_eq!(red_backgrounds.len(), 1);
             assert_eq!(
                 red_backgrounds[0]
+                    .attribute("fill-opacity")
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap(),
+                128.0 / 255.0
+            );
+            let run = document
+                .public
+                .commands
+                .iter_mut()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == diagram_title => Some(run),
+                    _ => None,
+                })
+                .unwrap();
+            run.text = "  Changed <title>  ".to_owned();
+            run.origin = merman_display_list::Point::new(37.0, 19.0);
+            run.style.font_size = 23.0;
+            run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 255));
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let title = xml
+                .root_element()
+                .children()
+                .find(|node| node.attribute("class") == Some("titleText"))
+                .unwrap();
+            assert_eq!(title.text(), Some("  Changed <title>  "));
+            assert_eq!(title.attribute("x"), Some("37"));
+            assert_eq!(title.attribute("y"), Some("19"));
+            assert!(
+                title
+                    .attribute("style")
+                    .unwrap()
+                    .contains("font-size:23px;")
+            );
+            assert!(title.attribute("style").unwrap().contains("fill:#123456;"));
+            assert_eq!(
+                title.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+                Some("preserve")
+            );
+            let run = document
+                .public
+                .commands
+                .iter_mut()
+                .find_map(|command| match command {
+                    DrawingCommand::DrawText { run } if run.text == "  Changed <title>  " => {
+                        Some(run)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            run.style.fill = Paint::solid(Color::rgba(18, 52, 86, 128));
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let title = xml
+                .root_element()
+                .children()
+                .find(|node| node.attribute("class") == Some("titleText"))
+                .unwrap();
+            assert_eq!(title.text(), Some("  Changed <title>  "));
+            assert_eq!(
+                title.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+                Some("preserve")
+            );
+            assert_eq!(title.attribute("fill"), Some("#123456"));
+            assert_eq!(
+                title
                     .attribute("fill-opacity")
                     .unwrap()
                     .parse::<f64>()
