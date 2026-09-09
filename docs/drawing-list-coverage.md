@@ -933,3 +933,32 @@ this report extends the outstanding evidence beyond strict structure and checks 
 After the default-name repair, all 53 focused Gantt/metadata tests pass, including both injected
 source-width placement cases and the empty marker/public-coordinate mutation. The full comparison
 reports above predate that final repair; neither is claimed as final family admission evidence.
+
+Gantt tick layers now retain D3's `opacity="1"` presentation attribute while one inline CSS block
+projects the public layer opacity and blend mode. The CSS overrides, rather than multiplies, the
+same element's attribute. Title font size is emitted in a diagram-scoped `.titleText` rule only
+for a unique eligible public run; unsupported paint/text and multi-run scopes withdraw the rule
+and retain independent inline/attribute projection. No theme/config values are consulted.
+Browser replay of `duration_units` and `acc_descr_block_multiline` leaves pixels unchanged after
+these representation changes (`target/compare/gantt_public_css_projection_browser.json`).
+
+The non-Strict DOM comparator recognizes the pinned empty Gantt Today line's two literal `NaN`
+x lengths as used zero values. Recognition requires the direct `svg[gantt] > g.today > line.today`
+structure and both x attributes; Strict keeps the source spelling. Other families, shapes and
+paint differences remain checked. Non-Strict numeric masking already omits coordinate magnitudes;
+this rule is not position evidence and does not replace the public mutation or browser checks.
+
+Venn content, title and area scopes now preserve independently edited public metadata. Content/title
+role or descriptive edits use the generic semantic projection when the source shell cannot carry
+them; area names and descriptions are emitted on their existing group. Source paint order is
+unchanged. This also exposes existing default area descriptions previously dropped by SVG, so the
+old 9/12 Venn report is not evidence for the updated metadata surface. Neither family is newly
+admitted by these changes.
+
+The updated Gantt/Venn projections pass all 87 focused render tests, including the new Venn
+metadata mutations and Gantt title-rule withdrawal. Full-family reports have not yet been
+refreshed for this projection change; historical Gantt 121/150 structure and Venn 9/12 results
+must not be used as current admission evidence.
+
+The Gantt empty-length normalization test passes its positive, wrong-family/shape, one-invalid-x,
+paint-difference and Strict-preservation cases. It adds no new geometry tolerance or CSS parser.

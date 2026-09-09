@@ -916,9 +916,30 @@ fn build_node(
             has_plot && has_bar_plot
         }
 
+        // Pinned empty Gantt diagrams emit invalid x lengths on the Today line. Browser
+        // used values are zero (including visible stroke), as the canonical finite path records.
+        // Keep Strict source spelling; other modes compare this proven length representation.
+        let gantt_empty_today = mode != DomMode::Strict
+            && n.has_tag_name("line")
+            && n.attribute("class") == Some("today")
+            && n.attribute("x1") == Some("NaN")
+            && n.attribute("x2") == Some("NaN")
+            && n.parent().is_some_and(|parent| {
+                parent.has_tag_name("g")
+                    && parent.attribute("class") == Some("today")
+                    && parent.parent().is_some_and(|root| {
+                        root == n.document().root_element()
+                            && root.has_tag_name("svg")
+                            && root.attribute("aria-roledescription") == Some("gantt")
+                    })
+            });
         for a in n.attributes() {
             let key = a.name().to_string();
-            let mut val = a.value().to_string();
+            let mut val = if gantt_empty_today && matches!(a.name(), "x1" | "x2") {
+                "0".to_string()
+            } else {
+                a.value().to_string()
+            };
 
             // Cynefin's typed colors do not retain authored hex letter case. Normalize only
             // valid hex fills on source paint elements, preserving every channel and alpha.
@@ -2641,6 +2662,48 @@ mod tests {
         let sig_a = dom_signature(a, DomMode::Parity, 3).unwrap();
         let sig_b = dom_signature(b, DomMode::Parity, 3).unwrap();
         assert_eq!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn gantt_empty_today_lengths_normalize_only_the_pinned_shape() {
+        let source = r#"<svg aria-roledescription="gantt"><g class="today"><line class="today" x1="NaN" x2="NaN" y1="25" y2="75" stroke="red"/></g></svg>"#;
+        let finite = source.replace("NaN", "0");
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(source, mode, 3).unwrap(),
+                dom_signature(&finite, mode, 3).unwrap()
+            );
+            for (from, to) in [
+                ("gantt", "other"),
+                ("<g class=\"today\">", "<g class=\"other\">"),
+                ("x2=\"NaN\"", "x2=\"1\""),
+            ] {
+                let unrecognized = source.replace(from, to);
+                assert_ne!(
+                    dom_signature(&unrecognized, mode, 3).unwrap(),
+                    dom_signature(&unrecognized.replace("NaN", "0"), mode, 3).unwrap()
+                );
+            }
+            assert_ne!(
+                dom_signature(source, mode, 3).unwrap(),
+                dom_signature(
+                    &finite.replace("stroke=\"red\"", "stroke=\"blue\""),
+                    mode,
+                    3
+                )
+                .unwrap()
+            );
+        }
+        assert_ne!(
+            dom_signature(source, DomMode::Strict, 3).unwrap(),
+            dom_signature(&finite, DomMode::Strict, 3).unwrap()
+        );
+        // These existing non-strict modes mask coordinate magnitudes. They prove structure,
+        // not position: the public path mutation and browser evidence cover used geometry.
+        assert_ne!(
+            dom_signature(&finite, DomMode::Strict, 3).unwrap(),
+            dom_signature(&finite.replace("x1=\"0\"", "x1=\"37\""), DomMode::Strict, 3).unwrap()
+        );
     }
 
     #[test]
