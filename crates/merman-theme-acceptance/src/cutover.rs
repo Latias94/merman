@@ -252,6 +252,12 @@ const MINDMAP_PAINT_SOURCE: &str = r#"mindmap
       First child
     Second
 "#;
+const GITGRAPH_TEXT_SOURCE: &str = r#"---
+title: GitGraph inherited text
+---
+gitGraph
+  commit id: "visible commit" tag: "visible tag"
+"#;
 const GITGRAPH_EDGE_SOURCE: &str = r#"gitGraph
   commit id: "1"
   branch develop
@@ -361,7 +367,7 @@ impl CutoverWitnessProfile {
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
         if matches!(
             route.family_id(),
-            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN
+            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN | DiagramFamilyId::GIT_GRAPH
         ) && route.target() == ThemeTarget::Text
         {
             return &Self::TEXT_LOOKS;
@@ -565,6 +571,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         )
         | (DiagramFamilyId::MINDMAP, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
             Ok(MINDMAP_PAINT_SOURCE)
+        }
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(GITGRAPH_TEXT_SOURCE)
         }
         (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke)
         | (
@@ -1559,11 +1568,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_304_routes_and_350_artifact_witnesses() {
+    fn route_inventory_retains_308_routes_and_362_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 304);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 350);
+        assert_eq!(inventory.len(), 308);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 362);
     }
 
     #[test]
@@ -1686,7 +1695,11 @@ mod tests {
     #[test]
     fn text_routes_require_each_look_specific_witness() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
-        for family in [DiagramFamilyId::C4, DiagramFamilyId::KANBAN] {
+        for family in [
+            DiagramFamilyId::C4,
+            DiagramFamilyId::KANBAN,
+            DiagramFamilyId::GIT_GRAPH,
+        ] {
             let routes = inventory
                 .iter()
                 .copied()

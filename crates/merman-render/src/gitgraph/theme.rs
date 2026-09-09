@@ -16,11 +16,13 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod branch_stroke;
 mod static_paint;
+mod text_paint;
 mod typography;
 
 use branch_stroke::GitGraphBranchStrokePlan;
 pub(crate) use branch_stroke::GitGraphBranchStrokeReceipt;
 pub(crate) use static_paint::GitGraphStaticPaintPlan;
+use text_paint::GitGraphTextPaintPlan;
 pub(crate) use typography::{
     GitGraphTypographyCssEmission, GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible,
     gitgraph_tags_in_output_order,
@@ -290,6 +292,7 @@ pub(crate) struct GitGraphNodePalettePlan {
     fills_by_slot: [Option<GitGraphNodePaletteFill>; GITGRAPH_PALETTE_SLOT_COUNT],
     fill_winner_by_slot: [bool; GITGRAPH_PALETTE_SLOT_COUNT],
     branch_stroke: GitGraphBranchStrokePlan,
+    text_paint: GitGraphTextPaintPlan,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
     visible_surfaces: [GitGraphPaletteSurfaceSet; GITGRAPH_PALETTE_SLOT_COUNT],
@@ -478,6 +481,7 @@ impl GitGraphNodePalettePlan {
         Self {
             fills_by_slot: std::array::from_fn(|_| None),
             fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
+            text_paint: GitGraphTextPaintPlan::baseline(),
             branch_stroke: GitGraphBranchStrokePlan::baseline(if layout.show_branches {
                 layout.branches.len()
             } else {
@@ -542,6 +546,21 @@ impl GitGraphNodePalettePlan {
             .get(slot)
             .and_then(Option::as_ref)
             .map(|fill| fill.css.as_str())
+    }
+
+    pub(crate) fn resolve_text_paint(
+        &mut self,
+        theme: Option<&ResolvedDiagramTheme>,
+        config: &MermaidConfig,
+        title: Option<&str>,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        self.text_paint = GitGraphTextPaintPlan::resolve(theme, config, title, work)?;
+        Ok(())
+    }
+
+    pub(crate) fn text_paint(&self) -> &GitGraphTextPaintPlan {
+        &self.text_paint
     }
 
     pub(crate) fn terminal_branch_stroke_css(&self) -> Option<&str> {
@@ -850,6 +869,7 @@ mod tests {
             }),
             fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
             branch_stroke: GitGraphBranchStrokePlan::baseline(0),
+            text_paint: GitGraphTextPaintPlan::baseline(),
             evidence: FamilyThemeEvidence::default(),
             palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
                 target: ThemeTarget::Node,

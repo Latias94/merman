@@ -759,10 +759,6 @@ fn compile_gitgraph_family(
         ],
     );
     contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::TextFill.contribution_id(),
-        [("textColor", reader.text_fill(ThemeTarget::Text))],
-    );
-    contributions.add_theme_variables(
         ThemeRouteCutoverProjection::NodeLabelFill.contribution_id(),
         [("tagLabelColor", reader.text_fill(ThemeTarget::NodeLabel))],
     );
@@ -771,7 +767,7 @@ fn compile_gitgraph_family(
         [("commitLineColor", reader.stroke_or_fill(ThemeTarget::Edge))],
     );
     contributions.add_theme_variables(
-        "edge-label.fill",
+        ThemeRouteCutoverProjection::EdgeLabelFill.contribution_id(),
         [("commitLabelColor", reader.text_fill(ThemeTarget::EdgeLabel))],
     );
     contributions.add_theme_variables(
@@ -1880,7 +1876,7 @@ mod tests {
     }
 
     #[test]
-    fn gitgraph_legacy_paint_excludes_the_retired_commit_label_background_projection() {
+    fn gitgraph_legacy_paint_excludes_typed_text_and_commit_background_projections() {
         let source = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
         let node_fill = "#101112";
         let node_stroke = "#131415";
@@ -1946,7 +1942,6 @@ mod tests {
             ("themeVariables.primaryBorderColor", node_stroke),
             ("themeVariables.nodeBorder", node_stroke),
             ("themeVariables.tagLabelBorder", node_stroke),
-            ("themeVariables.textColor", text),
             ("themeVariables.tagLabelColor", node_label),
             ("themeVariables.commitLineColor", edge),
             ("themeVariables.commitLabelColor", edge_label),
@@ -1965,6 +1960,10 @@ mod tests {
             "the retired projection must not be reintroduced through the bridge"
         );
 
+        assert_ne!(
+            parsed.effective_config.get_str("themeVariables.textColor"),
+            Some(text)
+        );
         let evidence = theme_parse_evidence(&parsed);
         let mut assignments = std::collections::BTreeMap::new();
         for contribution in evidence.fallback_contributions() {
@@ -1988,7 +1987,6 @@ mod tests {
                 ("themeVariables.tagLabelBackground", node_fill),
                 ("themeVariables.tagLabelBorder", node_stroke),
                 ("themeVariables.tagLabelColor", node_label),
-                ("themeVariables.textColor", text),
             ])
         );
         assert!(
@@ -2047,37 +2045,79 @@ mod tests {
     }
 
     #[test]
-    fn generic_text_fill_reaches_only_gitgraph_visible_text_tokens() {
-        let color = "#123456";
-        let family = DiagramFamilyId::GIT_GRAPH;
-        let spec = DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(
-                ThemeRule::new(
+    fn gitgraph_text_fill_retires_only_inherited_projections() {
+        const SOURCE: &str = "gitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+        for paint in [CanvasPaint::Transparent, solid("#123456")] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let mut rule = ThemeRule::new(
                     ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(solid(color)),
+                    ThemeStylePatch::default().with_fill(paint.clone()),
                 )
-                .for_family(family),
-            ),
-        );
+                .for_family(DiagramFamilyId::GIT_GRAPH);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let spec =
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+                let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::GIT_GRAPH);
+                assert!(artifact.overlay.is_empty());
+                assert!(artifact.contribution_ids.is_empty());
+                let parsed = parse(&spec, SOURCE);
+                assert_eq!(fallback_contribution_count(&parsed), 0);
 
-        let parsed = parse(&spec, "gitGraph\n  commit id: \"A\" tag: \"v1\"\n");
-        assert_eq!(
-            parsed.effective_config.get_str("themeVariables.textColor"),
-            Some(color)
-        );
-        let evidence = theme_parse_evidence(&parsed);
-        let paths = evidence
-            .fallback_contributions()
-            .flat_map(|contribution| contribution.surviving_assignment_paths())
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            paths,
-            BTreeSet::from([
-                "themeVariables.commitLabelColor",
-                "themeVariables.tagLabelColor",
-                "themeVariables.textColor",
-            ])
-        );
+                let mut styles = spec.styles().clone();
+                for (target, color) in [
+                    (ThemeTarget::NodeLabel, "#445566"),
+                    (ThemeTarget::EdgeLabel, "#778899"),
+                ] {
+                    let mut specific =
+                        ThemeRule::new(target, ThemeStylePatch::default().with_fill(solid(color)))
+                            .for_family(DiagramFamilyId::GIT_GRAPH);
+                    if let Some(variant) = variant {
+                        specific = specific.with_variant(variant);
+                    }
+                    styles = styles.with_rule(specific);
+                }
+                let parsed = parse(&spec.clone().with_styles(styles), SOURCE);
+                assert_eq!(
+                    parsed
+                        .effective_config
+                        .get_str("themeVariables.tagLabelColor"),
+                    Some("#445566")
+                );
+                assert_eq!(
+                    parsed
+                        .effective_config
+                        .get_str("themeVariables.commitLabelColor"),
+                    Some("#778899")
+                );
+                assert_eq!(fallback_contribution_count(&parsed), 2);
+
+                let compatibility = MermaidThemeCompatibility::default()
+                    .with_variable("textColor", "#abcdef")
+                    .unwrap()
+                    .with_variable("tagLabelColor", "#445566")
+                    .unwrap()
+                    .with_variable("commitLabelColor", "#778899")
+                    .unwrap();
+                let spec = spec.with_mermaid_compatibility(compatibility);
+                let parsed =
+                    parse_with_compatibility(&spec, SOURCE, spec.mermaid().to_mermaid_config());
+                for (path, value) in [
+                    ("textColor", "#abcdef"),
+                    ("tagLabelColor", "#445566"),
+                    ("commitLabelColor", "#778899"),
+                ] {
+                    assert_eq!(
+                        parsed
+                            .effective_config
+                            .get_str(&format!("themeVariables.{path}")),
+                        Some(value)
+                    );
+                }
+                assert_eq!(fallback_contribution_count(&parsed), 0);
+            }
+        }
     }
 
     #[test]
@@ -2300,14 +2340,14 @@ mod tests {
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 242);
+        assert_eq!(status.matrix_route_count(), 238);
         assert_eq!(status.matrix_family_count(), 12);
         assert_eq!(status.dispatched_family_count(), 12);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                77, 125, 131, 219, 133, 170, 153, 182, 147, 219, 243, 180, 102, 7, 199, 106, 129,
-                162, 224, 76, 60, 92, 170, 73, 39, 8, 140, 242, 79, 234, 143, 27
+                252, 122, 93, 208, 70, 54, 130, 47, 97, 218, 211, 104, 77, 137, 123, 168, 65, 175,
+                106, 149, 104, 18, 153, 219, 4, 46, 74, 217, 43, 176, 225, 93
             ]
         );
         assert_eq!(
@@ -2838,11 +2878,11 @@ mod tests {
                 assert!(
                     !bridge.owns_contribution_id("merman.legacy-family-theme.v1.kanban.text.fill")
                 );
-                let gitgraph = bridge.compile_for_family(DiagramFamilyId::GIT_GRAPH);
+                let requirement = bridge.compile_for_family(DiagramFamilyId::REQUIREMENT);
                 assert!(
-                    gitgraph
+                    requirement
                         .contribution_ids
-                        .contains("merman.legacy-family-theme.v1.gitGraph.text.fill")
+                        .contains("merman.legacy-family-theme.v1.requirement.requirement.text")
                 );
 
                 let baseline = parse(&DiagramThemeSpec::new(), SOURCE);

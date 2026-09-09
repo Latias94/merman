@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 51);
+    assert_eq!(support.claim_revision(), 52);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -90,6 +90,11 @@ fn family_owned_partial_route_is_reported_as_conditional() {
 #[test]
 fn direct_only_family_slices_are_reported_as_conditional() {
     for (family, target, facet) in [
+        (
+            DiagramFamilyId::GIT_GRAPH,
+            ThemeTarget::Text,
+            ThemeRuleFacetV1::Fill,
+        ),
         (
             DiagramFamilyId::KANBAN,
             ThemeTarget::Text,
@@ -638,7 +643,7 @@ fn tree_view_terminal_less_paint_claims_are_unsupported() {
 }
 
 #[test]
-fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
+fn gitgraph_text_fill_is_a_typed_partial_surface() {
     let query = ThemeSupportQueryV1::known(
         DiagramFamilyId::GIT_GRAPH.as_str(),
         ThemeSupportOutputV1::StandaloneSvg,
@@ -652,7 +657,7 @@ fn gitgraph_text_fill_remains_an_explicit_legacy_compatibility_route() {
     assert_eq!(
         support.reason_ids(),
         [
-            "theme-support.legacy-compatibility-only",
+            "theme-support.family-owned-consumer-present",
             "theme-support.public-value-domain-partial",
         ]
     );

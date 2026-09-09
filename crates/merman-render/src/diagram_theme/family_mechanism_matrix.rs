@@ -440,6 +440,9 @@ fn legacy_bridge_projections(
             ThemeTarget::EdgeLabelBackground,
             ThemeRouteCutoverFacet::Fill,
         ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_COMMIT_LABEL_BACKGROUND_FILL),
+        (DiagramFamilyId::GIT_GRAPH, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_TEXT_FILL)
+        }
         (DiagramFamilyId::ER, ThemeTarget::Relation, ThemeRouteCutoverFacet::Stroke) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_EDGE_STROKE)
         }
@@ -1900,8 +1903,10 @@ pub(super) fn classify_rule_facet(
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
-    if matches!(family, DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN)
-        && target == ThemeTarget::Text
+    if matches!(
+        family,
+        DiagramFamilyId::JOURNEY | DiagramFamilyId::KANBAN | DiagramFamilyId::GIT_GRAPH
+    ) && target == ThemeTarget::Text
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -3916,6 +3921,73 @@ mod tests {
     }
 
     #[test]
+    fn gitgraph_text_fill_cutover_preserves_specific_label_legacy_ownership() {
+        for kind in [
+            FamilyThemePaintKind::Transparent,
+            FamilyThemePaintKind::Solid,
+        ] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                let facet = FamilyThemeRuleFacet::Fill(kind);
+                let selector = FamilyThemeSelectorShape::Static { variant };
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::GIT_GRAPH,
+                        ThemeTarget::Text,
+                        selector,
+                        facet
+                    ),
+                    FamilyThemeDisposition::TypedAdapter
+                );
+                for target in [ThemeTarget::NodeLabel, ThemeTarget::EdgeLabel] {
+                    assert_eq!(
+                        classify_rule_facet(DiagramFamilyId::GIT_GRAPH, target, selector, facet),
+                        FamilyThemeDisposition::LegacyCompatibility
+                    );
+                }
+                assert_eq!(
+                    classify_rule_facet(
+                        DiagramFamilyId::GIT_GRAPH,
+                        ThemeTarget::Text,
+                        FamilyThemeSelectorShape::Ordinal {
+                            variant,
+                            selector: OrdinalSelector::exact(1).expect("valid ordinal")
+                        },
+                        facet
+                    ),
+                    FamilyThemeDisposition::Unsupported
+                );
+            }
+        }
+        for kind in [
+            FamilyThemePaintKind::Clear,
+            FamilyThemePaintKind::LinearGradient,
+            FamilyThemePaintKind::RadialGradient,
+            FamilyThemePaintKind::Pattern,
+        ] {
+            assert_eq!(
+                classify_rule_facet(
+                    DiagramFamilyId::GIT_GRAPH,
+                    ThemeTarget::Text,
+                    FamilyThemeSelectorShape::Static { variant: None },
+                    FamilyThemeRuleFacet::Fill(kind)
+                ),
+                FamilyThemeDisposition::Unsupported
+            );
+        }
+        assert_eq!(
+            classify_rule_facet(
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Text,
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(ThemeVariant::Active)
+                },
+                FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid)
+            ),
+            FamilyThemeDisposition::Unsupported
+        );
+    }
+
+    #[test]
     fn kanban_text_fill_cutover_is_static_scalar_and_family_local() {
         for kind in [
             FamilyThemePaintKind::Transparent,
@@ -3935,7 +4007,7 @@ mod tests {
                 );
                 assert_eq!(
                     classify_rule_facet(
-                        DiagramFamilyId::GIT_GRAPH,
+                        DiagramFamilyId::REQUIREMENT,
                         ThemeTarget::Text,
                         selector,
                         facet
@@ -5568,6 +5640,20 @@ mod tests {
                 vec!["commit-label-background.fill"],
             ),
             (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["text.fill", "node-label.fill", "edge-label.fill"],
+            ),
+            (
+                DiagramFamilyId::GIT_GRAPH,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["text.fill", "node-label.fill", "edge-label.fill"],
+            ),
+            (
                 DiagramFamilyId::INFO,
                 ThemeTarget::Text,
                 Fill,
@@ -6334,7 +6420,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 150);
+        assert_eq!(qualified.len(), 152);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6448,7 +6534,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::GIT_GRAPH)
                 .count(),
-            4
+            6
         );
         assert_eq!(
             qualified
@@ -6485,7 +6571,11 @@ mod tests {
                 };
                 assert_eq!(projections, [expected]);
             }
-            let expected_projection_count = if route.family_id() == DiagramFamilyId::C4
+            let expected_projection_count = if route.family_id() == DiagramFamilyId::GIT_GRAPH
+                && route.target() == ThemeTarget::Text
+            {
+                3
+            } else if route.family_id() == DiagramFamilyId::C4
                 || (matches!(
                     route.family_id(),
                     DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -6620,14 +6710,21 @@ mod tests {
             } else if route.family_id() == DiagramFamilyId::GIT_GRAPH {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::Edge, ThemeRouteCutoverFacet::Stroke) => {
-                        ThemeRouteCutoverProjection::EdgeStroke
+                        vec![ThemeRouteCutoverProjection::EdgeStroke]
                     }
                     (ThemeTarget::EdgeLabelBackground, ThemeRouteCutoverFacet::Fill) => {
-                        ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill
+                        vec![ThemeRouteCutoverProjection::GitGraphCommitLabelBackgroundFill]
+                    }
+                    (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+                        vec![
+                            ThemeRouteCutoverProjection::TextFill,
+                            ThemeRouteCutoverProjection::NodeLabelFill,
+                            ThemeRouteCutoverProjection::EdgeLabelFill,
+                        ]
                     }
                     _ => panic!("unexpected GitGraph qualified route: {route:?}"),
                 };
-                assert_eq!(projections, vec![expected], "route={route:?}");
+                assert_eq!(projections, expected, "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::MINDMAP {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::Node, ThemeRouteCutoverFacet::Fill) => {

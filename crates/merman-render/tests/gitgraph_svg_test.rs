@@ -832,7 +832,13 @@ fn render_source_and_site_config_cases(
     mut assert_case: impl FnMut(&str, family::RenderedFamilySvg),
 ) {
     let source_config = serde_json::to_string(&config).expect("serialize GitGraph source config");
-    let source_owned = format!("%%{{init: {source_config}}}%%\n{source}");
+    let (frontmatter, body) = if let Some(rest) = source.strip_prefix("---\n") {
+        let end = rest.find("\n---\n").expect("closed test frontmatter");
+        source.split_at(4 + end + 5)
+    } else {
+        ("", source)
+    };
+    let source_owned = format!("{frontmatter}%%{{init: {source_config}}}%%\n{body}");
     let cases = [
         (
             "site",
@@ -2087,4 +2093,609 @@ fn gitgraph_neo_palette_yields_when_every_visible_surface_is_owned() {
             assert_eq!(evidence.theme_residual_count(), 0, "{owner}");
         },
     );
+}
+
+#[test]
+fn gitgraph_text_fill_replaces_all_three_legacy_color_projections() {
+    let source = "---\ntitle: Release & tags\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n  branch next\n  commit id: \"B\" tag: \"v2\"\n";
+    let empty_theme = gitgraph_edge_rules_theme([]);
+    for look in ["classic", "neo", "handDrawn"] {
+        for theme_name in ["default", "neo", "neo-dark", "redux", "redux-color"] {
+            for variant in [None, Some(ThemeVariant::Default)] {
+                for (paint, color) in [
+                    (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                    (CanvasPaint::Transparent, "transparent"),
+                ] {
+                    let mut rule = ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default().with_fill(paint),
+                    )
+                    .for_family(DiagramFamilyId::GIT_GRAPH);
+                    if let Some(variant) = variant {
+                        rule = rule.with_variant(variant);
+                    }
+                    let theme = gitgraph_edge_rules_theme([rule]);
+                    let config = json!({"look": look, "theme": theme_name, "themeVariables": {"useGradient": false}});
+                    let rendered = render_gitgraph_with_theme_and_engine(
+                        source,
+                        &theme,
+                        Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                        "git-text",
+                    );
+                    let mut legacy_config = config;
+                    for path in ["textColor", "tagLabelColor", "commitLabelColor"] {
+                        legacy_config["themeVariables"][path] = json!(color);
+                    }
+                    let legacy = render_gitgraph_with_theme_and_engine(
+                        source,
+                        &empty_theme,
+                        Engine::new().with_site_config(MermaidConfig::from_value(legacy_config)),
+                        "git-text",
+                    );
+                    assert_eq!(
+                        rendered.svg(),
+                        legacy.svg(),
+                        "look={look}, theme={theme_name}, variant={variant:?}, color={color}"
+                    );
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    for class in ["tag-hole", "tag-label", "commit-label", "gitTitleText"] {
+                        assert!(
+                            document.descendants().any(|node| has_class(&node, class)),
+                            "missing {class}"
+                        );
+                    }
+                    let title = document
+                        .descendants()
+                        .find(|node| has_class(node, "gitTitleText"))
+                        .unwrap();
+                    assert_eq!(title.text(), Some("Release & tags"));
+                    assert_eq!(
+                        document
+                            .descendants()
+                            .filter(|node| node.has_tag_name("circle")
+                                && has_class(node, "tag-hole")
+                                && node.attribute("r") == Some("1.5"))
+                            .count(),
+                        2
+                    );
+                    let css = gitgraph_stylesheet(rendered.svg());
+                    for selector in [
+                        "#git-text",
+                        "#git-text .tag-hole",
+                        "#git-text .gitTitleText",
+                        "#git-text .tag-label",
+                    ] {
+                        assert_eq!(
+                            css_property_winner(&gitgraph_css_rule(&css, selector), "fill"),
+                            Some(color),
+                            "{selector}"
+                        );
+                    }
+                    if theme_name == "default" {
+                        assert_eq!(
+                            css_property_winner(
+                                &gitgraph_css_rule(&css, "#git-text .commit-label"),
+                                "fill"
+                            ),
+                            Some(color)
+                        );
+                    }
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.not_applicable_count(), 0);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gitgraph_text_fill_preserves_each_source_color_owner() {
+    let source = "---\ntitle: Owners\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for (path, owned_selectors) in [
+        ("textColor", vec!["", " .tag-hole", " .gitTitleText"]),
+        ("tagLabelColor", vec![" .tag-label"]),
+        ("commitLabelColor", vec![" .commit-label"]),
+    ] {
+        let config = json!({"themeVariables": {path: "#abcdef"}});
+        render_source_and_site_config_cases(
+            source,
+            config,
+            &theme,
+            &format!("git-text-{path}"),
+            |owner, rendered| {
+                let css = gitgraph_stylesheet(rendered.svg());
+                for suffix in [
+                    "",
+                    " .tag-hole",
+                    " .gitTitleText",
+                    " .tag-label",
+                    " .commit-label",
+                ] {
+                    let selector = format!("#git-text-{path}-{owner}{suffix}");
+                    assert_eq!(
+                        css_property_winner(&gitgraph_css_rule(&css, &selector), "fill"),
+                        Some(if owned_selectors.contains(&suffix) {
+                            "#abcdef"
+                        } else {
+                            "#123456"
+                        }),
+                        "{selector}"
+                    );
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(
+                    evidence.applied_count(),
+                    1,
+                    "the remaining unowned roles still consume Text.fill"
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            },
+        );
+    }
+}
+
+#[test]
+fn gitgraph_text_and_specific_labels_preserve_source_order() {
+    let source = "---\ntitle: Specific labels\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+    let rule = |target, color| {
+        ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+        )
+    };
+    for text_first in [false, true] {
+        let text = rule(ThemeTarget::Text, "#123456");
+        let mut rules = vec![
+            rule(ThemeTarget::NodeLabel, "#abcdef"),
+            rule(ThemeTarget::EdgeLabel, "#654321"),
+        ];
+        if text_first {
+            rules.insert(0, text);
+        } else {
+            rules.push(text);
+        }
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &gitgraph_edge_rules_theme(rules),
+            Engine::new(),
+            "git-text-specific",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = gitgraph_stylesheet(rendered.svg());
+        for (class, color) in [
+            ("tag-label", if text_first { "#abcdef" } else { "#123456" }),
+            (
+                "commit-label",
+                if text_first { "#654321" } else { "#123456" },
+            ),
+            ("tag-hole", "#123456"),
+            ("gitTitleText", "#123456"),
+        ] {
+            assert!(document.descendants().any(|node| has_class(&node, class)));
+            assert_eq!(
+                css_property_winner(
+                    &gitgraph_css_rule(&css, &format!("#git-text-specific .{class}")),
+                    "fill"
+                ),
+                Some(color)
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        // Specific label compatibility is accounted by parse provenance, not typed evidence.
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gitgraph_text_applicability_follows_visible_inherited_surfaces() {
+    let theme = gitgraph_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let hidden = json!({"gitGraph": {"showCommitLabel": false, "showBranches": false}});
+    let cherry = "gitGraph\n  commit id: \"A\"\n  branch next\n  commit id: \"B\"\n  checkout main\n  cherry-pick id: \"B\" tag: \"\"\n";
+    for (case, source, config, applied) in [
+        ("empty", "gitGraph\n", hidden.clone(), 0),
+        (
+            "accessibility-only",
+            "gitGraph\n  accTitle: Accessible only\n  commit id: \"A\"\n",
+            hidden.clone(),
+            0,
+        ),
+        ("hidden-label", TWO_BRANCHES, hidden.clone(), 0),
+        (
+            "title-only",
+            "---\ntitle: Visible title\n---\ngitGraph\n",
+            hidden.clone(),
+            1,
+        ),
+        ("cherry-root", cherry, hidden.clone(), 1),
+        (
+            "neo-background",
+            TWO_BRANCHES,
+            json!({"theme": "neo", "gitGraph": {"showCommitLabel": false}, "themeVariables": {"useGradient": false}}),
+            1,
+        ),
+        (
+            "neo-local-background",
+            TWO_BRANCHES,
+            json!({"theme": "neo", "gitGraph": {"showCommitLabel": false}, "themeVariables": {"useGradient": true}}),
+            0,
+        ),
+        (
+            "cherry-owned",
+            cherry,
+            json!({"gitGraph": {"showCommitLabel": false, "showBranches": false}, "themeVariables": {"textColor": "#abcdef"}}),
+            0,
+        ),
+        (
+            "missing-slot",
+            TWO_BRANCHES,
+            json!({"gitGraph": {"showCommitLabel": false, "showBranches": false}, "themeVariables": {"THEME_COLOR_LIMIT": 1}}),
+            1,
+        ),
+        (
+            "all-owned",
+            "---\ntitle: Owned title\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+            json!({"themeVariables": {"textColor": "#abcdef", "tagLabelColor": "#654321", "commitLabelColor": "#456789"}}),
+            0,
+        ),
+    ] {
+        let rendered = render_gitgraph_with_theme_and_engine(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            &format!("git-text-{case}"),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        if case == "cherry-root" {
+            assert!(
+                !document
+                    .descendants()
+                    .any(|node| has_class(&node, "tag-hole")),
+                "the cherry case must not be proven by a tag hole"
+            );
+            assert!(document.descendants().any(|node| {
+                node.has_tag_name("circle")
+                    && node.attribute("r") == Some("10")
+                    && node.attribute("fill").is_none()
+                    && node
+                        .attribute("class")
+                        .is_some_and(|value| value.contains("cherry"))
+            }));
+        }
+        if case == "neo-background" {
+            assert!(document.descendants().any(|node| node.has_tag_name("rect")
+                && has_class(&node, "label0")
+                && node.attribute("fill").is_none()));
+            assert!(!gitgraph_stylesheet(rendered.svg()).contains(" .label0{"));
+        }
+        if case == "missing-slot" {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.has_tag_name("circle")
+                        && has_class(&node, "commit1")
+                        && node.attribute("fill").is_none())
+            );
+            assert!(!gitgraph_stylesheet(rendered.svg()).contains(" .commit1{"));
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied, "{case}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[test]
+fn gitgraph_text_fill_cannot_certify_unsupported_sibling_properties() {
+    let source = "---\ntitle: Mixed text\n---\ngitGraph\n  commit id: \"A\" tag: \"v1\"\n";
+    let fill = || ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let font = |mut patch: ThemeStylePatch| {
+        patch.typography.font_stack =
+            Specified::Value(FontStack::single("UnsupportedRuleFont").unwrap());
+        patch
+    };
+    let rule = |patch| ThemeRule::new(ThemeTarget::Text, patch);
+    for (case, rules, config, applied, not_applicable, residuals) in [
+        ("mixed", vec![rule(font(fill()))], json!({}), 0, 0, 1),
+        (
+            "font-only",
+            vec![rule(font(ThemeStylePatch::default()))],
+            json!({}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "later-fill",
+            vec![rule(font(fill())), rule(fill())],
+            json!({}),
+            1,
+            0,
+            1,
+        ),
+        (
+            "owned-fill",
+            vec![rule(font(fill()))],
+            json!({"themeVariables": {"textColor": "#abcdef", "tagLabelColor": "#abcdef", "commitLabelColor": "#abcdef"}}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "inactive-variant",
+            vec![rule(font(fill())).with_variant(ThemeVariant::Active)],
+            json!({}),
+            0,
+            1,
+            0,
+        ),
+        (
+            "ordinal",
+            vec![rule(fill()).with_ordinal(OrdinalSelector::exact(1).unwrap())],
+            json!({}),
+            0,
+            0,
+            1,
+        ),
+        (
+            "shadowed-ordinal",
+            vec![
+                rule(fill()).with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                rule(fill()),
+            ],
+            json!({}),
+            1,
+            1,
+            0,
+        ),
+    ] {
+        let theme = gitgraph_edge_rules_theme(rules);
+        let engine = || Engine::new().with_site_config(MermaidConfig::from_value(config.clone()));
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            engine(),
+            &format!("git-text-mixed-{case}"),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        roxmltree::Document::parse(rendered.svg()).expect("valid best-effort GitGraph SVG");
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), applied, "{case}");
+        assert_eq!(evidence.not_applicable_count(), not_applicable, "{case}");
+        assert_eq!(evidence.theme_residual_count(), residuals, "{case}");
+        let strict = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            engine(),
+            &format!("git-text-strict-{case}"),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if residuals == 0 {
+            strict.expect("only supported or inactive text properties");
+        } else {
+            let error = match strict {
+                Ok(_) => panic!("{case}: unsupported text property passed strict portability"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::GIT_GRAPH, residuals)),
+                "{case}"
+            );
+        }
+    }
+}
+
+#[test]
+fn gitgraph_node_palette_can_own_neo_backgrounds_without_certifying_text_fill() {
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#abcdef").unwrap()]).unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_ordinal_palette(ThemeTarget::Node, palette)
+                    .with_rule(ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+            ),
+        )
+        .unwrap();
+    let rendered = render_gitgraph_with_theme_and_engine(
+        TWO_BRANCHES,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "neo", "gitGraph": {"showCommitLabel": false},
+            "themeVariables": {"useGradient": false}
+        }))),
+        "git-text-palette-owned",
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "commit-label"))
+    );
+    assert!(
+        !document
+            .descendants()
+            .any(|node| has_class(&node, "tag-hole"))
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(
+        evidence.applied_count(),
+        1,
+        "only the Node palette has an active terminal"
+    );
+    assert_eq!(
+        evidence.not_applicable_count(),
+        1,
+        "Text.fill has no inherited background left"
+    );
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn gitgraph_specific_label_clear_does_not_restore_generic_text_fill() {
+    for (target, class, source) in [
+        (
+            ThemeTarget::NodeLabel,
+            "tag-label",
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+        ),
+        (
+            ThemeTarget::EdgeLabel,
+            "commit-label",
+            "gitGraph\n  commit id: \"A\"\n",
+        ),
+    ] {
+        let mut cleared = ThemeStylePatch::default();
+        cleared.paint.fill = Specified::Clear;
+        let theme = gitgraph_edge_rules_theme([
+            ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ),
+            ThemeRule::new(target, cleared),
+        ]);
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "themeVariables": {"textColor": "#abcdef"},
+                "gitGraph": {"showCommitLabel": target == ThemeTarget::EdgeLabel}
+            }))),
+            "git-text-clear",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| has_class(&node, class)));
+        let css = gitgraph_stylesheet(rendered.svg());
+        assert_ne!(
+            css_property_winner(
+                &gitgraph_css_rule(&css, &format!("#git-text-clear .{class}")),
+                "fill"
+            ),
+            Some("#123456")
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.applied_count(),
+            0,
+            "a specific Clear must block the generic fill"
+        );
+        assert!(
+            evidence.not_applicable_count() >= 1,
+            "the generic Text rule has no remaining terminal"
+        );
+    }
+}
+
+#[test]
+fn gitgraph_later_text_ordinal_is_not_masked_by_an_earlier_specific_label_rule() {
+    let theme = gitgraph_edge_rules_theme([
+        ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+        ),
+        ThemeRule::new(
+            ThemeTarget::Text,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )
+        .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+    ]);
+    let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
+        "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "themeVariables": {"textColor": "#fedcba", "commitLabelColor": "#fedcba"}
+        }))),
+        "git-text-later-ordinal",
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| has_class(&node, "tag-label"))
+    );
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(
+        evidence.theme_residual_count(),
+        1,
+        "the later ordinal still needs a modeled terminal identity"
+    );
+}
+
+#[test]
+fn gitgraph_text_typography_yields_to_the_winning_label_property() {
+    for (target, class, source) in [
+        (
+            ThemeTarget::EdgeLabel,
+            "commit-label",
+            "gitGraph\n  commit id: \"A\"\n",
+        ),
+        (
+            ThemeTarget::NodeLabel,
+            "tag-label",
+            "gitGraph\n  commit id: \"A\" tag: \"v1\"\n",
+        ),
+    ] {
+        let font_rule = |target, name| {
+            let mut patch = ThemeStylePatch::default();
+            patch.typography.font_stack = Specified::Value(FontStack::single(name).unwrap());
+            ThemeRule::new(target, patch)
+        };
+        let theme = gitgraph_edge_rules_theme([
+            font_rule(ThemeTarget::Text, "EarlierGenericFont"),
+            font_rule(target, "LaterLabelFont"),
+        ]);
+        let rendered = try_render_gitgraph_with_theme_engine_and_requirement(source, &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "gitGraph": {"showBranches": false, "showCommitLabel": target == ThemeTarget::EdgeLabel}
+            }))), "git-text-font-shadowed", ThemePortabilityRequirement::BestEffort).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| has_class(&node, class)));
+        assert!(
+            !document
+                .descendants()
+                .any(|node| has_class(&node, "gitTitleText"))
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            1,
+            "the earlier Text font has no winning text terminal"
+        );
+    }
 }

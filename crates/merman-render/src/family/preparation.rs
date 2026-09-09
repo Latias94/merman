@@ -855,11 +855,17 @@ fn prepare_gitgraph_family(
         &typography_theme,
         execution.text_measurer(),
     )?;
-    let node_palette = crate::gitgraph::GitGraphNodePalettePlan::resolve(
+    let mut node_palette = crate::gitgraph::GitGraphNodePalettePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
         has_title,
+        execution.work_meter_ref(),
+    )?;
+    node_palette.resolve_text_paint(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        crate::gitgraph::resolve_gitgraph_title(&model, meta.title.as_deref()),
         execution.work_meter_ref(),
     )?;
     let static_paint = crate::gitgraph::GitGraphStaticPaintPlan::resolve(

@@ -2,7 +2,7 @@
 title: "Portable Theme Architecture Convergence - Plan Addendum"
 type: refactor
 date: 2026-08-09
-updated: 2026-09-08
+updated: 2026-09-09
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: docs/plans/2026-08-06-001-refactor-portable-diagram-theme-architecture-plan.md
@@ -51,6 +51,12 @@ record. The current source and generated contract are authoritative for these su
   projection with direct root/default-label paint, preserving config, TaskLabel, and source
   ownership. Kanban no longer requires a family bridge. Title remains Unsupported and
   NotApplicable rather than a new typed column-label consumer.
+- GitGraph static unqualified/Default Text.fill now consumes the three former textColor,
+  tagLabelColor, and commitLabelColor projections directly. KTD17 v56 binds all three projection
+  identities with Classic, Neo, and HandDrawn witnesses. Config ownership remains per source,
+  and specific NodeLabel/EdgeLabel rules retain their independent compatibility routes. Visible
+  root-inheriting geometry participates in Text paint evidence; a stylesheet alone does not
+  establish an Applied terminal. GitGraph still requires a bridge for its remaining routes.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

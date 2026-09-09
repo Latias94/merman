@@ -1897,6 +1897,7 @@ impl GitGraphFamilyArtifact {
 
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.node_palette.finish_evidence();
+        evidence.merge_accounted_from(self.node_palette.text_paint().finish_evidence());
         evidence.merge_accounted_from(self.static_paint.finish_evidence());
         evidence.merge_accounted_from(self.typography_theme.finish_evidence());
         evidence

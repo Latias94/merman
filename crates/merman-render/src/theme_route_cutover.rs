@@ -372,11 +372,12 @@ pub enum ThemeRouteCutoverProjection {
     GanttTaskWarningStroke = 40,
     TimelineEventFill = 41,
     C4TitleFillFallback = 42,
+    EdgeLabelFill = 43,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 43] = [
+    const ALL: [Self; 44] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -420,6 +421,7 @@ impl ThemeRouteCutoverProjection {
         Self::GanttTaskWarningStroke,
         Self::TimelineEventFill,
         Self::C4TitleFillFallback,
+        Self::EdgeLabelFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -453,6 +455,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskSuccessFill => "task.success.fill",
             Self::GanttTaskErrorFill => "task.error.fill",
             Self::NodeLabelFill => "node-label.fill",
+            Self::EdgeLabelFill => "edge-label.fill",
             Self::PieSliceFill => "slice.fill",
             Self::RequirementStroke => "requirement.paint",
             Self::GanttTaskDefaultStroke => "task.default.stroke",
@@ -503,6 +506,7 @@ impl ThemeRouteCutoverProjection {
             | Self::GanttTaskSuccessFill
             | Self::GanttTaskErrorFill
             | Self::NodeLabelFill
+            | Self::EdgeLabelFill
             | Self::PieSliceFill
             | Self::RequirementStroke
             | Self::GanttTaskDefaultStroke
@@ -576,6 +580,11 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
+    pub const REPLACE_GITGRAPH_TEXT_FILL: Self = Self(
+        ThemeRouteCutoverProjection::TextFill.bit()
+            | ThemeRouteCutoverProjection::NodeLabelFill.bit()
+            | ThemeRouteCutoverProjection::EdgeLabelFill.bit(),
+    );
     pub const REPLACE_C4_TEXT_FILL: Self = Self(
         ThemeRouteCutoverProjection::TextFill.bit()
             | ThemeRouteCutoverProjection::C4TitleFillFallback.bit(),
@@ -1195,6 +1204,27 @@ mod tests {
     }
 
     #[test]
+    fn gitgraph_text_fill_replaces_all_three_inherited_projections() {
+        assert_eq!(
+            ThemeRouteCutoverProjectionSet::REPLACE_GITGRAPH_TEXT_FILL
+                .iter()
+                .map(|projection| (projection.contribution_id(), projection.action()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("text.fill", ThemeRouteCutoverProjectionAction::Replace),
+                (
+                    "node-label.fill",
+                    ThemeRouteCutoverProjectionAction::Replace
+                ),
+                (
+                    "edge-label.fill",
+                    ThemeRouteCutoverProjectionAction::Replace
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn c4_text_fill_replaces_root_paint_and_retires_the_unused_title_fallback() {
         assert_eq!(
             ThemeRouteCutoverProjectionSet::REPLACE_C4_TEXT_FILL
@@ -1227,6 +1257,7 @@ mod tests {
         );
         assert_eq!(ThemeRouteCutoverProjection::TimelineEventFill as u8, 41);
         assert_eq!(ThemeRouteCutoverProjection::C4TitleFillFallback as u8, 42);
+        assert_eq!(ThemeRouteCutoverProjection::EdgeLabelFill as u8, 43);
     }
 
     #[test]
