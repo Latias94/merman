@@ -1181,6 +1181,7 @@ pub(crate) fn render_treemap_diagram_svg(
         } else {
             let mut style = leaf_label_initial_style.style().clone();
             let mut expected_style = leaf_label_initial_style.clone();
+            let mut width_fit_iterations = 0usize;
 
             loop {
                 label_measurement_matches &= expected_style.matches_measurement(&style);
@@ -1193,6 +1194,13 @@ pub(crate) fn render_treemap_diagram_svg(
                     || label_font_size <= min_label_font_size
                 {
                     break;
+                }
+                width_fit_iterations = width_fit_iterations.saturating_add(1);
+                if width_fit_iterations > 64 {
+                    return Err(crate::Error::InvalidModel {
+                        message: "Treemap label width fitting exceeded its iteration budget"
+                            .to_owned(),
+                    });
                 }
                 let next_font_size = label_font_size - 1.0;
                 if next_font_size >= label_font_size {
