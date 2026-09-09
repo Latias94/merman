@@ -234,6 +234,26 @@ fn compile_er_source_style<'a>(
     }
 }
 
+fn charge_er_subgraph_class_style_work(
+    class_names: &[String],
+    classes: &indexmap::IndexMap<String, merman_core::diagrams::er::ErClassDefRenderModel>,
+    work_meter: &OperationWorkMeter,
+) -> Result<(), OperationWorkError> {
+    let mut seen_classes = BTreeSet::new();
+    for class_name in class_names {
+        work_meter.charge(1usize.saturating_add(class_name.len()))?;
+        if !seen_classes.insert(class_name.as_str()) {
+            continue;
+        }
+        if let Some(class) = classes.get(class_name) {
+            for raw in class.styles.iter().chain(&class.text_styles) {
+                work_meter.charge(1usize.saturating_add(raw.len()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn insert_er_box_declaration(
     rect_map: &mut BTreeMap<String, ErStyleDeclaration>,
     text_map: &mut BTreeMap<String, ErStyleDeclaration>,
@@ -549,18 +569,7 @@ impl ErEntityThemePlan {
                 for raw in &subgraph.css_styles {
                     work_meter.charge(1usize.saturating_add(raw.len()))?;
                 }
-                let mut seen_classes = BTreeSet::new();
-                for class in &subgraph.classes {
-                    work_meter.charge(1usize.saturating_add(class.len()))?;
-                    if !seen_classes.insert(class.as_str()) {
-                        continue;
-                    }
-                    if let Some(class) = model.classes.get(class) {
-                        for raw in class.styles.iter().chain(&class.text_styles) {
-                            work_meter.charge(1usize.saturating_add(raw.len()))?;
-                        }
-                    }
-                }
+                charge_er_subgraph_class_style_work(&subgraph.classes, &model.classes, work_meter)?;
                 let source_style = visible_subgraph_styles
                     .get(&subgraph.id)
                     .expect("visible ER subgraph styles are indexed with layout clusters");
@@ -1322,5 +1331,41 @@ fn paint_capability_from_css(css: &str) -> ThemeCapability {
         ThemeCapability::TransparentPaint
     } else {
         ThemeCapability::SolidPaint
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_subgraph_classes_charge_only_their_reference_work() {
+        let classes = indexmap::IndexMap::from([(
+            "accent".to_string(),
+            merman_core::diagrams::er::ErClassDefRenderModel {
+                id: "accent".to_string(),
+                styles: vec!["fill:#123456".to_string()],
+                text_styles: vec!["color:#654321".to_string()],
+            },
+        )]);
+        let unique = vec!["accent".to_string()];
+        let duplicate = vec!["accent".to_string(), "accent".to_string()];
+        let unique_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let duplicate_meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+
+        charge_er_subgraph_class_style_work(&unique, &classes, &unique_meter)
+            .expect("unique class work");
+        charge_er_subgraph_class_style_work(&duplicate, &classes, &duplicate_meter)
+            .expect("duplicate class work");
+
+        assert_eq!(
+            duplicate_meter.used() - unique_meter.used(),
+            1 + "accent".len(),
+            "a repeated class must not charge its declarations twice"
+        );
     }
 }
