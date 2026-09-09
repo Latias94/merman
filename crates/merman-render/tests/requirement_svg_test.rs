@@ -643,6 +643,12 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
                 ),
                 "{html_labels}/{source_style}: {calls:?}"
             );
+            assert!(
+                calls
+                    .iter()
+                    .any(|(_, style)| style.font_weight.as_deref() == Some("bold"))
+            );
+            assert!(calls.iter().any(|(_, style)| style.font_weight.is_none()));
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             assert!(document.descendants().any(|node| {
                 node.attribute("style").is_some_and(|style| {
@@ -656,6 +662,220 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
             assert_eq!(evidence.not_applicable_count(), 2);
             assert_eq!(evidence.theme_residual_count(), 0);
         }
+    }
+}
+
+#[test]
+fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() {
+    #[derive(Debug)]
+    struct FaceProbe(Arc<Mutex<Vec<TextStyle>>>);
+
+    impl TextMeasurer for FaceProbe {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(style.clone());
+            TextMetrics {
+                width: text.len() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for html_labels in [false, true] {
+        for (declarations, weight, face) in [
+            ("font-weight:500,font-style:italic", "500", "italic"),
+            ("font-weight:700,font-style:OBLIQUE", "700", "oblique"),
+            (
+                "font-weight:bold!important,font-weight:normal,font-style:italic,font-style:normal",
+                "normal",
+                "normal",
+            ),
+        ] {
+            for source_style in [
+                format!("style req1 font-size:32px,{declarations}"),
+                format!("classDef sourceFace font-size:32px,{declarations}\nclass req1 sourceFace"),
+                format!(
+                    "classDef earlierFace font-weight:900,font-style:normal\nclass req1 earlierFace\nstyle req1 font-size:32px,{declarations}"
+                ),
+                format!(
+                    "style req1 font-weight:900,font-style:normal\nclassDef laterFace font-size:32px,{declarations}\nclass req1 laterFace"
+                ),
+            ] {
+                let calls = Arc::new(Mutex::new(Vec::new()));
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.requirement-source-faces").unwrap(),
+                        "test",
+                    )
+                    .unwrap(),
+                    Arc::new(FaceProbe(Arc::clone(&calls))),
+                );
+                let rendered = render_requirement_with_theme_requirement_and_environment(
+                    &format!("{}\n{source_style}\n", requirement_source()),
+                    &theme,
+                    Engine::new().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({"htmlLabels": html_labels}),
+                    )),
+                    ThemePortabilityRequirement::RequirePortable,
+                    RenderEnvironment::deterministic()
+                        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                );
+                let calls = calls.lock().unwrap();
+                let node_calls = calls.iter().filter(|style| style.font_size == 32.0);
+                assert!(node_calls.clone().count() > 0);
+                assert!(
+                    node_calls.clone().all(|style| {
+                        style.font_weight.as_deref() == Some(weight)
+                            && style.font_style.as_deref() == Some(face)
+                    }),
+                    "{html_labels}/{source_style}: {calls:?}"
+                );
+                if !html_labels {
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let multiline_labels = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("text")
+                                && node
+                                    .children()
+                                    .filter(|row| row.has_tag_name("tspan"))
+                                    .count()
+                                    > 1
+                        })
+                        .collect::<Vec<_>>();
+                    assert!(
+                        !multiline_labels.is_empty(),
+                        "the probe must force SVG wrapping"
+                    );
+                    for label in multiline_labels {
+                        for word in label
+                            .descendants()
+                            .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                        {
+                            let style = word.attribute("style").unwrap_or("").to_ascii_lowercase();
+                            assert!(
+                                style.contains(&format!("font-weight:{weight} !important"))
+                                    && style.contains(&format!("font-style:{face} !important")),
+                                "every wrapped word must retain the source face: {source_style}/{word:?}"
+                            );
+                        }
+                    }
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn requirement_svg_source_faces_override_markdown_but_html_keeps_child_faces() {
+    #[derive(Debug)]
+    struct FaceProbe(Arc<Mutex<Vec<TextStyle>>>);
+
+    impl TextMeasurer for FaceProbe {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(style.clone());
+            TextMetrics {
+                width: text.len() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("RequirementTyped").unwrap()),
+    );
+    for html_labels in [false, true] {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.requirement-markdown-source-faces").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(FaceProbe(Arc::clone(&calls))),
+        );
+        let source = format!(
+            "{}\nstyle req1 font-size:32px,font-weight:500,font-style:normal\n",
+            requirement_source().replace("Themed requirement", "\"**Strong** and *emphasis*\"")
+        );
+        let rendered = render_requirement_with_theme_requirement_and_environment(
+            &source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"htmlLabels": html_labels}),
+            )),
+            ThemePortabilityRequirement::RequirePortable,
+            RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+        );
+        let calls = calls.lock().unwrap();
+        let node_calls = calls.iter().filter(|style| style.font_size == 32.0);
+        assert!(node_calls.clone().count() > 0);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        if html_labels {
+            assert!(
+                node_calls
+                    .clone()
+                    .any(|style| style.font_weight.as_deref() == Some("700"))
+            );
+            assert!(
+                node_calls
+                    .clone()
+                    .any(|style| style.font_style.as_deref() == Some("italic"))
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.has_tag_name("strong"))
+            );
+            assert!(document.descendants().any(|node| node.has_tag_name("em")));
+        } else {
+            assert!(
+                node_calls.clone().all(|style| {
+                    style.font_weight.as_deref() == Some("500")
+                        && style.font_style.as_deref() == Some("normal")
+                }),
+                "{calls:?}"
+            );
+            let words = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("text-inner-tspan"))
+                .collect::<Vec<_>>();
+            assert!(
+                words
+                    .iter()
+                    .any(|word| word.attribute("font-weight") == Some("bold"))
+            );
+            assert!(
+                words
+                    .iter()
+                    .any(|word| word.attribute("font-style") == Some("italic"))
+            );
+            assert!(
+                words
+                    .iter()
+                    .all(|word| word.attribute("style").is_some_and(|style| {
+                        style.contains("font-weight:500 !important")
+                            && style.contains("font-style:normal !important")
+                    }))
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 
@@ -674,6 +894,15 @@ fn requirement_source_font_evidence_is_property_local_and_fails_closed() {
             ("font-size:0", 0, 2, 0),
             ("font-family:var(--source)", 1, 0, 1),
             ("font-size:calc(1em)", 1, 0, 1),
+            ("font-weight:bolder", 0, 0, 2),
+            ("font-weight:lighter", 0, 0, 2),
+            ("font-weight:var(--weight)", 0, 0, 2),
+            ("font-style:var(--style)", 0, 0, 2),
+            ("font-style:inherit", 0, 0, 2),
+            ("font-style:unset", 0, 0, 2),
+            ("font-weight:inherit", 0, 0, 2),
+            ("font-weight:bold,font-weight:var(--weight)", 0, 0, 2),
+            ("font-weight:var(--weight),font-weight:normal", 2, 0, 0),
         ] {
             let source = format!("{}\nstyle req1 {style}\n", requirement_source());
             let engine = || {
@@ -715,7 +944,7 @@ fn requirement_source_font_evidence_is_property_local_and_fails_closed() {
                     .expect("unknown source typography must fail closed");
                 assert_eq!(
                     error.unverified_family_theme(),
-                    Some((DiagramFamilyId::REQUIREMENT, 1))
+                    Some((DiagramFamilyId::REQUIREMENT, residual))
                 );
             }
         }

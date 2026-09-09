@@ -222,6 +222,7 @@ pub(crate) struct RequirementRenderLabelMeasurements<'a> {
 impl RequirementRenderLabelMeasurements<'_> {
     fn resolve(
         &self,
+        measurer: &dyn TextMeasurer,
         styles: &RequirementMeasurementStyles,
         display_text: &str,
         measurement_bold: bool,
@@ -234,7 +235,7 @@ impl RequirementRenderLabelMeasurements<'_> {
         // during SVG emission. Replaying that request keeps host callback order and provenance
         // observable whenever the private built-in binding cannot prove safe reuse.
         measure_requirement_label_metrics(
-            self.measurer,
+            measurer,
             &styles.html_regular,
             &styles.html_bold,
             &styles.calculation,
@@ -258,11 +259,15 @@ impl RequirementRenderLabelMeasurements<'_> {
                 .as_ref()
                 .expect("opaque Requirement measurements retain their styles"),
         );
+        let node_measurer = prepared
+            .typography
+            .node_measurer(self.measurer, styles.node_wrap_mode);
         let lines = prepared
             .lines
             .iter()
             .map(|line| {
                 let metrics = self.resolve(
+                    node_measurer.as_measurer(),
                     &styles,
                     &line.display_text,
                     line.measurement_bold,
@@ -308,30 +313,6 @@ struct RequirementLabelSpec {
     measurement_bold: bool,
     render_bold: bool,
     keep_centered: bool,
-}
-
-pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
-    css_styles.iter().any(|raw| {
-        let s = raw.trim().trim_end_matches(';');
-        let Some((key, value)) = s.split_once(':') else {
-            return false;
-        };
-        if !key.trim().eq_ignore_ascii_case("font-weight") {
-            return false;
-        }
-        let value = value
-            .split_once("!important")
-            .map(|(v, _)| v)
-            .unwrap_or(value)
-            .trim()
-            .to_ascii_lowercase();
-        value == "bold"
-            || value == "bolder"
-            || value
-                .parse::<u16>()
-                .map(|weight| weight >= 600)
-                .unwrap_or(false)
-    })
 }
 
 pub(crate) fn calculate_text_width_like_mermaid_px(
@@ -603,36 +584,35 @@ fn node_label_spec(
 }
 
 fn requirement_node_label_specs(node: &RequirementRenderNode) -> Vec<RequirementLabelSpec> {
-    let style_bold = requirement_styles_force_bold(&node.css_styles);
     vec![
         node_label_spec(
             format!("&lt;&lt;{}&gt;&gt;", node.node_type),
-            style_bold,
+            false,
             false,
             true,
         ),
         node_label_spec(node.name.clone(), true, true, true),
         node_label_spec(
             prefixed_nonempty_line("ID: ", &node.requirement_id),
-            style_bold,
+            false,
             false,
             false,
         ),
         node_label_spec(
             prefixed_nonempty_line("Text: ", &node.text),
-            style_bold,
+            false,
             false,
             false,
         ),
         node_label_spec(
             prefixed_nonempty_line("Risk: ", &node.risk),
-            style_bold,
+            false,
             false,
             false,
         ),
         node_label_spec(
             prefixed_nonempty_line("Verification: ", &node.verify_method),
-            style_bold,
+            false,
             false,
             false,
         ),
@@ -640,24 +620,18 @@ fn requirement_node_label_specs(node: &RequirementRenderNode) -> Vec<Requirement
 }
 
 fn element_node_label_specs(node: &RequirementRenderElement) -> Vec<RequirementLabelSpec> {
-    let style_bold = requirement_styles_force_bold(&node.css_styles);
     vec![
-        node_label_spec(
-            "&lt;&lt;Element&gt;&gt;".to_string(),
-            style_bold,
-            false,
-            true,
-        ),
+        node_label_spec("&lt;&lt;Element&gt;&gt;".to_string(), false, false, true),
         node_label_spec(node.name.clone(), true, true, true),
         node_label_spec(
             prefixed_nonempty_line("Type: ", &node.element_type),
-            style_bold,
+            false,
             false,
             false,
         ),
         node_label_spec(
             prefixed_nonempty_line("Doc Ref: ", &node.doc_ref),
-            style_bold,
+            false,
             false,
             false,
         ),
@@ -788,8 +762,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
 
         let typography = RequirementNodeTypography::resolve(&r.css_styles, work_meter)?;
         let node_styles = typography.apply_to(&styles);
+        let node_measurer = typography.node_measurer(text_measurer, styles.node_wrap_mode);
         let box_layout = requirement_box_layout(
-            text_measurer,
+            node_measurer.as_measurer(),
             &node_styles.html_regular,
             &node_styles.html_bold,
             &styles.calculation,
@@ -823,8 +798,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
 
         let typography = RequirementNodeTypography::resolve(&e.css_styles, work_meter)?;
         let node_styles = typography.apply_to(&styles);
+        let node_measurer = typography.node_measurer(text_measurer, styles.node_wrap_mode);
         let box_layout = requirement_box_layout(
-            text_measurer,
+            node_measurer.as_measurer(),
             &node_styles.html_regular,
             &node_styles.html_bold,
             &styles.calculation,
@@ -1183,21 +1159,6 @@ mod tests {
             }
             metrics
         }
-    }
-
-    #[test]
-    fn requirement_styles_detect_bold_font_weight() {
-        assert!(super::requirement_styles_force_bold(&[
-            "fill:#f9f".to_string(),
-            " font-weight:bold".to_string(),
-        ]));
-        assert!(super::requirement_styles_force_bold(&[
-            "font-weight: 700 !important".to_string(),
-        ]));
-        assert!(!super::requirement_styles_force_bold(&[
-            "font-weight: normal".to_string(),
-            "stroke:blue".to_string(),
-        ]));
     }
 
     #[test]

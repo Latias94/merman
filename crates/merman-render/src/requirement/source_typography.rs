@@ -4,10 +4,11 @@ use super::RequirementMeasurementStyles;
 use crate::Result;
 use crate::mermaid_style::{
     CssFontFamilyOwnership, CssFontSizeOwnership, ParsedStyleDeclaration,
-    is_static_css_font_family_list, parse_style_declaration, visit_parsed_style_declarations,
+    is_static_css_font_family_list, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration, visit_parsed_style_declarations,
 };
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
-use crate::text::TextStyle;
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -21,6 +22,9 @@ pub(crate) struct RequirementNodeTypography {
 struct SourceTypography {
     font_family: Option<String>,
     font_size: Option<String>,
+    font_weight: Option<String>,
+    font_style: Option<String>,
+    font_faces_verified: bool,
     font_family_ownership: CssFontFamilyOwnership,
     font_size_ownership: CssFontSizeOwnership,
     font_size_px: Option<f64>,
@@ -31,6 +35,8 @@ struct SourceTypography {
 struct SourceDeclarations<'a> {
     font_family: Option<&'a str>,
     font_size: Option<&'a str>,
+    font_weight: Option<&'a str>,
+    font_style: Option<&'a str>,
     font_family_inherits: bool,
     font_size_inherits: bool,
 }
@@ -48,9 +54,17 @@ impl<'a> SourceDeclarations<'a> {
                 self.font_size = Some(declaration.value());
                 self.font_size_inherits = declaration.inherits_property_value();
             }
+            "font-weight" => self.font_weight = Some(declaration.value()),
+            "font-style" => self.font_style = Some(declaration.value()),
             _ => {}
         }
     }
+}
+
+fn static_font_weight(value: &str) -> bool {
+    is_supported_css_font_weight_value(value)
+        && !value.eq_ignore_ascii_case("bolder")
+        && !value.eq_ignore_ascii_case("lighter")
 }
 
 fn static_font_size_px(value: &str) -> Option<f64> {
@@ -66,6 +80,27 @@ fn static_font_size_px(value: &str) -> Option<f64> {
 }
 
 impl RequirementNodeTypography {
+    pub(crate) fn node_measurer<'a>(
+        &'a self,
+        measurer: &'a dyn TextMeasurer,
+        wrap_mode: WrapMode,
+    ) -> RequirementNodeMeasurer<'a> {
+        RequirementNodeMeasurer {
+            inner: measurer,
+            source: self.source.as_deref().filter(|source| {
+                wrap_mode == WrapMode::SvgLike
+                    && (source
+                        .font_weight
+                        .as_deref()
+                        .is_some_and(static_font_weight)
+                        || source
+                            .font_style
+                            .as_deref()
+                            .is_some_and(is_supported_css_font_style_value))
+            }),
+        }
+    }
+
     pub(super) fn resolve(
         declarations: &[String],
         work_meter: &Arc<OperationWorkMeter>,
@@ -77,13 +112,19 @@ impl RequirementNodeTypography {
                 source.observe(declaration);
             }
         }
-        if source.font_family.is_none() && source.font_size.is_none() {
+        if source.font_family.is_none()
+            && source.font_size.is_none()
+            && source.font_weight.is_none()
+            && source.font_style.is_none()
+        {
             return Ok(Self::default());
         }
         let retained_bytes = std::mem::size_of::<SourceTypography>()
             .checked_add(2 * std::mem::size_of::<usize>())
             .and_then(|bytes| bytes.checked_add(source.font_family.map_or(0, str::len)))
             .and_then(|bytes| bytes.checked_add(source.font_size.map_or(0, str::len)))
+            .and_then(|bytes| bytes.checked_add(source.font_weight.map_or(0, str::len)))
+            .and_then(|bytes| bytes.checked_add(source.font_style.map_or(0, str::len)))
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         let retained = work_meter.reserve_prepared_text_retained_bytes(retained_bytes)?;
         let font_family_ownership = match source.font_family {
@@ -105,6 +146,12 @@ impl RequirementNodeTypography {
             source: Some(Arc::new(SourceTypography {
                 font_family: source.font_family.map(str::to_owned),
                 font_size: source.font_size.map(str::to_owned),
+                font_weight: source.font_weight.map(str::to_owned),
+                font_style: source.font_style.map(str::to_owned),
+                font_faces_verified: source.font_weight.is_none_or(static_font_weight)
+                    && source
+                        .font_style
+                        .is_none_or(is_supported_css_font_style_value),
                 font_family_ownership,
                 font_size_ownership,
                 font_size_px,
@@ -142,6 +189,14 @@ impl RequirementNodeTypography {
         if !self.source.as_ref().is_some_and(|source| {
             source.font_family_ownership == CssFontFamilyOwnership::SourceOwned
                 || source.font_size_px.is_some()
+                || source
+                    .font_weight
+                    .as_deref()
+                    .is_some_and(static_font_weight)
+                || source
+                    .font_style
+                    .as_deref()
+                    .is_some_and(is_supported_css_font_style_value)
         }) {
             return Cow::Borrowed(base);
         }
@@ -165,8 +220,16 @@ impl RequirementNodeTypography {
             font_size: source
                 .and_then(|source| source.font_size_px)
                 .unwrap_or(base.font_size),
-            font_weight: base.font_weight.clone(),
-            font_style: base.font_style.clone(),
+            font_weight: source
+                .and_then(|source| source.font_weight.as_deref())
+                .filter(|value| static_font_weight(value))
+                .map(|value| value.to_ascii_lowercase())
+                .or_else(|| base.font_weight.clone()),
+            font_style: source
+                .and_then(|source| source.font_style.as_deref())
+                .filter(|value| is_supported_css_font_style_value(value))
+                .map(|value| value.to_ascii_lowercase())
+                .or_else(|| base.font_style.clone()),
         }
     }
 
@@ -174,8 +237,85 @@ impl RequirementNodeTypography {
         let mut emitted = SourceDeclarations::default();
         visit_parsed_style_declarations(label_styles, |declaration| emitted.observe(declaration));
         let expected = self.source.as_ref();
-        emitted.font_family == expected.and_then(|source| source.font_family.as_deref())
+        // Unmodeled faces affect both family selection and measured font-size geometry.
+        expected.is_none_or(|source| source.font_faces_verified)
+            && emitted.font_weight == expected.and_then(|source| source.font_weight.as_deref())
+            && emitted.font_style == expected.and_then(|source| source.font_style.as_deref())
+            && emitted.font_family == expected.and_then(|source| source.font_family.as_deref())
             && emitted.font_size == expected.and_then(|source| source.font_size.as_deref())
+    }
+}
+
+/// SVG source styles are emitted on each word, above Markdown presentation attributes.
+/// HTML children retain their own faces; calculation probes retain their root/config style.
+pub(crate) struct RequirementNodeMeasurer<'a> {
+    inner: &'a dyn TextMeasurer,
+    source: Option<&'a SourceTypography>,
+}
+
+impl RequirementNodeMeasurer<'_> {
+    pub(crate) fn as_measurer(&self) -> &dyn TextMeasurer {
+        if self.source.is_some() {
+            self
+        } else {
+            self.inner
+        }
+    }
+
+    fn final_style(&self, style: &TextStyle) -> TextStyle {
+        let mut style = style.clone();
+        if let Some(source) = self.source {
+            if let Some(weight) = source
+                .font_weight
+                .as_deref()
+                .filter(|value| static_font_weight(value))
+            {
+                style.font_weight = Some(weight.to_ascii_lowercase());
+            }
+            if let Some(face) = source
+                .font_style
+                .as_deref()
+                .filter(|value| is_supported_css_font_style_value(value))
+            {
+                style.font_style = Some(face.to_ascii_lowercase());
+            }
+        }
+        style
+    }
+}
+
+impl TextMeasurer for RequirementNodeMeasurer<'_> {
+    fn cancellation_requested(&self) -> bool {
+        self.inner.cancellation_requested()
+    }
+
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.inner.measure(text, &self.final_style(style))
+    }
+
+    fn measure_wrapped(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.inner
+            .measure_wrapped(text, &self.final_style(style), max_width, wrap_mode)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.inner
+            .measure_svg_text_computed_length_px(text, &self.final_style(style))
+    }
+
+    fn measure_mermaid_calculate_text_dimensions(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        self.inner
+            .measure_mermaid_calculate_text_dimensions(text, style)
     }
 }
 

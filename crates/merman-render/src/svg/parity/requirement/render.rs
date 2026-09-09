@@ -1015,22 +1015,24 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 } else {
                     svg_text_styles.clone()
                 };
-                let text_style = TextStyle {
+                let base_style = TextStyle {
                     font_weight: line.measurement_bold.then(|| "bold".to_owned()),
-                    ..rendered_node
-                        .typography
-                        .resolve_text_style(&html_style_regular)
+                    ..html_style_regular.clone()
                 };
+                let text_style = rendered_node.typography.resolve_text_style(&base_style);
+                let node_measurer = rendered_node
+                    .typography
+                    .node_measurer(measurer, crate::text::WrapMode::SvgLike);
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                super::super::label::write_svg_text_markdown_wrapped_with_first_row_style(
+                super::super::label::write_svg_text_markdown_wrapped_with_row_style(
                     &mut out,
                     &source,
                     &svg_style,
-                    super::super::label::SvgTextFirstRowStyle {
+                    super::super::label::SvgTextRowStyle {
                         style: &style,
-                        start: render_settings.body_text_start && !line.keep_centered,
+                        first_row_start: render_settings.body_text_start && !line.keep_centered,
                     },
-                    measurer,
+                    node_measurer.as_measurer(),
                     &text_style,
                     Some(metrics.max_width_px as f64),
                 );

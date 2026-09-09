@@ -11,9 +11,9 @@ enum SvgTextEntityMode {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::svg::parity) struct SvgTextFirstRowStyle<'a> {
+pub(in crate::svg::parity) struct SvgTextRowStyle<'a> {
     pub style: &'a str,
-    pub start: bool,
+    pub first_row_start: bool,
 }
 
 fn write_svg_text_inner_word(
@@ -395,7 +395,7 @@ fn write_svg_text_markdown_lines_with_style(
     center_text: bool,
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
-    first_row_style: Option<SvgTextFirstRowStyle<'_>>,
+    row_style: Option<SvgTextRowStyle<'_>>,
 ) {
     open_svg_text(out, style, center_text, None);
 
@@ -406,15 +406,9 @@ fn write_svg_text_markdown_lines_with_style(
     }
 
     for (index, words) in lines.iter().enumerate() {
-        let row_style = first_row_style.filter(|_| index == 0);
-        open_tspan(
-            out,
-            index,
-            center_text,
-            include_row_class,
-            1.1,
-            row_style.is_some_and(|style| style.start),
-        );
+        let start = index == 0 && row_style.is_some_and(|style| style.first_row_start);
+        let word_style = row_style.map(|style| style.style);
+        open_tspan(out, index, center_text, include_row_class, 1.1, start);
 
         for (word_index, (word, is_strong, is_em)) in words.iter().enumerate() {
             let font_style = if *is_em { "italic" } else { "normal" };
@@ -424,13 +418,11 @@ fn write_svg_text_markdown_lines_with_style(
                 r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}""#,
                 font_style, font_weight
             );
-            if let Some(row_style) = row_style {
-                if !row_style.style.is_empty() {
-                    let _ = write!(out, r#" style="{}""#, escape_attr_display(row_style.style));
-                }
-                if row_style.start {
-                    out.push_str(r#" text-anchor="start""#);
-                }
+            if let Some(word_style) = word_style.filter(|style| !style.is_empty()) {
+                let _ = write!(out, r#" style="{}""#, escape_attr_display(word_style));
+            }
+            if start {
+                out.push_str(r#" text-anchor="start""#);
             }
             out.push('>');
             if word_index == 0 {
@@ -496,11 +488,11 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_from_create_text_source(
     );
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_style(
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_row_style(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     style: &str,
-    first_row_style: SvgTextFirstRowStyle<'_>,
+    row_style: SvgTextRowStyle<'_>,
     measurer: &dyn crate::text::TextMeasurer,
     text_style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
@@ -518,7 +510,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_with_first_row_sty
         false,
         true,
         SvgTextEntityMode::CreateTextSource,
-        Some(first_row_style),
+        Some(row_style),
     );
 }
 
