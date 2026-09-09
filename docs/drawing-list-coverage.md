@@ -397,12 +397,15 @@ Inspection of its raw SVGs exposed a visual defect: a task rounded to zero width
 closed path, unlike Mermaid's non-rendering zero-width rectangle. Zero-extent task commands now
 retain geometry and semantics with no paint; the 41 focused Gantt tests pass after that repair.
 
-Today-marker CSS remains open: Mermaid replaces every comma with a semicolon before final entity
-decoding. In Chromium, `stroke:rgb(0;0;255);opacity:0.5` and `stroke:&00f;opacity:0.5` both retain
-the theme stroke and apply 0.5 opacity. The direct adapter currently treats the first as blue and
-rejects the second; the existing empty-task semicolon fixture is not visible-color evidence.
-This requires source-order declaration resolution, not replaying an SVG stylesheet or relaxing
-the structural comparator.
+Today-marker declarations now follow Mermaid's source order: replace every comma, restore entity
+placeholders, then resolve CSS declarations. The existing CSS tokenizer preserves function
+boundaries and `!important` priority. Provably invalid paint declarations retain the prior valid
+stroke; valid but unsupported paints such as `var(...)` still return a structured error. Temporary
+source normalization is charged before allocation and uses the existing placeholder decoder.
+Nine source cases agree with Chromium's computed stroke, width and opacity, including invalid
+RGB separators, hash-like entities, entity-encoded commas and repeated important declarations.
+The 43 focused Gantt tests pass; the existing empty-task semicolon fixture is not visible-color
+evidence. This does not refresh full-family structure evidence or admit Gantt as canonical.
 
 ### Journey color correction
 

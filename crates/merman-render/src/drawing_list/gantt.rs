@@ -30,6 +30,8 @@ use merman_display_list::{
 use serde_json::json;
 use std::collections::BTreeMap;
 
+mod today_marker;
+
 type GanttPair = FamilyPair<GanttDiagramRenderModel, GanttDiagramLayout>;
 
 // D3's domain and tick lines specify currentColor themselves; the parent tick's gridColor
@@ -975,49 +977,6 @@ impl GanttBuilder<'_> {
         self.text_fill
     }
 
-    fn resolve_today_marker(&self, marker: &str) -> Result<(Color, f64, f64)> {
-        let mut color = self.today_fill;
-        let mut width = 2.0;
-        let mut opacity = 1.0;
-        let normalized = marker
-            .replace(",opacity:", ";opacity:")
-            .replace(",stroke:", ";stroke:")
-            .replace(",stroke-width:", ";stroke-width:");
-        for declaration in normalized.split(';') {
-            let declaration = declaration.trim();
-            if declaration.is_empty() {
-                continue;
-            }
-            let Some((property, value)) = declaration.split_once(':') else {
-                return Err(unavailable(format!(
-                    "Gantt todayMarker declaration `{declaration}` is not portable"
-                )));
-            };
-            match property.trim().to_ascii_lowercase().as_str() {
-                "stroke" => {
-                    color =
-                        PortableStyleResolver::new("gantt").color("todayMarker.stroke", value)?
-                }
-                "stroke-width" => {
-                    width = PortableStyleResolver::new("gantt")
-                        .positive_length("todayMarker.stroke-width", value)?;
-                }
-                "opacity" => {
-                    opacity = PortableStyleResolver::new("gantt")
-                        .opacity("todayMarker.opacity", value)?;
-                }
-                "fill" if value.trim().eq_ignore_ascii_case("none") => {}
-                _ => {
-                    return Err(unavailable(format!(
-                        "Gantt todayMarker property `{}` is not portable",
-                        property.trim()
-                    )));
-                }
-            }
-        }
-        Ok((color, width, opacity))
-    }
-
     fn add_path(
         &mut self,
         id: impl Into<String>,
@@ -1278,6 +1237,12 @@ mod tests {
         source: &str,
         config: serde_json::Value,
     ) -> crate::family::RenderedDrawingList {
+        prepare_task_fixture(source, config)
+            .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+            .unwrap()
+    }
+
+    fn prepare_task_fixture(source: &str, config: serde_json::Value) -> FamilyRenderArtifact {
         let parsed = Engine::new()
             .with_site_config(MermaidConfig::from_value(config))
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -1286,10 +1251,79 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
-        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
-            .unwrap()
-            .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
-            .unwrap()
+        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap()
+    }
+
+    #[test]
+    fn today_marker_rejects_unresolved_paint_instead_of_ignoring_valid_css() {
+        for value in ["var(--marker)", "currentColor", "color(display-p3 1 0 0)"] {
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker stroke:{value}\nTask :a, 2023-12-31, 3d\n"
+            );
+            let error = prepare_task_fixture(&source, json!({}))
+                .render_drawing_list(DrawingListPolicy::VectorOnly, Default::default())
+                .err()
+                .expect("unresolved paint must not produce a partial drawing");
+            assert!(
+                matches!(error, Error::DrawingListUnavailable { family, reason }
+                    if family == "gantt" && reason.contains("todayMarker.stroke")),
+                "{value} must retain a structured unsupported-paint result"
+            );
+        }
+    }
+
+    #[test]
+    fn today_marker_resolves_source_order_before_publishing_paint() {
+        let theme = Color::rgba(0x12, 0x34, 0x56, 255);
+        let blue = Color::rgba(0, 0, 255, 255);
+        let red = Color::rgba(255, 0, 0, 255);
+        for (marker, expected, expected_width, expected_opacity) in [
+            ("stroke:rgb(0,0,255),opacity:0.5", theme, 2.0, 0.5),
+            ("stroke:#00f;opacity:0.5", theme, 2.0, 0.5),
+            ("stroke:#00f, opacity:0.5", blue, 2.0, 0.5),
+            ("stroke:rgb(0#44;0#44;255),opacity:0.5", blue, 2.0, 0.5),
+            ("stroke:red,stroke:rgb(0,0,255),opacity:0.5", red, 2.0, 0.5),
+            ("stroke:red !important,stroke:blue", red, 2.0, 1.0),
+            (
+                "stroke:red !important,stroke:blue !important",
+                blue,
+                2.0,
+                1.0,
+            ),
+            (
+                "stroke:blue, stroke-width:4px, opacity:25%",
+                blue,
+                4.0,
+                0.25,
+            ),
+            ("opacity:0.5!important,opacity:0.2", theme, 2.0, 0.5),
+        ] {
+            let source = format!(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker {marker}\nTask :a, 2023-12-31, 3d\n"
+            );
+            let rendered = render_task_fixture(
+                &source,
+                json!({"themeVariables": {"todayLineColor": "#123456"}}),
+            );
+            let mut found = false;
+            let mut opacity = None;
+            for command in &rendered.document().commands {
+                match command {
+                    DrawingCommand::SetOpacity { opacity: value } => opacity = Some(*value),
+                    DrawingCommand::DrawPath { path, style }
+                        if path.as_str() == "gantt.today.line" =>
+                    {
+                        let stroke = style.stroke.as_ref().unwrap();
+                        assert_eq!(stroke.paint, Paint::solid(expected), "{marker}");
+                        assert_eq!(stroke.width, expected_width, "{marker}");
+                        assert_eq!(opacity, Some(expected_opacity), "{marker}");
+                        found = true;
+                    }
+                    _ => {}
+                }
+            }
+            assert!(found, "{marker}");
+        }
     }
 
     #[test]
