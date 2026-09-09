@@ -68,6 +68,7 @@ struct TreeViewBuilder<'a> {
     path_classes: BTreeMap<String, String>,
     text_classes: BTreeMap<String, String>,
     asset_view_boxes: BTreeMap<String, Rect>,
+    asset_primitives: BTreeMap<String, super::icon_asset::PrimitiveGeometry>,
     output: DrawingListBuilder<'a>,
 }
 
@@ -156,6 +157,7 @@ impl<'a> TreeViewBuilder<'a> {
             path_classes: BTreeMap::new(),
             text_classes: BTreeMap::new(),
             asset_view_boxes: BTreeMap::new(),
+            asset_primitives: BTreeMap::new(),
             output,
         })
     }
@@ -225,6 +227,7 @@ impl<'a> TreeViewBuilder<'a> {
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,
                     asset_view_boxes: self.asset_view_boxes,
+                    asset_primitives: self.asset_primitives,
                 }),
             },
         })
@@ -430,16 +433,17 @@ impl<'a> TreeViewBuilder<'a> {
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("#333"),
             )?;
-            super::icon_asset::lower_icon_asset(
-                asset.body,
-                self.icon_color
-                    .ok_or_else(|| invalid("TreeView icon color was not resolved"))?,
-                inherited_fill,
-                &id,
-                &mut self.output,
-                self.session,
-                RenderFamilyKind::TreeView,
-            )?;
+            self.asset_primitives
+                .extend(super::icon_asset::lower_icon_asset(
+                    asset.body,
+                    self.icon_color
+                        .ok_or_else(|| invalid("TreeView icon color was not resolved"))?,
+                    inherited_fill,
+                    &id,
+                    &mut self.output,
+                    self.session,
+                    RenderFamilyKind::TreeView,
+                )?);
         } else {
             let scale = TREE_VIEW_ICON_SIZE / 80.0;
             self.output.push_control(DrawingCommand::ConcatTransform {

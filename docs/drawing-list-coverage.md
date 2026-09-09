@@ -86,8 +86,13 @@ source viewBox is only a coordinate representation hint: its implicit matrix is 
 against the current public transform, including non-square assets and rotated aliases. Invalid
 hints or edited nonrectangular clips retain generic projection. Focused tests use a real pack,
 compare its coordinate basis with the direct legacy renderer, and mutate the hint and clip.
-Internal asset groups, primitive tags, path spelling, and scoped IDs still need source-backed
-DOM projection; this viewport step does not admit TreeView or establish complete asset parity.
+Nonempty asset primitives also retain their source tags and geometry spelling, but only after
+the shared asset geometry decoder exactly matches every current public path segment. Paint,
+opacity, and transforms still come from public commands. A real seven-primitive pack test
+compares the direct legacy elements and mutates public paint, public geometry, and a malformed
+hint; changed geometry keeps generic path projection. Internal asset groups, empty primitives,
+and scoped IDs still need source-backed DOM projection. These steps do not admit TreeView or
+establish complete asset parity.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

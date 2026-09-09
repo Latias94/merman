@@ -15,6 +15,86 @@ use merman_display_list::{
     ResourceId, Transform,
 };
 use roxmltree::Node;
+use std::collections::BTreeMap;
+
+/// Source spelling only. A serializer must check it against the current public path.
+#[derive(Debug, Clone)]
+pub(crate) struct PrimitiveGeometry {
+    pub(crate) tag: &'static str,
+    pub(crate) attributes: Vec<(&'static str, String)>,
+}
+
+impl PrimitiveGeometry {
+    fn capture(node: Node<'_, '_>, session: &RenderSession) -> Result<Self> {
+        let (tag, names): (&str, &[&str]) = match node.tag_name().name() {
+            "path" => ("path", &["d"]),
+            "rect" => ("rect", &["x", "y", "width", "height", "rx", "ry"]),
+            "circle" => ("circle", &["cx", "cy", "r"]),
+            "ellipse" => ("ellipse", &["cx", "cy", "rx", "ry"]),
+            "line" => ("line", &["x1", "y1", "x2", "y2"]),
+            "polygon" => ("polygon", &["points"]),
+            "polyline" => ("polyline", &["points"]),
+            _ => unreachable!("only admitted primitive elements have geometry"),
+        };
+        let mut attributes = Vec::new();
+        attributes
+            .try_reserve_exact(names.len())
+            .map_err(|_| allocation("icon geometry attributes"))?;
+        for &name in names {
+            if let Some(value) = node.attribute(name) {
+                session
+                    .work_meter()
+                    .charge_at(value.len(), OperationPhase::Emit)?;
+                let mut owned = String::new();
+                owned
+                    .try_reserve_exact(value.len())
+                    .map_err(|_| allocation("icon geometry spelling"))?;
+                owned.push_str(value);
+                attributes.push((name, owned));
+            }
+        }
+        Ok(Self { tag, attributes })
+    }
+
+    pub(crate) fn matches_path(
+        &self,
+        segments: &[PathSegment],
+        session: &RenderSession,
+    ) -> Result<bool> {
+        for (_, value) in &self.attributes {
+            session
+                .work_meter()
+                .charge_at(value.len(), OperationPhase::Emit)?;
+        }
+        let context = Context {
+            session,
+            family: RenderFamilyKind::TreeView,
+        };
+        let mut index = 0;
+        let mut equal = true;
+        let result = context.geometry(
+            self.tag,
+            |name| {
+                self.attributes
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| value.as_str())
+            },
+            &mut |segment| {
+                session.checkpoint(OperationPhase::Emit)?;
+                equal &= segments.get(index) == Some(&segment);
+                index += 1;
+                Ok(())
+            },
+        );
+        match result {
+            Ok(()) => Ok(equal && index == segments.len()),
+            // A stale representation hint must not override or reject valid public geometry.
+            Err(Error::InvalidModel { .. } | Error::DrawingListUnavailable { .. }) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 enum IconPaint {
@@ -68,7 +148,7 @@ pub(crate) fn lower_icon_asset(
     builder: &mut DrawingListBuilder<'_>,
     session: &RenderSession,
     family: RenderFamilyKind,
-) -> Result<()> {
+) -> Result<BTreeMap<String, PrimitiveGeometry>> {
     let context = Context { session, family };
     let bytes = body
         .len()
@@ -90,6 +170,7 @@ pub(crate) fn lower_icon_asset(
     let mut stack = Vec::new();
     let mut state = Style::inherited(color, inherited_fill);
     let mut index = 0usize;
+    let mut primitives = BTreeMap::new();
     let mut cursor = root.first_child().map(|node| (node, true));
     while let Some((node, entering)) = cursor {
         session.checkpoint(OperationPhase::Emit)?;
@@ -155,9 +236,14 @@ pub(crate) fn lower_icon_asset(
                 }
                 if tag != "g" {
                     let style = context.path_style(state)?;
-                    let id = ResourceId::new(format!("{id_prefix}.shape.{index}"));
-                    builder
-                        .draw_optional_path_with(id, style, |emit| context.geometry(node, emit))?;
+                    let id = format!("{id_prefix}.shape.{index}");
+                    if builder.draw_optional_path_with(
+                        ResourceId::new(id.clone()),
+                        style,
+                        |emit| context.geometry(tag, |name| node.attribute(name), emit),
+                    )? {
+                        primitives.insert(id, PrimitiveGeometry::capture(node, session)?);
+                    }
                     index += 1;
                 }
             }
@@ -169,7 +255,7 @@ pub(crate) fn lower_icon_asset(
             }
         }
     }
-    Ok(())
+    Ok(primitives)
 }
 
 struct Context<'a> {
@@ -414,15 +500,14 @@ impl Context<'_> {
         Ok(matrix)
     }
 
-    fn geometry(
+    fn geometry<'a>(
         &self,
-        node: Node<'_, '_>,
+        tag: &str,
+        attribute: impl Fn(&str) -> Option<&'a str>,
         emit: &mut dyn FnMut(PathSegment) -> Result<()>,
     ) -> Result<()> {
-        let length = |name, default| {
-            node.attribute(name)
-                .map_or(Ok(default), |value| self.number(value))
-        };
+        let length =
+            |name, default| attribute(name).map_or(Ok(default), |value| self.number(value));
         let nonnegative = |name, default| {
             let value = length(name, default)?;
             if value < 0.0 {
@@ -430,9 +515,8 @@ impl Context<'_> {
             }
             Ok(value)
         };
-        let tag = node.tag_name().name();
         match tag {
-            "path" => super::write_svg_path(node.attribute("d").unwrap_or_default(), emit),
+            "path" => super::write_svg_path(attribute("d").unwrap_or_default(), emit),
             "rect" => {
                 let (x, y, w, h) = (
                     length("x", 0.0)?,
@@ -443,10 +527,7 @@ impl Context<'_> {
                 if w == 0.0 || h == 0.0 {
                     return Ok(());
                 }
-                let rx = nonnegative(
-                    "rx",
-                    node.attribute("ry").map_or(Ok(0.0), |v| self.number(v))?,
-                )?;
+                let rx = nonnegative("rx", attribute("ry").map_or(Ok(0.0), |v| self.number(v))?)?;
                 let ry = nonnegative("ry", rx)?;
                 for segment in elliptical_rounded_rect_path(x + w / 2.0, y + h / 2.0, w, h, rx, ry)
                 {
@@ -481,7 +562,7 @@ impl Context<'_> {
             }
             "polygon" | "polyline" => {
                 let mut numbers =
-                    svgtypes::NumberListParser::from(node.attribute("points").unwrap_or_default());
+                    svgtypes::NumberListParser::from(attribute("points").unwrap_or_default());
                 let mut first = true;
                 while let Some(x) = numbers.next() {
                     let x = x.map_err(|_| self.unsupported("points number"))?;

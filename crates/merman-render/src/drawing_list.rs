@@ -516,6 +516,7 @@ pub(crate) struct TreeViewSvgBody {
     pub(crate) text_classes: BTreeMap<String, String>,
     /// Coordinate representation only; SVG must compensate against the current public matrix.
     pub(crate) asset_view_boxes: BTreeMap<String, merman_display_list::Rect>,
+    pub(crate) asset_primitives: BTreeMap<String, icon_asset::PrimitiveGeometry>,
 }
 
 /// SVG-only metadata retained beside the public Venn document.

@@ -2500,6 +2500,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             }
         }
         if matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            if self.emit_tree_view_asset_primitive(path_id, style)? {
+                return Ok(());
+            }
             if self.emit_compact_tree_view_path(path_id, style)? {
                 return Ok(());
             }

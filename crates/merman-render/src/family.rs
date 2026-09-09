@@ -2421,6 +2421,156 @@ mod tests {
     }
 
     #[test]
+    fn tree_view_registered_primitives_keep_source_spelling_and_public_paint() {
+        use merman_display_list::{Color, DrawingCommand, DrawingResource, Paint, PathSegment};
+
+        let source = r#"<path d="M0 0h4v2z"/><rect x="1" y="2" width="4" height="6" rx="1"/><circle cx="5" cy="6" r="2"/><ellipse cx="6" cy="7" rx="2" ry="3"/><line x1="1" y1="2" x2="3" y2="4"/><polygon points="1,1 4,1 2,3"/><polyline points="1,1 4,1 2,3"/>"#;
+        let pack = serde_json::json!({
+            "prefix": "test", "width": 20, "height": 10,
+            "icons": { "primitives": { "body": source } }
+        });
+        let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
+            &serde_json::to_vec(&pack).unwrap(),
+        )])
+        .unwrap();
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "treeView-beta\nRoot icon(test:primitives)\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_icon_registry(registry)
+            .begin_session()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let legacy = render_legacy_family_artifact_svg(
+            &artifact,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+        let svg = render(&document);
+        let legacy_xml = roxmltree::Document::parse(&legacy).unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let original = legacy_xml
+            .descendants()
+            .find(|node| node.attribute("viewBox") == Some("0 0 20 10"))
+            .unwrap();
+        let projected = xml
+            .descendants()
+            .find(|node| node.attribute("viewBox") == Some("0 0 20 10"))
+            .unwrap();
+        let originals: Vec<_> = original
+            .children()
+            .filter(|node| node.is_element())
+            .collect();
+        let projections: Vec<_> = projected
+            .children()
+            .filter(|node| node.is_element())
+            .collect();
+        assert_eq!(originals.len(), 7);
+        assert_eq!(projections.len(), originals.len());
+        for (original, projected) in originals.into_iter().zip(projections) {
+            assert_eq!(original.tag_name().name(), projected.tag_name().name());
+            for attribute in original.attributes() {
+                assert_eq!(
+                    projected.attribute(attribute.name()),
+                    Some(attribute.value())
+                );
+            }
+        }
+        // Source spelling cannot retain stale paints when a host edits the public command.
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str().ends_with(".asset.shape.1")
+            {
+                style.fill = Some(Paint::solid(Color::rgba(255, 0, 0, 128)));
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let rect = xml
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-resource")
+                    .is_some_and(|id| id.ends_with(".asset.shape.1"))
+            })
+            .unwrap();
+        assert!(rect.has_tag_name("rect"));
+        assert_eq!(rect.attribute("fill"), Some("#ff0000"));
+        assert!(
+            rect.attribute("fill-opacity")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                > 0.5
+        );
+        // Edited public geometry is drawn generically, never replaced by the old rectangle.
+        for resource in &mut document.public.resources {
+            if let DrawingResource::Path(path) = resource
+                && path.id.as_str().ends_with(".asset.shape.1")
+                && let PathSegment::MoveTo { to } = &mut path.segments[0]
+            {
+                to.x += 1.0;
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            xml.descendants()
+                .find(|node| node
+                    .attribute("data-merman-resource")
+                    .is_some_and(|id| id.ends_with(".asset.shape.1")))
+                .unwrap()
+                .has_tag_name("path")
+        );
+        // A malformed hint also falls back; it is not an alternate source of geometry.
+        let crate::drawing_list::SvgStructureBody::TreeView(body) = &mut document.svg.body else {
+            panic!("TreeView sidecar")
+        };
+        let (_, hint) = body
+            .asset_primitives
+            .iter_mut()
+            .find(|(id, _)| id.ends_with(".asset.shape.2"))
+            .unwrap();
+        hint.attributes
+            .iter_mut()
+            .find(|(key, _)| *key == "r")
+            .unwrap()
+            .1 = "invalid".to_owned();
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            xml.descendants()
+                .find(|node| node
+                    .attribute("data-merman-resource")
+                    .is_some_and(|id| id.ends_with(".asset.shape.2")))
+                .unwrap()
+                .has_tag_name("path")
+        );
+    }
+
+    #[test]
     fn tree_view_registered_asset_projects_the_public_viewport() {
         let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
             br#"{"prefix":"test","width":20,"height":10,"icons":{"box":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10H0Z\"/>"}},"aliases":{"turned":{"parent":"box","rotate":1}}}"#,

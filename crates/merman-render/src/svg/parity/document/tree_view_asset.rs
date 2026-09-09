@@ -113,6 +113,37 @@ fn compensate_view_box(viewport: Rect, view_box: Rect, public: Transform) -> Opt
 }
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn emit_tree_view_asset_primitive(
+        &mut self,
+        path_id: &ResourceId,
+        style: &PathStyle,
+    ) -> Result<bool> {
+        let SvgStructureBody::TreeView(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(geometry) = body.asset_primitives.get(path_id.as_str()) else {
+            return Ok(false);
+        };
+        let path = self.path_resource(path_id)?;
+        if !geometry.matches_path(&path.segments, self.session)? {
+            return Ok(false);
+        }
+        self.output.push('<')?;
+        self.output.push_str(geometry.tag)?;
+        for (key, value) in &geometry.attributes {
+            self.output.push(' ')?;
+            self.output.push_str(key)?;
+            self.output.push_str("=\"")?;
+            output::escape_attr(&mut self.output, value)?;
+            self.output.push('"')?;
+        }
+        self.write_path_style(style)?;
+        self.write_state_attrs()?;
+        self.write_path_metadata(path_id.as_str())?;
+        self.output.push_str("/>")?;
+        Ok(true)
+    }
+
     pub(super) fn emit_tree_view_asset_viewport(&mut self, index: usize) -> Result<bool> {
         let Some(asset) = self.tree_view_asset_viewports.get(&index).copied() else {
             return Ok(false);
