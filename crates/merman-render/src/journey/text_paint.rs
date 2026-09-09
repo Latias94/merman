@@ -10,8 +10,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::JourneyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -51,6 +51,7 @@ impl JourneyTextPaintPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &MermaidConfig,
+        diagram_title: Option<&str>,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
@@ -132,11 +133,25 @@ impl JourneyTextPaintPlan {
         reconcile_unsupported_terminal_domains(
             theme,
             &mut plan.evidence,
-            &[UnsupportedTerminalDomain::static_fallbacks_only(
-                ThemeTarget::Text,
-                ThemeVariant::Default,
-            )
-            .with_source_owned_fill(&[config_owned])],
+            &[
+                UnsupportedTerminalDomain::static_fallbacks_only(
+                    ThemeTarget::Text,
+                    ThemeVariant::Default,
+                )
+                .with_source_owned_fill(&[config_owned]),
+                // The former titleColor projection only styled nonexistent clusters.
+                // A real diagram title remains unsupported unless its own config owns fill.
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(
+                        usize::from(diagram_title.is_some_and(|title| !title.trim().is_empty())),
+                        ThemeVariant::Default,
+                    ),
+                )
+                .with_source_owned_fill(&[config
+                    .get_str("journey.titleColor")
+                    .is_some_and(|color| !color.is_empty())]),
+            ],
             work,
         )?;
         Ok(plan)

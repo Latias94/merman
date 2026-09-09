@@ -116,6 +116,20 @@ fn render_journey_text_rules(
     styles: ThemeRuleSet,
     config: serde_json::Value,
 ) -> merman_render::Result<family::RenderedFamilySvg> {
+    render_journey_rules_with_requirement(
+        source,
+        styles,
+        config,
+        ThemePortabilityRequirement::RequirePortable,
+    )
+}
+
+fn render_journey_rules_with_requirement(
+    source: &str,
+    styles: ThemeRuleSet,
+    config: serde_json::Value,
+    requirement: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile Journey rules");
@@ -127,11 +141,147 @@ fn render_journey_text_rules(
     .expect("parse Journey")
     .expect("detect Journey");
     let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(&theme)
         .expect("begin Journey session");
     family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
+#[test]
+fn journey_retired_title_fill_preserves_output_and_accounts_real_applicability() {
+    for variant in [None, Some(ThemeVariant::Default)] {
+        for paint in [
+            CanvasPaint::solid("#987654").unwrap(),
+            CanvasPaint::Transparent,
+        ] {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Title,
+                ThemeStylePatch::default().with_fill(paint),
+            );
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let styles = ThemeRuleSet::default().with_rule(rule);
+            for (source, has_title) in [
+                ("journey\n  section Delivery\n  Ship: 5: Actor\n", false),
+                (
+                    "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
+                    true,
+                ),
+                (
+                    "---\ntitle: Release\n---\njourney\n  section Delivery\n  Ship: 5: Actor\n",
+                    true,
+                ),
+                (
+                    "---\ntitle: Release\n---\njourney\n  title  \n  section Delivery\n  Ship: 5: Actor\n",
+                    true,
+                ),
+            ] {
+                for explicit_title in [false, true] {
+                    let config = if explicit_title {
+                        serde_json::json!({"journey": {"titleColor": "#fedcba"}})
+                    } else {
+                        serde_json::json!({})
+                    };
+                    let baseline = render_journey_rules_with_requirement(
+                        source,
+                        ThemeRuleSet::default(),
+                        config.clone(),
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .unwrap();
+                    let rendered = render_journey_rules_with_requirement(
+                        source,
+                        styles.clone(),
+                        config.clone(),
+                        ThemePortabilityRequirement::BestEffort,
+                    )
+                    .expect("retired Title projection must not break permissive rendering");
+                    assert_eq!(rendered.svg(), baseline.svg());
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    assert!(!document.descendants().any(|node| {
+                        node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == "cluster")
+                        })
+                    }));
+                    let title = document
+                        .descendants()
+                        .find(|node| node.has_tag_name("text") && node.text() == Some("Release"));
+                    assert_eq!(title.is_some(), has_title);
+                    if let Some(title) = title {
+                        assert_eq!(
+                            title.attribute("fill"),
+                            Some(if explicit_title { "#fedcba" } else { "" })
+                        );
+                    }
+                    let completion = rendered.into_completion();
+                    let evidence = merman_render::__private::family_evidence(completion.report());
+                    let active = has_title && !explicit_title;
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.accounted_count(), 1);
+                    assert_eq!(evidence.applied_count(), 0);
+                    assert_eq!(evidence.compatibility_residual_count(), 0);
+                    assert_eq!(evidence.theme_residual_count(), usize::from(active));
+                    assert_eq!(evidence.not_applicable_count(), usize::from(!active));
+                    let strict = render_journey_rules_with_requirement(
+                        source,
+                        styles.clone(),
+                        config,
+                        ThemePortabilityRequirement::RequirePortable,
+                    );
+                    if active {
+                        assert!(matches!(
+                            strict,
+                            Err(merman_render::Error::UnverifiedFamilyTheme { .. })
+                        ));
+                    } else {
+                        strict.expect("absent or source-owned Title is not applicable");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn journey_historical_title_color_has_no_visible_terminal_consumer() {
+    let source = "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n";
+    let visible_dom = |color: &str| {
+        let rendered = render_journey_rules_with_requirement(
+            source,
+            ThemeRuleSet::default(),
+            serde_json::json!({"themeVariables": {"titleColor": color}}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap();
+        assert!(
+            stylesheet
+                .text()
+                .unwrap()
+                .contains(&format!(".cluster text{{fill:{color};}}"))
+        );
+        // Compare the complete emitted element/text tree outside the stylesheet. This checks
+        // a real legacy input path independently of the matrix and the retired bridge probe.
+        document
+            .descendants()
+            .filter(|node| !node.ancestors().any(|parent| parent.has_tag_name("style")))
+            .map(|node| {
+                format!(
+                    "{:?}:{:?}:{:?}",
+                    node.tag_name().name(),
+                    node.attributes().collect::<Vec<_>>(),
+                    if node.is_text() { node.text() } else { None }
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(visible_dom("#123456"), visible_dom("#987654"));
 }
 
 #[test]
@@ -330,9 +480,9 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                 assert!(css.contains(&format!(
                     "#journey-text-paint .label{{color:{expected_text};}}"
                 )));
-                // The legacy Title projection only styles nonexistent cluster text. It does
-                // not own the diagram title, which inherits Text unless journey.titleColor wins.
-                assert!(css.contains("#journey-text-paint .cluster text{fill:#987654;}"));
+                // Retiring the unused cluster projection does not give Title ownership of
+                // the diagram title; that still inherits Text unless journey.titleColor wins.
+                assert!(!css.contains("#987654"));
                 assert!(!document.descendants().any(|node| {
                     node.attribute("class").is_some_and(|classes| {
                         classes.split_whitespace().any(|class| class == "cluster")

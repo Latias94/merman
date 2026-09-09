@@ -290,9 +290,8 @@ impl<'a> UnsupportedTerminalDomain<'a> {
 
     /// Marks per-occurrence fill terminals that are owned by Mermaid source/config output.
     ///
-    /// The fallback palette is only active when the final fill remains unspecified. A family
-    /// whose writer can be overridden by source/config styles supplies this mask so fallback
-    /// evidence does not treat an already-owned fill as an active ordinal palette.
+    /// Source/config fill overrides suppress unsupported fill-rule winners and ordinal-palette
+    /// fallback for that occurrence. Other winning properties and effect bindings remain active.
     pub(crate) const fn with_source_owned_fill(mut self, owned: &'a [bool]) -> Self {
         self.source_owned_fill = Some(owned);
         self
@@ -467,6 +466,9 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             };
 
             for (property, origin) in style.winner_rule_properties() {
+                if property == ResolvedStyleProperty::Fill && domain.source_owns_fill(ordinal) {
+                    continue;
+                }
                 if !domain.resolution.owns_target(origin.target()) {
                     continue;
                 }
@@ -661,6 +663,90 @@ mod tests {
         .expect("reconcile absent TreeView Node terminal");
         assert_eq!(absent.not_applicable_mechanisms(), &[key]);
         assert!(absent.residuals().is_empty());
+    }
+
+    #[test]
+    fn source_owned_fill_suppresses_only_owned_unsupported_fill_occurrences() {
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [fill_rule(ThemeTarget::Node, "#123456").for_family(DiagramFamilyId::TREE_VIEW)],
+        );
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::Node,
+        };
+        for (source_owned, not_applicable) in [([true, true], true), ([true, false], false)] {
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&source_owned)],
+                &work_meter(),
+            )
+            .expect("reconcile source-owned unsupported fill");
+            assert_eq!(
+                evidence.not_applicable_mechanisms().contains(&key),
+                not_applicable
+            );
+            if not_applicable {
+                assert!(evidence.residuals().is_empty());
+            } else {
+                assert_eq!(evidence.residuals().len(), 1);
+                assert_eq!(evidence.residuals()[0].key(), &key);
+                assert_eq!(
+                    evidence.residuals()[0].reason(),
+                    FamilyThemeResidualReason::UnsupportedPaint,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn source_owned_fill_keeps_unsupported_siblings_in_the_same_rule() {
+        for font_sibling in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if font_sibling {
+                patch.typography.font_size_px = Specified::Value(40.0);
+            } else {
+                patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+            }
+            let theme = resolved_theme(
+                DiagramFamilyId::TREE_VIEW,
+                [ThemeRule::new(ThemeTarget::Node, patch).for_family(DiagramFamilyId::TREE_VIEW)],
+            );
+            let key = FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Node,
+            };
+            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+            reconcile_unsupported_terminal_domains(
+                &theme,
+                &mut evidence,
+                &[UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Node,
+                    TerminalVariantDomain::uniform(1, ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&[true])],
+                &work_meter(),
+            )
+            .expect("reconcile source-owned fill with an unsupported sibling");
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert_eq!(evidence.residuals().len(), 1);
+            assert_eq!(evidence.residuals()[0].key(), &key);
+            assert_eq!(
+                evidence.residuals()[0].reason(),
+                if font_sibling {
+                    FamilyThemeResidualReason::UnsupportedTypography
+                } else {
+                    FamilyThemeResidualReason::UnsupportedPaint
+                },
+            );
+        }
     }
 
     #[test]
@@ -971,7 +1057,8 @@ mod tests {
             &[UnsupportedTerminalDomain::direct(
                 ThemeTarget::Node,
                 TerminalVariantDomain::uniform(1, ThemeVariant::Default),
-            )],
+            )
+            .with_source_owned_fill(&[true])],
             &work_meter(),
         )
         .expect("reconcile visible unsupported effect");

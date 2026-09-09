@@ -9,9 +9,9 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
     let authorization = runner()
         .expect("KTD23 must compare current probes with the independent historical witness");
 
-    assert_eq!(authorization.manifest_version(), 2);
-    assert_eq!(authorization.retirement_count(), 58);
-    assert_eq!(authorization.value_probe_count(), 116);
+    assert_eq!(authorization.manifest_version(), 3);
+    assert_eq!(authorization.retirement_count(), 60);
+    assert_eq!(authorization.value_probe_count(), 120);
     assert_ne!(authorization.manifest_digest(), &[0; 32]);
     assert_ne!(authorization.historical_witness_digest(), &[0; 32]);
     assert_ne!(authorization.production_inventory_digest(), &[0; 32]);
@@ -21,26 +21,24 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 #[test]
 fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        234, 248, 144, 208, 35, 120, 120, 26, 110, 140, 49, 15, 204, 101, 217, 213, 12, 182, 75,
-        57, 114, 129, 30, 23, 24, 119, 200, 95, 205, 165, 44, 229,
+        24, 188, 239, 13, 126, 185, 204, 157, 12, 249, 110, 191, 121, 180, 113, 133, 22, 173, 20,
+        146, 3, 115, 185, 173, 125, 55, 126, 58, 172, 181, 161, 147,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
-        0x95, 0xdd, 0x05, 0x43, 0x4f, 0x1d, 0x61, 0xb2, 0x62, 0x0c, 0xd6, 0x5f, 0x2d, 0x95, 0xf9,
-        0xd9, 0x85, 0x02, 0xe4, 0xe6, 0x1f, 0xbd, 0x9e, 0xac, 0x56, 0x7c, 0xdd, 0xe4, 0x4e, 0x0b,
-        0x03, 0x19,
+        95, 1, 209, 154, 147, 189, 235, 158, 138, 101, 210, 238, 227, 0, 170, 189, 150, 121, 25,
+        116, 9, 7, 66, 54, 158, 166, 241, 23, 199, 118, 210, 184,
     ];
     const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-        0xe2, 0xae, 0x8e, 0x38, 0x49, 0x7e, 0x16, 0x6c, 0x36, 0xac, 0x16, 0xe3, 0xec, 0x0b, 0xab,
-        0x82, 0xf4, 0x46, 0x34, 0x4b, 0x35, 0x0b, 0x7a, 0xe8, 0x9f, 0x07, 0x36, 0xa5, 0xe9, 0x4c,
-        0x0d, 0x33,
+        60, 17, 50, 133, 113, 23, 86, 213, 61, 122, 154, 82, 57, 162, 209, 163, 171, 38, 78, 27,
+        46, 134, 46, 168, 9, 89, 242, 86, 45, 6, 193, 142,
     ];
 
     let status = merman::__theme_acceptance::legacy_family_theme_bridge_inventory();
 
     assert_eq!(status.dispatch_error_count(), 0);
-    assert_eq!(status.matrix_route_count(), 254);
-    assert_eq!(status.matrix_family_count(), 14);
-    assert_eq!(status.dispatched_family_count(), 14);
+    assert_eq!(status.matrix_route_count(), 250);
+    assert_eq!(status.matrix_family_count(), 13);
+    assert_eq!(status.dispatched_family_count(), 13);
     assert_eq!(status.matrix_route_digest(), EXPECTED_MATRIX_ROUTE_DIGEST);
     assert_eq!(status.matrix_family_digest(), EXPECTED_MATRIX_FAMILY_DIGEST);
     assert_eq!(

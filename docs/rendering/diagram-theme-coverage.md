@@ -11,13 +11,13 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 19/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 14/33; 254 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 20/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 13/33; 250 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 48 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| Public support claims | Revision 49 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
 | KTD17 scalar cutover | v54; 300 routes / 338 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
-| KTD23 historical retirement | v2; 58 routes / 116 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
+| KTD23 historical retirement | v3; 60 routes / 120 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
 output files. Version 54 adds four Journey Text.fill routes with Classic witnesses. The four C4
@@ -55,7 +55,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | Radar | Typed | Typed | Required |
 | Quadrant Chart | Typed | Unsupported | Required |
 | Timeline | Typed | Typed | Required |
-| Journey | Typed | Typed | Required |
+| Journey | Typed | Typed | None |
 | Architecture | Typed | Typed | None |
 | C4 | Typed | Typed | None |
 | Treemap | Typed | Unsupported | None |
@@ -82,7 +82,10 @@ Important boundaries that a family-level count cannot express:
   actor legends, and generic line strokes. Explicit `themeVariables.textColor` remains the owner;
   `journey.titleColor` owns only the diagram title. Actor/task paints and the mouth's fixed stroke
   remain independent. Even a text-less diagram emits an activity line, so Text.fill is applicable.
-  KTD17 replaces only `text.fill`; the separate legacy `title.fill` projection is not retired here.
+  KTD17 replaces `text.fill`. KTD23 v3 independently retires the unused `title.fill` projection:
+  `themeVariables.titleColor` styles only nonexistent cluster text. `Title.fill` is Unsupported;
+  a visible title with no local color owner leaves a theme residual, while an absent title or
+  explicit nonempty `journey.titleColor` is `NotApplicable`. No typed Title consumer is implied.
 - C4 static unqualified/Default Text.fill owns the root inherited color and optional diagram title.
   Shape, boundary, and relationship labels retain independent colors. Explicit
   `themeVariables.textColor` owns the root; a title-less document with statically owned label colors

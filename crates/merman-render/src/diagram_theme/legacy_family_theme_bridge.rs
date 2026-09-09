@@ -211,9 +211,6 @@ fn compile_selected_family(
         LegacyFamilyDispatch::Timeline => {
             compile_timeline_family(&mut builder, &reader)?;
         }
-        LegacyFamilyDispatch::Journey => {
-            compile_journey_family(&mut builder, &reader)?;
-        }
         LegacyFamilyDispatch::NoLegacy => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
                 family.as_str(),
@@ -234,7 +231,6 @@ enum LegacyFamilyDispatch {
     Er,
     Chart,
     Timeline,
-    Journey,
     NoLegacy,
 }
 
@@ -534,13 +530,13 @@ fn legacy_family_dispatch(
             LegacyFamilyDispatch::Chart
         }
         DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
-        DiagramFamilyId::JOURNEY => LegacyFamilyDispatch::Journey,
         DiagramFamilyId::STATE
         | DiagramFamilyId::C4
         | DiagramFamilyId::TREEMAP
         | DiagramFamilyId::PACKET
         | DiagramFamilyId::ERROR
         | DiagramFamilyId::GANTT
+        | DiagramFamilyId::JOURNEY
         | DiagramFamilyId::EVENT_MODELING
         | DiagramFamilyId::INFO
         | DiagramFamilyId::ISHIKAWA
@@ -1038,30 +1034,6 @@ fn compile_timeline_family(
             ("textColor", reader.text_fill(ThemeTarget::Text)),
             ("titleColor", reader.text_fill(ThemeTarget::Title)),
         ],
-    );
-    contributions.finish_into(builder)
-}
-
-fn compile_journey_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::JourneyTaskFill.contribution_id(),
-        [("mainBkg", reader.fill(ThemeTarget::JourneyTask))],
-    );
-    contributions.add_theme_variables(
-        ThemeRouteCutoverProjection::JourneyTaskStroke.contribution_id(),
-        [("nodeBorder", reader.stroke(ThemeTarget::JourneyTask))],
-    );
-    contributions.add_theme_variables(
-        "text.fill",
-        [("textColor", reader.text_fill(ThemeTarget::Text))],
-    );
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
     );
     contributions.finish_into(builder)
 }
@@ -2324,6 +2296,7 @@ mod tests {
                 DiagramFamilyId::PACKET,
                 DiagramFamilyId::ERROR,
                 DiagramFamilyId::GANTT,
+                DiagramFamilyId::JOURNEY,
                 DiagramFamilyId::EVENT_MODELING,
                 DiagramFamilyId::INFO,
                 DiagramFamilyId::ISHIKAWA,
@@ -2345,29 +2318,27 @@ mod tests {
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            0xe2, 0xae, 0x8e, 0x38, 0x49, 0x7e, 0x16, 0x6c, 0x36, 0xac, 0x16, 0xe3, 0xec, 0x0b,
-            0xab, 0x82, 0xf4, 0x46, 0x34, 0x4b, 0x35, 0x0b, 0x7a, 0xe8, 0x9f, 0x07, 0x36, 0xa5,
-            0xe9, 0x4c, 0x0d, 0x33,
+            60, 17, 50, 133, 113, 23, 86, 213, 61, 122, 154, 82, 57, 162, 209, 163, 171, 38, 78,
+            27, 46, 134, 46, 168, 9, 89, 242, 86, 45, 6, 193, 142,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 254);
-        assert_eq!(status.matrix_family_count(), 14);
-        assert_eq!(status.dispatched_family_count(), 14);
+        assert_eq!(status.matrix_route_count(), 250);
+        assert_eq!(status.matrix_family_count(), 13);
+        assert_eq!(status.dispatched_family_count(), 13);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                234, 248, 144, 208, 35, 120, 120, 26, 110, 140, 49, 15, 204, 101, 217, 213, 12,
-                182, 75, 57, 114, 129, 30, 23, 24, 119, 200, 95, 205, 165, 44, 229,
+                24, 188, 239, 13, 126, 185, 204, 157, 12, 249, 110, 191, 121, 180, 113, 133, 22,
+                173, 20, 146, 3, 115, 185, 173, 125, 55, 126, 58, 172, 181, 161, 147
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                0x95, 0xdd, 0x05, 0x43, 0x4f, 0x1d, 0x61, 0xb2, 0x62, 0x0c, 0xd6, 0x5f, 0x2d, 0x95,
-                0xf9, 0xd9, 0x85, 0x02, 0xe4, 0xe6, 0x1f, 0xbd, 0x9e, 0xac, 0x56, 0x7c, 0xdd, 0xe4,
-                0x4e, 0x0b, 0x03, 0x19,
+                95, 1, 209, 154, 147, 189, 235, 158, 138, 101, 210, 238, 227, 0, 170, 189, 150,
+                121, 25, 116, 9, 7, 66, 54, 158, 166, 241, 23, 199, 118, 210, 184
             ]
         );
         assert_eq!(
@@ -2852,7 +2823,7 @@ mod tests {
     }
 
     #[test]
-    fn journey_direct_paint_suppresses_only_property_local_bridge_projections() {
+    fn journey_direct_paint_and_unsupported_title_leave_the_legacy_bridge_empty() {
         let typography = TextStyle::default()
             .with_font_stack(FontStack::single("Journey Typed").expect("valid Journey font"))
             .with_font_size_px(21.0)
@@ -2890,78 +2861,32 @@ mod tests {
         let bridge = bridge(&spec);
         let artifact = bridge.compile_for_family(DiagramFamilyId::JOURNEY);
 
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.task.fill")
-        );
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.task.stroke")
-        );
-        assert_eq!(
-            artifact.contribution_ids,
-            BTreeSet::from(["merman.legacy-family-theme.v1.journey.title.fill".to_owned()])
-        );
-        assert!(
-            !artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.journey.task.paint-text")
-        );
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.journey.title.fill"));
 
+        let baseline = parse(&DiagramThemeSpec::new(), JOURNEY_FIXTURE);
         let parsed = parse(&spec, JOURNEY_FIXTURE);
-        assert_ne!(
-            parsed.effective_config.get_str("themeVariables.textColor"),
-            Some("#16a34a")
-        );
+        for path in ["themeVariables.textColor", "themeVariables.titleColor"] {
+            assert_eq!(
+                parsed.effective_config.get_str(path),
+                baseline.effective_config.get_str(path),
+                "Journey must not project typed paint into {path}"
+            );
+        }
+        assert_eq!(fallback_contribution_count(&parsed), 0);
+
+        let compatibility = MermaidThemeCompatibility::default()
+            .with_variable("titleColor", "#445566")
+            .expect("valid explicit Journey compatibility title color");
+        let spec = spec.with_mermaid_compatibility(compatibility);
+        let parsed =
+            parse_with_compatibility(&spec, JOURNEY_FIXTURE, spec.mermaid().to_mermaid_config());
         assert_eq!(
             parsed.effective_config.get_str("themeVariables.titleColor"),
-            Some("#9333ea")
+            Some("#445566")
         );
-
-        for (explicit_config, expected_paths) in [
-            (
-                serde_json::json!({}),
-                vec![("title.fill", "themeVariables.titleColor")],
-            ),
-            (
-                serde_json::json!({"textColor": "#112233"}),
-                vec![("title.fill", "themeVariables.titleColor")],
-            ),
-            (serde_json::json!({"titleColor": "#445566"}), vec![]),
-        ] {
-            let parsed = parse_with_compatibility(
-                &spec,
-                JOURNEY_FIXTURE,
-                MermaidConfig::from_value(serde_json::json!({
-                    "themeVariables": explicit_config,
-                })),
-            );
-            let evidence = theme_parse_evidence(&parsed);
-            let actual = evidence
-                .fallback_contributions()
-                .map(|contribution| {
-                    (
-                        contribution.opaque_id().to_owned(),
-                        contribution
-                            .surviving_assignment_paths()
-                            .map(str::to_owned)
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .collect::<BTreeMap<_, _>>();
-            let expected = expected_paths
-                .into_iter()
-                .map(|(mapping, path)| {
-                    (
-                        format!("merman.legacy-family-theme.v1.journey.{mapping}"),
-                        vec![path.to_owned()],
-                    )
-                })
-                .collect::<BTreeMap<_, _>>();
-            assert_eq!(actual, expected, "explicit config: {explicit_config}");
-        }
+        assert_eq!(fallback_contribution_count(&parsed), 0);
     }
 
     #[test]

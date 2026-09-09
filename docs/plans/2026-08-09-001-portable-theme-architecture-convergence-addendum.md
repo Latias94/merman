@@ -22,7 +22,7 @@ execution: code
 | Execution | Continue in `.worktrees/presentation-theme-model` on `refactor/presentation-theme-model`. Treat the three product milestones below as review and delivery themes, not three mandatory giant diffs. Keep making proof-first, independently reviewable Conventional Commits. Implement and verify the accepted but unfrozen authoring-facade design, finish core convergence and the representative native C6a checkpoint, then verify the authoring candidate before C7a rollout and freeze. Unqualified cross-target claims require a later scoped release-qualification plan rather than completion of a standing 45-cell certification program. |
 | Stop conditions | Do not expose a positive portability or capability conclusion from an unevaluated state, accept host-produced geometry without request/session evidence, let theme/config inputs widen renderer-owned policy, create preset-specific renderer branches, or add brand scanning, editorial rewriting, page-shell composition, bespoke routing, icon art direction, or motion playback to the core engine. |
 
-## Current Implementation Reconciliation (2026-09-08)
+## Current Implementation Reconciliation (2026-09-09)
 
 The implementation has advanced beyond several snapshots embedded in the historical decision
 record. The current source and generated contract are authoritative for these superseding facts:
@@ -40,6 +40,11 @@ record. The current source and generated contract are authoritative for these su
 - Treemap Text.fill is typed for static unqualified/Default solid and transparent paint. Label
   and value configuration owners remain independent; no participating visible text terminal is
   `NotApplicable`. Its old Text projection no longer requires a family bridge.
+- Journey no longer requires a family bridge. KTD23 v3 retires the two static Title.fill
+  selector identities whose `themeVariables.titleColor` projection styled nonexistent cluster
+  text. The actual title still uses `journey.titleColor` or inherits Text; unsupported active
+  Title rules remain residuals, and absent or locally owned titles are NotApplicable. This
+  supersedes the historical Journey compatibility entries below without adding a Title consumer.
 - No base FontStack or FontSize property remains LegacyCompatibility. XY Chart FontStack and
   Treemap FontStack are typed measurement/writer routes, not Unsupported or retained compatibility.
   Class FontSize is typed while fixed-size cardinality retains its independent terminal size.

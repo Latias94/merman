@@ -629,6 +629,11 @@ fn prepare_journey_family(
     let text_paint = crate::journey::JourneyTextPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
+        model
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+            .or(meta.title.as_deref()),
         execution.work_meter_ref(),
     )?;
     let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(

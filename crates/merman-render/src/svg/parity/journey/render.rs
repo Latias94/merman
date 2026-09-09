@@ -979,6 +979,7 @@ mod tests {
             &crate::journey::JourneyTextPaintPlan::resolve(
                 None,
                 &MermaidConfig::empty_object(),
+                None,
                 execution.work_meter(),
             )?,
             &serde_json::json!({}),
@@ -1163,6 +1164,7 @@ mod tests {
                 &crate::journey::JourneyTextPaintPlan::resolve(
                     None,
                     &MermaidConfig::from_value(cfg.clone()),
+                    None,
                     options.work_meter(),
                 )?,
                 &cfg,
@@ -1227,6 +1229,7 @@ mod tests {
                 &crate::journey::JourneyTextPaintPlan::resolve(
                     None,
                     &MermaidConfig::empty_object(),
+                    None,
                     options.work_meter(),
                 )?,
                 &serde_json::json!({}),

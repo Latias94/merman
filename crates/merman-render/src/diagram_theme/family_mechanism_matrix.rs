@@ -1295,7 +1295,9 @@ fn legacy_paint_route_without_writer_consumer(
                 && unqualified_or_default
                 && fill
         }
-        DiagramFamilyId::ER => target == ThemeTarget::Title && unqualified_or_default && fill,
+        DiagramFamilyId::ER | DiagramFamilyId::JOURNEY => {
+            target == ThemeTarget::Title && unqualified_or_default && fill
+        }
         DiagramFamilyId::ARCHITECTURE
         | DiagramFamilyId::C4
         | DiagramFamilyId::CYNEFIN
@@ -3916,6 +3918,46 @@ mod tests {
             compile_ordinal_palette_route(DiagramFamilyId::KANBAN, ThemeTarget::Task).disposition(),
             FamilyThemeDisposition::TypedAdapter
         );
+    }
+
+    #[test]
+    fn journey_title_fill_is_unsupported_for_static_and_dynamic_selectors() {
+        for paint in [
+            CanvasPaint::Transparent,
+            CanvasPaint::solid("#9333ea").expect("valid Journey title paint"),
+        ] {
+            for variant in [
+                None,
+                Some(ThemeVariant::Default),
+                Some(ThemeVariant::Active),
+            ] {
+                let mut rule = ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(paint.clone()),
+                )
+                .for_family(DiagramFamilyId::JOURNEY);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                for ordinal in [
+                    None,
+                    Some(OrdinalSelector::exact(1).expect("valid exact selector")),
+                    Some(OrdinalSelector::cycle(2, 0).expect("valid cycle selector")),
+                ] {
+                    let rule = match ordinal {
+                        Some(ordinal) => rule.clone().with_ordinal(ordinal),
+                        None => rule.clone(),
+                    };
+                    let routes = compile_rule_routes(DiagramFamilyId::JOURNEY, 0, &rule);
+                    assert_eq!(routes.len(), 1);
+                    assert_eq!(
+                        routes[0].disposition(),
+                        FamilyThemeDisposition::Unsupported,
+                        "variant={variant:?}, ordinal={ordinal:?}, paint={paint:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

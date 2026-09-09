@@ -9,13 +9,15 @@ use merman_render::DiagramFamilyId;
 use merman_render::diagram_theme::{ThemeTarget, ThemeVariant};
 use sha2::{Digest as _, Sha256};
 
-const RETIREMENT_MANIFEST_VERSION: u16 = 2;
+const RETIREMENT_MANIFEST_VERSION: u16 = 3;
 const V1_RETIREMENT_BASELINE_REVISION: &str = "a4b1db26d315f044140a33378723ca8834452a75";
 const V2_RETIREMENT_BASELINE_REVISION: &str = "4c3a2d839584555d506792aa76c4ee3a7332a9c8";
+const V3_RETIREMENT_BASELINE_REVISION: &str = "dab18e2e5351be8605fd8d696075bca87953d29b";
 const V1_EXPECTED_RETIREMENT_COUNT: usize = 56;
 const V2_EXPECTED_RETIREMENT_COUNT: usize = 2;
+const V3_EXPECTED_RETIREMENT_COUNT: usize = 2;
 const EXPECTED_RETIREMENT_COUNT: usize =
-    V1_EXPECTED_RETIREMENT_COUNT + V2_EXPECTED_RETIREMENT_COUNT;
+    V1_EXPECTED_RETIREMENT_COUNT + V2_EXPECTED_RETIREMENT_COUNT + V3_EXPECTED_RETIREMENT_COUNT;
 const EXPECTED_VALUE_PROBE_COUNT: usize = EXPECTED_RETIREMENT_COUNT * 2;
 
 // Acceptance-owned authority. Update only after reviewing the independent historical witness,
@@ -36,17 +38,21 @@ const EXPECTED_V2_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
     0x87, 0xd1, 0x80, 0xe6, 0xf9, 0x05, 0x49, 0x46, 0x4a, 0x7e, 0x80, 0x78, 0x3c, 0xd5, 0x89, 0xf7,
     0xc2, 0x66, 0x91, 0x92, 0x6b, 0x95, 0xd9, 0x50, 0x9e, 0xc4, 0xdc, 0x63, 0x32, 0x1a, 0xaf, 0xcd,
 ];
+const EXPECTED_V3_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
+    77, 14, 211, 72, 42, 177, 86, 75, 205, 18, 73, 188, 163, 105, 200, 220, 180, 214, 208, 139,
+    213, 84, 151, 23, 58, 153, 18, 251, 31, 132, 175, 5,
+];
 const EXPECTED_HISTORICAL_WITNESS_DIGEST: [u8; 32] = [
-    0x68, 0x5f, 0x59, 0xaf, 0x21, 0xa9, 0x17, 0xa2, 0x86, 0xa6, 0x75, 0xde, 0xe1, 0x6e, 0xa3, 0xef,
-    0x29, 0x07, 0xa0, 0x35, 0x4f, 0x72, 0xb2, 0x43, 0xf2, 0xea, 0x39, 0xd2, 0xbc, 0x7a, 0xdb, 0x37,
+    237, 19, 91, 44, 153, 97, 209, 33, 188, 18, 101, 113, 63, 49, 156, 133, 117, 32, 144, 121, 152,
+    143, 104, 126, 60, 97, 24, 16, 212, 189, 216, 214,
 ];
 const EXPECTED_PRODUCTION_INVENTORY_DIGEST: [u8; 32] = [
-    0x75, 0x1a, 0xce, 0xc6, 0x9b, 0x49, 0x83, 0x1b, 0x3e, 0xe2, 0x85, 0xd1, 0x25, 0xc5, 0xe1, 0xbf,
-    0x21, 0xc7, 0x4f, 0x53, 0x61, 0x27, 0x2f, 0xb5, 0x3d, 0x26, 0xff, 0xa7, 0x87, 0x3d, 0x38, 0x4b,
+    123, 200, 145, 162, 227, 44, 217, 200, 225, 192, 200, 171, 248, 7, 216, 221, 36, 142, 27, 126,
+    76, 50, 249, 42, 155, 3, 170, 18, 121, 26, 251, 17,
 ];
 const EXPECTED_RECEIPT_REPORT_DIGEST: [u8; 32] = [
-    0x9a, 0x2f, 0x20, 0xbb, 0x46, 0xbb, 0x86, 0x7a, 0xdd, 0x00, 0x12, 0x78, 0x51, 0xf1, 0xf3, 0x96,
-    0x9e, 0x48, 0x54, 0x3a, 0x36, 0x27, 0x76, 0x88, 0xcc, 0xf3, 0xa0, 0xec, 0x00, 0xf8, 0x78, 0x04,
+    226, 19, 52, 137, 33, 190, 125, 175, 188, 146, 213, 23, 163, 160, 6, 212, 222, 30, 133, 93,
+    171, 79, 70, 1, 76, 180, 104, 109, 123, 149, 146, 84,
 ];
 
 /// Successful authorization of the independently frozen KTD23 retirement boundary.
@@ -485,6 +491,16 @@ const ER_RETIREMENTS: &[HistoricalRetirementPattern] = &[pattern(
 
 const V2_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[ER_RETIREMENTS];
 
+const JOURNEY_RETIREMENTS: &[HistoricalRetirementPattern] = &[pattern(
+    DiagramFamilyId::JOURNEY,
+    ThemeTarget::Title,
+    ThemeLegacyRouteFacet::Fill,
+    UNQUALIFIED_AND_DEFAULT,
+    TITLE_FILL,
+)];
+
+const V3_RETIREMENT_GROUPS: &[&[HistoricalRetirementPattern]] = &[JOURNEY_RETIREMENTS];
+
 const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
     HistoricalRetirementBatchSpec {
         version: 1,
@@ -497,6 +513,12 @@ const RETIREMENT_BATCHES: &[HistoricalRetirementBatchSpec] = &[
         baseline_revision: V2_RETIREMENT_BASELINE_REVISION,
         expected_count: V2_EXPECTED_RETIREMENT_COUNT,
         groups: V2_RETIREMENT_GROUPS,
+    },
+    HistoricalRetirementBatchSpec {
+        version: 3,
+        baseline_revision: V3_RETIREMENT_BASELINE_REVISION,
+        expected_count: V3_EXPECTED_RETIREMENT_COUNT,
+        groups: V3_RETIREMENT_GROUPS,
     },
 ];
 
@@ -541,14 +563,17 @@ pub fn authorize_legacy_projection_retirements()
 
     let v1_batch = historical_retirement_batch(&batches, 1)?;
     let v2_batch = historical_retirement_batch(&batches, 2)?;
+    let v3_batch = historical_retirement_batch(&batches, 3)?;
     let historical_witness_digest = historical_witness_digest(&batches);
     let v1_historical_witness_digest = historical_batch_digest(v1_batch);
     let v2_historical_witness_digest = historical_batch_digest(v2_batch);
+    let v3_historical_witness_digest = historical_batch_digest(v3_batch);
     let cumulative_production_inventory_digest = production_inventory_digest(&production_inventory);
     let v1_production_inventory = production_inventory_for_batch(v1_batch, &production_inventory);
     let v1_production_inventory_digest = production_inventory_digest(&v1_production_inventory);
     if v1_historical_witness_digest != EXPECTED_V1_HISTORICAL_WITNESS_DIGEST
         || v2_historical_witness_digest != EXPECTED_V2_HISTORICAL_WITNESS_DIGEST
+        || v3_historical_witness_digest != EXPECTED_V3_HISTORICAL_WITNESS_DIGEST
         || historical_witness_digest != EXPECTED_HISTORICAL_WITNESS_DIGEST
         || v1_production_inventory_digest != EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST
         || cumulative_production_inventory_digest != EXPECTED_PRODUCTION_INVENTORY_DIGEST
@@ -556,11 +581,13 @@ pub fn authorize_legacy_projection_retirements()
         return Err(LegacyProjectionVerificationError::new(
             "legacy-projection-authority",
             format!(
-                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
+                "frozen inventory digest mismatch: v1 historical expected {}, observed {}; v2 historical expected {}, observed {}; v3 historical expected {}, observed {}; cumulative historical expected {}, observed {}; v1 production expected {}, observed {}; cumulative production expected {}, observed {}",
                 hex_digest(EXPECTED_V1_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v1_historical_witness_digest),
                 hex_digest(EXPECTED_V2_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(v2_historical_witness_digest),
+                hex_digest(EXPECTED_V3_HISTORICAL_WITNESS_DIGEST),
+                hex_digest(v3_historical_witness_digest),
                 hex_digest(EXPECTED_HISTORICAL_WITNESS_DIGEST),
                 hex_digest(historical_witness_digest),
                 hex_digest(EXPECTED_V1_PRODUCTION_INVENTORY_DIGEST),
@@ -1088,8 +1115,7 @@ mod tests {
     fn independent_historical_witness_has_exact_ktd23_boundary() {
         let batches = historical_retirement_batches().expect("valid versioned KTD23 batches");
         let v1 = historical_retirement_batch(&batches, 1).expect("v1 batch exists");
-        let v2 = historical_retirement_batch(&batches, RETIREMENT_MANIFEST_VERSION)
-            .expect("v2 batch exists");
+        let v2 = historical_retirement_batch(&batches, 2).expect("v2 batch exists");
 
         assert_eq!(v1.retirements.len(), V1_EXPECTED_RETIREMENT_COUNT);
         assert_eq!(v2.retirements.len(), V2_EXPECTED_RETIREMENT_COUNT);
@@ -1098,6 +1124,23 @@ mod tests {
                 && retirement.target == ThemeTarget::Title
                 && retirement.facet == ThemeLegacyRouteFacet::Fill
         }));
+
+        let v3 = historical_retirement_batch(&batches, 3).expect("v3 batch exists");
+        assert_eq!(v3.baseline_revision, V3_RETIREMENT_BASELINE_REVISION);
+        assert_eq!(v3.retirements.len(), V3_EXPECTED_RETIREMENT_COUNT);
+        assert!(v3.retirements.iter().all(|retirement| {
+            retirement.family_id == DiagramFamilyId::JOURNEY
+                && retirement.target == ThemeTarget::Title
+                && retirement.facet == ThemeLegacyRouteFacet::Fill
+                && retirement.former_projections == TITLE_FILL
+        }));
+        assert_eq!(
+            v3.retirements
+                .iter()
+                .map(|retirement| retirement.selector)
+                .collect::<Vec<_>>(),
+            UNQUALIFIED_AND_DEFAULT,
+        );
 
         let retirements = historical_retirements().expect("valid independent KTD23 witness");
         assert_eq!(retirements.len(), EXPECTED_RETIREMENT_COUNT);
