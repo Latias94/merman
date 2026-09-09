@@ -2200,7 +2200,7 @@ mod tests {
             panic!("Gantt")
         };
         assert!(pair.layout().tasks.iter().all(|task| task.bar.width == 0.0));
-        let document = crate::drawing_list::build_for_family(
+        let mut document = crate::drawing_list::build_for_family(
             &artifact.family,
             &artifact.metadata,
             DrawingListPolicy::VectorOnly,
@@ -2252,14 +2252,58 @@ mod tests {
             .collect();
         assert_eq!(svg_bars.len(), 2);
         for bar in svg_bars {
-            assert_eq!(bar.attribute("fill"), Some("none"));
-            assert_eq!(bar.attribute("stroke"), Some("none"));
+            assert!(bar.has_tag_name("rect"));
+            assert_eq!(bar.attribute("width"), Some("0"));
+            let style = bar.attribute("style").unwrap();
+            assert!(style.contains("fill:none;"));
+            assert!(style.contains("stroke:none;"));
             assert!(bar.attribute("id").is_some());
         }
         assert!(
             xml.descendants()
                 .any(|node| node.has_tag_name("text") && node.text() == Some("y69"))
         );
+
+        // A host may intentionally stroke the retained path. Rect projection would hide it.
+        let stroke = document
+            .public
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawPath { path, style } if path.as_str() == "gantt.today.line" => {
+                    style.stroke.clone()
+                }
+                _ => None,
+            })
+            .unwrap();
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str().starts_with("gantt.task.")
+            {
+                style.stroke = Some(stroke.clone());
+            }
+        }
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let edited: Vec<_> = xml
+            .descendants()
+            .filter(|node| {
+                node.attribute("data-merman-resource")
+                    .is_some_and(|id| id.starts_with("gantt.task."))
+            })
+            .collect();
+        assert_eq!(edited.len(), 2);
+        for bar in edited {
+            assert!(bar.has_tag_name("path"));
+            assert!(bar.attribute("stroke").is_some_and(|paint| paint != "none"));
+        }
     }
 
     #[test]
@@ -2722,18 +2766,29 @@ mod tests {
     #[test]
     fn gantt_section_text_projects_public_lines_including_empty_lines() {
         use merman_display_list::{DrawingCommand, TextBaseline};
-        for (section, expected, offsets) in [
+        for (section, expected, offsets, preserve, second_preserve) in [
+            (
+                "Alpha Beta<br/>Gamma",
+                vec!["Alpha Beta", "Gamma"],
+                vec![-0.5, 0.5],
+                false,
+                false,
+            ),
             (
                 "<br/>Alpha<br/><br/>Beta<br/>",
                 vec!["", "Alpha", "", "Beta", ""],
                 vec![-2.0, 1.0, 1.0, 2.0, 2.0],
+                false,
+                false,
             ),
-            ("A<br/> B", vec!["A", " B"], vec![-0.5, 0.5]),
-            ("A <br/> B", vec!["A ", "B"], vec![-0.5, 0.5]),
+            ("A<br/> B", vec!["A", " B"], vec![-0.5, 0.5], true, true),
+            ("A <br/> B", vec!["A ", "B"], vec![-0.5, 0.5], true, false),
             (
                 "A<br/> B<br/> \t<br/> C<br/> \t<br/>",
                 vec!["A", " B", " ", "C", "", ""],
                 vec![-2.5, -1.5, -0.5, 0.5, 0.5, 0.5],
+                true,
+                true,
             ),
         ] {
             let source = format!(
@@ -2810,7 +2865,7 @@ mod tests {
             );
             assert_eq!(
                 text.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
-                Some("preserve")
+                preserve.then_some("preserve")
             );
             assert_eq!(
                 text.attribute("dy").unwrap(),
@@ -2857,11 +2912,29 @@ mod tests {
             assert_eq!(lines[1].text(), Some(expected[1]));
             assert_eq!(
                 lines[1].attribute(("http://www.w3.org/XML/1998/namespace", "space")),
-                Some("preserve")
+                second_preserve.then_some("preserve")
             );
             assert_eq!(
                 lines[1].attribute("y").unwrap().parse::<f64>().unwrap(),
                 moved_y
+            );
+            let DrawingCommand::DrawText { run } = &mut document.public.commands[start + 2] else {
+                panic!("second line")
+            };
+            run.text = " Alpha  Beta ".to_owned();
+            run.style.fill = merman_display_list::Paint::solid(merman_display_list::Color::rgba(
+                18, 52, 86, 128,
+            ));
+            let edited = render(&document);
+            let xml = roxmltree::Document::parse(&edited).unwrap();
+            let text = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some(" Alpha  Beta "))
+                .unwrap();
+            assert_eq!(
+                text.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+                Some("preserve"),
+                "independent public whitespace survives the generic text serializer"
             );
         }
     }

@@ -34,11 +34,10 @@ impl DocumentSvgEncoder<'_> {
         let Some(id) = semantic_id else {
             return Ok(());
         };
-        let preserve = id.starts_with("gantt.section.")
-            || ((id == "gantt.title" || id.starts_with("gantt.task."))
-                && (run.text.starts_with(' ')
-                    || run.text.ends_with(' ')
-                    || run.text.contains("  ")));
+        let preserve = (id.starts_with("gantt.section.")
+            || id == "gantt.title"
+            || id.starts_with("gantt.task."))
+            && gantt_text_has_significant_whitespace(&run.text);
         if preserve {
             // Source whitespace is already resolved; paint fallback must not collapse it again.
             // Native SVG consumers also need xml:space, not just CSS white-space.
@@ -522,9 +521,19 @@ impl DocumentSvgEncoder<'_> {
             }
         }
         let font = self.font_families(&first.style.font)?;
+        self.output.push_str("<text")?;
+        // Ordinary source labels rely on SVG's default whitespace behavior. Retain a
+        // preservation attribute only when the resolved public runs need it, including
+        // leading/trailing spaces that remain addressable across source tspans.
+        if commands.iter().any(|command| {
+            matches!(command, DrawingCommand::DrawText { run }
+                if gantt_text_has_significant_whitespace(&run.text))
+        }) {
+            self.output.push_str(" xml:space=\"preserve\"")?;
+        }
         write!(
             self.output,
-            "<text xml:space=\"preserve\" dy=\"{}em\" x=\"{}\" y=\"{}\" font-size=\"{}\" class=\"{}\" style=\"font-family:",
+            " dy=\"{}em\" x=\"{}\" y=\"{}\" font-size=\"{}\" class=\"{}\" style=\"font-family:",
             fmt(dy),
             fmt(first.origin.x),
             fmt(center_y),
@@ -831,4 +840,11 @@ impl DocumentSvgEncoder<'_> {
             .push_str("{cursor:pointer;shape-rendering:crispEdges;}</style><g/>")?;
         Ok(())
     }
+}
+
+fn gantt_text_has_significant_whitespace(text: &str) -> bool {
+    text.starts_with(' ')
+        || text.ends_with(' ')
+        || text.contains("  ")
+        || text.contains(['\t', '\r', '\n'])
 }

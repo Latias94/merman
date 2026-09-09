@@ -2418,6 +2418,16 @@ impl<'a> DocumentSvgEncoder<'a> {
                 if let Some(bounds) = rectangle_from_path(path) {
                     return self.emit_rect(path_id, bounds, style);
                 }
+                if raw_id.starts_with("gantt.task.")
+                    && style.fill.is_none()
+                    && style.stroke.is_none()
+                    && let Some(bounds) = rectangle_path_bounds(path)
+                {
+                    // The adapter retains collapsed task identity with no paint. Only that
+                    // unpainted path is equivalent to SVG's non-rendering zero-extent rect;
+                    // an edited stroke must retain its drawable path geometry.
+                    return self.emit_rect(path_id, bounds, style);
+                }
             }
             if (raw_id == "gantt.today.line" || raw_id.contains(".tick."))
                 && let Some((start, end)) = line_from_path(path)
@@ -4654,6 +4664,10 @@ fn is_rigid_transform(transform: Transform) -> bool {
 }
 
 fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
+    rectangle_path_bounds(path).filter(|bounds| bounds.width > 0.0 && bounds.height > 0.0)
+}
+
+fn rectangle_path_bounds(path: &PathResource) -> Option<Rect> {
     let [
         PathSegment::MoveTo { to: first },
         PathSegment::LineTo { to: second },
@@ -4682,8 +4696,7 @@ fn rectangle_from_path(path: &PathResource) -> Option<Rect> {
     let y = first.y.min(second.y).min(third.y).min(fourth.y);
     let max_x = first.x.max(second.x).max(third.x).max(fourth.x);
     let max_y = first.y.max(second.y).max(third.y).max(fourth.y);
-    let bounds = Rect::new(x, y, max_x - x, max_y - y);
-    (bounds.width > 0.0 && bounds.height > 0.0).then_some(bounds)
+    Some(Rect::new(x, y, max_x - x, max_y - y))
 }
 
 fn rounded_rectangle_from_path(path: &PathResource) -> Option<(Rect, f64)> {

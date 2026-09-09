@@ -407,6 +407,13 @@ RGB separators, hash-like entities, entity-encoded commas and repeated important
 The 43 focused Gantt tests pass; the existing empty-task semicolon fixture is not visible-color
 evidence. This does not refresh full-family structure evidence or admit Gantt as canonical.
 
+Source-shaped projection now retains zero-extent, unpainted tasks as rectangles. If a host adds
+stroke to the public path, SVG keeps that path so the edit remains drawable rather than disappearing
+under SVG's zero-extent rectangle rule. Section text emits `xml:space` only for significant public
+whitespace; ordinary labels keep the source default, while edited or translucent fallback text
+retains meaningful spaces. The 43 focused Gantt tests cover both projection and edited-document
+fallback. The full-family structural report above predates these changes.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
