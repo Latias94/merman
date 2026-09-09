@@ -2179,7 +2179,7 @@ mod tests {
     fn tree_view_candidate_uses_public_paint_and_background() {
         use merman_display_list::{Color, DrawingCommand, Paint};
         let parsed = Engine::new().parse_diagram_for_render_model_sync(
-            "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n",
+            "treeView-beta\nsrc/ :::highlight icon(folder) ## source directory\n    main.rs icon(file) ## entry point\n    lib.rs icon(none)\n",
             ParseOptions::strict(),
         ).unwrap().unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
@@ -2232,6 +2232,24 @@ mod tests {
                 .any(|node| node.attribute("data-merman-resource") == Some("treeView.background"))
         );
 
+        let style = xml
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(style.contains("text[class=\"treeView-node-label\"]{"));
+        assert!(style.contains("text[class=\"treeView-node-label treeView-node-dir highlight\"]{"));
+        assert!(style.contains("white-space:pre"));
+        let main = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("main.rs"))
+            .unwrap();
+        assert_eq!(
+            main.attribute("fill"),
+            None,
+            "identical sibling styles share CSS"
+        );
         let icons = xml
             .descendants()
             .filter(|node| node.attribute("class") == Some("treeView-node-icon"))
@@ -2303,6 +2321,21 @@ mod tests {
             .descendants()
             .find(|node| node.has_tag_name("text") && node.text() == Some("main  file"))
             .unwrap();
+        let unchanged = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("lib.rs"))
+            .unwrap();
+        assert!(
+            unchanged.attribute("fill").is_some(),
+            "heterogeneous siblings both keep explicit paint"
+        );
+        let style = xml
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(!style.contains("text[class=\"treeView-node-label\"]{"));
         assert_eq!(label.attribute("fill"), Some("#123456"));
         assert_eq!(label.attribute("font-size"), Some("23"));
         assert_eq!(label.attribute("font-weight"), Some("700"));

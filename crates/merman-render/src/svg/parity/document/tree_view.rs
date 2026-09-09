@@ -1,8 +1,165 @@
 //! TreeView source containers projected from public semantic ownership.
 
 use super::*;
+use merman_display_list::TextStyle;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct TextCssStyle<'a> {
+    style: &'a TextStyle,
+    anchor: TextAnchor,
+    direction: TextDirection,
+}
+
+fn text_css_style(run: &TextRun) -> Option<TextCssStyle<'_>> {
+    (matches!(run.obligation, TextObligation::HostText { .. })
+        && run.style.font.resource.is_none()
+        && run.style.stroke.is_none()
+        && matches!(run.style.fill, Paint::Solid { .. })
+        && !run.text.contains(['\n', '\r']))
+    .then_some(TextCssStyle {
+        style: &run.style,
+        anchor: run.anchor,
+        direction: run.direction,
+    })
+}
+
+/// Class metadata only chooses the CSS scope. Every declaration comes from matching public
+/// commands; one heterogeneous or unsupported sibling disables sharing for the whole class.
+pub(super) fn shared_text_styles<'a>(
+    document: &'a DrawingListDocument,
+    body: &crate::drawing_list::TreeViewSvgBody,
+    session: &RenderSession,
+) -> Result<BTreeMap<String, Option<TextCssStyle<'a>>>> {
+    let mut styles = BTreeMap::new();
+    let mut groups = Vec::new();
+    for command in &document.commands {
+        session.checkpoint(OperationPhase::Emit)?;
+        match command {
+            DrawingCommand::BeginSemanticGroup { semantic_id } => {
+                groups
+                    .try_reserve(1)
+                    .map_err(|_| crate::Error::DrawingListAllocationFailed {
+                        collection: "TreeView SVG text scopes",
+                    })?;
+                groups.push(semantic_id.as_str());
+            }
+            DrawingCommand::EndSemanticGroup => {
+                groups.pop();
+            }
+            DrawingCommand::DrawText { run } => {
+                let Some(class) = groups.last().and_then(|id| body.text_classes.get(*id)) else {
+                    continue;
+                };
+                // XML normalizes literal control whitespace in attribute values. Leave such
+                // edited class metadata to the generic projection instead of sharing a rule
+                // whose exact attribute selector would observe a different string.
+                let candidate = (!class.chars().any(char::is_control))
+                    .then(|| text_css_style(run))
+                    .flatten();
+                styles
+                    .entry(class.clone())
+                    .and_modify(|shared| {
+                        if *shared != candidate {
+                            *shared = None;
+                        }
+                    })
+                    .or_insert(candidate);
+            }
+            _ => {}
+        }
+    }
+    Ok(styles)
+}
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_tree_view_styles(&mut self) -> Result<()> {
+        self.output.push_str("<style>")?;
+        for (class, shared) in &self.tree_view_text_styles {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            let Some(shared) = shared else {
+                continue;
+            };
+            let style = shared.style;
+            let Paint::Solid { color } = style.fill else {
+                return Err(invalid("TreeView shared text paint must be solid"));
+            };
+            let font = self.font_families(&style.font)?;
+            // Exact class attributes prevent a plain-label rule from matching a directory or
+            // custom multi-token label. Escape the metadata as a CSS string, not a selector.
+            // Auto has the same inherited direction as the generic SVG direction="auto"
+            // projection; CSS direction itself accepts only ltr/rtl/inherit.
+            let direction = match shared.direction {
+                TextDirection::Auto => "inherit",
+                TextDirection::Ltr => "ltr",
+                TextDirection::Rtl => "rtl",
+            };
+            write!(
+                self.output,
+                "#{} text[class=\"{}\"]{{font-family:{};font-size:{}px;font-weight:{};font-style:{};letter-spacing:{}px;line-height:{}px;fill:{};fill-opacity:{};stroke:none;white-space:pre;direction:{};text-anchor:{};}}",
+                self.diagram_id,
+                escaped_css_string(class).replace('&', "\\26 "),
+                font,
+                fmt(style.font_size),
+                style.font.weight,
+                font_style(style.font.style),
+                fmt(style.letter_spacing),
+                fmt(style.line_height),
+                color_css(color),
+                fmt(f64::from(color.alpha) / 255.0),
+                direction,
+                text_anchor(shared.anchor),
+            )?;
+        }
+        self.output.push_str("</style>")
+    }
+
+    pub(super) fn emit_compact_tree_view_text(
+        &mut self,
+        run: &TextRun,
+        semantic_id: Option<&str>,
+    ) -> Result<bool> {
+        let SvgStructureBody::TreeView(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(class) = semantic_id.and_then(|id| body.text_classes.get(id)) else {
+            return Ok(false);
+        };
+        let Some(candidate) = text_css_style(run) else {
+            return Ok(false);
+        };
+        if self.tree_view_text_styles.get(class).copied().flatten() != Some(candidate) {
+            return Ok(false);
+        }
+        self.session.checkpoint(OperationPhase::Emit)?;
+        let baseline = match run.baseline {
+            TextBaseline::Middle => "middle",
+            other => text_baseline(other),
+        };
+        write!(
+            self.output,
+            "<text dominant-baseline=\"{}\" class=\"{}\" x=\"{}\" y=\"{}\"",
+            baseline,
+            escaped_attr(class),
+            fmt(run.origin.x),
+            fmt(run.origin.y),
+        )?;
+        if let Some(id) = semantic_id {
+            self.write_sidecar_dom_id(id)?;
+        }
+        if let Some(language) = run.language.as_deref() {
+            self.output.push_str(" xml:lang=\"")?;
+            output::escape_attr(&mut self.output, language)?;
+            self.output.push('"')?;
+        }
+        write_text_metadata(&mut self.output, self.debug, run)?;
+        self.write_tree_view_leaf_metadata()?;
+        self.write_state_attrs()?;
+        self.output.push('>')?;
+        output::escape_xml(&mut self.output, &run.text)?;
+        self.output.push_str("</text>")?;
+        Ok(true)
+    }
+
     pub(super) fn begin_tree_view_semantic_group(
         &mut self,
         semantic_id: &str,

@@ -91,6 +91,7 @@ struct DocumentSvgEncoder<'a> {
     cynefin_marker_definitions: BTreeMap<String, String>,
     cynefin_text_styles: BTreeMap<String, Option<&'a merman_display_list::TextStyle>>,
     cynefin_path_styles: BTreeMap<String, Option<cynefin::PathCssStyle<'a>>>,
+    tree_view_text_styles: BTreeMap<String, Option<tree_view::TextCssStyle<'a>>>,
     sankey_inline_gradients: BTreeSet<String>,
     emitted_sankey_gradients: BTreeSet<String>,
     sankey_label_style: Option<&'a merman_display_list::TextStyle>,
@@ -271,6 +272,11 @@ impl<'a> DocumentSvgEncoder<'a> {
             },
             cynefin_path_styles: if let SvgStructureBody::Cynefin(body) = &document.svg.body {
                 cynefin::shared_path_styles(&document.public, body, session)?
+            } else {
+                BTreeMap::new()
+            },
+            tree_view_text_styles: if let SvgStructureBody::TreeView(body) = &document.svg.body {
+                tree_view::shared_text_styles(&document.public, body, session)?
             } else {
                 BTreeMap::new()
             },
@@ -907,6 +913,10 @@ impl<'a> DocumentSvgEncoder<'a> {
         if matches!(self.svg_body, SvgStructureBody::Venn(_)) {
             return self.write_venn_style();
         }
+        if matches!(self.svg_body, SvgStructureBody::TreeView(_)) {
+            self.write_tree_view_styles()?;
+            return self.output.push_str("<g/>");
+        }
         if matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
             return self.write_gantt_style();
         }
@@ -1005,9 +1015,6 @@ impl<'a> DocumentSvgEncoder<'a> {
                     self.effective_config,
                 ),
             )),
-            // The source style element remains a DOM anchor. Every active TreeView property
-            // is emitted from its public path/text command, including whitespace preservation.
-            SvgStructureBody::TreeView(_) => Some((false, String::new())),
             SvgStructureBody::XyChart(_) => {
                 let mut css = String::new();
                 super::push_xychart_css(&mut css, self.diagram_id.as_str());
@@ -3397,6 +3404,9 @@ impl<'a> DocumentSvgEncoder<'a> {
             return Ok(());
         }
         if self.emit_compact_venn_text(run, semantic_id.as_deref())? {
+            return Ok(());
+        }
+        if self.emit_compact_tree_view_text(run, semantic_id.as_deref())? {
             return Ok(());
         }
         if matches!(self.svg_body, SvgStructureBody::Mindmap(_)) {
