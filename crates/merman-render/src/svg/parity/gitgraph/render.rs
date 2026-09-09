@@ -632,8 +632,11 @@ fn gitgraph_node_palette_surface_ownership(
     effective_config: &serde_json::Value,
     node_palette: &crate::gitgraph::GitGraphNodePalettePlan,
 ) -> crate::gitgraph::GitGraphPaletteSurfaceOwnership {
-    let sources = GitGraphTerminalPaletteSources::from_config(effective_config);
     let mut ownership = crate::gitgraph::GitGraphPaletteSurfaceOwnership::default();
+    if !node_palette.has_palette_assignment() {
+        return ownership;
+    }
+    let sources = GitGraphTerminalPaletteSources::from_config(effective_config);
 
     for slot in 0..crate::gitgraph::GITGRAPH_PALETTE_SLOT_COUNT {
         if node_palette.surface_is_visible(crate::gitgraph::GitGraphPaletteSurface::Arrow, slot)

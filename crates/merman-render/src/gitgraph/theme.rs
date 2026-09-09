@@ -312,8 +312,6 @@ impl GitGraphNodePalettePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self::baseline(layout);
-        plan.mermaid_source_ownership =
-            GitGraphPaletteSourceOwnership::from_config(effective_config);
         let Some(theme) = theme else {
             return Ok(plan);
         };
@@ -345,7 +343,15 @@ impl GitGraphNodePalettePlan {
             ],
             work_meter,
         )?;
-        plan.resolve_node_palette(theme, work_meter)?;
+        if theme
+            .ordinal_palette_disposition(ThemeTarget::Node)
+            .is_some()
+        {
+            plan.initialize_palette_occurrences(layout, work_meter)?;
+            plan.mermaid_source_ownership =
+                GitGraphPaletteSourceOwnership::from_config(effective_config);
+            plan.resolve_node_palette(theme, work_meter)?;
+        }
         plan.branch_stroke = GitGraphBranchStrokePlan::resolve(
             theme,
             effective_config,
@@ -426,38 +432,30 @@ impl GitGraphNodePalettePlan {
         Ok(())
     }
 
-    pub(crate) fn baseline(layout: &GitGraphDiagramLayout) -> Self {
-        let mut visible_surfaces =
-            [GitGraphPaletteSurfaceSet::default(); GITGRAPH_PALETTE_SLOT_COUNT];
-        let expected_branch_label_slots = if layout.show_branches {
-            layout
-                .branches
-                .iter()
-                .map(|branch| {
-                    let slot = palette_slot(branch.index);
-                    visible_surfaces[slot].insert(GitGraphPaletteSurface::BranchLabelBackground);
-                    slot
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let expected_arrow_slots = layout
-            .arrows
-            .iter()
-            .map(|arrow| {
-                let slot = palette_slot(arrow.class_index);
-                visible_surfaces[slot].insert(GitGraphPaletteSurface::Arrow);
-                slot
-            })
-            .collect();
-        let branch_slots = layout
-            .branches
-            .iter()
-            .map(|branch| (branch.name.as_str(), palette_slot(branch.index)))
-            .collect::<HashMap<_, _>>();
-        let mut expected_commit_elements = Vec::new();
+    fn initialize_palette_occurrences(
+        &mut self,
+        layout: &GitGraphDiagramLayout,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        // These identities belong only to palette evidence, not ordinary rendering.
+        let mut branch_slots = HashMap::new();
+        for branch in &layout.branches {
+            work_meter.charge(1)?;
+            branch_slots.insert(branch.name.as_str(), palette_slot(branch.index));
+            if layout.show_branches {
+                let slot = palette_slot(branch.index);
+                self.visible_surfaces[slot].insert(GitGraphPaletteSurface::BranchLabelBackground);
+                self.expected_branch_label_slots.push(slot);
+            }
+        }
+        for arrow in &layout.arrows {
+            work_meter.charge(1)?;
+            let slot = palette_slot(arrow.class_index);
+            self.visible_surfaces[slot].insert(GitGraphPaletteSurface::Arrow);
+            self.expected_arrow_slots.push(slot);
+        }
         for (commit_index, commit) in layout.commits.iter().enumerate() {
+            work_meter.charge(1)?;
             let slot = branch_slots
                 .get(commit.branch.as_str())
                 .copied()
@@ -468,8 +466,9 @@ impl GitGraphNodePalettePlan {
                 .copied()
                 .enumerate()
             {
-                visible_surfaces[slot].insert(GitGraphPaletteSurface::Commit);
-                expected_commit_elements.push(ExpectedCommitElement {
+                work_meter.charge(1)?;
+                self.visible_surfaces[slot].insert(GitGraphPaletteSurface::Commit);
+                self.expected_commit_elements.push(ExpectedCommitElement {
                     commit_index,
                     element_index,
                     slot,
@@ -477,7 +476,10 @@ impl GitGraphNodePalettePlan {
                 });
             }
         }
+        Ok(())
+    }
 
+    pub(crate) fn baseline(layout: &GitGraphDiagramLayout) -> Self {
         Self {
             fills_by_slot: std::array::from_fn(|_| None),
             fill_winner_by_slot: [false; GITGRAPH_PALETTE_SLOT_COUNT],
@@ -489,13 +491,17 @@ impl GitGraphNodePalettePlan {
             }),
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
-            visible_surfaces,
+            visible_surfaces: [GitGraphPaletteSurfaceSet::default(); GITGRAPH_PALETTE_SLOT_COUNT],
             mermaid_source_ownership: GitGraphPaletteSourceOwnership::default(),
-            expected_branch_label_slots,
-            expected_arrow_slots,
-            expected_commit_elements,
+            expected_branch_label_slots: Vec::new(),
+            expected_arrow_slots: Vec::new(),
+            expected_commit_elements: Vec::new(),
             terminal_receipt: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn has_palette_assignment(&self) -> bool {
+        self.fills_by_slot.iter().any(Option::is_some)
     }
 
     fn has_visible_surface(&self) -> bool {
@@ -819,6 +825,126 @@ mod tests {
             commits: Vec::new(),
             arrows: Vec::new(),
         }
+    }
+
+    fn occurrence_layout() -> GitGraphDiagramLayout {
+        serde_json::from_value(serde_json::json!({
+            "bounds": null, "direction": "LR", "rotate_commit_label": false,
+            "show_branches": true, "show_commit_label": true, "parallel_commits": false,
+            "diagram_padding": 0.0, "max_pos": 0.0,
+            "branches": [{"name": "main", "index": 0, "pos": 0.0, "bbox_width": 10.0, "bbox_height": 10.0}],
+            "arrows": [{"from": "A", "to": "B", "class_index": 0, "d": "M0,0L10,0"}],
+            "commits": [{"id": "A", "message": "", "seq": 0, "commit_type": 0,
+                "custom_id": true, "tags": ["v1"], "parents": [], "branch": "main",
+                "pos": 0.0, "pos_with_offset": 0.0, "x": 0.0, "y": 0.0}]
+        })).expect("nonempty palette domain")
+    }
+
+    #[test]
+    fn unrelated_themes_do_not_allocate_palette_occurrence_state() {
+        use crate::diagram_theme::{FontStack, ThemeTextStyle, TypographySpec};
+        let layout = occurrence_layout();
+        let typography =
+            ThemeTextStyle::default().with_font_stack(FontStack::single("GitGraphFont").unwrap());
+        let patches = [
+            DiagramThemeSpec::default(),
+            DiagramThemeSpec::default().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
+            ),
+            DiagramThemeSpec::default().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+            )),
+            DiagramThemeSpec::default().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                ),
+            )),
+            DiagramThemeSpec::default().with_styles(ThemeRuleSet::default().with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ),
+            )),
+        ];
+        let themes = patches
+            .into_iter()
+            .map(|spec| {
+                DiagramThemeCompiler::new()
+                    .compile(spec)
+                    .unwrap()
+                    .resolve(DiagramFamilyId::GIT_GRAPH)
+            })
+            .collect::<Vec<_>>();
+        for theme in std::iter::once(None).chain(themes.iter().map(Some)) {
+            let plan = GitGraphNodePalettePlan::resolve(
+                theme,
+                &MermaidConfig::default(),
+                &layout,
+                false,
+                &work_meter(),
+            )
+            .unwrap();
+            assert_eq!(plan.expected_branch_label_slots.capacity(), 0);
+            assert_eq!(plan.expected_arrow_slots.capacity(), 0);
+            assert_eq!(plan.expected_commit_elements.capacity(), 0);
+            assert!(!plan.has_visible_surface());
+            assert!(!plan.has_palette_assignment());
+            assert!(
+                plan.begin_terminal_receipt(GitGraphPaletteSurfaceOwnership::default())
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn palette_occurrence_preparation_is_metered_before_allocation() {
+        use crate::diagram_theme::{OrdinalPalette, ThemeColorValue};
+        use crate::resources::ResourceLimitId;
+        let layout = occurrence_layout();
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::default().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+                ),
+            ))
+            .unwrap()
+            .resolve(DiagramFamilyId::GIT_GRAPH);
+        let plan = GitGraphNodePalettePlan::resolve(
+            Some(&theme),
+            &MermaidConfig::default(),
+            &layout,
+            false,
+            &work_meter(),
+        )
+        .unwrap();
+        assert_eq!(plan.expected_branch_label_slots, [0]);
+        assert_eq!(plan.expected_arrow_slots, [0]);
+        assert_eq!(plan.expected_commit_elements.len(), 1);
+        assert!(plan.has_palette_assignment());
+        assert!(
+            plan.begin_terminal_receipt(GitGraphPaletteSurfaceOwnership::default())
+                .is_some()
+        );
+
+        let limited = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+                .unwrap(),
+        );
+        let mut baseline = GitGraphNodePalettePlan::baseline(&layout);
+        assert!(
+            baseline
+                .initialize_palette_occurrences(&layout, &limited)
+                .is_err()
+        );
+        assert!(baseline.expected_arrow_slots.is_empty());
+        assert_eq!(baseline.expected_arrow_slots.capacity(), 0);
+        assert_eq!(baseline.expected_commit_elements.capacity(), 0);
     }
 
     fn unsupported_fill_theme(target: ThemeTarget) -> ResolvedDiagramTheme {
