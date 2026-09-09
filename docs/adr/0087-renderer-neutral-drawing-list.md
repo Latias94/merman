@@ -40,6 +40,11 @@ flowchart LR
 1. `RenderDocument` is built after the existing typed semantic and layout stages. It owns the
    validated public `DrawingListDocument` projection and a private SVG structural sidecar for DOM
    IDs, classes, definitions, HTML shells, and accessibility ordering.
+   A source SVG coordinate basis may also be retained as a representation hint, provided the
+   serializer compensates the public matrix so changing that hint cannot change the effective
+   transform. For an absolute origin `P`, `T(P) [T(-P) M T(P)] T(-P)` must remain equal to the
+   public element matrix `M`; already-emitted ancestor transforms are outside that compensation.
+   The hint must not replay source rotation/scale CSS or become another geometry input.
 2. DrawingList JSON and SVG are target-local serializers of that canonical document. SVG is never
    parsed back into the public DrawingList as the permanent architecture. A migration bridge may be
    used only when it records an accountable vector, raster, or error disposition and is deleted

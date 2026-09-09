@@ -563,6 +563,8 @@ pub(crate) struct GanttSvgBody {
     pub(crate) task_text_height_attribute: Option<f64>,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,
+    /// SVG matrix representation bases only; the public command transform owns all geometry.
+    pub(crate) path_transform_bases: BTreeMap<String, Point>,
     pub(crate) text_classes: BTreeMap<String, String>,
     pub(crate) dom_ids: BTreeMap<String, String>,
 }

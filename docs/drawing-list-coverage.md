@@ -421,6 +421,22 @@ longer reread encoder configuration or confuse the annotation with measured text
 compact text and translucent generic text. This removes one external configuration dependency;
 it does not imply that all serializer configuration dependencies have been removed.
 
+Task and exclude `transform-origin` attributes now use captured source coordinate bases. Both the
+legacy emitter and document builder share the complete-date and local-time-of-day calculation;
+the SVG serializer conjugates only the public element matrix, so changing a private basis cannot
+change its visual transform. Origin and matrix numbers are emitted together without independent
+integer snapping. Tests cover shortened tasks, vert's `order = -1`, exclude ranges, identity and
+milestone matrices, changed bases and an already-projected clip ancestor. All 45 focused Gantt tests
+pass. The shared time scale also replaces duplicate i64 subtraction with the layout's i128 arithmetic.
+
+`target/compare/gantt_e4d251287_origin_candidate_structure.md` records a one-fixture canonical probe
+of `upstream_docs_gantt_milestones_009` from the working candidate after `e4d251287`: source origins
+match, but strict structure still fails on added semantic/diagnostic attributes and the element
+`transform` attribute. Temporary admission was removed. Chromium confirms the two milestone CTMs
+within a maximum component/translation delta of `4.83e-5`; the source CSS rotate/scale and SVG
+matrix numeric paths have different floating-point precision. This is scoped browser evidence,
+not full-family admission or a comparator tolerance change.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

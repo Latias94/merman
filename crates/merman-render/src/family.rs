@@ -2552,6 +2552,192 @@ mod tests {
     }
 
     #[test]
+    fn gantt_transform_origins_retain_source_dom_without_becoming_visual_inputs() {
+        use merman_display_list::{DrawingCommand, FillRule, Point, ResourceId, Transform};
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "gantt": { "useWidth": 1100, "leftPadding": 50, "rightPadding": 50 }
+            })))
+            .parse_diagram_for_render_model_sync(
+                "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nexcludes weekends\nsection A\nShort :s, 2019-02-01, 1d\nMilestone :milestone, m, 2019-02-05, 1d\nVertical :vert, v, 2019-02-07, 1d\nHorizon :h, 2019-02-01, 2019-02-11\n",
+                ParseOptions::strict(),
+            ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let render = |doc: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                doc,
+                &SvgRenderOptions {
+                    diagram_id: Some("origins".into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        // The ten-day, 1000px domain is 100px/day. Origin uses full endTime, while Short's
+        // visible bar ends before the weekend and Vertical spans the diagram rather than its row.
+        for (id, expected) in [
+            ("s", "200px 60px"),
+            ("m", "500px 84px"),
+            // Mermaid assigns vert order=-1 without consuming an ordinary task row.
+            ("v", "700px 36px"),
+            ("h", "550px 108px"),
+            ("exclude-2019-02-02", "200px 86px"),
+            ("exclude-2019-02-09", "900px 110px"),
+        ] {
+            let id = format!("origins-{id}");
+            let element = xml
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id.as_str()))
+                .unwrap();
+            assert_eq!(
+                element.attribute("transform-origin"),
+                Some(expected),
+                "{id}"
+            );
+        }
+        let element = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some("origins-m"))
+            .unwrap();
+        let path_id = element
+            .attribute("data-merman-resource")
+            .unwrap()
+            .to_owned();
+        let path_index = document.public.commands.iter().position(|command| {
+            matches!(command, DrawingCommand::DrawPath { path, .. } if path.as_str() == path_id)
+        }).unwrap();
+        let DrawingCommand::ConcatTransform {
+            transform: milestone,
+        } = document.public.commands[path_index - 1]
+        else {
+            panic!("milestone transform")
+        };
+        let check_mapping = |node: roxmltree::Node<'_, '_>, public: Transform, ancestor: Point| {
+            let origin: Vec<f64> = node
+                .attribute("transform-origin")
+                .unwrap()
+                .split_whitespace()
+                .map(|part| part.strip_suffix("px").unwrap().parse().unwrap())
+                .collect();
+            assert_eq!(origin.len(), 2);
+            let matrix = node
+                .attribute("transform")
+                .map(|value| {
+                    value
+                        .strip_prefix("matrix(")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap()
+                        .split_whitespace()
+                        .map(|part| part.parse::<f64>().unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+            assert_eq!(matrix.len(), 6);
+            // Evaluate SVG's actual origin/matrix/origin sequence, not the encoder's formula.
+            for point in [
+                Point::new(0.0, 0.0),
+                Point::new(19.0, 3.0),
+                Point::new(-7.0, 21.0),
+            ] {
+                let local = Point::new(point.x - origin[0], point.y - origin[1]);
+                let actual = Point::new(
+                    ancestor.x + origin[0] + matrix[0] * local.x + matrix[2] * local.y + matrix[4],
+                    ancestor.y + origin[1] + matrix[1] * local.x + matrix[3] * local.y + matrix[5],
+                );
+                let expected = Point::new(
+                    ancestor.x + public.a * point.x + public.c * point.y + public.e,
+                    ancestor.y + public.b * point.x + public.d * point.y + public.f,
+                );
+                assert!(
+                    (actual.x - expected.x).abs() < 1e-9,
+                    "{actual:?} != {expected:?}"
+                );
+                assert!(
+                    (actual.y - expected.y).abs() < 1e-9,
+                    "{actual:?} != {expected:?}"
+                );
+            }
+        };
+        for matrix in [
+            Transform::IDENTITY,
+            milestone,
+            Transform {
+                a: 0.9999998,
+                b: 0.25,
+                c: -0.1,
+                d: 1.0000001,
+                e: 2.0,
+                f: -3.0,
+            },
+        ] {
+            document.public.commands[path_index - 1] =
+                DrawingCommand::ConcatTransform { transform: matrix };
+            for origin in [
+                Point::new(500.0, 84.0),
+                Point::new(1000.0000002, -5000.0000004),
+            ] {
+                let crate::drawing_list::SvgStructureBody::Gantt(body) = &mut document.svg.body
+                else {
+                    panic!("Gantt")
+                };
+                body.path_transform_bases.insert(path_id.clone(), origin);
+                let svg = render(&document);
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let element = xml
+                    .descendants()
+                    .find(|node| node.attribute("data-merman-resource") == Some(path_id.as_str()))
+                    .unwrap();
+                check_mapping(element, matrix, Point::new(0.0, 0.0));
+            }
+        }
+        // Clip projection moves the existing transform to an ancestor; compensate only the
+        // remaining element matrix, not that ancestor's already-emitted translation.
+        document.public.commands[path_index - 1] = DrawingCommand::ConcatTransform {
+            transform: milestone,
+        };
+        document.public.commands.splice(
+            path_index - 1..path_index - 1,
+            [
+                DrawingCommand::ConcatTransform {
+                    transform: Transform {
+                        e: 37.0,
+                        f: 19.0,
+                        ..Transform::IDENTITY
+                    },
+                },
+                DrawingCommand::ClipPath {
+                    path: ResourceId::new("gantt.background"),
+                    fill_rule: FillRule::NonZero,
+                },
+            ],
+        );
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let element = xml
+            .descendants()
+            .find(|node| node.attribute("data-merman-resource") == Some(path_id.as_str()))
+            .unwrap();
+        let parent = element.parent().unwrap();
+        assert!(parent.attribute("clip-path").is_some());
+        assert_eq!(parent.attribute("transform"), Some("matrix(1 0 0 1 37 19)"));
+        check_mapping(element, milestone, Point::new(37.0, 19.0));
+    }
+
+    #[test]
     fn gantt_milestones_transform_rectangles_and_strokes_without_transforming_labels() {
         use merman_display_list::{DrawingCommand, DrawingResource, PathSegment, Point};
         for tags in ["milestone", "milestone, vert"] {

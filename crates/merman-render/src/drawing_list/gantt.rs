@@ -15,6 +15,7 @@ use crate::drawing_list::support::{
 };
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
+use crate::gantt::{GanttSvgTransformOrigins, scale_time};
 use crate::model::{GanttAxisTickLayout, GanttDiagramLayout, GanttRowLayout};
 use crate::svg::render_theme::GanttTheme;
 use crate::text::{TextMeasurer as _, TextStyle as MeasurementTextStyle};
@@ -81,6 +82,8 @@ struct GanttBuilder<'a> {
     vert_line: Color,
     semantic_classes: BTreeMap<String, String>,
     path_classes: BTreeMap<String, String>,
+    path_transform_bases: BTreeMap<String, Point>,
+    transform_origins: GanttSvgTransformOrigins<'a>,
     text_classes: BTreeMap<String, String>,
     dom_ids: BTreeMap<String, String>,
 }
@@ -163,6 +166,8 @@ impl<'a> GanttBuilder<'a> {
             vert_line: color("vertLineColor", &theme.vert_line_color)?,
             semantic_classes: BTreeMap::new(),
             path_classes: BTreeMap::new(),
+            path_transform_bases: BTreeMap::new(),
+            transform_origins: GanttSvgTransformOrigins::new(layout, session.local_time_zone()),
             text_classes: BTreeMap::new(),
             dom_ids: BTreeMap::new(),
             theme,
@@ -276,6 +281,7 @@ impl<'a> GanttBuilder<'a> {
                     .then_some(self.layout.bar_height),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
+                    path_transform_bases: self.path_transform_bases,
                     text_classes: self.text_classes,
                     dom_ids: self.dom_ids,
                 }),
@@ -311,6 +317,9 @@ impl<'a> GanttBuilder<'a> {
 
     fn emit_excludes(&mut self) -> Result<()> {
         for (index, exclude) in self.layout.excludes.iter().enumerate() {
+            let (x, y) = self.transform_origins.exclude(index, exclude);
+            self.path_transform_bases
+                .insert(format!("gantt.exclude.{index}"), Point::new(x, y));
             self.dom_ids
                 .insert(format!("gantt.exclude.{index}"), exclude.id.clone());
             self.path_classes.insert(
@@ -535,6 +544,9 @@ impl<'a> GanttBuilder<'a> {
                 self.task_style(&task.bar.class)
             };
             let bar_id = format!("{semantic_id}.bar");
+            let (x, y) = self.transform_origins.task(task);
+            self.path_transform_bases
+                .insert(bar_id.clone(), Point::new(x, y));
             self.dom_ids.insert(bar_id.clone(), task.bar.id.clone());
             self.path_classes
                 .insert(bar_id.clone(), task.bar.class.clone());
@@ -1180,14 +1192,6 @@ fn label_anchor(class: &str) -> TextAnchor {
 
 fn rect_path(x: f64, y: f64, width: f64, height: f64, radius: f64) -> Vec<PathSegment> {
     rounded_rect_path(x + width / 2.0, y + height / 2.0, width, height, radius)
-}
-
-fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
-    if max_ms <= min_ms {
-        return (range / 2.0).round();
-    }
-    let ratio = (ms - min_ms) as f64 / (max_ms - min_ms) as f64;
-    (ratio * range).round()
 }
 
 fn invalid(message: impl Into<String>) -> Error {

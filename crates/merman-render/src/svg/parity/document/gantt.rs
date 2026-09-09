@@ -3,6 +3,52 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_gantt_path_state_attrs(&mut self, path_id: &ResourceId) -> Result<bool> {
+        let SvgStructureBody::Gantt(body) = self.svg_body else {
+            return Ok(false);
+        };
+        let Some(origin) = body.path_transform_bases.get(path_id.as_str()).copied() else {
+            return Ok(false);
+        };
+        let matrix = self.state.transform;
+        // SVG applies origin before/after the element's matrix. Change only its representation:
+        // T(P) [T(-P) M T(P)] T(-P) = M. Ancestor transforms already emitted on groups are not
+        // part of this element-local M. Gantt uses absolute px origins in the root SVG viewport.
+        let adjusted = Transform {
+            e: matrix.e + (matrix.a - 1.0) * origin.x + matrix.c * origin.y,
+            f: matrix.f + matrix.b * origin.x + (matrix.d - 1.0) * origin.y,
+            ..matrix
+        };
+        if !origin.x.is_finite()
+            || !origin.y.is_finite()
+            || !adjusted.e.is_finite()
+            || !adjusted.f.is_finite()
+        {
+            return Err(invalid(
+                "Gantt SVG transform basis exceeds finite coordinates",
+            ));
+        }
+        // Emit round-trip numbers for both parts: rounding P or matrix coefficients separately
+        // before/after conjugation can amplify a small rounding error into a visible translation.
+        write!(
+            self.output,
+            " transform-origin=\"{}px {}px\"",
+            origin.x, origin.y
+        )?;
+        if matrix != Transform::IDENTITY {
+            write!(
+                self.output,
+                " transform=\"matrix({} {} {} {} {} {})\"",
+                adjusted.a, adjusted.b, adjusted.c, adjusted.d, adjusted.e, adjusted.f
+            )?;
+        }
+        write_blend_style(&mut self.output, self.state.blend_mode)?;
+        if self.state.opacity != 1.0 {
+            write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
+        }
+        Ok(true)
+    }
+
     pub(super) fn write_gantt_task_text_height(&mut self) -> Result<()> {
         if let SvgStructureBody::Gantt(body) = self.svg_body
             && let Some(height) = body.task_text_height_attribute

@@ -2,8 +2,8 @@
 //!
 //! This module deliberately knows nothing about a Mermaid family model.  Family adapters own
 //! geometry and resolved style; this encoder only turns the validated public command stream into
-//! SVG.  The private sidecar is used for the root's family/a11y role, never as a second geometry
-//! or paint source.
+//! SVG. The private sidecar selects DOM structure and equivalent SVG coordinate representations;
+//! it must never change the public geometry, paint, or effective transform.
 
 use super::output::{self, SvgOutput};
 use super::root_svg;
@@ -2611,7 +2611,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
-        self.write_state_attrs()?;
+        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2875,7 +2875,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_block_inline_path_style(path_id, style)?;
         self.write_c4_shape_inline_style(path_id, style, None)?;
         self.write_path_style(style)?;
-        self.write_state_attrs()?;
+        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2920,7 +2920,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if !self.write_gantt_primitive_style(path_id, style)? {
             self.write_fill_stroke_style(style)?;
         }
-        self.write_state_attrs()?;
+        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -2971,7 +2971,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if !self.write_gantt_primitive_style(path_id, style)? {
             self.write_fill_stroke_style(style)?;
         }
-        self.write_state_attrs()?;
+        self.write_path_state_attrs(path_id)?;
         self.output.push_str(" data-merman-resource=\"")?;
         output::escape_attr(&mut self.output, path_id.as_str())?;
         self.output.push_str("\"/>")?;
@@ -4464,6 +4464,13 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.write_transform_and_blend()?;
         if self.state.opacity != 1.0 {
             write!(self.output, " opacity=\"{}\"", fmt(self.state.opacity))?;
+        }
+        Ok(())
+    }
+
+    fn write_path_state_attrs(&mut self, path_id: &ResourceId) -> Result<()> {
+        if !self.write_gantt_path_state_attrs(path_id)? {
+            self.write_state_attrs()?;
         }
         Ok(())
     }

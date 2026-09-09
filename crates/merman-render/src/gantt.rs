@@ -345,7 +345,7 @@ fn absolute_millis_between(a: i64, b: i64) -> i128 {
     (i128::from(a) - i128::from(b)).abs()
 }
 
-fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
+pub(crate) fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     if max_ms <= min_ms {
         // D3 scaleTime returns the midpoint of the range for degenerate domains.
         // This matters for fixtures where parsing fails and `startTime == endTime` (width=0).
@@ -355,6 +355,74 @@ fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     let span = i128::from(max_ms) - i128::from(min_ms);
     let t = elapsed as f64 / span as f64;
     (t * range).round()
+}
+
+/// Source SVG transform origins, captured independently of the public drawing geometry.
+/// These coordinates may choose a matrix representation but must not add a visual transform.
+pub(crate) struct GanttSvgTransformOrigins<'a> {
+    layout: &'a GanttDiagramLayout,
+    local_time_zone: &'a LocalTimeZone,
+    min_ms: i64,
+    max_ms: i64,
+    range: f64,
+    min_in_day_offset_ms: i64,
+}
+
+impl<'a> GanttSvgTransformOrigins<'a> {
+    pub(crate) fn new(layout: &'a GanttDiagramLayout, local_time_zone: &'a LocalTimeZone) -> Self {
+        let min_ms = layout
+            .tasks
+            .iter()
+            .map(|task| task.start_ms)
+            .min()
+            .unwrap_or(0);
+        let max_ms = layout
+            .tasks
+            .iter()
+            .map(|task| task.end_ms)
+            .max()
+            .unwrap_or(0);
+        let min_day_start_ms = start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
+        Self {
+            layout,
+            local_time_zone,
+            min_ms,
+            max_ms,
+            range: (layout.width - layout.left_padding - layout.right_padding).max(1.0),
+            min_in_day_offset_ms: min_ms.saturating_sub(min_day_start_ms).max(0),
+        }
+    }
+
+    fn midpoint_x(&self, start_ms: i64, end_ms: i64) -> f64 {
+        let start_x = scale_time(start_ms, self.min_ms, self.max_ms, self.range);
+        let end_x = scale_time(end_ms, self.min_ms, self.max_ms, self.range);
+        start_x + self.layout.left_padding + 0.5 * (end_x - start_x)
+    }
+
+    pub(crate) fn task(&self, task: &GanttTaskLayout) -> (f64, f64) {
+        // Mermaid uses the complete end time, even when renderEndTime shortens the bar.
+        // Vertical tasks also retain their ordinary row's midpoint as the origin.
+        (
+            self.midpoint_x(task.start_ms, task.end_ms),
+            task.order as f64 * (self.layout.bar_height + self.layout.bar_gap)
+                + self.layout.top_padding
+                + 0.5 * self.layout.bar_height,
+        )
+    }
+
+    pub(crate) fn exclude(&self, index: usize, exclude: &GanttExcludeRangeLayout) -> (f64, f64) {
+        // Exclude geometry uses day boundaries; its origin retains minTime's local time of day.
+        let raw_time = |ms| {
+            start_of_day_ms(ms, self.local_time_zone)
+                .unwrap_or(ms)
+                .saturating_add(self.min_in_day_offset_ms)
+        };
+        (
+            self.midpoint_x(raw_time(exclude.start_ms), raw_time(exclude.end_ms)),
+            index as f64 * (self.layout.bar_height + self.layout.bar_gap)
+                + 0.5 * self.layout.height,
+        )
+    }
 }
 
 fn collect_categories(tasks: &[GanttRenderTask]) -> Vec<String> {
