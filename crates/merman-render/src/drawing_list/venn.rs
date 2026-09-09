@@ -463,29 +463,30 @@ impl<'a> VennBuilder<'a> {
         }
 
         let label = venn_area_label(area);
-        if let Some(fill) = styles.optional_color("label color", &presentation.text_color)? {
-            let font_size = 48.0 * self.layout.scale;
-            // The child tspan resets y and applies Mermaid's single `.35em` centering offset.
-            self.emit_text(
-                area_label_parts(label),
-                Point::new(area.text_x, area.text_y + 0.35 * font_size),
-                font_size,
-                fill,
-                TextAnchor::Middle,
-                TextBaseline::Alphabetic,
-            )?;
-        }
+        let fill = styles
+            .optional_color("label color", &presentation.text_color)?
+            .unwrap_or(Color::rgba(0, 0, 0, 0));
+        let font_size = 48.0 * self.layout.scale;
+        let text_start = self.output.command_count();
+        // Retain the source label even when its paint is disabled: text identity and its
+        // accessible name are independent of the current ink. Never synthesize set names.
+        self.emit_text(
+            area_label_parts(label),
+            Point::new(area.text_x, area.text_y + 0.35 * font_size),
+            font_size,
+            fill,
+            TextAnchor::Middle,
+            TextBaseline::Alphabetic,
+        )?;
+        let title = self.output.resolved_text_name_since(text_start)?;
 
         self.output.push_control(DrawingCommand::EndSemanticGroup)?;
         self.output.push_semantic(SemanticAnnotation {
             id: semantic_id,
             role: SemanticRole::Node,
-            title: visible_area_title(area),
-            description: Some(format!(
-                "Sets: {}; size: {}",
-                area.sets.join(", "),
-                area.size
-            )),
+            title: (!title.is_empty()).then_some(title),
+            // Set membership and size are model data, not an authored accessible description.
+            description: None,
             link: None,
         })?;
         Ok(())
@@ -753,19 +754,6 @@ fn area_label_parts(value: &str) -> impl Iterator<Item = &str> + Clone {
         .filter(|word| !word.is_empty())
         .enumerate()
         .flat_map(|(index, word)| [if index == 0 { "" } else { " " }, word])
-}
-
-fn visible_area_title(area: &VennAreaLayout) -> Option<String> {
-    let raw_label = venn_area_label(area);
-    let mut label = String::with_capacity(raw_label.len());
-    label.extend(area_label_parts(raw_label));
-    if !label.is_empty() {
-        Some(label)
-    } else if area.sets.is_empty() {
-        None
-    } else {
-        Some(area.sets.join(" ∩ "))
-    }
 }
 
 fn validate_layout(layout: &VennDiagramLayout) -> Result<()> {

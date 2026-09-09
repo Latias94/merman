@@ -962,3 +962,40 @@ must not be used as current admission evidence.
 
 The Gantt empty-length normalization test passes its positive, wrong-family/shape, one-invalid-x,
 paint-difference and Strict-preservation cases. It adds no new geometry tolerance or CSS parser.
+
+## September 9 candidate refresh at 3c740a7a9
+
+Temporary canonical admission was used only while rendering these reports and was removed after
+all four invocations exited. Gantt selected 157 fixtures, rendered 150 canonically, retained five
+existing skips, and reported the two known unsupported-effect bridges (`stoke` and unresolved
+`themeCSS`). Structure passes **139/150**; parity including the root contract passes **137/150**.
+Reports are `target/compare/gantt_3c740a7a9_candidate_structure.md` and
+`target/compare/gantt_3c740a7a9_candidate_parity_root.md`. The remaining failures are static
+navigation wrappers, raw-bbox-sensitive inside/outside labels, and (in parity) two vertical-label
+font-size representations. Neither an ignored bridge nor masked coordinate magnitudes count as
+geometric evidence.
+
+Venn renders all 12 fixtures canonically, without skips or bridges, but both structure and
+parity-root report 12 failures after the public area metadata repair. Reports are
+`target/compare/venn_3c740a7a9_candidate_structure.md` and
+`target/compare/venn_3c740a7a9_candidate_parity_root.md`. The extra area ARIA comes from adapter
+prose and fallback intersection names absent from the source; the positioned text shell difference
+is also still recorded. These are the pre-default-semantics-repair reports, not a new admission.
+
+Venn default area metadata now follows the authored visible label: the builder no longer creates
+English `Sets: …; size: …` descriptions or names an unlabelled intersection from its memberships.
+The default name is copied from final public text with the existing allocation/work budget;
+`color:none` retains a transparent text command and the label identity. Set membership/size remain
+typed model/layout data, not an accessible prose API. The serializer omits redundant area ARIA
+only when direct public runs represent the current name; nested or independently edited metadata
+retains explicit output. An explicitly supplied old generated description is still emitted.
+
+The repaired Venn defaults pass all 88 focused Gantt/Venn render tests. The complete candidate
+refresh renders 12/12 without skips or bridges and passes **9/12** in both structure and
+parity-root. Reports are `target/compare/venn_3c740a7a9_default_names_structure.md` and
+`target/compare/venn_3c740a7a9_default_names_parity_root.md`; they include the working-tree
+metadata repair. All additional default area ARIA differences are gone. The three remaining
+fixtures are hand-drawn custom styles 018, complex labels/text nodes 013, and docs text nodes 003;
+their only reported differences are source span text versus the canonical positioned SVG child.
+Temporary Venn admission was removed after both invocations completed. The shell decision and
+its cross-consumer evidence remain required before admission.

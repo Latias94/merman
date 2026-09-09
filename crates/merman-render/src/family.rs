@@ -7467,7 +7467,17 @@ gantt
             area.attribute("aria-description"),
             annotation.description.as_deref()
         );
-        assert_eq!(area.attribute("aria-label"), annotation.title.as_deref());
+        assert_eq!(annotation.description, None);
+        assert_eq!(annotation.title.as_deref(), Some("A"));
+        assert_eq!(area.attribute("aria-label"), None);
+        let intersection = baseline
+            .public
+            .semantics
+            .iter()
+            .find(|entry| entry.id == "venn.area.2")
+            .unwrap();
+        assert_eq!(intersection.title, None);
+        assert_eq!(intersection.description, None);
         for id in ["venn.content", "venn.title", "venn.area.0"] {
             for field in ["title", "description", "link", "role"] {
                 let mut document = baseline.clone();
@@ -7479,7 +7489,8 @@ gantt
                     .unwrap();
                 match field {
                     "title" => semantic.title = Some("Independent &amp; <br> name".into()),
-                    "description" => semantic.description = Some("Independent description".into()),
+                    // An explicit description must survive even when it repeats old generated prose.
+                    "description" => semantic.description = Some("Sets: A; size: 1".into()),
                     "link" => semantic.link = Some("https://example.com/area?a=1&b=2".into()),
                     "role" => semantic.role = SemanticRole::Edge,
                     _ => unreachable!(),
@@ -7497,9 +7508,9 @@ gantt
                     "description" => assert!(
                         xml.descendants()
                             .any(|node| node.attribute("aria-description")
-                                == Some("Independent description")
+                                == Some("Sets: A; size: 1")
                                 || node.has_tag_name("desc")
-                                    && node.text() == Some("Independent description")),
+                                    && node.text() == Some("Sets: A; size: 1")),
                         "{id}"
                     ),
                     "link" => assert!(
@@ -7540,6 +7551,76 @@ gantt
                 );
             }
         }
+    }
+
+    #[test]
+    fn venn_unpainted_area_label_retains_literal_public_name() {
+        use merman_display_list::{DrawingCommand, Paint};
+        let parsed = Engine::new().parse_diagram_for_render_model_sync(
+            "venn-beta\nset A[\"Alpha   &amp; Beta\"]\nset B\nunion A,B[\"Shared\"]\nstyle A color:none\n",
+            ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        let annotation = document
+            .public
+            .semantics
+            .iter()
+            .find(|entry| entry.id == "venn.area.0")
+            .unwrap();
+        assert_eq!(annotation.title.as_deref(), Some("Alpha &amp; Beta"));
+        let run = document
+            .public
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                DrawingCommand::DrawText { run }
+                    if Some(run.text.as_str()) == annotation.title.as_deref() =>
+                {
+                    Some(run)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(matches!(run.style.fill, Paint::Solid { color } if color.alpha == 0));
+        assert_eq!(
+            document
+                .public
+                .semantics
+                .iter()
+                .find(|entry| entry.id == "venn.area.2")
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Shared")
+        );
+        let svg = crate::svg::render_document_svg(
+            &document,
+            &SvgRenderOptions::default(),
+            &SvgDebugOptions::default(),
+            artifact.metadata.effective_config.as_value(),
+            &artifact.session,
+        )
+        .unwrap();
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let area = xml
+            .descendants()
+            .find(|node| node.attribute("data-venn-sets") == Some("A"))
+            .unwrap();
+        assert_eq!(area.attribute("aria-label"), None);
+        assert!(area.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node
+                    .descendants()
+                    .any(|child| child.is_text() && child.text() == Some("Alpha &amp; Beta"))
+        }));
     }
 
     #[test]

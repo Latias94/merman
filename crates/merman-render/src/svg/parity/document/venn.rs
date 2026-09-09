@@ -300,6 +300,38 @@ impl DocumentSvgEncoder<'_> {
         self.output.push_str("/>")
     }
 
+    /// Compare only this area's direct public runs. Nested semantic scopes cannot prove that
+    /// the area's own name is represented, and must retain an explicit accessible name.
+    fn venn_area_has_native_name(&self, name: &str) -> Result<bool> {
+        let mut remaining = name.as_bytes();
+        let mut has_text = false;
+        for command in &self.document.commands[self.command_index + 1..] {
+            self.session.checkpoint(OperationPhase::Emit)?;
+            match command {
+                DrawingCommand::BeginSemanticGroup { .. } => return Ok(false),
+                DrawingCommand::EndSemanticGroup => return Ok(has_text && remaining.is_empty()),
+                DrawingCommand::DrawText { run } => {
+                    if !matches!(run.obligation, TextObligation::HostText { .. }) {
+                        return Ok(false);
+                    }
+                    if has_text {
+                        let Some(tail) = remaining.strip_prefix(b"\n") else {
+                            return Ok(false);
+                        };
+                        remaining = tail;
+                    }
+                    let Some(tail) = remaining.strip_prefix(run.text.as_bytes()) else {
+                        return Ok(false);
+                    };
+                    remaining = tail;
+                    has_text = true;
+                }
+                _ => {}
+            }
+        }
+        Ok(false)
+    }
+
     pub(super) fn begin_venn_semantic_group(
         &mut self,
         id: &str,
@@ -350,6 +382,14 @@ impl DocumentSvgEncoder<'_> {
         {
             return Ok(false);
         }
+        let explicit_area_name = if area {
+            match semantic.title.as_deref() {
+                Some(name) => !self.venn_area_has_native_name(name)?,
+                None => false,
+            }
+        } else {
+            false
+        };
         let emitted = area || text_group || id == "venn.content";
         let projected_transform = if emitted {
             self.state.transform
@@ -373,11 +413,11 @@ impl DocumentSvgEncoder<'_> {
             if let Some(sets) = body.semantic_data_sets.get(id) {
                 write!(self.output, " data-venn-sets=\"{}\"", escaped_attr(sets))?;
             }
-            if area && (semantic.title.is_some() || semantic.description.is_some()) {
+            if area && (explicit_area_name || semantic.description.is_some()) {
                 // The public area annotation is authoritative, including independently edited
                 // descriptions. Keep it on the existing group without changing paint order.
                 self.output.push_str(" role=\"group\"")?;
-                if let Some(title) = &semantic.title {
+                if explicit_area_name && let Some(title) = &semantic.title {
                     write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
                 }
                 if let Some(description) = &semantic.description {
