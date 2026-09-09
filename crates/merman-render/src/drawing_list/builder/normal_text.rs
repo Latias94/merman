@@ -1,4 +1,4 @@
-//! Bounded plain-text layout for a centered anonymous flex item (`white-space: normal`).
+//! Bounded centered plain-text layout for flex items and table cells (`white-space: normal`).
 
 use super::{DrawingListBuilder, allocation_failed, checked_increment, contract_error};
 use crate::Result;
@@ -9,6 +9,12 @@ use merman_display_list::{
     Point, Rect, TextAnchor, TextBaseline, TextDirection, TextObligation, TextRun, TextStyle,
 };
 use std::ops::Range;
+
+#[derive(Clone, Copy)]
+enum NormalTextContainer {
+    Flex,
+    Table,
+}
 
 struct Line {
     range: Range<usize>,
@@ -26,6 +32,44 @@ impl DrawingListBuilder<'_> {
         measurement: &MeasurementStyle,
         style: &TextStyle,
         obligation: &TextObligation,
+    ) -> Result<()> {
+        self.draw_normal_text_in(
+            text,
+            bounds,
+            measurement,
+            style,
+            obligation,
+            NormalTextContainer::Flex,
+        )
+    }
+
+    /// A 100%-sized CSS table grows from its top-left corner to fit min-content and line boxes.
+    pub(crate) fn draw_normal_table_text(
+        &mut self,
+        text: &str,
+        bounds: Rect,
+        measurement: &MeasurementStyle,
+        style: &TextStyle,
+        obligation: &TextObligation,
+    ) -> Result<()> {
+        self.draw_normal_text_in(
+            text,
+            bounds,
+            measurement,
+            style,
+            obligation,
+            NormalTextContainer::Table,
+        )
+    }
+
+    fn draw_normal_text_in(
+        &mut self,
+        text: &str,
+        bounds: Rect,
+        measurement: &MeasurementStyle,
+        style: &TextStyle,
+        obligation: &TextObligation,
+        container: NormalTextContainer,
     ) -> Result<()> {
         let normalized = self.normalize_normal_text(text)?;
         if normalized.is_empty() {
@@ -48,8 +92,8 @@ impl DrawingListBuilder<'_> {
             Ok(width)
         };
 
-        // An anonymous flex item cannot shrink below its min-content width. Measuring complete
-        // candidates (rather than summing word advances) preserves kerning and shaping.
+        // Both containers retain min-content width. Measuring complete candidates rather than
+        // summing word advances preserves kerning and shaping.
         let mut available = bounds.width;
         for range in normal_segments(&normalized) {
             available = available.max(measure_width(normalized[range].trim_matches(' '))?);
@@ -111,10 +155,14 @@ impl DrawingListBuilder<'_> {
             append_line(start..previous_end, previous_width)?;
         }
 
-        let mut top = bounds.y + (bounds.height - total_height) / 2.0;
+        let (container_width, container_height) = match container {
+            NormalTextContainer::Flex => (bounds.width, bounds.height),
+            NormalTextContainer::Table => (available, bounds.height.max(total_height)),
+        };
+        let mut top = bounds.y + (container_height - total_height) / 2.0;
         for line in lines {
             let origin = Point::new(
-                bounds.x + bounds.width / 2.0,
+                bounds.x + container_width / 2.0,
                 top + line.metrics.baseline_offset,
             );
             let line_bounds = Rect::new(

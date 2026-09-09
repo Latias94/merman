@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
 
-pub(crate) use config::{JourneyConfigView, default_use_max_width};
+pub(crate) use config::{JourneyConfigView, JourneyTextPlacement, default_use_max_width};
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
 pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;

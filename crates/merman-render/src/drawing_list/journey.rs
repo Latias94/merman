@@ -15,7 +15,9 @@ use crate::drawing_list::support::{
 };
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use crate::family::{FamilyPair, RenderFamilyKind};
-use crate::journey::{JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JourneyConfigView};
+use crate::journey::{
+    JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JourneyConfigView, JourneyTextPlacement,
+};
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyDiagramLayout, JourneyLineLayout,
     JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout, JourneyTaskLayout,
@@ -58,6 +60,8 @@ struct JourneyBuilder<'a> {
     document: DrawingListBuilder<'a>,
     model: &'a JourneyDiagramRenderModel,
     layout: &'a JourneyDiagramLayout,
+    text_placement: JourneyTextPlacement,
+    section_colours: Vec<String>,
     task_font: FontDescriptor,
     task_font_size: f64,
     legend_font: FontDescriptor,
@@ -160,6 +164,8 @@ impl<'a> JourneyBuilder<'a> {
             document,
             model,
             layout,
+            text_placement: settings.text_placement,
+            section_colours: settings.section_colours,
             task_font: FontDescriptor {
                 families: parse_font_families_for(task_font_family, RenderFamilyKind::Journey)?,
                 weight: 400,
@@ -381,20 +387,38 @@ impl<'a> JourneyBuilder<'a> {
                     stroke: Some(stroke(BORDER_COLOR, 1.0)),
                 },
             )?;
-            self.emit_box_text(
+            let text_color = if self.text_placement == JourneyTextPlacement::HtmlTable {
+                self.text_color
+            } else {
+                // The section-type class overrides SVG text fill, but not HTML color.
+                self.fill_types
+                    .get(section.num as usize)
+                    .filter(|value| section.num < 8 && !value.is_empty())
+                    .filter(|_| {
+                        self.fill_types
+                            .first()
+                            .is_some_and(|value| !value.is_empty())
+                    })
+                    .map(|value| PortableStyleResolver::new("journey").color("section text", value))
+                    .transpose()?
+                    .unwrap_or(if self.text_placement == JourneyTextPlacement::LegacyText {
+                        self.text_color
+                    } else {
+                        self.section_text_color(index)?
+                    })
+            };
+            let title = self.emit_box_text(
                 &format!("{semantic_id}.label"),
                 &section.section,
-                section.x,
-                section.y,
-                section.width,
-                section.height,
+                Rect::new(section.x, section.y, section.width, section.height),
+                text_color,
             )?;
             self.document
                 .push_control(DrawingCommand::EndSemanticGroup)?;
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Group,
-                title: Some(visible_journey_text(&section.section, self.session)?),
+                title: Some(title),
                 description: Some("Journey section".to_string()),
                 link: None,
             })?;
@@ -403,9 +427,15 @@ impl<'a> JourneyBuilder<'a> {
     }
 
     fn emit_tasks(&mut self) -> Result<()> {
+        let mut section_index = None;
+        let mut previous_section = "";
         for (index, task) in self.layout.tasks.iter().enumerate() {
             self.session.checkpoint(OperationPhase::Emit)?;
             validate_task(task)?;
+            if task.section != previous_section {
+                section_index = Some(section_index.map_or(0, |index| index + 1));
+                previous_section = &task.section;
+            }
             let semantic_id = format!("journey.task.{index}");
             self.semantic_classes
                 .insert(semantic_id.clone(), "task".to_string());
@@ -513,13 +543,19 @@ impl<'a> JourneyBuilder<'a> {
             for (actor_index, actor) in task.actor_circles.iter().enumerate() {
                 self.emit_task_actor(&semantic_id, actor_index, actor)?;
             }
-            self.emit_box_text(
+            let color = match self.text_placement {
+                JourneyTextPlacement::HtmlTable => self.text_color,
+                JourneyTextPlacement::LegacyText => self.text_color,
+                JourneyTextPlacement::Tspan => section_index
+                    .map(|index| self.section_text_color(index))
+                    .transpose()?
+                    .unwrap_or(BLACK),
+            };
+            let title = self.emit_box_text(
                 &format!("{semantic_id}.label"),
                 &task.task,
-                task.x,
-                task.y,
-                task.width,
-                task.height,
+                Rect::new(task.x, task.y, task.width, task.height),
+                color,
             )?;
 
             self.document
@@ -527,7 +563,7 @@ impl<'a> JourneyBuilder<'a> {
             self.document.push_semantic(SemanticAnnotation {
                 id: semantic_id,
                 role: SemanticRole::Node,
-                title: Some(visible_journey_text(&task.task, self.session)?),
+                title: Some(title),
                 description: Some(format!(
                     "Journey task in {} with score {}",
                     task.section, task.score
@@ -617,42 +653,94 @@ impl<'a> JourneyBuilder<'a> {
         PortableStyleResolver::new("journey").color("background.fill", fill)
     }
 
+    fn section_text_color(&self, index: usize) -> Result<Color> {
+        let color = if self.section_colours.is_empty() {
+            "#fff"
+        } else {
+            &self.section_colours[index % self.section_colours.len()]
+        };
+        PortableStyleResolver::new("journey").color("sectionColours", color)
+    }
+
     fn emit_box_text(
         &mut self,
         prefix: &str,
         text: &str,
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    ) -> Result<()> {
-        let mut line_count = 0usize;
-        for line in JourneyLines::new(text) {
-            self.session.checkpoint(OperationPhase::Emit)?;
-            validate_journey_line(line)?;
-            line_count += 1;
-        }
-        let line_count = line_count.max(1) as f64;
-        let center = Point::new(x + width / 2.0, y + height / 2.0);
-        let task_font = self.task_font.clone();
-        for (index, line) in JourneyLines::new(text).enumerate() {
-            let offset =
-                index as f64 * self.task_font_size - self.task_font_size * (line_count - 1.0) / 2.0;
-            self.emit_text(
-                format!("{prefix}.{index}"),
-                line,
+        bounds: Rect,
+        color: Color,
+    ) -> Result<String> {
+        let text_start = self.document.command_count();
+        let center = Point::new(
+            bounds.x + bounds.width / 2.0,
+            bounds.y + bounds.height / 2.0,
+        );
+        match self.text_placement {
+            JourneyTextPlacement::HtmlTable => {
+                if text.contains(['\u{00ad}', '\u{0085}', '\u{2028}', '\u{2029}']) {
+                    return Err(unavailable(
+                        "Journey normal text requires unsupported discretionary line breaking",
+                    ));
+                }
+                self.document.draw_normal_table_text(
+                    text,
+                    bounds,
+                    &MeasurementTextStyle {
+                        font_family: Some(self.legend_font.families.join(", ")),
+                        font_size: self.legend_font_size,
+                        font_weight: None,
+                        font_style: None,
+                    },
+                    &DisplayTextStyle {
+                        font: self.legend_font.clone(),
+                        font_size: self.legend_font_size,
+                        letter_spacing: 0.0,
+                        line_height: 0.0,
+                        fill: Paint::solid(color),
+                        stroke: None,
+                        paint_order: merman_display_list::TextPaintOrder::FillThenStroke,
+                    },
+                    &text_obligation(self.session, TextMeasurementPhase::Wrap),
+                )?;
+            }
+            JourneyTextPlacement::LegacyText => self.emit_text(
+                prefix,
+                text,
                 TextEmitSpec {
-                    origin: Point::new(center.x, center.y + offset),
-                    font_size: self.task_font_size,
+                    origin: Point::new(center.x, center.y + 5.0),
+                    font_size: self.legend_font_size,
                     weight: 400,
-                    color: self.text_color,
-                    font: task_font.clone(),
+                    color,
+                    font: self.legend_font.clone(),
                     anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Middle,
+                    baseline: TextBaseline::Alphabetic,
                 },
-            )?;
+            )?,
+            JourneyTextPlacement::Tspan => {
+                let mut line_count = 0usize;
+                for _ in JourneyLines::new(text) {
+                    self.session.checkpoint(OperationPhase::Emit)?;
+                    line_count += 1;
+                }
+                for (index, line) in JourneyLines::new(text).enumerate() {
+                    let offset = index as f64 * self.task_font_size
+                        - self.task_font_size * (line_count as f64 - 1.0) / 2.0;
+                    self.emit_text(
+                        format!("{prefix}.{index}"),
+                        line,
+                        TextEmitSpec {
+                            origin: Point::new(center.x, center.y + offset),
+                            font_size: self.task_font_size,
+                            weight: 400,
+                            color,
+                            font: self.task_font.clone(),
+                            anchor: TextAnchor::Middle,
+                            baseline: TextBaseline::Central,
+                        },
+                    )?;
+                }
+            }
         }
-        Ok(())
+        self.document.resolved_text_name_since(text_start)
     }
 
     fn emit_title(&mut self, title: &str) -> Result<()> {
@@ -836,7 +924,7 @@ impl<'a> Iterator for JourneyLines<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let text = self.remaining.take()?;
         for (start, _) in text.match_indices('<') {
-            if let Some(end) = journey_break_tag_end(text.as_bytes(), start) {
+            if let Some(end) = journey_break_tag_end(text, start) {
                 self.remaining = Some(&text[end..]);
                 return Some(&text[..start]);
             }
@@ -856,44 +944,9 @@ fn normalized_text_parts(text: &str) -> impl Iterator<Item = &str> + Clone {
         })
 }
 
-fn validate_journey_line(line: &str) -> Result<()> {
-    if line.contains(['<', '>']) {
-        return Err(unavailable(
-            "Journey labels contain HTML markup other than <br>, which DrawingList v1 cannot preserve",
-        ));
-    }
-    Ok(())
-}
-
-fn visible_journey_text(text: &str, session: &RenderSession) -> Result<String> {
-    let mut visible = String::new();
-    for (index, line) in JourneyLines::new(text).enumerate() {
-        session.checkpoint(OperationPhase::Emit)?;
-        if index > 0 {
-            visible
-                .try_reserve(1)
-                .map_err(|_| Error::DrawingListAllocationFailed {
-                    collection: "Journey semantic text",
-                })?;
-            visible.push(' ');
-        }
-        for part in normalized_text_parts(line) {
-            visible
-                .try_reserve(part.len())
-                .map_err(|_| Error::DrawingListAllocationFailed {
-                    collection: "Journey semantic text",
-                })?;
-            visible.push_str(part);
-        }
-    }
-    Ok(visible)
-}
-
-fn journey_break_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
+fn journey_break_tag_end(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
     let mut index = start + 1;
-    if bytes.get(index) == Some(&b'/') {
-        index += 1;
-    }
     if !bytes
         .get(index..index + 2)
         .is_some_and(|name| name.eq_ignore_ascii_case(b"br"))
@@ -901,20 +954,16 @@ fn journey_break_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
         return None;
     }
     index += 2;
-    while bytes
-        .get(index)
-        .is_some_and(|byte| byte.is_ascii_whitespace())
-    {
-        index += 1;
+    // JavaScript's /\s/ includes NBSP and BOM, but excludes NEXT LINE (U+0085).
+    for ch in text[index..].chars() {
+        if (ch.is_whitespace() && ch != '\u{0085}') || ch == '\u{feff}' {
+            index += ch.len_utf8();
+        } else {
+            break;
+        }
     }
     if bytes.get(index) == Some(&b'/') {
         index += 1;
-        while bytes
-            .get(index)
-            .is_some_and(|byte| byte.is_ascii_whitespace())
-        {
-            index += 1;
-        }
     }
     (bytes.get(index) == Some(&b'>')).then_some(index + 1)
 }
@@ -1153,9 +1202,24 @@ mod tests {
         let lines = JourneyLines::new("  A\tB <BR />\n C\u{00a0}D </br><br> ")
             .map(|line| normalized_text_parts(line).collect::<String>())
             .collect::<Vec<_>>();
-        assert_eq!(lines, ["A B", "C\u{00a0}D", "", ""]);
-        assert!(JourneyLines::new("A<br/>B").all(|line| validate_journey_line(line).is_ok()));
-        assert!(JourneyLines::new("A<b>B</b>").any(|line| validate_journey_line(line).is_err()));
+        assert_eq!(lines, ["A B", "C\u{00a0}D </br>", ""]);
+        assert_eq!(JourneyLines::new("A<br/>B").collect::<Vec<_>>(), ["A", "B"]);
+        assert_eq!(
+            JourneyLines::new("A<b>B</b>").collect::<Vec<_>>(),
+            ["A<b>B</b>"]
+        );
+        assert_eq!(
+            JourneyLines::new("A<br/ >B").collect::<Vec<_>>(),
+            ["A<br/ >B"]
+        );
         assert_eq!(JourneyLines::new("").collect::<Vec<_>>(), [""]);
+        assert_eq!(
+            JourneyLines::new("A<br\u{00a0}/>B").collect::<Vec<_>>(),
+            ["A", "B"]
+        );
+        assert_eq!(
+            JourneyLines::new("A<br\u{0085}>B").collect::<Vec<_>>(),
+            ["A<br\u{0085}>B"]
+        );
     }
 }

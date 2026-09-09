@@ -4172,6 +4172,164 @@ fn journey_limits_stop_at_the_first_over_budget_item() {
 }
 
 #[test]
+fn journey_text_placement_preserves_literal_text_fonts_and_final_colors() {
+    use merman_display_list::{Color, TextBaseline};
+    for (placement, size, labels, task_color, section_color) in [
+        (
+            "fo",
+            18.0,
+            vec!["Task<br>Next"],
+            Color::rgba(18, 52, 86, 255),
+            Color::rgba(18, 52, 86, 255),
+        ),
+        (
+            "old",
+            18.0,
+            vec!["Task<br>Next"],
+            Color::rgba(18, 52, 86, 255),
+            Color::rgba(236, 236, 255, 255),
+        ),
+        (
+            "tspan",
+            22.0,
+            vec!["Task", "Next"],
+            Color::rgba(255, 255, 255, 255),
+            Color::rgba(236, 236, 255, 255),
+        ),
+    ] {
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "themeVariables": {"textColor":"#123456", "fontFamily":"Arial", "fontSize":"18px"},
+            "journey": {"textPlacement": placement, "taskFontFamily":"Courier", "taskFontSize":22}
+        }));
+        let source = "journey\nsection Heading<br>Two\nTask<br>Next: 5: Alice\n";
+        let output = Renderer::new()
+            .with_engine(Engine::new().with_site_config(config))
+            .render(RenderRequest::drawing_list(
+                source,
+                OperationControl::new(),
+                DrawingListRequest::default(),
+            ))
+            .expect("Journey text placement renders");
+        let RenderOutput::DrawingList(Some(output)) = output else {
+            panic!("expected DrawingList")
+        };
+        let document = output.document();
+        let mut scope = "";
+        let mut task_runs = Vec::new();
+        let mut section_runs = Vec::new();
+        for command in &document.commands {
+            match command {
+                DrawingCommand::BeginSemanticGroup { semantic_id } => scope = semantic_id,
+                DrawingCommand::DrawText { run } if scope == "journey.task.0" => {
+                    task_runs.push(run)
+                }
+                DrawingCommand::DrawText { run } if scope == "journey.section.0" => {
+                    section_runs.push(run)
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(
+            task_runs
+                .iter()
+                .map(|run| run.text.as_str())
+                .collect::<Vec<_>>(),
+            labels,
+            "{placement}"
+        );
+        for run in &task_runs {
+            assert_eq!(run.style.font_size, size, "{placement}");
+            assert_eq!(
+                run.style.font.families,
+                [if placement == "tspan" {
+                    "Courier"
+                } else {
+                    "Arial"
+                }]
+            );
+            assert_eq!(run.style.fill, Paint::solid(task_color));
+            assert_eq!(
+                run.baseline,
+                if placement == "tspan" {
+                    TextBaseline::Central
+                } else {
+                    TextBaseline::Alphabetic
+                }
+            );
+        }
+        assert!(!section_runs.is_empty());
+        for run in section_runs {
+            assert_eq!(run.style.fill, Paint::solid(section_color), "{placement}");
+        }
+        let title = &document
+            .semantics
+            .iter()
+            .find(|item| item.id == "journey.task.0")
+            .unwrap()
+            .title;
+        assert_eq!(
+            title.as_deref(),
+            Some(if placement == "tspan" {
+                "Task\nNext"
+            } else {
+                "Task<br>Next"
+            })
+        );
+        if placement == "tspan" {
+            assert_eq!(task_runs[1].origin.y - task_runs[0].origin.y, 22.0);
+        }
+    }
+}
+
+#[test]
+fn journey_table_wraps_plain_text_and_names_the_resolved_lines() {
+    let source = r#"%%{init: {"journey":{"width":50}}}%%
+journey
+section Heading
+Alpha     Beta     Gamma: 5: Alice
+"#;
+    let output = Renderer::new()
+        .render(RenderRequest::drawing_list(
+            source,
+            OperationControl::new(),
+            DrawingListRequest::default(),
+        ))
+        .expect("Journey table text renders");
+    let RenderOutput::DrawingList(Some(output)) = output else {
+        panic!("expected DrawingList")
+    };
+    let document = output.document();
+    let title = document
+        .semantics
+        .iter()
+        .find(|item| item.id == "journey.task.0")
+        .unwrap()
+        .title
+        .as_deref()
+        .unwrap();
+    assert_eq!(title, "Alpha\nBeta\nGamma");
+    let lines = document
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DrawingCommand::DrawText { run }
+                if ["Alpha", "Beta", "Gamma"].contains(&run.text.as_str()) =>
+            {
+                Some(run)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lines.len(), 3);
+    for pair in lines.windows(2) {
+        assert_eq!(
+            pair[1].bounds.y,
+            pair[0].bounds.y + pair[0].style.line_height
+        );
+    }
+}
+
+#[test]
 fn journey_emits_actors_sections_tasks_faces_and_activity_axis() {
     let source = r#"journey
         title User checkout

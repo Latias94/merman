@@ -856,6 +856,70 @@ mod tests {
     }
 
     #[test]
+    fn normal_table_text_expands_from_top_left_and_retains_content_baselines() {
+        let environment = normal_text_environment(std::sync::Arc::new(NormalTextProbe::default()));
+        for (text, bounds, expected) in [
+            // Min-content exceeds the requested width; the table grows rightwards, not around
+            // the original center. The short second line remains centered in the expanded cell.
+            (
+                "abcdefgh x",
+                Rect::new(30.0, 40.0, 20.0, 40.0),
+                vec![(70.0, 50.0, 57.0), (70.0, 60.0, 67.0)],
+            ),
+            // The 10px + 20px content-specific line boxes exceed the requested height. Baselines
+            // stay relative to their actual lines while the table grows downward from y=40.
+            (
+                "a 中文",
+                Rect::new(30.0, 40.0, 20.0, 20.0),
+                vec![(40.0, 40.0, 47.0), (40.0, 50.0, 63.0)],
+            ),
+        ] {
+            let session = make_session(&environment, OperationControl::new());
+            let mut builder = DrawingListBuilder::new(
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &session,
+            );
+            let template = host_text_run(String::new());
+            builder
+                .draw_normal_table_text(
+                    text,
+                    bounds,
+                    &crate::text::TextStyle::default(),
+                    &template.style,
+                    &template.obligation,
+                )
+                .unwrap();
+            let runs: Vec<_> = builder
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    DrawingCommand::DrawText { run } => Some(run),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(runs.len(), expected.len());
+            for (run, (center_x, top, baseline_y)) in runs.iter().zip(expected) {
+                assert_eq!(
+                    (run.origin.x, run.bounds.y, run.origin.y),
+                    (center_x, top, baseline_y),
+                    "{text}"
+                );
+                assert!(
+                    run.bounds.x >= bounds.x,
+                    "table content starts inside its grown cell"
+                );
+            }
+            builder
+                .finish(
+                    Viewport::new(Rect::new(0.0, 0.0, 200.0, 200.0)),
+                    BTreeMap::new(),
+                )
+                .unwrap();
+        }
+    }
+
+    #[test]
     fn normal_text_candidate_measurement_is_charged_before_host_work() {
         use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let source = "a ".repeat(100);
