@@ -49,7 +49,7 @@ impl DocumentSvgEncoder<'_> {
                 "<path d=\"{}\"",
                 super::super::curve::drawing_path_segments_d_unrounded(&path.segments)
             )?;
-            if let Some(Paint::Solid { color }) = &style.fill {
+            if let Some(Paint::Solid { color, .. }) = &style.fill {
                 write!(self.output, " fill=\"{}\"", color_css(*color))?;
             } else if style.fill.is_none() {
                 self.output.push_str(" fill=\"none\"")?;
@@ -59,6 +59,11 @@ impl DocumentSvgEncoder<'_> {
         }
         self.output.push_str(" style=\"fill:")?;
         self.write_pie_paint(style.fill.as_ref())?;
+        if let Some(Paint::Resource { opacity, .. }) = &style.fill
+            && *opacity != 1.0
+        {
+            write!(self.output, ";fill-opacity:{}", fmt(*opacity))?;
+        }
         write!(
             self.output,
             ";fill-rule:{};",
@@ -67,6 +72,11 @@ impl DocumentSvgEncoder<'_> {
         if let Some(stroke) = &style.stroke {
             self.output.push_str("stroke:")?;
             self.write_pie_paint(Some(&stroke.paint))?;
+            if let Paint::Resource { opacity, .. } = &stroke.paint
+                && *opacity != 1.0
+            {
+                write!(self.output, ";stroke-opacity:{}", fmt(*opacity))?;
+            }
             write!(
                 self.output,
                 ";stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
@@ -116,15 +126,15 @@ impl DocumentSvgEncoder<'_> {
     fn write_pie_paint(&mut self, paint: Option<&Paint>) -> Result<()> {
         match paint {
             None => self.output.push_str("none"),
-            Some(Paint::Solid { color }) => write!(
+            Some(paint @ Paint::Solid { color, .. }) => write!(
                 self.output,
                 "rgba({},{},{},{})",
                 color.red,
                 color.green,
                 color.blue,
-                fmt(f64::from(color.alpha) / 255.0)
+                fmt(paint_opacity(paint))
             ),
-            Some(Paint::Resource { id }) => {
+            Some(Paint::Resource { id, .. }) => {
                 let id = self.svg_resource_id(id.as_str())?;
                 write!(self.output, "url(#{})", escaped_attr(id))
             }

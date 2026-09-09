@@ -66,7 +66,7 @@ impl LinkProjection {
                 || stroke.miter_limit != 4.0
                 || !stroke.dash_array.is_empty()
                 || stroke.dash_offset != 0.0
-                || matches!(stroke.paint, Paint::Solid { color } if color.alpha != 255)
+                || paint_opacity(&stroke.paint) != 1.0
                 || opacity.is_some_and(|previous| previous != *current_opacity)
             {
                 return Ok(None);
@@ -165,7 +165,7 @@ impl DocumentSvgEncoder<'_> {
         let Some(style) = self.sankey_label_style else {
             return Ok(css);
         };
-        let Paint::Solid { color } = style.fill else {
+        let Paint::Solid { color, .. } = style.fill else {
             return Err(invalid("Sankey shared text paint must be solid"));
         };
         let font = self.font_families(&style.font)?;
@@ -176,7 +176,7 @@ impl DocumentSvgEncoder<'_> {
             font_style(style.font.style),
             fmt(style.letter_spacing),
             color_css(color),
-            fmt(f64::from(color.alpha) / 255.0),
+            fmt(paint_opacity(&style.fill)),
         ).map_err(|_| invalid("SVG component formatting failed"))?;
         Ok(css)
     }
@@ -230,7 +230,7 @@ impl DocumentSvgEncoder<'_> {
             .iter()
             .chain(style.stroke.iter().map(|stroke| &stroke.paint))
         {
-            let Paint::Resource { id } = paint else {
+            let Paint::Resource { id, .. } = paint else {
                 continue;
             };
             if !self.sankey_inline_gradients.contains(id.as_str())

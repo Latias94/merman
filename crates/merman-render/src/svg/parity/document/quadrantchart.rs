@@ -31,7 +31,11 @@ pub(super) fn shared_inherited_fill(
         if !raw.is_some_and(is_quadrant_inherited_paint) {
             continue;
         }
-        let Some(Paint::Solid { color }) = paint else {
+        let Some(Paint::Solid {
+            color,
+            opacity: 1.0,
+        }) = paint
+        else {
             return Ok(None);
         };
         if shared.is_some_and(|previous| previous != *color) {
@@ -51,7 +55,10 @@ fn equivalent_paint_spelling<'a>(
     let token = raw.trim_matches([' ', '\t', '\n', '\r', '\x0c']);
     if is_quadrant_inherited_paint(token) {
         return match paint {
-            Some(Paint::Solid { color }) if inherited == Some(*color) => Some(raw),
+            Some(Paint::Solid {
+                color,
+                opacity: 1.0,
+            }) if inherited == Some(*color) => Some(raw),
             _ => None,
         };
     }
@@ -66,7 +73,7 @@ fn equivalent_paint_spelling<'a>(
     if !hex && !token.bytes().all(|byte| byte.is_ascii_alphabetic()) {
         return None;
     }
-    let Some(Paint::Solid { color }) = paint else {
+    let Some(paint @ Paint::Solid { color, .. }) = paint else {
         return None;
     };
     let parsed = merman_core::theme_color::ThemeColor::parse(token)
@@ -75,8 +82,8 @@ fn equivalent_paint_spelling<'a>(
     (parsed.red == f64::from(color.red)
         && parsed.green == f64::from(color.green)
         && parsed.blue == f64::from(color.blue)
-        && parsed.alpha == f64::from(color.alpha) / 255.0)
-        .then_some(raw)
+        && parsed.alpha == paint_opacity(paint))
+    .then_some(raw)
 }
 
 fn equivalent_width_spelling(raw: &str, width: Option<f64>) -> Option<&str> {
@@ -329,11 +336,11 @@ impl DocumentSvgEncoder<'_> {
             let Some(stroke) = &style.stroke else {
                 return Ok(false);
             };
-            let Paint::Solid { color } = stroke.paint else {
+            let Paint::Solid { color, .. } = stroke.paint else {
                 return Ok(false);
             };
             if self.state.blend_mode != BlendMode::Normal
-                || color.alpha != 255
+                || paint_opacity(&stroke.paint) != 1.0
                 || !stroke.dash_array.is_empty()
                 || stroke.dash_offset != 0.0
                 || stroke.line_cap != LineCap::Butt
@@ -403,6 +410,29 @@ mod tests {
         assert_eq!(
             equivalent_paint_spelling(" #123 ", Some(&paint), None),
             Some(" #123 ")
+        );
+    }
+
+    #[test]
+    fn paint_spelling_compares_effective_alpha_and_rejects_lossy_inheritance() {
+        let color = Color::rgba(17, 34, 51, 255);
+        let translucent = Paint::solid(color).with_opacity(128.0 / 255.0);
+        assert_eq!(
+            equivalent_paint_spelling("#123", Some(&translucent), None),
+            None
+        );
+        assert_eq!(
+            equivalent_paint_spelling("#11223380", Some(&translucent), None),
+            Some("#11223380")
+        );
+        assert_eq!(
+            equivalent_paint_spelling("112233", Some(&translucent), Some(color)),
+            None
+        );
+        let intrinsic = Paint::solid(Color::rgba(17, 34, 51, 128)).with_opacity(0.5);
+        assert_eq!(
+            equivalent_paint_spelling("#11223380", Some(&intrinsic), None),
+            None
         );
     }
 }

@@ -29,7 +29,7 @@ impl DocumentSvgEncoder<'_> {
     pub(super) fn write_info_style(&mut self) -> Result<()> {
         self.output.push_str("<style>")?;
         if let Some(style) = self.info_text_style {
-            let Paint::Solid { color } = style.fill else {
+            let Paint::Solid { color, .. } = style.fill else {
                 return Err(invalid("Info shared text paint must be solid"));
             };
             let font = self.font_families(&style.font)?;
@@ -42,7 +42,7 @@ impl DocumentSvgEncoder<'_> {
                 font_style(style.font.style),
                 fmt(style.letter_spacing),
                 color_css(color),
-                fmt(f64::from(color.alpha) / 255.0)
+                fmt(paint_opacity(&style.fill))
             )?;
         }
         self.output.push_str("</style>")

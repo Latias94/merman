@@ -26,6 +26,19 @@ A `DrawPath` with both `fill: null` and `stroke: null` retains its geometry and 
 ownership but produces no paint. Hosts must not substitute a default fill or stroke. Empty
 `DrawText` commands likewise preserve their semantic position without painting glyphs.
 
+Each solid or resource `Paint` has an optional `opacity` factor, defaulting to `1` when omitted.
+For a solid color the effective alpha is `color.alpha / 255 * paint.opacity`; for a gradient or
+pattern it is the sampled resource alpha multiplied by `paint.opacity`. Keep these factors
+separate and do not round their product back to an 8-bit color channel. This is paint-use opacity,
+not graphics-state opacity or an isolated compositing layer: fill and stroke have independent
+factors and hosts still apply the current graphics state and layer composition exactly once.
+
+This addition belongs to the unreleased v1 contract. Default-opacity JSON retains its previous
+shape, but older strict decoders reject documents with the new field. Update host decoders and
+painters together; accepting the field while ignoring its effect is not compatible. Rust callers
+constructing or matching `Paint` variants directly must account for the new field; `Paint::solid`
+and `Paint::resource` keep their default-opacity behavior.
+
 Semantic descriptions carry source or explicitly authored accessibility metadata. They are not a
 serialization of every family model relationship. In particular, Gantt does not synthesize English
 `"<section> section"` descriptions for tasks: the section's text, background, and placement remain
@@ -78,6 +91,11 @@ alias geometry as SVG. The supported subset includes groups, paths, rectangles, 
 lines, polygons, polylines, affine transforms, and resolved solid fill/stroke styles. Viewport
 clipping and non-square `xMidYMid meet` placement are explicit commands. No final diagram SVG is
 parsed to produce the list, and hosts do not load icon assets themselves.
+
+Registered asset lowering preserves intrinsic color alpha separately from inherited fill/stroke
+opacity. The SVG projection can therefore place a shared opacity on its source group without
+guessing how to factor a combined alpha. Group/leaf declaration placement is private SVG metadata;
+the values always come from the current public paint, including after a paint edit.
 
 Missing registry names use Mermaid's blue rectangle and host-text question mark. Existing assets
 with unsupported effects are not replaced by that fallback. Stylesheets, class-driven styles,

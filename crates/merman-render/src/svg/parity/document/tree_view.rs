@@ -137,7 +137,7 @@ impl DocumentSvgEncoder<'_> {
                 continue;
             };
             let style = shared.style;
-            let Paint::Solid { color } = style.fill else {
+            let Paint::Solid { color, .. } = style.fill else {
                 return Err(invalid("TreeView shared text paint must be solid"));
             };
             let font = self.font_families(&style.font)?;
@@ -162,7 +162,7 @@ impl DocumentSvgEncoder<'_> {
                 fmt(style.letter_spacing),
                 fmt(style.line_height),
                 color_css(color),
-                fmt(f64::from(color.alpha) / 255.0),
+                fmt(paint_opacity(&style.fill)),
                 direction,
                 text_anchor(shared.anchor),
             )?;
@@ -180,25 +180,25 @@ impl DocumentSvgEncoder<'_> {
                 "#{} {}[class=\"{}\"]{{",
                 self.diagram_id, tag, class
             )?;
-            if let Some(Paint::Solid { color }) = style.fill {
+            if let Some(paint @ Paint::Solid { color, .. }) = &style.fill {
                 write!(
                     self.output,
                     "fill:{};fill-opacity:{};",
-                    color_css(color),
-                    fmt(f64::from(color.alpha) / 255.0)
+                    color_css(*color),
+                    fmt(paint_opacity(paint))
                 )?;
             } else {
                 self.output.push_str("fill:none;")?;
             }
             if let Some(stroke) = &style.stroke {
-                let Paint::Solid { color } = stroke.paint else {
+                let Paint::Solid { color, .. } = stroke.paint else {
                     return Err(invalid("TreeView shared stroke must be solid"));
                 };
                 write!(
                     self.output,
                     "stroke:{};stroke-opacity:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
                     color_css(color),
-                    fmt(f64::from(color.alpha) / 255.0),
+                    fmt(paint_opacity(&stroke.paint)),
                     line_cap(stroke.line_cap),
                     line_join(stroke.line_join),
                     fmt(stroke.miter_limit),

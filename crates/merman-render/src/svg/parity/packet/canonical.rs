@@ -201,17 +201,31 @@ impl<'a> PacketSvgStyles<'a> {
 }
 
 fn opaque_solid(paint: &Paint) -> bool {
-    matches!(paint, Paint::Solid { color } if color.alpha == 255)
+    matches!(paint, Paint::Solid { color, opacity: 1.0 } if color.alpha == 255)
 }
 
 fn solid_css(paint: Option<&Paint>) -> Option<String> {
     match paint {
         None => Some("none".to_string()),
         // Alpha is emitted once by the command's fill/stroke-opacity attribute.
-        Some(Paint::Solid { color }) => Some(format!(
+        Some(Paint::Solid { color, .. }) => Some(format!(
             "#{:02x}{:02x}{:02x}",
             color.red, color.green, color.blue
         )),
         Some(Paint::Resource { .. }) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_display_list::Color;
+
+    #[test]
+    fn compact_paint_requires_opaque_color_and_opaque_paint() {
+        let opaque = Paint::solid(Color::rgba(17, 34, 51, 255));
+        assert!(opaque_solid(&opaque));
+        assert!(!opaque_solid(&opaque.with_opacity(0.5)));
+        assert!(!opaque_solid(&Paint::solid(Color::rgba(17, 34, 51, 128))));
     }
 }

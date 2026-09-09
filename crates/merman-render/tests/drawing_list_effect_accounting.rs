@@ -559,7 +559,7 @@ fn path_paint_references_resource(
 }
 
 fn paint_references_resource(paint: &Paint, resource_id: &ResourceId) -> bool {
-    matches!(paint, Paint::Resource { id } if id == resource_id)
+    matches!(paint, Paint::Resource { id, .. } if id == resource_id)
 }
 
 #[test]
@@ -737,7 +737,7 @@ fn observed_protocol_effects(document: &DrawingListDocument) -> BTreeSet<&'stati
 }
 
 fn paint_has_transparency(paint: &Paint) -> bool {
-    matches!(paint, Paint::Solid { color } if color.alpha < u8::MAX)
+    paint.opacity() < 1.0 || matches!(paint, Paint::Solid { color, .. } if color.alpha < u8::MAX)
 }
 
 fn has_expanded_marker(document: &DrawingListDocument) -> bool {

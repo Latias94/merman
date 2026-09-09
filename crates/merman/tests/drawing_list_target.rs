@@ -990,7 +990,7 @@ fn er_transparent_edge_label_background_keeps_zero_alpha() {
             return None;
         }
         match style.fill.as_ref() {
-            Some(Paint::Solid { color }) => Some(color.alpha),
+            Some(Paint::Solid { color, .. }) => Some(color.alpha),
             _ => None,
         }
     });
@@ -2197,7 +2197,7 @@ fn radar_emits_grids_series_axes_legends_and_title_with_separate_fill_opacity() 
                 if path.as_str() == path_id =>
             {
                 match style.fill.as_ref() {
-                    Some(merman_display_list::Paint::Solid { color }) => Some(color.alpha),
+                    Some(merman_display_list::Paint::Solid { color, .. }) => Some(color.alpha),
                     _ => None,
                 }
             }
@@ -2668,7 +2668,9 @@ style A,B fill:#00ffcc, color:#003333
             .as_ref()
             .or_else(|| style.stroke.as_ref().map(|stroke| &stroke.paint))
             .unwrap();
-        assert!(matches!(paint, merman_display_list::Paint::Solid { color } if color.alpha == 255));
+        assert!(
+            matches!(paint, merman_display_list::Paint::Solid { color, .. } if color.alpha == 255)
+        );
     }
     assert!(document.commands.iter().any(|command| matches!(
         command,
@@ -3100,12 +3102,12 @@ fn tree_view_missing_icon_uses_the_source_unknown_icon() {
 #[test]
 fn tree_view_registered_icon_preserves_viewport_alias_and_current_color() {
     use merman_display_list::{Color, Point, Transform};
-    let pack = br#"{"prefix":"test","width":20,"height":10,"icons":{"box":{"body":"<path fill=\"currentColor\" d=\"M0 0H20V10H0Z\"/>"}},"aliases":{"turned":{"parent":"box","rotate":1}}}"#;
+    let pack = br#"{"prefix":"test","width":20,"height":10,"icons":{"box":{"body":"<path fill=\"currentColor\" fill-opacity=\"0.125\" d=\"M0 0H20V10H0Z\"/>"}},"aliases":{"turned":{"parent":"box","rotate":1}}}"#;
     let registry =
         merman::svg::IconRegistry::from_packs([merman::svg::IconPack::new(pack)]).unwrap();
     let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
         MermaidConfig::from_value(serde_json::json!({
-            "themeVariables": { "treeView": { "iconColor": "#123456" } }
+            "themeVariables": { "treeView": { "iconColor": "#12345680" } }
         })),
     ));
     for (name, expected) in [
@@ -3145,7 +3147,8 @@ fn tree_view_registered_icon_preserves_viewport_alias_and_current_color() {
         let RenderOutput::DrawingList(Some(output)) = output else {
             panic!("DrawingList expected")
         };
-        let document = output.document();
+        let document = merman_display_list::DrawingListDocument::from_json_bytes(output.json())
+            .expect("the public JSON payload preserves paint opacity for hosts");
         let mut matrix = Transform::IDENTITY;
         let mut saves = Vec::new();
         let mut painted = 0;
@@ -3186,7 +3189,7 @@ fn tree_view_registered_icon_preserves_viewport_alias_and_current_color() {
                     );
                     assert_eq!(
                         style.fill,
-                        Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 255)))
+                        Some(Paint::solid(Color::rgba(0x12, 0x34, 0x56, 128)).with_opacity(0.125))
                     );
                     assert!(style.stroke.is_none());
                     let resource = document

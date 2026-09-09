@@ -63,7 +63,7 @@ impl DocumentSvgEncoder<'_> {
             .tree_view_icons
             .as_ref()
             .and_then(|icons| icons.source(&path.segments));
-        let (Some(source), Some(extent), Some(Paint::Solid { color }), None) = (
+        let (Some(source), Some(extent), Some(paint @ Paint::Solid { color, .. }), None) = (
             source,
             viewport_extent(self.state.transform),
             style.fill.as_ref(),
@@ -104,7 +104,7 @@ impl DocumentSvgEncoder<'_> {
             self.output,
             " style=\"color:{};fill:currentColor;fill-opacity:{};fill-rule:{};stroke:none;\"",
             color_css(*color),
-            fmt(f64::from(color.alpha) / 255.0),
+            fmt(paint_opacity(paint)),
             fill_rule_name(style.fill_rule),
         )?;
         self.write_path_metadata(path_id.as_str())?;

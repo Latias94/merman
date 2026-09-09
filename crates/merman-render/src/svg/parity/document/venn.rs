@@ -284,7 +284,11 @@ impl DocumentSvgEncoder<'_> {
                 other => write!(self.output, "{}", path_d(std::slice::from_ref(other)))?,
             }
         }
-        let Paint::Solid { color } = stroke.paint else {
+        let Paint::Solid {
+            color,
+            opacity: paint_opacity,
+        } = stroke.paint
+        else {
             return Err(invalid("compact Venn rough stroke must be solid"));
         };
         write!(
@@ -293,7 +297,7 @@ impl DocumentSvgEncoder<'_> {
             color.red,
             color.green,
             color.blue,
-            opacity * f64::from(color.alpha) / 255.0,
+            opacity * f64::from(color.alpha) / 255.0 * paint_opacity,
             fmt(stroke.width)
         )?;
         self.write_transform_and_blend()?;
@@ -600,7 +604,7 @@ impl DocumentSvgEncoder<'_> {
         {
             return Ok(None);
         }
-        let Some(Paint::Solid { color }) = fill.fill.as_ref() else {
+        let Some(Paint::Solid { color, opacity }) = fill.fill.as_ref() else {
             return Ok(None);
         };
         let Some((stroke_path, stroke, stroke_opacity, stroke_count)) =
@@ -620,7 +624,7 @@ impl DocumentSvgEncoder<'_> {
         };
         self.write_venn_path(
             path,
-            Some((*color, fill_opacity)),
+            Some((*color, fill_opacity * opacity)),
             Some((stroke, stroke_opacity)),
         )?;
         Ok(Some(fill_count + stroke_count))
@@ -635,7 +639,7 @@ impl DocumentSvgEncoder<'_> {
             return Ok(false);
         }
         let fill = match style.fill.as_ref() {
-            Some(Paint::Solid { color }) => Some((*color, self.state.opacity)),
+            Some(Paint::Solid { color, opacity }) => Some((*color, self.state.opacity * opacity)),
             None => None,
             _ => return Ok(false),
         };
@@ -681,7 +685,7 @@ impl DocumentSvgEncoder<'_> {
                 .push_str("fill-opacity: 0; fill: transparent;")?;
         }
         if let Some((stroke, opacity)) = stroke {
-            let Paint::Solid { color } = stroke.paint else {
+            let Paint::Solid { color, .. } = stroke.paint else {
                 return Err(invalid("compact Venn stroke must be solid"));
             };
             write!(
@@ -689,7 +693,7 @@ impl DocumentSvgEncoder<'_> {
                 " stroke: {}; stroke-width: {}; stroke-opacity: {};",
                 color_css(color),
                 fmt(stroke.width),
-                fmt(f64::from(color.alpha) / 255.0 * opacity)
+                fmt(paint_opacity(&stroke.paint) * opacity)
             )?;
         }
         self.output.push('"')?;
@@ -732,7 +736,7 @@ impl DocumentSvgEncoder<'_> {
         {
             return Ok(false);
         }
-        let Paint::Solid { color } = run.style.fill else {
+        let Paint::Solid { color, .. } = run.style.fill else {
             return Ok(false);
         };
         let font = self.font_families(&run.style.font)?;
@@ -773,7 +777,7 @@ impl DocumentSvgEncoder<'_> {
             " y=\"{}\" style=\"fill: {}; fill-opacity: {};",
             fmt(y),
             color_css(color),
-            fmt(f64::from(color.alpha) / 255.0)
+            fmt(paint_opacity(&run.style.fill))
         )?;
         if !shared_title {
             write!(

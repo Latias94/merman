@@ -740,14 +740,18 @@ impl Context<'_> {
     }
 
     fn path_style(&self, style: Style<'_>) -> Result<PathStyle> {
-        let color = |paint, opacity| match paint {
+        let color = |paint| match paint {
             IconPaint::None => None,
-            IconPaint::CurrentColor => Some(with_alpha(style.color, opacity)),
-            IconPaint::Color(color) => Some(with_alpha(color, opacity)),
+            IconPaint::CurrentColor => Some(style.color),
+            IconPaint::Color(color) => Some(color),
         };
-        let mut outline = color(style.stroke, style.stroke_opacity)
+        let mut outline = color(style.stroke)
             .filter(|_| style.width > 0.0)
-            .map(|color| stroke(color, style.width));
+            .map(|color| {
+                let mut outline = stroke(color, style.width);
+                outline.paint = outline.paint.with_opacity(style.stroke_opacity);
+                outline
+            });
         if let Some(outline) = &mut outline {
             outline.line_cap = style.cap;
             outline.line_join = style.join;
@@ -783,7 +787,8 @@ impl Context<'_> {
         }
         Ok(PathStyle {
             fill_rule: style.fill_rule,
-            fill: color(style.fill, style.fill_opacity).map(Paint::solid),
+            fill: color(style.fill)
+                .map(|color| Paint::solid(color).with_opacity(style.fill_opacity)),
             stroke: outline,
         })
     }
@@ -911,11 +916,6 @@ impl Context<'_> {
     }
 }
 
-fn with_alpha(mut color: Color, opacity: f64) -> Color {
-    color.alpha = (f64::from(color.alpha) * opacity).round() as u8;
-    color
-}
-
 fn allocation(collection: &'static str) -> Error {
     Error::DrawingListAllocationFailed { collection }
 }
@@ -981,7 +981,10 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        assert_eq!(style.fill, Some(Paint::solid(Color::rgba(0, 0, 255, 128))));
+        assert_eq!(
+            style.fill,
+            Some(Paint::solid(Color::rgba(0, 0, 255, 255)).with_opacity(0.5))
+        );
         assert_eq!(style.fill_rule, FillRule::EvenOdd);
         let outline = style.stroke.as_ref().unwrap();
         assert_eq!(outline.paint, Paint::solid(Color::rgba(0, 0, 255, 255)));

@@ -1925,7 +1925,10 @@ fn validate_paint(
     paint: Option<&crate::Paint>,
     paint_ids: &BTreeSet<ResourceId>,
 ) -> Result<(), DrawingListError> {
-    if let Some(crate::Paint::Resource { id }) = paint
+    if let Some(paint) = paint {
+        crate::commands::validate_unit(paint.opacity(), "paint opacity")?;
+    }
+    if let Some(crate::Paint::Resource { id, .. }) = paint
         && !paint_ids.contains(id)
     {
         return Err(DrawingListError::invalid(format!(

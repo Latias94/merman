@@ -58,7 +58,7 @@ impl<'a> PieSvgStyles<'a> {
         let mut css = String::new();
         for (class, style) in &self.texts {
             let Some(style) = style else { continue };
-            let Paint::Solid { color } = style.fill else {
+            let Paint::Solid { color, opacity } = style.fill else {
                 continue;
             };
             if style.font.resource.is_some() {
@@ -75,7 +75,7 @@ impl<'a> PieSvgStyles<'a> {
                 "#{diagram_id} .{class}{{font-family:{font};font-size:{}px;fill:{};fill-opacity:{};}}",
                 fmt(style.font_size),
                 css_color(color),
-                fmt(f64::from(color.alpha) / 255.0)
+                fmt(f64::from(color.alpha) / 255.0 * opacity)
             )
             .map_err(|_| Error::InvalidModel {
                 message: "failed to write Pie styles".to_string(),

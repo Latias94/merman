@@ -612,18 +612,55 @@ impl ImageResource {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Paint {
-    Solid { color: Color },
-    Resource { id: ResourceId },
+    Solid {
+        color: Color,
+        /// Multiplies the intrinsic color alpha without quantizing either factor.
+        #[serde(default = "opaque_paint", skip_serializing_if = "is_opaque_paint")]
+        opacity: f64,
+    },
+    Resource {
+        id: ResourceId,
+        /// Multiplies the sampled resource alpha for this paint use.
+        #[serde(default = "opaque_paint", skip_serializing_if = "is_opaque_paint")]
+        opacity: f64,
+    },
 }
 
 impl Paint {
     pub fn solid(color: Color) -> Self {
-        Self::Solid { color }
+        Self::Solid {
+            color,
+            opacity: 1.0,
+        }
     }
 
     pub fn resource(id: ResourceId) -> Self {
-        Self::Resource { id }
+        Self::Resource { id, opacity: 1.0 }
     }
+
+    pub fn opacity(&self) -> f64 {
+        match self {
+            Self::Solid { opacity, .. } | Self::Resource { opacity, .. } => *opacity,
+        }
+    }
+
+    /// Sets paint opacity; document validation requires a finite value in `0..=1`.
+    pub fn with_opacity(mut self, opacity: f64) -> Self {
+        match &mut self {
+            Self::Solid { opacity: value, .. } | Self::Resource { opacity: value, .. } => {
+                *value = opacity;
+            }
+        }
+        self
+    }
+}
+
+fn opaque_paint() -> f64 {
+    1.0
+}
+
+fn is_opaque_paint(opacity: &f64) -> bool {
+    *opacity == 1.0
 }
 
 mod base64_bytes {

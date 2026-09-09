@@ -165,7 +165,7 @@ fn venn_drawing_list_preserves_seeded_svg_paths_paint_and_order() {
                     .parse::<f64>()
                     .unwrap()
             );
-            let Paint::Solid { color } = &stroke.paint else {
+            let Paint::Solid { color, .. } = &stroke.paint else {
                 panic!("expected solid rough stroke");
             };
             let source =

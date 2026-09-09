@@ -363,7 +363,8 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "solid" },
-            "color": { "$ref": "#/$defs/color" }
+            "color": { "$ref": "#/$defs/color" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
           }
         },
         {
@@ -372,7 +373,8 @@
           "additionalProperties": false,
           "properties": {
             "kind": { "const": "resource" },
-            "id": { "$ref": "#/$defs/resource_id" }
+            "id": { "$ref": "#/$defs/resource_id" },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1, "default": 1 }
           }
         }
       ]

@@ -2,10 +2,101 @@ mod common;
 
 use common::{extended_document, sample_document};
 use merman_display_list::{
-    DRAWING_LIST_MAX_EXTENSION_DEPTH, DrawingCommand, DrawingListDocument, DrawingListLimits,
-    MeasurementProvenance, Paint, ResourceId, StrokeStyle, TextBaseline, TextPaintOrder,
+    Color, DRAWING_LIST_MAX_EXTENSION_DEPTH, DrawingCommand, DrawingListDocument,
+    DrawingListLimits, MeasurementProvenance, Paint, ResourceId, StrokeStyle, TextBaseline,
+    TextPaintOrder,
 };
 use serde_json::{Map, Value, json};
+
+#[test]
+fn paint_opacity_defaults_preserve_existing_wire_values() {
+    for value in [
+        json!({"kind": "solid", "color": {"red": 255, "green": 0, "blue": 0, "alpha": 128}}),
+        json!({"kind": "resource", "id": "paint.node-fill"}),
+    ] {
+        let paint: Paint = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(paint.opacity(), 1.0);
+        assert_eq!(serde_json::to_value(&paint).unwrap(), value);
+
+        let mut explicit = value.clone();
+        explicit["opacity"] = json!(1.0);
+        let decoded: Paint = serde_json::from_value(explicit).unwrap();
+        assert_eq!(decoded, paint);
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+    }
+    assert_eq!(Paint::solid(Color::rgba(255, 0, 0, 128)).opacity(), 1.0);
+    assert_eq!(
+        Paint::resource(ResourceId::new("paint.node-fill")).opacity(),
+        1.0
+    );
+}
+
+#[test]
+fn paint_opacity_round_trips_without_changing_intrinsic_color_alpha() {
+    for opacity in [0.0, 0.5, 1.0] {
+        for paint in [
+            Paint::solid(Color::rgba(255, 0, 0, 128)).with_opacity(opacity),
+            Paint::resource(ResourceId::new("paint.node-fill")).with_opacity(opacity),
+        ] {
+            let mut document = sample_document();
+            let DrawingCommand::DrawPath { style, .. } = &mut document.commands[3] else {
+                panic!("fixture path command");
+            };
+            style.fill = Some(paint.clone());
+            let bytes = document.canonical_json_bytes().unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            let fill = &value["commands"][3]["style"]["fill"];
+            if matches!(paint, Paint::Solid { .. }) {
+                assert_eq!(fill["color"]["alpha"], 128);
+            }
+            if opacity == 1.0 {
+                assert!(fill.get("opacity").is_none());
+            } else {
+                assert_eq!(fill["opacity"], opacity);
+            }
+            let decoded = DrawingListDocument::from_json_bytes(&bytes).unwrap();
+            let DrawingCommand::DrawPath { style, .. } = &decoded.commands[3] else {
+                panic!("decoded fixture path command");
+            };
+            assert_eq!(style.fill.as_ref(), Some(&paint));
+            assert_eq!(decoded.canonical_json_bytes().unwrap(), bytes);
+        }
+    }
+}
+
+#[test]
+fn paint_opacity_schema_and_decoder_enforce_the_same_unit_interval() {
+    let schema: Value =
+        serde_json::from_str(include_str!("../schema/drawing-list-v1.json")).unwrap();
+    let validator = jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&schema)
+        .unwrap();
+    for paint in [
+        Paint::solid(Color::rgba(255, 0, 0, 128)),
+        Paint::resource(ResourceId::new("paint.node-fill")),
+    ] {
+        for opacity in [
+            json!(0.0),
+            json!(0.5),
+            json!(1.0),
+            json!(-0.1),
+            json!(1.1),
+            Value::Null,
+        ] {
+            let mut value = serde_json::to_value(sample_document()).unwrap();
+            value["commands"][3]["style"]["fill"] = serde_json::to_value(&paint).unwrap();
+            value["commands"][3]["style"]["fill"]["opacity"] = opacity.clone();
+            let valid = opacity.as_f64().is_some_and(|n| (0.0..=1.0).contains(&n));
+            assert_eq!(validator.is_valid(&value), valid, "opacity {opacity}");
+            assert_eq!(
+                DrawingListDocument::from_json_bytes(&serde_json::to_vec(&value).unwrap()).is_ok(),
+                valid,
+                "opacity {opacity}"
+            );
+        }
+    }
+}
 
 #[test]
 fn canonical_json_round_trips_and_uses_a_stable_resource_order() {

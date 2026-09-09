@@ -146,12 +146,12 @@ impl DocumentSvgEncoder<'_> {
             )?;
         }
         self.output.push_str(" style=\"")?;
-        match icon.style.fill {
-            Some(Paint::Solid { color }) => write!(
+        match &icon.style.fill {
+            Some(paint @ Paint::Solid { color, .. }) => write!(
                 self.output,
                 "fill:{};fill-opacity:{};",
-                color_css(color),
-                fmt(f64::from(color.alpha) / 255.0)
+                color_css(*color),
+                fmt(paint_opacity(paint))
             )?,
             None => self.output.push_str("fill:none;")?,
             Some(Paint::Resource { .. }) => {
@@ -172,7 +172,7 @@ impl DocumentSvgEncoder<'_> {
         self.output.push_str("/>")?;
 
         let run = icon.run;
-        let Paint::Solid { color } = run.style.fill else {
+        let Paint::Solid { color, .. } = run.style.fill else {
             return Err(invalid("TreeView unknown icon requires solid text paint"));
         };
         let font = self.font_families(&run.style.font)?;
@@ -182,7 +182,7 @@ impl DocumentSvgEncoder<'_> {
             fmt(run.origin.x),
             fmt(run.origin.y),
             color_css(color),
-            fmt(f64::from(color.alpha) / 255.0),
+            fmt(paint_opacity(&run.style.fill)),
             escaped_attr(&font),
             fmt(run.style.font_size),
             run.style.font.weight,

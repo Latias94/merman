@@ -215,14 +215,14 @@ impl DocumentSvgEncoder<'_> {
     fn write_journey_css_paint(&mut self, property: &str, paint: Option<&Paint>) -> Result<()> {
         write!(self.output, "{property}:")?;
         let opacity = match paint {
-            Some(Paint::Solid { color }) => {
+            Some(paint @ Paint::Solid { color, .. }) => {
                 self.output.push_str(&color_css(*color))?;
-                f64::from(color.alpha) / 255.0
+                paint_opacity(paint)
             }
-            Some(Paint::Resource { id }) => {
+            Some(Paint::Resource { id, opacity }) => {
                 let svg_id = self.svg_resource_id(id.as_str())?;
                 write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
-                1.0
+                *opacity
             }
             None => {
                 self.output.push_str("none")?;

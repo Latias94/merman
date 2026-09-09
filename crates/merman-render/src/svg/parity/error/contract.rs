@@ -19,7 +19,9 @@ const ERROR_TEXT_PROFILE: &str = "error-fixed-text";
 /// Renderer-neutral facts that are safe to project into Error SVG presentation CSS.
 pub(in crate::svg::parity) struct ErrorProjection<'a> {
     icon_color: Color,
+    icon_opacity: f64,
     text_color: Color,
+    text_opacity: f64,
     font_families: &'a [String],
 }
 
@@ -114,13 +116,13 @@ pub(in crate::svg::parity) fn validate_error_projection_contract<'a>(
     else {
         return Err(invalid("Error command 2 must draw icon path 0"));
     };
-    let background = solid_paint_color(
+    let (background, icon_opacity) = solid_paint_color(
         first_path_style.fill.as_ref(),
         "Error icon fill must be a resolved solid paint",
     )?;
     let expected_path_style = PathStyle {
         fill_rule: FillRule::NonZero,
-        fill: Some(Paint::solid(background)),
+        fill: Some(Paint::solid(background).with_opacity(icon_opacity)),
         stroke: None,
     };
     for index in 0..ERROR_ICON_PATHS.len() {
@@ -141,7 +143,7 @@ pub(in crate::svg::parity) fn validate_error_projection_contract<'a>(
     let Some(DrawingCommand::DrawText { run: title_run }) = document.commands.get(8) else {
         return Err(invalid("Error command 8 must draw the syntax-error title"));
     };
-    let text_color = solid_paint_color(
+    let (text_color, text_opacity) = solid_paint_color(
         Some(&title_run.style.fill),
         "Error text fill must be a resolved solid paint",
     )?;
@@ -156,7 +158,7 @@ pub(in crate::svg::parity) fn validate_error_projection_contract<'a>(
         Point::new(1440.0, 250.0),
         Rect::new(0.0, 100.0, ERROR_VIEWPORT.width, 180.0),
         150.0,
-        text_color,
+        &title_run.style.fill,
         &title_run.style.font.families,
     )?;
 
@@ -172,20 +174,22 @@ pub(in crate::svg::parity) fn validate_error_projection_contract<'a>(
         Point::new(1250.0, 400.0),
         Rect::new(0.0, 300.0, ERROR_VIEWPORT.width, 130.0),
         100.0,
-        text_color,
+        &title_run.style.fill,
         &title_run.style.font.families,
     )?;
 
     Ok(ErrorProjection {
         icon_color: background,
+        icon_opacity,
         text_color,
+        text_opacity,
         font_families: &title_run.style.font.families,
     })
 }
 
-fn solid_paint_color(paint: Option<&Paint>, message: &str) -> Result<Color> {
+fn solid_paint_color(paint: Option<&Paint>, message: &str) -> Result<(Color, f64)> {
     match paint {
-        Some(Paint::Solid { color }) => Ok(*color),
+        Some(Paint::Solid { color, opacity }) => Ok((*color, *opacity)),
         Some(Paint::Resource { .. }) | None => Err(invalid(message)),
     }
 }
@@ -196,7 +200,7 @@ fn validate_error_text_run(
     expected_origin: Point,
     expected_bounds: Rect,
     expected_font_size: f64,
-    expected_color: merman_display_list::Color,
+    expected_paint: &Paint,
     expected_families: &[String],
 ) -> Result<()> {
     let Some(stroke) = run.style.stroke.as_ref() else {
@@ -215,8 +219,8 @@ fn validate_error_text_run(
         || run.style.font_size != expected_font_size
         || run.style.letter_spacing != 0.0
         || run.style.line_height != expected_font_size
-        || run.style.fill != Paint::solid(expected_color)
-        || stroke.paint != Paint::solid(expected_color)
+        || &run.style.fill != expected_paint
+        || &stroke.paint != expected_paint
         || stroke.width != 1.0
         || !stroke.dash_array.is_empty()
         || stroke.dash_offset != 0.0
@@ -263,11 +267,17 @@ pub(in crate::svg::parity) fn canonical_error_css(
     let mut variables = Map::new();
     variables.insert(
         "errorBkgColor".to_string(),
-        Value::String(error_color_css(projection.icon_color)),
+        Value::String(error_color_css(
+            projection.icon_color,
+            projection.icon_opacity,
+        )),
     );
     variables.insert(
         "errorTextColor".to_string(),
-        Value::String(error_color_css(projection.text_color)),
+        Value::String(error_color_css(
+            projection.text_color,
+            projection.text_opacity,
+        )),
     );
     variables.insert(
         "fontFamily".to_string(),
@@ -286,8 +296,8 @@ pub(in crate::svg::parity) fn canonical_error_css(
     Ok(super::super::info_css_with_config(diagram_id, &css_config))
 }
 
-fn error_color_css(color: Color) -> String {
-    if color.alpha == u8::MAX {
+fn error_color_css(color: Color, opacity: f64) -> String {
+    if color.alpha == u8::MAX && opacity == 1.0 {
         format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue)
     } else {
         format!(
@@ -295,7 +305,7 @@ fn error_color_css(color: Color) -> String {
             color.red,
             color.green,
             color.blue,
-            fmt(f64::from(color.alpha) / 255.0)
+            fmt(f64::from(color.alpha) / 255.0 * opacity)
         )
     }
 }
@@ -403,6 +413,43 @@ mod tests {
         assert!(!css.contains("Conflict"));
         assert!(!css.contains("#010203"));
         assert!(!css.contains("#040506"));
+    }
+
+    #[test]
+    fn error_projection_preserves_intrinsic_alpha_and_paint_opacity() {
+        let mut document = canonical_error_document();
+        let icon = Paint::solid(Color::rgba(17, 34, 51, 128)).with_opacity(0.125);
+        let text = Paint::solid(Color::rgba(68, 85, 102, 255)).with_opacity(0.12345);
+        for command in &mut document.commands {
+            match command {
+                DrawingCommand::DrawPath { style, .. } => style.fill = Some(icon.clone()),
+                DrawingCommand::DrawText { run } => {
+                    run.style.fill = text.clone();
+                    run.style
+                        .stroke
+                        .as_mut()
+                        .expect("Error text has stroke")
+                        .paint = text.clone();
+                }
+                _ => {}
+            }
+        }
+        let projection = validate_error_projection_contract(&document, &ErrorSvgBody::new())
+            .expect("uniform translucent paints retain the Error projection contract");
+        assert_eq!(projection.icon_color.alpha, 128);
+        assert_eq!(projection.icon_opacity, 0.125);
+        assert_eq!(projection.text_opacity, 0.12345);
+        let css = canonical_error_css("error-paint-opacity", &serde_json::json!({}), &projection)
+            .expect("translucent Error projection produces CSS");
+        assert!(css.contains(&format!(
+            ".error-icon{{fill:rgba(17,34,51,{});}}",
+            fmt(128.0 / 255.0 * 0.125)
+        )));
+        assert!(
+            css.contains(
+                ".error-text{fill:rgba(68,85,102,0.12345);stroke:rgba(68,85,102,0.12345);}"
+            )
+        );
     }
 
     #[test]

@@ -21,6 +21,53 @@ impl From<DrawingListError> for ControlledValidationError {
 }
 
 #[test]
+fn invalid_paint_opacity_is_rejected_for_every_path_and_text_paint() {
+    for opacity in [-0.1, 1.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for paint in [
+            Paint::solid(merman_display_list::Color::rgba(255, 0, 0, 128)),
+            Paint::resource(ResourceId::new("paint.node-fill")),
+        ] {
+            for slot in 0..4 {
+                let mut document = sample_document();
+                let DrawingCommand::DrawPath { style, .. } = &document.commands[3] else {
+                    panic!("fixture path command");
+                };
+                let text_stroke = style.stroke.clone();
+                let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+                    panic!("fixture text command");
+                };
+                run.style.stroke = text_stroke;
+                let invalid = paint.clone().with_opacity(opacity);
+                if slot < 2 {
+                    let DrawingCommand::DrawPath { style, .. } = &mut document.commands[3] else {
+                        unreachable!();
+                    };
+                    if slot == 0 {
+                        style.fill = Some(invalid);
+                    } else {
+                        style.stroke.as_mut().unwrap().paint = invalid;
+                    }
+                } else {
+                    let DrawingCommand::DrawText { run } = &mut document.commands[5] else {
+                        unreachable!();
+                    };
+                    if slot == 2 {
+                        run.style.fill = invalid;
+                    } else {
+                        run.style.stroke.as_mut().unwrap().paint = invalid;
+                    }
+                }
+                assert!(
+                    matches!(document.validate(), Err(DrawingListError::InvalidDocument(message)) if message.contains("paint opacity")),
+                    "slot {slot}, opacity {opacity}"
+                );
+                assert!(document.canonical_json_bytes().is_err());
+            }
+        }
+    }
+}
+
+#[test]
 fn controlled_validation_separates_quantity_policy_from_correctness() {
     let mut document = sample_document();
     let depth = DrawingListLimits::default().max_nesting_depth + 1;

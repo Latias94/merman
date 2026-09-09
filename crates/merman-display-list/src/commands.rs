@@ -595,7 +595,7 @@ impl TextStyle {
     }
 }
 
-fn validate_unit(value: f64, name: &str) -> Result<(), DrawingListError> {
+pub(crate) fn validate_unit(value: f64, name: &str) -> Result<(), DrawingListError> {
     if value.is_finite() && (0.0..=1.0).contains(&value) {
         Ok(())
     } else {

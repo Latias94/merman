@@ -176,22 +176,22 @@ impl DocumentSvgEncoder<'_> {
         {
             self.output.push_str(" style=\"")?;
             if let Some(paint) = paint {
-                if let Some(color) = paint.fill {
+                if let Some((color, opacity)) = paint.fill {
                     write!(
                         self.output,
                         "fill:{};fill-opacity:{};",
                         color_css(color),
-                        fmt(f64::from(color.alpha) / 255.0)
+                        fmt(f64::from(color.alpha) / 255.0 * opacity)
                     )?;
                 } else {
                     self.output.push_str("fill:none;")?;
                 }
-                if let Some((color, width)) = paint.stroke {
+                if let Some((color, opacity, width)) = paint.stroke {
                     write!(
                         self.output,
                         "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;",
                         color_css(color),
-                        fmt(f64::from(color.alpha) / 255.0),
+                        fmt(f64::from(color.alpha) / 255.0 * opacity),
                         fmt(width)
                     )?;
                 } else {
@@ -359,7 +359,7 @@ impl DocumentSvgEncoder<'_> {
         {
             return Ok(false);
         }
-        let Some(Paint::Solid { color }) = style.fill else {
+        let Some(ref paint @ Paint::Solid { color, .. }) = style.fill else {
             return Ok(false);
         };
         let Some(bounds) = rectangle_from_path(self.path_resource(path_id)?) else {
@@ -379,7 +379,7 @@ impl DocumentSvgEncoder<'_> {
             fmt(bounds.height),
             escaped_attr(class.as_ref()),
             color_css(color),
-            fmt(f64::from(color.alpha) / 255.0),
+            fmt(paint_opacity(paint)),
             fmt(self.state.opacity),
         )?;
         self.write_transform_and_blend()?;
@@ -404,10 +404,10 @@ impl DocumentSvgEncoder<'_> {
         let Some(stroke) = &style.stroke else {
             return Ok(false);
         };
-        let Paint::Solid { color } = stroke.paint else {
+        let Paint::Solid { color, .. } = stroke.paint else {
             return Ok(false);
         };
-        if color.alpha != 255
+        if paint_opacity(&stroke.paint) != 1.0
             || !stroke.dash_array.is_empty()
             || stroke.dash_offset != 0.0
             || stroke.line_cap != merman_display_list::LineCap::Butt
@@ -632,11 +632,13 @@ impl DocumentSvgEncoder<'_> {
         let Some(class) = body.text_classes.get(semantic_id) else {
             return Ok(None);
         };
-        let Paint::Solid { color } = first.style.fill else {
+        let Paint::Solid { color, .. } = first.style.fill else {
             return Ok(None);
         };
         // Combining translucent or differently styled text could change overlap compositing.
-        if color.alpha != 255 || first.style.stroke.is_some() || first.style.font.resource.is_some()
+        if paint_opacity(&first.style.fill) != 1.0
+            || first.style.stroke.is_some()
+            || first.style.font.resource.is_some()
         {
             return Ok(None);
         }
@@ -862,7 +864,7 @@ impl DocumentSvgEncoder<'_> {
             || run.style.font.style != FontStyle::Normal
             || run.style.letter_spacing != 0.0
             || run.style.font_size != 10.0
-            || !matches!(&run.style.fill, Paint::Solid { color } if color.alpha == 255)
+            || !matches!(&run.style.fill, Paint::Solid { color, opacity: 1.0 } if color.alpha == 255)
             || run.anchor != TextAnchor::Middle
             || run.origin.x != 0.0
             || !matches!(run.origin.y, -3.0 | 13.0)
@@ -877,7 +879,7 @@ impl DocumentSvgEncoder<'_> {
             self.output,
             "<text fill=\"{}\" y=\"{}\" dy=\"{}em\" stroke=\"none\" font-size=\"{}\" style=\"font-family:{};text-anchor: {};\"",
             color_css(match &run.style.fill {
-                Paint::Solid { color } => *color,
+                Paint::Solid { color, .. } => *color,
                 _ => return Ok(false),
             }),
             fmt(if run.origin.y >= 0.0 {
@@ -1068,7 +1070,10 @@ fn gantt_plain_text_color(run: &TextRun) -> Option<Color> {
         return None;
     }
     match run.style.fill {
-        Paint::Solid { color } if color.alpha == 255 => Some(color),
+        Paint::Solid {
+            color,
+            opacity: 1.0,
+        } if color.alpha == 255 => Some(color),
         _ => None,
     }
 }
@@ -1081,19 +1086,19 @@ fn gantt_text_has_significant_whitespace(text: &str) -> bool {
 }
 
 struct GanttSolidPaint {
-    fill: Option<Color>,
-    stroke: Option<(Color, f64)>,
+    fill: Option<(Color, f64)>,
+    stroke: Option<(Color, f64, f64)>,
 }
 
 fn gantt_solid_paint(style: &PathStyle) -> Option<GanttSolidPaint> {
     let fill = match style.fill {
-        Some(Paint::Solid { color }) => Some(color),
+        Some(Paint::Solid { color, opacity }) => Some((color, opacity)),
         None => None,
         _ => return None,
     };
     let stroke = match &style.stroke {
         Some(stroke) => {
-            let Paint::Solid { color } = stroke.paint else {
+            let Paint::Solid { color, opacity } = stroke.paint else {
                 return None;
             };
             if !stroke.dash_array.is_empty()
@@ -1104,7 +1109,7 @@ fn gantt_solid_paint(style: &PathStyle) -> Option<GanttSolidPaint> {
             {
                 return None;
             }
-            Some((color, stroke.width))
+            Some((color, opacity, stroke.width))
         }
         None => None,
     };

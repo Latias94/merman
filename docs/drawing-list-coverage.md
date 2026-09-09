@@ -132,17 +132,18 @@ Leaves omit only properties
 actually supplied by that group and not explicitly declared on the leaf. An edited leaf disables
 promotion, while matching edits can promote the new public paint. A Chromium receipt
 `target/compare/asset-group-paint-browser-result.json` records the earlier default-rendering,
-host-CSS, and group-CSS probe. It is not complete group CSS parity evidence: public color alpha
-already combines source paint alpha and fill/stroke opacity. These factors cannot be uniquely
-recovered, so fill/stroke opacity promotion has been withdrawn and the combined alpha stays on
-each leaf. In particular, overriding inherited opacity on a translucent source paint remains an
-explicit registered-asset parity gap; it is not an RGBA8 rounding residual. The source opacity
-values are not retained as a second visual model. Group opacity remains unsupported and is not
-distributed across leaves.
-The follow-up adds one family-level shared-paint regression alongside the existing 80 TreeView/icon
-tests; all focused tests, Clippy, formatting, and the full SVG structure gate pass.
-An additional regression covers translucent fill and stroke with inherited presentation and
-inline opacity, ensuring their combined public alpha is never reconstructed as group opacity.
+host-CSS, and group-CSS probe. It is historical evidence, not complete registered-asset CSS parity
+evidence. That probe exposed a real missing public distinction: intrinsic color alpha and
+fill/stroke opacity could not be uniquely recovered from their previously combined RGBA8 value.
+The unreleased public `Paint` now retains a separate `opacity` factor (default `1`) for solid and
+resource paints. Registry lowering no longer quantizes their product. Shared direct-child groups
+can project the current public opacity at the source declaration location, while leaf colors
+retain their intrinsic alpha. Source factors are not replayed from the sidecar. Focused tests
+cover translucent colors, inherited presentation/inline opacity, local overrides, and edits of
+the public factors independently. The complete registered-asset admission remains pending:
+heterogeneous and nested group promotion, inactive paint parameters, and `currentColor` have the
+boundaries noted above. Group compositing opacity remains unsupported and is not distributed
+across leaves. This change does not enable TreeView's canonical public route.
 
 This is an honest migration snapshot, not a release claim.  A family may move from `legacy-bridge`
 to `canonical` only after both focused fixtures and the complete family SVG comparison prove that

@@ -221,7 +221,7 @@ impl<'a> DocumentSvgEncoder<'a> {
                 session.checkpoint(OperationPhase::Emit)?;
                 if let DrawingCommand::DrawPath { path, style } = command
                     && path.as_str().starts_with("sankey.link.")
-                    && let Some(Paint::Resource { id }) =
+                    && let Some(Paint::Resource { id, .. }) =
                         style.stroke.as_ref().map(|stroke| &stroke.paint)
                     && matches!(
                         resources.get(id.as_str()),
@@ -3797,7 +3797,7 @@ impl<'a> DocumentSvgEncoder<'a> {
         if self
             .current_semantic_id()
             .is_some_and(|id| id.starts_with("c4.shape."))
-            && let Paint::Solid { color } = &run.style.fill
+            && let Paint::Solid { color, .. } = &run.style.fill
         {
             write!(self.output, " fill: {} !important;", color_css(*color),)?;
         }
@@ -4178,17 +4178,14 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         let paint_css = |encoder: &mut Self, paint: Option<&Paint>| -> Result<String> {
             match paint {
-                Some(Paint::Solid { color }) => Ok(color_css(*color)),
-                Some(Paint::Resource { id }) => {
+                Some(Paint::Solid { color, .. }) => Ok(color_css(*color)),
+                Some(Paint::Resource { id, .. }) => {
                     Ok(format!("url(#{})", encoder.svg_resource_id(id.as_str())?))
                 }
                 None => Ok("none".to_string()),
             }
         };
-        let paint_opacity = |paint: Option<&Paint>| match paint {
-            Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
-            Some(Paint::Resource { .. }) | None => 1.0,
-        };
+        let optional_opacity = |paint: Option<&Paint>| paint.map_or(1.0, paint_opacity);
 
         let mut declarations = String::new();
         for property in properties {
@@ -4277,12 +4274,12 @@ impl<'a> DocumentSvgEncoder<'a> {
                 BlockInlinePathProperty::FillOpacity => write!(
                     declarations,
                     "fill-opacity:{} !important",
-                    fmt(paint_opacity(style.fill.as_ref()))
+                    fmt(optional_opacity(style.fill.as_ref()))
                 ),
                 BlockInlinePathProperty::StrokeOpacity => write!(
                     declarations,
                     "stroke-opacity:{} !important",
-                    fmt(paint_opacity(
+                    fmt(optional_opacity(
                         style.stroke.as_ref().map(|stroke| &stroke.paint)
                     ))
                 ),
@@ -4312,8 +4309,8 @@ impl<'a> DocumentSvgEncoder<'a> {
 
         let paint_css = |paint: &Paint| -> Result<String> {
             match paint {
-                Paint::Solid { color } => Ok(color_css(*color)),
-                Paint::Resource { id } => {
+                Paint::Solid { color, .. } => Ok(color_css(*color)),
+                Paint::Resource { id, .. } => {
                     Ok(format!("url(#{})", self.svg_resource_id(id.as_str())?))
                 }
             }
@@ -4583,22 +4580,18 @@ impl<'a> DocumentSvgEncoder<'a> {
         self.output.push_str(attribute)?;
         self.output.push_str("=\"")?;
         match paint {
-            Paint::Solid { color } => {
+            Paint::Solid { color, .. } => {
                 self.output.push_str(color_css(*color).as_str())?;
                 self.output.push('"')?;
-                if color.alpha != u8::MAX {
-                    write!(
-                        self.output,
-                        " {}-opacity=\"{}\"",
-                        attribute,
-                        fmt(f64::from(color.alpha) / 255.0),
-                    )?;
-                }
             }
-            Paint::Resource { id } => {
+            Paint::Resource { id, .. } => {
                 let svg_id = self.svg_resource_id(id.as_str())?;
                 write!(self.output, "url(#{})\"", escaped_attr(svg_id.as_str()))?;
             }
+        }
+        let opacity = paint_opacity(paint);
+        if opacity != 1.0 {
+            write!(self.output, " {}-opacity=\"{}\"", attribute, fmt(opacity))?;
         }
         Ok(())
     }
@@ -5219,6 +5212,14 @@ fn escaped_css_string(value: &str) -> String {
 
 fn color_css(color: Color) -> String {
     format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue)
+}
+
+/// SVG may spell the product as paint opacity without quantizing it back to RGBA8.
+fn paint_opacity(paint: &Paint) -> f64 {
+    match paint {
+        Paint::Solid { color, opacity } => f64::from(color.alpha) / 255.0 * opacity,
+        Paint::Resource { opacity, .. } => *opacity,
+    }
 }
 
 fn opacity_attr(alpha: u8) -> String {

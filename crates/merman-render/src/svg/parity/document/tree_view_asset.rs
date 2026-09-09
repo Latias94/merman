@@ -117,12 +117,8 @@ pub(super) fn scope_projections<'a>(
         if !candidate.uniform {
             continue;
         }
-        // Public paint alpha combines color alpha and paint opacity. Their original factors
-        // cannot be recovered, so never project the combined value as an inherited opacity.
-        let mut inherited = candidate.inherited.without(AssetStyleProperties::of(&[
-            Property::FillOpacity,
-            Property::StrokeOpacity,
-        ]));
+        // Intrinsic color alpha and inherited paint opacity are separate public values.
+        let mut inherited = candidate.inherited;
         if style.stroke.is_none() {
             inherited = inherited.without(AssetStyleProperties::of(&[
                 Property::StrokeWidth,
@@ -423,7 +419,11 @@ impl DocumentSvgEncoder<'_> {
         if style.fill.is_some() {
             available = available.union(AssetStyleProperties::of(&[Property::FillOpacity]));
         }
-        if matches!(style.fill, Some(Paint::Solid { color }) if color.alpha != u8::MAX) {
+        if style
+            .fill
+            .as_ref()
+            .is_some_and(|paint| paint.opacity() != 1.0)
+        {
             attributes = attributes.union(AssetStyleProperties::of(&[Property::FillOpacity]));
         }
         if let Some(stroke) = &style.stroke {
@@ -442,7 +442,7 @@ impl DocumentSvgEncoder<'_> {
                 Property::StrokeLineJoin,
                 Property::StrokeMiterLimit,
             ]));
-            if matches!(stroke.paint, Paint::Solid { color } if color.alpha != u8::MAX) {
+            if stroke.paint.opacity() != 1.0 {
                 attributes = attributes.union(AssetStyleProperties::of(&[Property::StrokeOpacity]));
             }
             if !stroke.dash_array.is_empty() {
@@ -520,8 +520,13 @@ impl DocumentSvgEncoder<'_> {
                     stroke.map(|s| &s.paint)
                 };
                 match paint {
-                    Some(Paint::Solid { color }) => self.output.push_str(&color_css(*color))?,
-                    Some(Paint::Resource { id }) => {
+                    Some(Paint::Solid { color, .. }) => {
+                        self.output.push_str(&color_css(*color))?;
+                        if color.alpha != u8::MAX {
+                            write!(self.output, "{:02x}", color.alpha)?;
+                        }
+                    }
+                    Some(Paint::Resource { id, .. }) => {
                         let svg_id = self.svg_resource_id(id.as_str())?;
                         write!(self.output, "url(#{})", escaped_attr(&svg_id))?;
                     }
@@ -534,10 +539,7 @@ impl DocumentSvgEncoder<'_> {
                 } else {
                     stroke.map(|s| &s.paint)
                 };
-                let opacity = match paint {
-                    Some(Paint::Solid { color }) => f64::from(color.alpha) / 255.0,
-                    _ => 1.0,
-                };
+                let opacity = paint.map_or(1.0, Paint::opacity);
                 write!(self.output, "{}", fmt(opacity))?;
             }
             Property::FillRule => self.output.push_str(fill_rule_name(style.fill_rule))?,

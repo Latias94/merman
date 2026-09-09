@@ -236,14 +236,14 @@ impl DocumentSvgEncoder<'_> {
                 path_d(&path.segments)
             )?;
         }
-        let Paint::Solid { color } = combined.fill else {
+        let Paint::Solid { color, opacity } = combined.fill else {
             return Err(invalid("Cynefin combined fill must be solid"));
         };
         write!(
             self.output,
             " fill=\"{}\" fill-opacity=\"{}\"",
             color_css(*color),
-            fmt(combined.opacity * f64::from(color.alpha) / 255.0)
+            fmt(combined.opacity * f64::from(color.alpha) / 255.0 * opacity)
         )?;
         let shared = self
             .cynefin_path_styles
@@ -289,7 +289,7 @@ impl DocumentSvgEncoder<'_> {
             let Some(style) = style else {
                 continue;
             };
-            let Paint::Solid { color } = style.fill else {
+            let Paint::Solid { color, .. } = style.fill else {
                 return Err(invalid("Cynefin shared text paint must be solid"));
             };
             let font = self.font_families(&style.font)?;
@@ -304,7 +304,7 @@ impl DocumentSvgEncoder<'_> {
                 font_style(style.font.style),
                 fmt(style.letter_spacing),
                 color_css(color),
-                fmt(f64::from(color.alpha) / 255.0)
+                fmt(paint_opacity(&style.fill))
             )?;
         }
         for (class, style) in &self.cynefin_path_styles {
@@ -313,14 +313,14 @@ impl DocumentSvgEncoder<'_> {
             };
             write!(self.output, "#{} .{}{{", self.diagram_id, class)?;
             if let Some(stroke) = style.stroke {
-                let Paint::Solid { color } = stroke.paint else {
+                let Paint::Solid { color, .. } = stroke.paint else {
                     return Err(invalid("Cynefin shared stroke must be solid"));
                 };
                 write!(
                     self.output,
                     "stroke:{};stroke-opacity:{};stroke-width:{};stroke-linecap:{};stroke-linejoin:{};stroke-miterlimit:{};stroke-dashoffset:{};stroke-dasharray:",
                     color_css(color),
-                    fmt(f64::from(color.alpha) / 255.0),
+                    fmt(paint_opacity(&stroke.paint)),
                     fmt(stroke.width),
                     line_cap(stroke.line_cap),
                     line_join(stroke.line_join),
@@ -341,12 +341,12 @@ impl DocumentSvgEncoder<'_> {
                 self.output.push_str("stroke:none;")?;
             }
             if class == "cynefinArrowHead" {
-                if let Some(Paint::Solid { color }) = style.marker_fill {
+                if let Some(paint @ Paint::Solid { color, .. }) = style.marker_fill {
                     write!(
                         self.output,
                         "fill:{};fill-opacity:{};",
                         color_css(*color),
-                        fmt(f64::from(color.alpha) / 255.0)
+                        fmt(paint_opacity(paint))
                     )?;
                 } else {
                     self.output.push_str("fill:none;")?;
@@ -423,13 +423,13 @@ impl DocumentSvgEncoder<'_> {
         if class == "cynefinDomain"
             && style.stroke.is_none()
             && self.state.blend_mode == BlendMode::Normal
-            && let Some(Paint::Solid { color }) = style.fill
+            && let Some(ref paint @ Paint::Solid { color, .. }) = style.fill
         {
             write!(
                 self.output,
                 " fill=\"{}\" fill-opacity=\"{}\" stroke=\"none\"",
                 color_css(color),
-                fmt(f64::from(color.alpha) / 255.0 * self.state.opacity)
+                fmt(paint_opacity(paint) * self.state.opacity)
             )?;
             self.write_transform_and_blend()?;
             self.output.push_str("/>")?;
@@ -548,7 +548,7 @@ impl DocumentSvgEncoder<'_> {
             // the exact source marker placement can be projected into marker-end syntax.
             return Ok(false);
         }
-        let Some(Paint::Solid { color }) = arrow_style.fill.as_ref() else {
+        let Some(paint @ Paint::Solid { color, .. }) = arrow_style.fill.as_ref() else {
             return Ok(false);
         };
         if arrow_style.stroke.is_some() {
@@ -578,7 +578,7 @@ impl DocumentSvgEncoder<'_> {
                 "<path d=\"{}\" class=\"cynefinArrowHead\" fill=\"{}\" fill-opacity=\"{}\" fill-rule=\"{}\" stroke=\"none\"/>",
                 escaped_attr(path_d(&arrow.segments).with_lowercase_close()),
                 color_css(*color),
-                fmt(f64::from(color.alpha) / 255.0),
+                fmt(paint_opacity(paint)),
                 fill_rule_name(arrow_style.fill_rule),
             )
         };

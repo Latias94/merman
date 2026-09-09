@@ -2736,7 +2736,7 @@ mod tests {
                 "{property}"
             );
         }
-        assert_eq!(group.attribute("fill-opacity"), None);
+        assert_eq!(group.attribute("fill-opacity"), Some("0.5"));
         let children: Vec<_> = group.children().filter(|node| node.is_element()).collect();
         assert_eq!(children.len(), 2);
         for property in ["fill", "stroke", "stroke-width", "stroke-linecap"] {
@@ -2748,18 +2748,15 @@ mod tests {
         }
         assert_eq!(
             children[0].attribute("fill-opacity"),
-            Some("0.5019607843137255"),
-            "combined paint alpha remains local"
+            None,
+            "inherited paint opacity remains on the source group"
         );
         assert_eq!(
             children[1].attribute("fill"),
             Some("#123456"),
             "explicit child declarations stay local"
         );
-        assert_eq!(
-            children[1].attribute("fill-opacity"),
-            Some("0.5019607843137255")
-        );
+        assert_eq!(children[1].attribute("fill-opacity"), Some("0.5"));
         for id in [ids[0], ids[2]] {
             assert_eq!(
                 xml.descendants()
@@ -2783,7 +2780,7 @@ mod tests {
             .unwrap();
         assert_eq!(group.attribute("fill"), None);
         let children: Vec<_> = group.children().filter(|node| node.is_element()).collect();
-        assert_eq!(children[0].attribute("fill"), Some("#ff0000"));
+        assert_eq!(children[0].attribute("fill"), Some("#ff000080"));
         assert_eq!(children[1].attribute("fill"), Some("#123456"));
         // Matching edits recover the shared source placement using the new public color.
         for command in &mut document.public.commands {
@@ -2799,11 +2796,12 @@ mod tests {
             .descendants()
             .find(|node| node.attribute("id") == Some(ids[1]))
             .unwrap();
-        assert_eq!(group.attribute("fill"), Some("#ff0000"));
+        assert_eq!(group.attribute("fill"), Some("#ff000080"));
     }
 
     #[test]
-    fn tree_view_registered_groups_do_not_promote_combined_paint_alpha() {
+    fn tree_view_registered_groups_preserve_independent_paint_opacity() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
         let pack = serde_json::json!({"prefix":"test","width":24,"height":24,"icons":{"alpha":{"body":r##"<g fill-opacity="0.5" style="stroke-opacity:0.25"><path fill="#ff000080" stroke="#0000ff80" d="M0 0H4V4Z"/><path fill="#ff000080" stroke="#0000ff80" d="M5 0H9V4Z"/></g>"##}}});
         let registry = crate::svg::IconRegistry::from_packs([crate::svg::IconPack::new(
             &serde_json::to_vec(&pack).unwrap(),
@@ -2821,7 +2819,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
-        let document = crate::drawing_list::build_for_family(
+        let mut document = crate::drawing_list::build_for_family(
             &artifact.family,
             &artifact.metadata,
             DrawingListPolicy::VectorOnly,
@@ -2829,35 +2827,65 @@ mod tests {
             &artifact.session,
         )
         .unwrap();
-        let svg = crate::svg::render_document_svg(
-            &document,
-            &SvgRenderOptions::default(),
-            &SvgDebugOptions::default(),
-            artifact.metadata.effective_config.as_value(),
-            &artifact.session,
-        )
-        .unwrap();
+        let render = |document: &crate::drawing_list::RenderDocument| {
+            crate::svg::render_document_svg(
+                document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap()
+        };
+        for command in &document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str().contains(".asset.shape.")
+            {
+                assert_eq!(
+                    style.fill,
+                    Some(Paint::solid(Color::rgba(255, 0, 0, 128)).with_opacity(0.5))
+                );
+                assert_eq!(style.stroke.as_ref().unwrap().paint.opacity(), 0.25);
+            }
+        }
+        let svg = render(&document);
         let xml = roxmltree::Document::parse(&svg).unwrap();
         let paths: Vec<_> = xml
             .descendants()
-            .filter(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#ff0000"))
+            .filter(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#ff000080"))
             .collect();
         assert_eq!(paths.len(), 2);
         for path in paths {
-            assert_eq!(path.attribute("fill-opacity"), Some("0.25098039215686274"));
-            assert_eq!(
-                path.attribute("stroke-opacity"),
-                Some("0.12549019607843137")
-            );
+            assert_eq!(path.attribute("fill-opacity"), None);
+            assert_eq!(path.attribute("stroke-opacity"), None);
+            assert_eq!(path.attribute("stroke"), Some("#0000ff80"));
             let group = path.parent().unwrap();
-            assert_eq!(group.attribute("fill-opacity"), None);
+            assert_eq!(group.attribute("fill-opacity"), Some("0.5"));
             assert_eq!(group.attribute("stroke-opacity"), None);
-            assert!(
-                !group
-                    .attribute("style")
-                    .unwrap_or_default()
-                    .contains("opacity")
-            );
+            assert_eq!(group.attribute("style"), Some("stroke-opacity:0.25;"));
+        }
+        // Editing only public opacity must leave intrinsic color alpha unchanged and
+        // rebuild the inherited declarations, not replay the source factors.
+        for command in &mut document.public.commands {
+            if let DrawingCommand::DrawPath { path, style } = command
+                && path.as_str().contains(".asset.shape.")
+            {
+                style.fill = style.fill.take().map(|paint| paint.with_opacity(0.75));
+                let stroke = style.stroke.as_mut().unwrap();
+                stroke.paint = stroke.paint.clone().with_opacity(0.125);
+            }
+        }
+        let svg = render(&document);
+        let xml = roxmltree::Document::parse(&svg).unwrap();
+        let paths: Vec<_> = xml
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("fill") == Some("#ff000080"))
+            .collect();
+        assert_eq!(paths.len(), 2);
+        for path in paths {
+            let group = path.parent().unwrap();
+            assert_eq!(group.attribute("fill-opacity"), Some("0.75"));
+            assert_eq!(group.attribute("style"), Some("stroke-opacity:0.125;"));
         }
     }
 
@@ -2969,9 +2997,7 @@ mod tests {
             .unwrap();
         assert_ne!(path.attribute("d"), Some("M12 1H20V8H12Z"));
         let inline = path.attribute("style").unwrap();
-        assert!(inline.contains(
-            "fill:#ff0000;stroke:none;fill-opacity:0.5019607843137255;stroke-opacity:1;"
-        ));
+        assert!(inline.contains("fill:#ff000080;stroke:none;fill-opacity:1;stroke-opacity:1;"));
         assert!(inline.contains("mix-blend-mode:multiply;"));
         assert!(!inline.contains("#10a020"));
     }
@@ -3331,14 +3357,8 @@ mod tests {
             })
             .unwrap();
         assert!(rect.has_tag_name("rect"));
-        assert_eq!(rect.attribute("fill"), Some("#ff0000"));
-        assert!(
-            rect.attribute("fill-opacity")
-                .unwrap()
-                .parse::<f64>()
-                .unwrap()
-                > 0.5
-        );
+        assert_eq!(rect.attribute("fill"), Some("#ff000080"));
+        assert_eq!(rect.attribute("fill-opacity"), None);
         // Edited public geometry is drawn generically, never replaced by the old rectangle.
         for resource in &mut document.public.resources {
             if let DrawingResource::Path(path) = resource
@@ -7823,9 +7843,9 @@ gantt
             if let DrawingCommand::DrawPath { path, style } = command
                 && path.as_str() == "journey.task.0.face.mouth"
             {
-                style.fill = Some(merman_display_list::Paint::Resource {
-                    id: "mouth-gradient".into(),
-                });
+                style.fill = Some(merman_display_list::Paint::resource(
+                    "mouth-gradient".into(),
+                ));
             }
         }
         let svg = crate::svg::render_document_svg(
@@ -7989,9 +8009,7 @@ gantt
         else {
             unreachable!()
         };
-        style.fill = Some(Paint::Resource {
-            id: "edited-gradient".into(),
-        });
+        style.fill = Some(Paint::resource("edited-gradient".into()));
         let stroke = style.stroke.as_mut().unwrap();
         stroke.paint = Paint::solid(Color::rgba(12, 34, 56, 128));
         stroke.width = 3.0;
@@ -8954,6 +8972,105 @@ gantt
                             bounds.width
                         );
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn generic_svg_preserves_solid_and_resource_paint_opacity() {
+        use merman_display_list::{
+            Color, DrawingCommand, DrawingResource, GradientSpread, GradientStop,
+            LinearGradientResource, Paint, Point, Transform,
+        };
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("info", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        document
+            .public
+            .resources
+            .push(DrawingResource::LinearGradient(LinearGradientResource {
+                id: "paint-opacity-gradient".into(),
+                start: Point::new(0.0, 0.0),
+                end: Point::new(10.0, 0.0),
+                transform: Transform::IDENTITY,
+                spread: GradientSpread::Pad,
+                stops: vec![
+                    GradientStop::new(0.0, Color::rgba(255, 0, 0, 128)),
+                    GradientStop::new(1.0, Color::rgba(0, 0, 255, 255)),
+                ],
+            }));
+        for (paint, opacity) in [
+            (
+                Paint::solid(Color::rgba(255, 0, 0, 128)).with_opacity(0.5),
+                128.0 / 255.0 * 0.5,
+            ),
+            (
+                Paint::resource("paint-opacity-gradient".into()).with_opacity(0.375),
+                0.375,
+            ),
+        ] {
+            let stroke = merman_display_list::StrokeStyle {
+                paint: paint.clone(),
+                width: 1.0,
+                dash_array: Vec::new(),
+                dash_offset: 0.0,
+                line_cap: merman_display_list::LineCap::Butt,
+                line_join: merman_display_list::LineJoin::Miter,
+                miter_limit: 4.0,
+            };
+            for command in &mut document.public.commands {
+                match command {
+                    DrawingCommand::DrawPath { style, .. } => {
+                        style.fill = Some(paint.clone());
+                        style.stroke = Some(stroke.clone());
+                    }
+                    DrawingCommand::DrawText { run } => {
+                        run.style.fill = paint.clone();
+                        run.style.stroke = Some(stroke.clone());
+                    }
+                    _ => {}
+                }
+            }
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &drawing_list_svg_diagnostics(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let shapes: Vec<_> = xml
+                .descendants()
+                .filter(|node| {
+                    node.attribute("data-merman-resource") == Some("info.background")
+                        || node.has_tag_name("text")
+                })
+                .collect();
+            assert_eq!(shapes.len(), 2);
+            for shape in shapes {
+                for attribute in ["fill-opacity", "stroke-opacity"] {
+                    let actual: f64 = shape.attribute(attribute).unwrap().parse().unwrap();
+                    assert_eq!(
+                        actual, opacity,
+                        "{attribute} must preserve the floating-point factor"
+                    );
+                }
+                if matches!(paint, Paint::Resource { .. }) {
+                    assert!(shape.attribute("fill").unwrap().starts_with("url(#"));
+                    assert!(shape.attribute("stroke").unwrap().starts_with("url(#"));
                 }
             }
         }
@@ -10185,6 +10302,7 @@ gantt
                         blue: 56,
                         alpha: 255,
                     },
+                    opacity: 1.0,
                 };
                 stroke.width = 3.25;
             }
@@ -10291,7 +10409,7 @@ gantt
                 .as_ref()
                 .or_else(|| style.stroke.as_ref().map(|stroke| &stroke.paint))
                 .unwrap();
-            assert!(matches!(paint, Paint::Solid { color } if color.alpha == 255));
+            assert!(matches!(paint, Paint::Solid { color, .. } if color.alpha == 255));
         }
         assert!(document.public.commands.iter().any(|command| matches!(command,
             DrawingCommand::DrawPath { path, style } if path.as_str() == "venn.area.2.shape" && style.fill.is_none() && style.stroke.is_none()
@@ -10643,7 +10761,7 @@ gantt
                 _ => None,
             })
             .unwrap();
-        assert!(matches!(run.style.fill, Paint::Solid { color } if color.alpha == 0));
+        assert!(matches!(run.style.fill, Paint::Solid { color, .. } if color.alpha == 0));
         assert_eq!(
             document
                 .public
@@ -10898,7 +11016,7 @@ gantt
             assert_eq!(*actual, opacity);
             assert_eq!(fill_id, stroke_id);
             assert!(fill.stroke.is_none());
-            assert!(matches!(fill.fill, Some(Paint::Solid { color }) if color.alpha == 255));
+            assert!(matches!(fill.fill, Some(Paint::Solid { color, .. }) if color.alpha == 255));
             assert!(stroke.fill.is_none() && stroke.stroke.is_some());
         }
         assert_eq!(observed.len(), 3);
