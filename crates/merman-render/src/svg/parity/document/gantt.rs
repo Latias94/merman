@@ -388,6 +388,45 @@ impl DocumentSvgEncoder<'_> {
         if !matches!(self.svg_body, SvgStructureBody::Gantt(_)) {
             return Ok(false);
         }
+        if semantic_id == "gantt.today" {
+            let semantic = self
+                .semantics
+                .get(semantic_id)
+                .copied()
+                .ok_or_else(|| invalid("Gantt today marker has no semantic annotation"))?;
+            if semantic.link.is_some()
+                || semantic.role != SemanticRole::Label
+                || !self.debug_visibility(semantic.role)
+            {
+                return Ok(false);
+            }
+            // Mermaid's today collection contains only its marker. Keep accessible metadata
+            // as attributes, so a synthetic title does not change its direct-child contract.
+            let svg_id = self.semantic_svg_id(semantic_id)?;
+            write!(
+                self.output,
+                "<g class=\"today\" id=\"{}\" role=\"group\" data-merman-semantic-id=\"gantt.today\"",
+                escaped_attr(&svg_id)
+            )?;
+            if let Some(title) = &semantic.title {
+                write!(self.output, " aria-label=\"{}\"", escaped_attr(title))?;
+            }
+            if let Some(description) = &semantic.description {
+                write!(
+                    self.output,
+                    " aria-description=\"{}\"",
+                    escaped_attr(description)
+                )?;
+            }
+            self.output.push('>')?;
+            self.groups.push(GroupKind::Semantic {
+                linked: false,
+                emitted: true,
+                semantic_id: semantic_id.to_owned(),
+                projected_transform: Transform::IDENTITY,
+            });
+            return Ok(true);
+        }
         let axis = matches!(semantic_id, "gantt.axis.bottom" | "gantt.axis.top");
         if axis
             && self.semantics.get(semantic_id).is_some_and(|semantic| {

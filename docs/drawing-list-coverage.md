@@ -332,6 +332,12 @@ The later historical report listing only six mismatches must not be used as proo
 Gantt has only six remaining differences. Explicit paint/semantic attributes, source element
 attributes, and today-marker structure remain open; no comparator rules were relaxed.
 
+The today-marker follow-up restores the source's exact `today` group class and line-only child
+structure. Public accessible title/description are projected as ARIA attributes rather than extra
+child elements, and edited metadata remains observable. Linked or debug-hidden semantic scopes
+retain the generic projection. All 38 focused Gantt tests pass; this does not resolve the remaining
+paint attributes or admit the family.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,
@@ -646,6 +652,12 @@ than resolve that structural contract: SVG must retain the already-resolved publ
 Quoted whitespace labels also preserve Mermaid's truthiness-before-normalization order: `[" "]`
 normalizes to empty paint while retaining its semantic anchor, whereas `[""]` is absent and uses
 the node ID.
+
+A September 9 refresh at `0202f8730` with temporary canonical route/coverage admission reproduces
+the same three text-node structural failures across all 12 fixtures, with no skips or route
+fallbacks (`target/compare/venn_0202f8730_canonical_structure.md`). The ordinary legacy-route run
+passes all 12 and is not canonical evidence. Temporary admission was removed; the text projection
+contract above remains the outstanding decision, not an obsolete report or a paint regression.
 
 ## Exercised effect accounting
 

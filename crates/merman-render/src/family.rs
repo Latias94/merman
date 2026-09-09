@@ -2743,6 +2743,61 @@ mod tests {
     }
 
     #[test]
+    fn gantt_today_collection_preserves_marker_children_and_public_metadata() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "gantt\ndateFormat YYYY-MM-DD\nTask :a, 2026-01-01, 2d\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+        let mut document = crate::drawing_list::build_for_family(
+            &artifact.family,
+            &artifact.metadata,
+            DrawingListPolicy::VectorOnly,
+            DrawingListLimits::default(),
+            &artifact.session,
+        )
+        .unwrap();
+        for (title, description) in [
+            ("Today", None),
+            ("Edited marker", Some("Public description")),
+        ] {
+            let semantic = document
+                .public
+                .semantics
+                .iter_mut()
+                .find(|semantic| semantic.id == "gantt.today")
+                .unwrap();
+            semantic.title = Some(title.to_owned());
+            semantic.description = description.map(str::to_owned);
+            let svg = crate::svg::render_document_svg(
+                &document,
+                &SvgRenderOptions::default(),
+                &SvgDebugOptions::default(),
+                artifact.metadata.effective_config.as_value(),
+                &artifact.session,
+            )
+            .unwrap();
+            let xml = roxmltree::Document::parse(&svg).unwrap();
+            let group = xml
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("today"))
+                .unwrap();
+            assert_eq!(group.attribute("aria-label"), Some(title));
+            assert_eq!(group.attribute("aria-description"), description);
+            let children: Vec<_> = group
+                .children()
+                .filter(roxmltree::Node::is_element)
+                .collect();
+            assert_eq!(children.len(), 1);
+            assert!(children[0].has_tag_name("line"));
+            assert_eq!(children[0].attribute("class"), Some("today"));
+        }
+    }
+
+    #[test]
     fn gantt_candidate_root_projects_public_collections_and_authored_accessibility() {
         use merman_display_list::{Color, DrawingCommand, Paint};
 
