@@ -269,7 +269,11 @@ impl<'a> GanttBuilder<'a> {
                 body: SvgStructureBody::Gantt(GanttSvgBody {
                     diagram_type: self.metadata.diagram_type.clone(),
                     expose_accessibility_title: acc_title.is_some(),
-                    bar_height: self.layout.bar_height,
+                    task_text_height_attribute: matches!(
+                        self.navigation_security,
+                        MermaidNavigationSecurity::Loose
+                    )
+                    .then_some(self.layout.bar_height),
                     semantic_classes: self.semantic_classes,
                     path_classes: self.path_classes,
                     text_classes: self.text_classes,

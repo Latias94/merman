@@ -2764,6 +2764,73 @@ mod tests {
     }
 
     #[test]
+    fn gantt_task_dom_attribute_uses_document_policy_in_both_text_projections() {
+        use merman_display_list::{Color, DrawingCommand, Paint};
+        for source_security in ["strict", "loose"] {
+            let parsed = Engine::new()
+                .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                    "securityLevel": source_security,
+                    "gantt": { "barHeight": 28 }
+                })))
+                .parse_diagram_for_render_model_sync(
+                    "gantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nTask :a, 2026-01-01, 1d\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let artifact = prepare(parsed, &LayoutOptions::default(), session()).unwrap();
+            let mut document = crate::drawing_list::build_for_family(
+                &artifact.family,
+                &artifact.metadata,
+                DrawingListPolicy::VectorOnly,
+                DrawingListLimits::default(),
+                &artifact.session,
+            )
+            .unwrap();
+            for alpha in [255, 128] {
+                let run = document
+                    .public
+                    .commands
+                    .iter_mut()
+                    .find_map(|command| match command {
+                        DrawingCommand::DrawText { run } if run.text == "Task" => Some(run),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_ne!(
+                    run.bounds.height, 28.0,
+                    "DOM annotation is not text geometry"
+                );
+                run.style.fill = Paint::solid(Color::rgba(18, 52, 86, alpha));
+                for encoder_security in ["strict", "loose"] {
+                    let svg = crate::svg::render_document_svg(
+                        &document,
+                        &SvgRenderOptions::default(),
+                        &SvgDebugOptions::default(),
+                        &json!({"securityLevel": encoder_security}),
+                        &artifact.session,
+                    )
+                    .unwrap();
+                    let xml = roxmltree::Document::parse(&svg).unwrap();
+                    let label = xml
+                        .descendants()
+                        .find(|node| node.has_tag_name("text") && node.text() == Some("Task"))
+                        .unwrap();
+                    assert_eq!(
+                        label.attribute("text-height"),
+                        (source_security == "loose").then_some("28"),
+                        "source={source_security}, encoder={encoder_security}, alpha={alpha}"
+                    );
+                    assert_eq!(
+                        label.attribute("data-merman-bounds").is_some(),
+                        alpha != 255
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn gantt_section_text_projects_public_lines_including_empty_lines() {
         use merman_display_list::{DrawingCommand, TextBaseline};
         for (section, expected, offsets, preserve, second_preserve) in [

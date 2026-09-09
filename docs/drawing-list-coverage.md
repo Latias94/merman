@@ -414,6 +414,13 @@ whitespace; ordinary labels keep the source default, while edited or translucent
 retains meaningful spaces. The 43 focused Gantt tests cover both projection and edited-document
 fallback. The full-family structural report above predates these changes.
 
+The non-visual task `text-height` annotation is captured once in the SVG structural sidecar under
+the document's source security policy. Both text projections share that attribute writer and no
+longer reread encoder configuration or confuse the annotation with measured text bounds. The
+44 focused Gantt tests cover strict/loose source policy, changed encoder policy and both opaque
+compact text and translucent generic text. This removes one external configuration dependency;
+it does not imply that all serializer configuration dependencies have been removed.
+
 ### Journey color correction
 
 The direct adapter resolves section and task backgrounds from the theme's `fillTypeN` rules,

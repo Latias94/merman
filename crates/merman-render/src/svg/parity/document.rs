@@ -3436,18 +3436,7 @@ impl<'a> DocumentSvgEncoder<'a> {
             output::escape_attr(&mut self.output, language)?;
             self.output.push('"')?;
         }
-        if let SvgStructureBody::Gantt(body) = self.svg_body
-            && self
-                .effective_config
-                .get("securityLevel")
-                .and_then(Value::as_str)
-                == Some("loose")
-            && self
-                .current_semantic_id()
-                .is_some_and(|id| id.starts_with("gantt.task."))
-        {
-            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))?;
-        }
+        self.write_gantt_task_text_height()?;
         self.write_paint("fill", &run.style.fill)?;
         if let Some(stroke) = &run.style.stroke {
             self.write_stroke_style(Some(stroke))?;

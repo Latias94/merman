@@ -3,6 +3,19 @@
 use super::*;
 
 impl DocumentSvgEncoder<'_> {
+    pub(super) fn write_gantt_task_text_height(&mut self) -> Result<()> {
+        if let SvgStructureBody::Gantt(body) = self.svg_body
+            && let Some(height) = body.task_text_height_attribute
+            && self
+                .current_semantic_id()
+                .is_some_and(|id| id.starts_with("gantt.task."))
+        {
+            // This source DOM annotation is not the run's measured or painted height.
+            write!(self.output, " text-height=\"{}\"", fmt(height))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn write_gantt_title_name(&mut self, run: &TextRun) -> Result<()> {
         if !matches!(self.svg_body, SvgStructureBody::Gantt(_))
             || !matches!(self.groups.last(), Some(GroupKind::Semantic {
@@ -159,15 +172,7 @@ impl DocumentSvgEncoder<'_> {
             fmt(run.origin.y),
             escaped_attr(class),
         )?;
-        if task
-            && self
-                .effective_config
-                .get("securityLevel")
-                .and_then(Value::as_str)
-                == Some("loose")
-        {
-            write!(self.output, " text-height=\"{}\"", fmt(body.bar_height))?;
-        }
+        self.write_gantt_task_text_height()?;
         // CSS is a projection of the resolved run, not a replay of source class/theme rules.
         // Preserve the public string literally; the adapter already resolved source whitespace.
         self.write_gantt_text_space_attr(run, semantic_id)?;

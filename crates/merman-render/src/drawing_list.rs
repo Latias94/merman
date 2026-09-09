@@ -559,7 +559,8 @@ pub(crate) struct CynefinSvgBody {
 pub(crate) struct GanttSvgBody {
     pub(crate) diagram_type: String,
     pub(crate) expose_accessibility_title: bool,
-    pub(crate) bar_height: f64,
+    /// Non-visual source DOM attribute retained only by the trusted SVG profile.
+    pub(crate) task_text_height_attribute: Option<f64>,
     pub(crate) semantic_classes: BTreeMap<String, String>,
     pub(crate) path_classes: BTreeMap<String, String>,
     pub(crate) text_classes: BTreeMap<String, String>,
