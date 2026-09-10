@@ -719,6 +719,268 @@ fn pie_explicit_default_text_fill_is_typed_and_verified() {
     assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
+fn pie_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let styles = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), |styles, rule| {
+            styles.with_rule(rule.for_family(DiagramFamilyId::PIE))
+        });
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .expect("compile Pie rule evidence fixture")
+}
+
+fn pie_fill_rule(target: ThemeTarget, color: &str) -> ThemeRule {
+    ThemeRule::new(
+        target,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid(color).expect("valid Pie rule evidence color")),
+    )
+}
+
+#[test]
+fn pie_shadowed_default_rules_follow_property_winners() {
+    let source = "pie title Winners\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for target in [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::PieSlice] {
+        for default_first in [true, false] {
+            let earlier = pie_fill_rule(target, "#123456");
+            let later = pie_fill_rule(target, "#abcdef");
+            let rules = if default_first {
+                [earlier.with_variant(ThemeVariant::Default), later]
+            } else {
+                [earlier, later.with_variant(ThemeVariant::Default)]
+            };
+            let theme = pie_rules_theme(rules);
+            let rendered = try_render_pie_with_theme_requirement(
+                source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("a fully shadowed Default rule must be NotApplicable");
+            match target {
+                ThemeTarget::Text | ThemeTarget::Title => {
+                    let selector = if target == ThemeTarget::Text {
+                        "#merman .slice"
+                    } else {
+                        "#merman .pieTitleText"
+                    };
+                    assert_eq!(
+                        pie_stylesheet_property_values(rendered.svg(), selector, "fill"),
+                        ["#abcdef"]
+                    );
+                }
+                ThemeTarget::PieSlice => {
+                    assert_eq!(pie_terminal_fills(rendered.svg()).0, ["#abcdef", "#abcdef"]);
+                }
+                _ => unreachable!("the fixture only contains Pie fill targets"),
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{target:?}/{default_first}");
+            assert_eq!(evidence.accounted_count(), 2, "{target:?}/{default_first}");
+            assert_eq!(evidence.applied_count(), 1, "{target:?}/{default_first}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                1,
+                "{target:?}/{default_first}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "{target:?}/{default_first}"
+            );
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_text_ordinals_are_residual_when_they_win_any_occurrence() {
+    let source = "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for selector in [
+        OrdinalSelector::exact(1).unwrap(),
+        OrdinalSelector::exact(2).unwrap(),
+        OrdinalSelector::cycle(2, 0).unwrap(),
+    ] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            let mut rule = pie_fill_rule(ThemeTarget::Text, "#123456").with_ordinal(selector);
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            let theme = pie_rules_theme([rule]);
+            let rendered = render_pie_with_theme(source, &theme);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{selector:?}/{variant:?}");
+            assert_eq!(evidence.accounted_count(), 1, "{selector:?}/{variant:?}");
+            assert_eq!(evidence.applied_count(), 0, "{selector:?}/{variant:?}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                0,
+                "{selector:?}/{variant:?}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                1,
+                "{selector:?}/{variant:?}"
+            );
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+            let error = match try_render_pie_with_theme_requirement(
+                source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            ) {
+                Ok(_) => panic!("a winning Pie text ordinal must fail closed"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::PIE, 1))
+            );
+        }
+    }
+}
+
+#[test]
+fn pie_text_ordinals_respect_shadowing_and_absent_occurrences() {
+    let source = "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for (source, rule, later_static) in [
+        (
+            source,
+            pie_fill_rule(ThemeTarget::Text, "#123456")
+                .with_ordinal(OrdinalSelector::exact(3).unwrap()),
+            false,
+        ),
+        (
+            "pie\n",
+            pie_fill_rule(ThemeTarget::Text, "#123456")
+                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            false,
+        ),
+        (
+            source,
+            pie_fill_rule(ThemeTarget::Text, "#123456")
+                .with_ordinal(OrdinalSelector::exact(2).unwrap())
+                .with_variant(ThemeVariant::Warning),
+            false,
+        ),
+        (
+            source,
+            pie_fill_rule(ThemeTarget::Text, "#123456")
+                .with_ordinal(OrdinalSelector::exact(2).unwrap())
+                .with_variant(ThemeVariant::Default),
+            true,
+        ),
+    ] {
+        let mut rules = vec![rule];
+        if later_static {
+            rules.push(pie_fill_rule(ThemeTarget::Text, "#abcdef"));
+        }
+        let theme = pie_rules_theme(rules);
+        let rendered = try_render_pie_with_theme_requirement(
+            source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect("a shadowed or absent Pie text ordinal must be NotApplicable");
+        if later_static {
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "fill"),
+                ["#abcdef"]
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1 + usize::from(later_static));
+        assert_eq!(evidence.accounted_count(), evidence.required_count());
+        assert_eq!(evidence.applied_count(), usize::from(later_static));
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_text_ordinal_does_not_select_shared_static_css() {
+    let source = "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for (selector, static_wins) in [
+        (OrdinalSelector::exact(1).unwrap(), true),
+        (OrdinalSelector::exact(2).unwrap(), true),
+        (OrdinalSelector::cycle(1, 0).unwrap(), false),
+    ] {
+        let theme = pie_rules_theme([
+            pie_fill_rule(ThemeTarget::Text, "#abcdef").with_variant(ThemeVariant::Default),
+            pie_fill_rule(ThemeTarget::Text, "#123456").with_ordinal(selector),
+        ]);
+        let rendered = render_pie_with_theme(source, &theme);
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "fill"),
+            ["#abcdef"],
+            "an unsupported ordinal cannot replace the shared CSS fallback"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2, "{selector:?}");
+        assert_eq!(evidence.accounted_count(), 2, "{selector:?}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(static_wins),
+            "{selector:?}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!static_wins),
+            "{selector:?}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 1, "{selector:?}");
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_text_source_fill_suppresses_only_the_owned_rule_property() {
+    let source = r##"%%{init: {"themeVariables": {"pieSectionTextColor": "#abcdef"}}}%%
+pie
+  "Alpha" : 1
+  "Beta" : 1
+"##;
+    for ordinal in [None, Some(OrdinalSelector::exact(2).unwrap())] {
+        for typography_sibling in [false, true] {
+            let mut patch =
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+            if typography_sibling {
+                patch.typography.font_size_px =
+                    merman_render::diagram_theme::Specified::Value(24.0);
+            }
+            let mut rule =
+                ThemeRule::new(ThemeTarget::Text, patch).with_variant(ThemeVariant::Default);
+            if let Some(ordinal) = ordinal {
+                rule = rule.with_ordinal(ordinal);
+            }
+            let theme = pie_rules_theme([rule]);
+            let rendered = render_pie_with_theme(source, &theme);
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), "#merman .slice", "fill"),
+                ["#abcdef"]
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!typography_sibling)
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(typography_sibling)
+            );
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
 #[test]
 fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
     let theme = pie_slice_palette_theme(&["transparent", "#22c55e"]);
@@ -1502,6 +1764,47 @@ fn pie_ordinal_stroke_rules_fail_closed_for_matching_slice_occurrences() {
             Some((DiagramFamilyId::PIE, 1)),
             "{case}"
         );
+    }
+}
+
+#[test]
+fn pie_ordinal_stroke_preserves_static_winners_only_on_uncovered_occurrences() {
+    let source = "pie\n  \"Alpha\" : 1\n  \"Beta\" : 1\n";
+    for with_fill in [false, true] {
+        for (ordinal, static_applied) in [
+            (OrdinalSelector::exact(2).unwrap(), 1),
+            (OrdinalSelector::cycle(1, 0).unwrap(), 0),
+        ] {
+            let stroke_rule = |color| {
+                ThemeRule::new(
+                    ThemeTarget::PieSlice,
+                    ThemeStylePatch::default()
+                        .with_stroke(CanvasPaint::solid(color).expect("valid Pie stroke")),
+                )
+            };
+            let mut rules = vec![
+                stroke_rule("#123456"),
+                stroke_rule("#abcdef").with_ordinal(ordinal),
+            ];
+            if with_fill {
+                rules.push(pie_fill_rule(ThemeTarget::PieSlice, "#456789"));
+            }
+            let theme = pie_rules_theme(rules);
+            let rendered = render_pie_with_theme(source, &theme);
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), "#merman .pieCircle", "stroke"),
+                ["#123456"],
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                static_applied + usize::from(with_fill)
+            );
+            assert_eq!(evidence.not_applicable_count(), 1 - static_applied);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            assert_eq!(evidence.accounted_count(), evidence.required_count());
+        }
     }
 }
 

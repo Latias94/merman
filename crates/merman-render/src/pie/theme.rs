@@ -8,7 +8,8 @@ use crate::config::config_string;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    ResolvedStyleProperty, ResolvedThemeStyle, Specified, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -256,10 +257,10 @@ impl PieThemePlan {
         theme: &ResolvedDiagramTheme,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
-        let mut occurrence_fill_winners = BTreeSet::new();
+        let mut occurrence_winner_properties = BTreeSet::new();
         let mut typed_fill_rules = BTreeSet::new();
         let mut suppressed_fill_rules = BTreeSet::new();
-        let needs_occurrence_fill_winners =
+        let needs_typed_fill_resolution =
             theme
                 .family_mechanism_routes()
                 .iter()
@@ -284,7 +285,7 @@ impl PieThemePlan {
                     } => route.disposition() == FamilyThemeDisposition::TypedAdapter,
                     _ => false,
                 });
-        if needs_occurrence_fill_winners {
+        if needs_typed_fill_resolution {
             for (index, paint) in self.paints.iter_mut().enumerate() {
                 let style = theme.style_with_work_meter(
                     ThemeTarget::PieSlice,
@@ -292,9 +293,11 @@ impl PieThemePlan {
                     Some(index + 1),
                     work_meter,
                 )?;
-                if let Some(origin) = style.fill_resolution().winner() {
-                    occurrence_fill_winners.insert(origin.rule_index());
-                }
+                occurrence_winner_properties.extend(
+                    style
+                        .winner_rule_properties()
+                        .map(|(property, origin)| (origin.rule_index(), property)),
+                );
                 let Some(fill) = resolve_direct_static_fill(
                     theme,
                     &style,
@@ -331,45 +334,21 @@ impl PieThemePlan {
             None,
             work_meter,
         )?;
-        let winner_properties = style
-            .winner_rule_properties()
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
+        let occurrence_count = model.sections.len();
+        let winner_properties =
+            if needs_typed_fill_resolution && self.paints.len() == occurrence_count {
+                occurrence_winner_properties
+            } else {
+                pie_occurrence_winner_properties(
+                    theme,
+                    ThemeTarget::PieSlice,
+                    occurrence_count,
+                    &style,
+                    work_meter,
+                )?
+            };
         self.stroke = typed_static_stroke(theme, &style, slice_site, outer_site);
 
-        let occurrence_count = model.sections.len();
-        // Pie only emits a shared static stroke rule today. Ordinal stroke winners therefore
-        // remain residual, but they must still be observed at the occurrences they match.
-        let has_ordinal_stroke_routes =
-            theme
-                .family_mechanism_routes()
-                .iter()
-                .copied()
-                .any(|route| {
-                    matches!(
-                        route.mechanism(),
-                        FamilyThemeMechanism::RuleFacet {
-                            target: ThemeTarget::PieSlice,
-                            selector: FamilyThemeSelectorShape::Ordinal { .. },
-                            facet: FamilyThemeRuleFacet::Stroke(_),
-                            ..
-                        }
-                    )
-                });
-        let mut occurrence_stroke_winners = BTreeSet::new();
-        if has_ordinal_stroke_routes {
-            for ordinal in 1..=occurrence_count {
-                let occurrence_style = theme.style_with_work_meter(
-                    ThemeTarget::PieSlice,
-                    ThemeVariant::Default,
-                    Some(ordinal),
-                    work_meter,
-                )?;
-                if let Some(origin) = occurrence_style.stroke_resolution().winner() {
-                    occurrence_stroke_winners.insert(origin.rule_index());
-                }
-            }
-        }
         let mut observations = BTreeMap::<usize, PieSliceRuleObservation>::new();
         for route in theme.family_mechanism_routes().iter().copied() {
             let FamilyThemeMechanism::RuleFacet {
@@ -385,21 +364,9 @@ impl PieThemePlan {
             if !selector.ordinal_domain_intersects_occurrence_count(occurrence_count) {
                 continue;
             }
-            let route_won = winner_properties
-                .contains(&(rule_index, resolved_style_property_for_facet(facet)))
-                || (matches!(facet, FamilyThemeRuleFacet::Fill(_))
-                    && occurrence_fill_winners.contains(&rule_index))
-                || (matches!(facet, FamilyThemeRuleFacet::Stroke(_))
-                    && occurrence_stroke_winners.contains(&rule_index));
-            let qualified_variant = matches!(
-                selector,
-                FamilyThemeSelectorShape::Static { variant: Some(_) }
-                    | FamilyThemeSelectorShape::Ordinal {
-                        variant: Some(_),
-                        ..
-                    }
-            );
-            if !route_won && !qualified_variant {
+            let route_won =
+                winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
+            if !route_won {
                 continue;
             }
 
@@ -556,15 +523,7 @@ impl PieThemePlan {
             }
             let route_won =
                 winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            let qualified_variant = matches!(
-                selector,
-                FamilyThemeSelectorShape::Static { variant: Some(_) }
-                    | FamilyThemeSelectorShape::Ordinal {
-                        variant: Some(_),
-                        ..
-                    }
-            );
-            if !route_won && !qualified_variant {
+            if !route_won {
                 continue;
             }
 
@@ -637,16 +596,21 @@ impl PieThemePlan {
             effective_config,
             PIE_SECTION_TEXT_FILL_PATH,
         );
+        // The writer emits one shared CSS rule. Ordinal requests are observed below, but
+        // cannot select this whole-surface fallback on behalf of just the first text node.
         let style = theme.style_with_work_meter(
             ThemeTarget::Text,
             ThemeVariant::Default,
-            Some(1),
+            None,
             work_meter,
         )?;
-        let winner_properties = style
-            .winner_rule_properties()
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
+        let winner_properties = pie_occurrence_winner_properties(
+            theme,
+            ThemeTarget::Text,
+            occurrence_count,
+            &style,
+            work_meter,
+        )?;
         let typed_fill = (!config_owns_fill)
             .then(|| {
                 resolve_direct_static_fill(
@@ -685,15 +649,7 @@ impl PieThemePlan {
             }
             let route_won =
                 winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            let qualified_variant = matches!(
-                selector,
-                FamilyThemeSelectorShape::Static { variant: Some(_) }
-                    | FamilyThemeSelectorShape::Ordinal {
-                        variant: Some(_),
-                        ..
-                    }
-            );
-            if !route_won && !qualified_variant {
+            if !route_won {
                 continue;
             }
 
@@ -735,7 +691,7 @@ impl PieThemePlan {
             } else if let Some(reason) = observation.residual {
                 self.evidence.mark_residual(key, reason);
             } else if observation.incomplete {
-                // Qualified and mixed rules remain fail-closed until every winner is owned.
+                // Mixed rules remain fail-closed until every winning facet is owned.
             } else if observation.fill_pending {
                 pending = Some(key);
             } else {
@@ -1348,6 +1304,47 @@ fn typed_static_stroke(
         slice_site,
         outer_site,
     })
+}
+
+/// Reuses static winners unless ordinal rules require resolution at real Pie occurrences.
+fn pie_occurrence_winner_properties(
+    theme: &ResolvedDiagramTheme,
+    target: ThemeTarget,
+    occurrence_count: usize,
+    static_style: &ResolvedThemeStyle,
+    work_meter: &OperationWorkMeter,
+) -> Result<BTreeSet<(usize, ResolvedStyleProperty)>, OperationWorkError> {
+    if occurrence_count == 0 {
+        return Ok(BTreeSet::new());
+    }
+    work_meter.charge(theme.family_mechanism_routes().len())?;
+    let has_ordinal_rules = theme.family_rules().any(|(_, rule)| {
+        rule.target() == target
+            && rule.ordinal().is_some()
+            && matches!(rule.variant(), None | Some(ThemeVariant::Default))
+    });
+    if !has_ordinal_rules {
+        return Ok(static_style
+            .winner_rule_properties()
+            .map(|(property, origin)| (origin.rule_index(), property))
+            .collect());
+    }
+    let mut winners = BTreeSet::new();
+    for ordinal in 1..=occurrence_count {
+        work_meter.charge(1)?;
+        let style = theme.style_with_work_meter(
+            target,
+            ThemeVariant::Default,
+            Some(ordinal),
+            work_meter,
+        )?;
+        winners.extend(
+            style
+                .winner_rule_properties()
+                .map(|(property, origin)| (origin.rule_index(), property)),
+        );
+    }
+    Ok(winners)
 }
 
 #[derive(Debug, Default)]
