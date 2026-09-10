@@ -89,11 +89,16 @@ class NpmCli:
             raise PackageGroupError(
                 f"npm view {package}@{version} returned invalid JSON"
             ) from exc
-        if not isinstance(value, str) or not INTEGRITY_RE.fullmatch(value):
+        if (
+            not isinstance(value, list)
+            or len(value) != 1
+            or not isinstance(value[0], str)
+            or not INTEGRITY_RE.fullmatch(value[0])
+        ):
             raise PackageGroupError(
                 f"npm view {package}@{version} returned invalid dist.integrity"
             )
-        return value
+        return value[0]
 
     def dist_tag(self, package: str, tag: str) -> str | None:
         result = subprocess.run(
@@ -115,9 +120,9 @@ class NpmCli:
             raise PackageGroupError(
                 f"npm view {package} dist-tags returned invalid JSON"
             ) from exc
-        if not isinstance(value, dict):
+        if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], dict):
             raise PackageGroupError(f"npm view {package} dist-tags returned invalid JSON")
-        observed = value.get(tag)
+        observed = value[0].get(tag)
         if observed is not None and not isinstance(observed, str):
             raise PackageGroupError(
                 f"npm view {package} dist-tag {tag!r} is not a version string"

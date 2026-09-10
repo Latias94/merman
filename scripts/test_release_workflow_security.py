@@ -407,7 +407,7 @@ jobs:
                     assert_no_npm_provenance_disable(self, read(path))
 
     def test_release_package_workflows_pin_node_toolchain(self) -> None:
-        expected = 'node-version: "24.13.1"'
+        expected = 'node-version: "24.21.0"'
         for path in (
             WORKFLOW_ROOT / "release-web.yml",
             WORKFLOW_ROOT / "release-node.yml",

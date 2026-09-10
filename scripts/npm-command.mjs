@@ -1,6 +1,29 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 
+export function npmPackRecord(output, packageName, { allowNpm11 = false } = {}) {
+  const metadata = JSON.parse(output);
+  let records = [];
+  if (allowNpm11 && Array.isArray(metadata)) {
+    records = metadata;
+  } else if (
+    metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
+    Object.keys(metadata).length === 1 && Object.hasOwn(metadata, packageName)
+  ) {
+    records = [metadata[packageName]];
+  }
+  if (
+    records.length !== 1 ||
+    !records[0] ||
+    typeof records[0] !== "object" ||
+    Array.isArray(records[0]) ||
+    records[0].name !== packageName
+  ) {
+    throw new Error(`npm pack must report exactly one package named ${packageName}.`);
+  }
+  return records[0];
+}
+
 export function npmCommand(
   args,
   {

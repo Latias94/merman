@@ -17,15 +17,18 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24.13.1
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.0
+        uses: taiki-e/install-action@v2.87.9
         with:
           tool: nextest
 
@@ -52,9 +55,12 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24.13.1
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Python
         uses: actions/setup-python@v7.0.0
@@ -85,9 +91,12 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24.13.1
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install grammar toolchain
         run: |
@@ -109,9 +118,12 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24.13.1
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: distribution/tree-sitter-mermaid/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

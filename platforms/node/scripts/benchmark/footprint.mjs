@@ -23,6 +23,7 @@ import { digestJson } from "../stable-json.mjs";
 import { svgTransportEvidence } from "./svg-signature.mjs";
 import {
   assertSuccessfulNpmSpawn,
+  npmPackRecord,
   spawnNpmSync,
 } from "../../../../scripts/npm-command.mjs";
 
@@ -211,7 +212,8 @@ function npmPack(packageRoot, tarRoot) {
     encoding: "utf8",
   });
   assertSuccessfulNpmSpawn(result, "npm pack for footprint measurement");
-  const output = JSON.parse(result.stdout)[0];
+  const manifest = readJson(path.join(packageRoot, "package.json"));
+  const output = npmPackRecord(result.stdout, manifest.name);
   if (
     typeof output?.name !== "string" ||
     output.name.length === 0 ||

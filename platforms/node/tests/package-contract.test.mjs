@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -15,6 +16,7 @@ import {
 } from "../scripts/assemble-packages.mjs";
 import {
   assertSuccessfulNpmSpawn,
+  npmPackRecord,
   spawnNpmSync,
 } from "../../../scripts/npm-command.mjs";
 
@@ -315,5 +317,6 @@ function npmPackDryRun(packageRoot) {
     encoding: "utf8",
   });
   assertSuccessfulNpmSpawn(result, "npm pack for assembled native package test");
-  return JSON.parse(result.stdout)[0];
+  const manifest = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
+  return npmPackRecord(result.stdout, manifest.name);
 }
