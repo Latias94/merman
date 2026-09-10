@@ -110,7 +110,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                         ),
                     },
                     &source_residuals,
-                );
+                    ctx.work_meter,
+                )?;
             }
             return Ok(());
         };
@@ -195,7 +196,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 ),
             },
             &source_residuals,
-        );
+            ctx.work_meter,
+        )?;
     }
     if let Some(emitted_d_for_label) = rough_d
         && let Some(cache_entry) = edge_cache.get_mut(&key)

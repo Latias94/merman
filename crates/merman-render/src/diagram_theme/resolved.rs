@@ -421,6 +421,63 @@ fn merge_typography_property<T: Clone>(
     }
 }
 
+/// Shared compiled rule matches plus the ordinal matches owned by one resolution.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MatchedThemeRules {
+    static_blocks: Vec<Arc<[usize]>>,
+    dynamic_indices: BTreeSet<usize>,
+}
+
+impl MatchedThemeRules {
+    pub(crate) fn static_blocks(&self) -> &[Arc<[usize]>] {
+        &self.static_blocks
+    }
+
+    pub(crate) fn dynamic_indices(&self) -> &BTreeSet<usize> {
+        &self.dynamic_indices
+    }
+
+    fn freeze_static(&mut self) {
+        if !self.dynamic_indices.is_empty() {
+            self.static_blocks.push(
+                std::mem::take(&mut self.dynamic_indices)
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .into(),
+            );
+        }
+    }
+
+    fn merge_from(&mut self, other: &Self) {
+        self.static_blocks
+            .extend(other.static_blocks.iter().cloned());
+        self.dynamic_indices
+            .extend(other.dynamic_indices.iter().copied());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_indices(indices: impl IntoIterator<Item = usize>) -> Self {
+        Self {
+            static_blocks: Vec::new(),
+            dynamic_indices: indices.into_iter().collect(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.static_blocks.is_empty() && self.dynamic_indices.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains(&self, index: &usize) -> bool {
+        self.dynamic_indices.contains(index)
+            || self
+                .static_blocks
+                .iter()
+                .any(|block| block.binary_search(index).is_ok())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedThemeStyle {
     fill: ResolvedProperty<CanvasPaint>,
@@ -436,7 +493,7 @@ pub struct ResolvedThemeStyle {
     padding: ResolvedProperty<InsetsPx>,
     typography: ResolvedTypography,
     effect: ResolvedProperty<String>,
-    matched_rule_indices: BTreeSet<usize>,
+    matched_rules: MatchedThemeRules,
 }
 
 impl PartialEq for ResolvedThemeStyle {
@@ -473,13 +530,15 @@ impl ResolvedThemeStyle {
             padding: ResolvedProperty::default(),
             typography: ResolvedTypography::new(typography),
             effect: ResolvedProperty::default(),
-            matched_rule_indices: BTreeSet::new(),
+            matched_rules: MatchedThemeRules::default(),
         }
     }
 
     pub(super) fn apply(&mut self, patch: &ThemeStylePatch, origin: ThemeRuleOrigin) {
         if !patch.is_empty() {
-            self.matched_rule_indices.insert(origin.rule_index());
+            self.matched_rules
+                .dynamic_indices
+                .insert(origin.rule_index());
         }
         self.fill.apply(&patch.paint.fill, origin);
         self.stroke.apply(&patch.stroke.paint, origin);
@@ -511,8 +570,7 @@ impl ResolvedThemeStyle {
         self.padding.merge_from(&other.padding);
         self.typography.merge_from(&other.typography);
         self.effect.merge_from(&other.effect);
-        self.matched_rule_indices
-            .extend(other.matched_rule_indices.iter().copied());
+        self.matched_rules.merge_from(&other.matched_rules);
     }
 
     pub const fn fill(&self) -> Option<&CanvasPaint> {
@@ -580,8 +638,12 @@ impl ResolvedThemeStyle {
         )
     }
 
-    pub(crate) fn matched_rule_indices(&self) -> impl Iterator<Item = usize> + '_ {
-        self.matched_rule_indices.iter().copied()
+    pub(super) fn freeze_static_matches(&mut self) {
+        self.matched_rules.freeze_static();
+    }
+
+    pub(crate) fn take_matched_rules(&mut self) -> MatchedThemeRules {
+        std::mem::take(&mut self.matched_rules)
     }
 
     pub const fn stroke(&self) -> Option<&CanvasPaint> {
@@ -1289,6 +1351,83 @@ mod tests {
         assert_eq!(font_size_origin.rule_index(), 1);
         assert_eq!(font_size_origin.target(), ThemeTarget::Text);
         assert_eq!(font_size_origin.ordinal(), Some(OrdinalSelector::Exact(1)));
+    }
+
+    #[test]
+    fn compiled_provenance_shares_static_blocks_across_variants_and_ordinals() {
+        let patch = || ThemeStylePatch::default().with_fill(CanvasPaint::Transparent);
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch()).with_variant(ThemeVariant::Active),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch()).with_variant(ThemeVariant::Selected),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(ThemeRule::new(ThemeTarget::Text, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Text, patch()).with_variant(ThemeVariant::Active),
+            )
+            .with_rule(ThemeRule::new(ThemeTarget::NodeLabel, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::NodeLabel, patch()).with_variant(ThemeVariant::Active),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile shared provenance theme")
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let active = theme.style(ThemeTarget::Node, ThemeVariant::Active, Some(1));
+        let next = theme.style(ThemeTarget::Node, ThemeVariant::Active, Some(2));
+        let selected = theme.style(ThemeTarget::Node, ThemeVariant::Selected, Some(2));
+        assert_eq!(active.matched_rules.static_blocks.len(), 2);
+        assert_eq!(active.matched_rules.dynamic_indices, BTreeSet::from([3]));
+        assert!(next.matched_rules.dynamic_indices.is_empty());
+        for (first, second) in active
+            .matched_rules
+            .static_blocks
+            .iter()
+            .zip(&next.matched_rules.static_blocks)
+        {
+            assert!(Arc::ptr_eq(first, second));
+        }
+        assert!(Arc::ptr_eq(
+            &active.matched_rules.static_blocks[0],
+            &selected.matched_rules.static_blocks[0]
+        ));
+        assert!(!Arc::ptr_eq(
+            &active.matched_rules.static_blocks[1],
+            &selected.matched_rules.static_blocks[1]
+        ));
+        assert_eq!(selected.matched_rules.static_blocks[1].as_ref(), &[2]);
+        assert_eq!(active.fill_resolution().winner().unwrap().rule_index(), 3);
+        assert_eq!(next.fill_resolution().winner().unwrap().rule_index(), 1);
+
+        let text = theme.text_style(ThemeTarget::NodeLabel, ThemeVariant::Active, None);
+        let repeated = theme.text_style(ThemeTarget::NodeLabel, ThemeVariant::Active, None);
+        assert_eq!(text.matched_rules.static_blocks.len(), 4);
+        assert_eq!(
+            text.matched_rules
+                .static_blocks
+                .iter()
+                .flat_map(|block| block.iter().copied())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([4, 5, 6, 7])
+        );
+        for (first, second) in text
+            .matched_rules
+            .static_blocks
+            .iter()
+            .zip(&repeated.matched_rules.static_blocks)
+        {
+            assert!(Arc::ptr_eq(first, second));
+        }
+        assert_eq!(text.fill_resolution().winner().unwrap().rule_index(), 7);
+        let generic = theme.text_style(ThemeTarget::Text, ThemeVariant::Active, None);
+        assert_eq!(generic.matched_rules.static_blocks.len(), 2);
     }
 
     #[test]

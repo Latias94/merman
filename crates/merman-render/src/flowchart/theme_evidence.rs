@@ -6,9 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
-    FamilyThemeRuleFacet, ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty,
-    SourceStyleResidual, Specified, ThemeCapability, ThemeTarget, ThemeTypographyProperty,
-    ThemeVariant,
+    FamilyThemeRuleFacet, MatchedThemeRules, ResolvedDiagramTheme, ResolvedProperty,
+    ResolvedStyleProperty, SourceStyleResidual, Specified, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     FamilyThemeEvidence, FamilyThemeResidualReason,
@@ -312,7 +312,7 @@ struct FlowchartLabelThemeStyle {
     font_stack: Option<FlowchartTypographyOutcome>,
     font_size: Option<FlowchartTypographyOutcome>,
     padding: Option<FlowchartPaddingOutcome>,
-    matched_rules: BTreeSet<usize>,
+    matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
 }
@@ -322,7 +322,7 @@ pub(crate) struct FlowchartEdgeThemeStyle {
     stroke: Option<FlowchartPaintOutcome>,
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
-    matched_rules: BTreeSet<usize>,
+    matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
     label: FlowchartLabelThemeStyle,
@@ -336,14 +336,14 @@ impl FlowchartEdgeThemeStyle {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };
-        let style = theme.style_with_work_meter(
+        let mut style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
             None,
             work_meter,
         )?;
         let mut resolved = Self::default();
-        resolved.matched_rules.extend(style.matched_rule_indices());
+        resolved.matched_rules = style.take_matched_rules();
 
         for (property, origin) in style.winner_rule_properties() {
             let rule_index = origin.rule_index();
@@ -484,7 +484,7 @@ impl FlowchartEdgeThemeStyle {
 pub(crate) struct FlowchartClusterThemeStyle {
     fill: Option<FlowchartPaintOutcome>,
     stroke: Option<FlowchartPaintOutcome>,
-    matched_rules: BTreeSet<usize>,
+    matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
 }
@@ -498,14 +498,14 @@ impl FlowchartClusterThemeStyle {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };
-        let style = theme.style_with_work_meter(
+        let mut style = theme.style_with_work_meter(
             ThemeTarget::Cluster,
             ThemeVariant::Default,
             ordinal,
             work_meter,
         )?;
         let mut resolved = Self::default();
-        resolved.matched_rules.extend(style.matched_rule_indices());
+        resolved.matched_rules = style.take_matched_rules();
 
         for (property, origin) in style.winner_rule_properties() {
             let rule_index = origin.rule_index();
@@ -663,7 +663,7 @@ pub(crate) struct FlowchartNodeThemeStyle {
     stroke_width: Option<FlowchartScalarOutcome>,
     stroke_dasharray: Option<FlowchartDasharrayOutcome>,
     radius: Option<FlowchartScalarOutcome>,
-    matched_rules: BTreeSet<usize>,
+    matched_rules: MatchedThemeRules,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
     label: FlowchartLabelThemeStyle,
@@ -678,7 +678,7 @@ impl FlowchartNodeThemeStyle {
         let Some(theme) = theme else {
             return Ok(Self::default());
         };
-        let style = theme.style_with_work_meter(
+        let mut style = theme.style_with_work_meter(
             ThemeTarget::Node,
             ThemeVariant::Default,
             ordinal,
@@ -686,7 +686,7 @@ impl FlowchartNodeThemeStyle {
         )?;
         let mut resolved = Self::default();
         let mut fill_rule_present = false;
-        resolved.matched_rules.extend(style.matched_rule_indices());
+        resolved.matched_rules = style.take_matched_rules();
 
         for (property, origin) in style.winner_rule_properties() {
             let rule_index = origin.rule_index();
@@ -912,9 +912,10 @@ fn resolve_label_theme_style(
     ordinal: Option<usize>,
     work_meter: &OperationWorkMeter,
 ) -> Result<FlowchartLabelThemeStyle, OperationWorkError> {
-    let style = theme.style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)?;
+    let mut style =
+        theme.style_with_work_meter(target, ThemeVariant::Default, ordinal, work_meter)?;
     let mut resolved = FlowchartLabelThemeStyle::default();
-    resolved.matched_rules.extend(style.matched_rule_indices());
+    resolved.matched_rules = style.take_matched_rules();
     for (property, origin) in style.winner_rule_properties() {
         let rule_index = origin.rule_index();
         match property {
@@ -1283,11 +1284,50 @@ fn push_inline_declaration(out: &mut String, property: &str, value: &str) {
 struct FlowchartRuleEvidenceState {
     emitted: bool,
     matched_rules: BTreeSet<usize>,
+    seen_static_blocks: Vec<Arc<[usize]>>,
     applied_rules: BTreeSet<usize>,
     applied_rule_capabilities: BTreeMap<usize, BTreeSet<ThemeCapability>>,
     unverified_rules: BTreeSet<usize>,
     residual_rules: BTreeMap<usize, FamilyThemeResidualReason>,
     incomplete_rules: BTreeSet<usize>,
+}
+
+impl FlowchartRuleEvidenceState {
+    fn unseen_static_blocks<'a>(
+        &'a self,
+        rules: &'a MatchedThemeRules,
+    ) -> impl Iterator<Item = &'a Arc<[usize]>> {
+        rules.static_blocks().iter().filter(|block| {
+            !self
+                .seen_static_blocks
+                .iter()
+                .any(|seen| Arc::ptr_eq(seen, block))
+        })
+    }
+
+    fn provenance_work(&self, rules: &MatchedThemeRules) -> usize {
+        rules.dynamic_indices().len()
+            + self
+                .unseen_static_blocks(rules)
+                .map(|block| block.len())
+                .sum::<usize>()
+    }
+
+    /// Called only after the complete emission's provenance charge succeeds.
+    fn record_matches(&mut self, rules: &MatchedThemeRules) {
+        for block in rules.static_blocks() {
+            if !self
+                .seen_static_blocks
+                .iter()
+                .any(|seen| Arc::ptr_eq(seen, block))
+            {
+                self.matched_rules.extend(block.iter().copied());
+                self.seen_static_blocks.push(Arc::clone(block));
+            }
+        }
+        self.matched_rules
+            .extend(rules.dynamic_indices().iter().copied());
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1364,16 +1404,15 @@ impl FlowchartThemeEvidenceRecorder {
         style: &FlowchartClusterThemeStyle,
         emission: FlowchartClusterThemeEmission,
         source_residuals: &[SourceStyleResidual],
-    ) {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        work_meter.charge_emit_work(state.cluster.provenance_work(&style.matched_rules))?;
         state.cluster.emitted = true;
-        state
-            .cluster
-            .matched_rules
-            .extend(style.matched_rules.iter().copied());
+        state.cluster.record_matches(&style.matched_rules);
         for (rule_index, reason) in &style.residual_rules {
             state
                 .cluster
@@ -1398,6 +1437,7 @@ impl FlowchartThemeEvidenceRecorder {
             .incomplete_rules
             .extend(style.incomplete_rules.iter().copied());
         insert_source_residuals(&mut state, source_residuals);
+        Ok(())
     }
 
     pub(crate) fn record_node_emission(
@@ -1405,16 +1445,24 @@ impl FlowchartThemeEvidenceRecorder {
         style: &FlowchartNodeThemeStyle,
         emission: FlowchartNodeThemeEmission,
         source_residuals: &[SourceStyleResidual],
-    ) {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let label_emitted = emission.label_fill.is_some()
+            || emission.font_stack.is_some()
+            || emission.font_size.is_some();
+        let work = state.node.provenance_work(&style.matched_rules)
+            + if label_emitted {
+                state.node_label.provenance_work(&style.label.matched_rules)
+            } else {
+                0
+            };
+        work_meter.charge_emit_work(work)?;
         state.node.emitted = true;
-        state
-            .node
-            .matched_rules
-            .extend(style.matched_rules.iter().copied());
+        state.node.record_matches(&style.matched_rules);
         for (rule_index, reason) in &style.residual_rules {
             state
                 .node
@@ -1464,15 +1512,9 @@ impl FlowchartThemeEvidenceRecorder {
             .node
             .incomplete_rules
             .extend(style.incomplete_rules.iter().copied());
-        if emission.label_fill.is_some()
-            || emission.font_stack.is_some()
-            || emission.font_size.is_some()
-        {
+        if label_emitted {
             state.node_label.emitted = true;
-            state
-                .node_label
-                .matched_rules
-                .extend(style.label.matched_rules.iter().copied());
+            state.node_label.record_matches(&style.label.matched_rules);
             for (rule_index, reason) in &style.label.residual_rules {
                 state
                     .node_label
@@ -1510,6 +1552,7 @@ impl FlowchartThemeEvidenceRecorder {
                 .extend(style.label.incomplete_rules.iter().copied());
         }
         insert_source_residuals(&mut state, source_residuals);
+        Ok(())
     }
 
     pub(crate) fn record_source_residuals(&self, source_residuals: &[SourceStyleResidual]) {
@@ -1528,16 +1571,15 @@ impl FlowchartThemeEvidenceRecorder {
         style: &FlowchartEdgeThemeStyle,
         emission: FlowchartEdgeThemeEmission,
         source_residuals: &[SourceStyleResidual],
-    ) {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        work_meter.charge_emit_work(state.edge.provenance_work(&style.matched_rules))?;
         state.edge.emitted = true;
-        state
-            .edge
-            .matched_rules
-            .extend(style.matched_rules.iter().copied());
+        state.edge.record_matches(&style.matched_rules);
         for (rule_index, reason) in &style.residual_rules {
             state
                 .edge
@@ -1569,6 +1611,7 @@ impl FlowchartThemeEvidenceRecorder {
             .incomplete_rules
             .extend(style.incomplete_rules.iter().copied());
         insert_source_residuals(&mut state, source_residuals);
+        Ok(())
     }
 
     pub(crate) fn record_edge_label_emission(
@@ -1576,20 +1619,23 @@ impl FlowchartThemeEvidenceRecorder {
         style: &FlowchartEdgeThemeStyle,
         emission: FlowchartEdgeLabelThemeEmission,
         source_residuals: &[SourceStyleResidual],
-    ) {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if emission.font_stack.is_some()
+        let label_emitted = emission.font_stack.is_some()
             || emission.font_size.is_some()
-            || emission.padding.is_some()
-        {
+            || emission.padding.is_some();
+        work_meter.charge_emit_work(if label_emitted {
+            state.edge_label.provenance_work(&style.label.matched_rules)
+        } else {
+            0
+        })?;
+        if label_emitted {
             state.edge_label.emitted = true;
-            state
-                .edge_label
-                .matched_rules
-                .extend(style.label.matched_rules.iter().copied());
+            state.edge_label.record_matches(&style.label.matched_rules);
             for (rule_index, reason) in &style.label.residual_rules {
                 state
                     .edge_label
@@ -1627,6 +1673,7 @@ impl FlowchartThemeEvidenceRecorder {
                 .extend(style.label.incomplete_rules.iter().copied());
         }
         insert_source_residuals(&mut state, source_residuals);
+        Ok(())
     }
 
     pub(crate) fn finish(
@@ -1998,6 +2045,285 @@ mod tests {
         ThemeStrokePatch, ThemeStylePatch,
     };
 
+    fn static_provenance_theme(rule_count: usize) -> ResolvedDiagramTheme {
+        let mut rules = ThemeRuleSet::default();
+        for _ in 0..rule_count {
+            rules = rules.with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#ef4444").expect("valid static fill")),
+            ));
+        }
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .expect("compile static provenance workload")
+            .resolve(DiagramFamilyId::FLOWCHART)
+    }
+
+    #[test]
+    fn static_provenance_workload_charges_512_rules_once_across_1000_nodes() {
+        let theme = static_provenance_theme(512);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        let mut first = theme.style(ThemeTarget::Node, ThemeVariant::Default, None);
+        let shared = first.take_matched_rules();
+        assert_eq!(shared.static_blocks().len(), 1);
+        for ordinal in 1..=1000 {
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(ordinal), &meter)
+                .expect("resolve static node style");
+            assert_eq!(style.matched_rules.static_blocks().len(), 1);
+            assert!(Arc::ptr_eq(
+                &shared.static_blocks()[0],
+                &style.matched_rules.static_blocks()[0]
+            ));
+            assert!(style.matched_rules.dynamic_indices().is_empty());
+            recorder
+                .record_node_emission(
+                    &style,
+                    emission(true, false, false, false, false),
+                    &[],
+                    &meter,
+                )
+                .expect("record metered theme emission");
+        }
+        let state = recorder.state.lock().expect("read provenance state");
+        assert_eq!(state.node.matched_rules.len(), 512);
+        assert_eq!(
+            meter.used(),
+            512,
+            "static provenance traversal must be metered"
+        );
+    }
+
+    #[test]
+    fn provenance_budget_rejection_preserves_all_recorder_state() {
+        let theme = static_provenance_theme(512);
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 511)
+            .expect("set provenance ceiling");
+        let meter = OperationWorkMeter::new(policy);
+        let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter)
+            .expect("shared static resolution needs no index traversal");
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        let before = format!("{:?}", recorder.state.lock().unwrap());
+        assert!(
+            recorder
+                .record_node_emission(
+                    &style,
+                    emission(true, false, false, false, false),
+                    &[],
+                    &meter
+                )
+                .is_err()
+        );
+        assert_eq!(meter.used(), 0);
+        assert_eq!(format!("{:?}", recorder.state.lock().unwrap()), before);
+    }
+
+    #[test]
+    fn node_and_label_provenance_are_charged_before_either_is_recorded() {
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+            ))
+            .with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+            ));
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        let mut observed = emission(true, false, false, false, false);
+        observed.label_fill = Some(FlowchartThemeFacetEmission::new(no_override(), true));
+        let before = format!("{:?}", recorder.state.lock().unwrap());
+        assert!(
+            recorder
+                .record_node_emission(&style, observed, &[], &meter)
+                .is_err()
+        );
+        assert_eq!(meter.used(), 0);
+        assert_eq!(format!("{:?}", recorder.state.lock().unwrap()), before);
+
+        let meter = OperationWorkMeter::new(policy);
+        recorder
+            .record_node_emission(
+                &style,
+                emission(true, false, false, false, false),
+                &[],
+                &meter,
+            )
+            .unwrap();
+        assert_eq!(meter.used(), 1);
+        let state = recorder.state.lock().unwrap();
+        assert!(state.node.emitted);
+        assert!(!state.node_label.emitted);
+        assert!(state.node_label.matched_rules.is_empty());
+        assert!(state.node_label.seen_static_blocks.is_empty());
+    }
+
+    #[test]
+    fn repeated_dynamic_provenance_remains_metered_after_static_reuse() {
+        let patch = || ThemeStylePatch::default().with_fill(CanvasPaint::Transparent);
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch())
+                    .with_ordinal(OrdinalSelector::exact(99).unwrap()),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        for expected in [4, 7] {
+            let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+            assert_eq!(style.matched_rules.dynamic_indices(), &BTreeSet::from([1]));
+            recorder
+                .record_node_emission(
+                    &style,
+                    emission(true, false, false, false, false),
+                    &[],
+                    &meter,
+                )
+                .unwrap();
+            assert_eq!(meter.used(), expected);
+        }
+        let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(2), &meter).unwrap();
+        assert!(style.matched_rules.dynamic_indices().is_empty());
+        recorder
+            .record_node_emission(
+                &style,
+                emission(true, false, false, false, false),
+                &[],
+                &meter,
+            )
+            .unwrap();
+        assert_eq!(meter.used(), 9);
+        let before = format!("{:?}", recorder.state.lock().unwrap());
+        let limited = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 1)
+                .unwrap(),
+        );
+        limited.charge(1).unwrap();
+        let style = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(1), &meter).unwrap();
+        assert!(
+            recorder
+                .record_node_emission(
+                    &style,
+                    emission(true, false, false, false, false),
+                    &[],
+                    &limited
+                )
+                .is_err()
+        );
+        assert_eq!(limited.used(), 1);
+        assert_eq!(format!("{:?}", recorder.state.lock().unwrap()), before);
+    }
+
+    #[test]
+    fn provenance_accounts_for_each_variant_static_block_once() {
+        let patch = || ThemeStylePatch::default().with_fill(CanvasPaint::Transparent);
+        let rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Node, patch()))
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch()).with_variant(ThemeVariant::Active),
+            )
+            .with_rule(
+                ThemeRule::new(ThemeTarget::Node, patch()).with_variant(ThemeVariant::Selected),
+            );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap()
+            .resolve(DiagramFamilyId::FLOWCHART);
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let recorder = FlowchartThemeEvidenceRecorder::default();
+        for (variant, expected) in [
+            (ThemeVariant::Active, 2),
+            (ThemeVariant::Selected, 3),
+            (ThemeVariant::Active, 3),
+        ] {
+            let mut resolved = theme.style(ThemeTarget::Node, variant, None);
+            let style = FlowchartNodeThemeStyle {
+                matched_rules: resolved.take_matched_rules(),
+                ..Default::default()
+            };
+            recorder
+                .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+                .unwrap();
+            assert_eq!(meter.used(), expected);
+        }
+        let state = recorder.state.lock().unwrap();
+        assert_eq!(state.node.matched_rules, BTreeSet::from([0, 1, 2]));
+        assert_eq!(state.node.seen_static_blocks.len(), 3);
+    }
+
+    #[test]
+    #[ignore = "manual static provenance workload benchmark"]
+    fn static_provenance_workload_benchmark() {
+        for rule_count in [1, 64, 512] {
+            let theme = static_provenance_theme(rule_count);
+            let mut samples = Vec::new();
+            let mut work_units = 0;
+            for _ in 0..5 {
+                let meter = OperationWorkMeter::new(
+                    crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+                );
+                let recorder = FlowchartThemeEvidenceRecorder::default();
+                let start = std::time::Instant::now();
+                for ordinal in 1..=1000 {
+                    let style =
+                        FlowchartNodeThemeStyle::resolve(Some(&theme), Some(ordinal), &meter)
+                            .expect("resolve benchmark node style");
+                    recorder
+                        .record_node_emission(
+                            std::hint::black_box(&style),
+                            emission(true, false, false, false, false),
+                            &[],
+                            &meter,
+                        )
+                        .expect("record metered theme emission");
+                }
+                samples.push(start.elapsed());
+                work_units = meter.used();
+                assert_eq!(
+                    recorder
+                        .state
+                        .lock()
+                        .expect("read benchmark state")
+                        .node
+                        .matched_rules
+                        .len(),
+                    rule_count,
+                );
+            }
+            samples.sort();
+            println!(
+                "static provenance: rules={rule_count}, nodes=1000, median={:?}, work_units={work_units}",
+                samples[2],
+            );
+        }
+    }
+
     fn no_override() -> FlowchartFacetPrecedence {
         FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Absent, false)
     }
@@ -2179,7 +2505,9 @@ mod tests {
         );
 
         let incomplete = FlowchartThemeEvidenceRecorder::default();
-        incomplete.record_cluster_emission(&style, cluster_emission(true, false), &[]);
+        incomplete
+            .record_cluster_emission(&style, cluster_emission(true, false), &[], &meter)
+            .expect("record metered theme emission");
         let (incomplete_evidence, source_residuals) = incomplete.finish(Some(&theme));
         assert!(source_residuals.is_empty());
         assert!(incomplete_evidence.applied().is_empty());
@@ -2190,7 +2518,9 @@ mod tests {
         );
 
         let complete = FlowchartThemeEvidenceRecorder::default();
-        complete.record_cluster_emission(&style, cluster_emission(true, true), &[]);
+        complete
+            .record_cluster_emission(&style, cluster_emission(true, true), &[], &meter)
+            .expect("record metered theme emission");
         let (complete_evidence, source_residuals) = complete.finish(Some(&theme));
         assert!(source_residuals.is_empty());
         assert_eq!(
@@ -2228,7 +2558,7 @@ mod tests {
                 value: "4 2".to_string(),
             }),
             radius: None,
-            matched_rules: BTreeSet::from([0]),
+            matched_rules: MatchedThemeRules::from_indices([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),
             label: FlowchartLabelThemeStyle::default(),
@@ -2473,11 +2803,14 @@ mod tests {
         assert!(style.font_size_selected(precedence));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_label_emission(
-            &style,
-            edge_label_emission(Some((precedence, true)), Some((precedence, true))),
-            &[],
-        );
+        recorder
+            .record_edge_label_emission(
+                &style,
+                edge_label_emission(Some((precedence, true)), Some((precedence, true))),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2517,15 +2850,18 @@ mod tests {
         assert_eq!(padding.padded_size(40.0, 20.0), (58.0, 28.0));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_label_emission(
-            &style,
-            FlowchartEdgeLabelThemeEmission {
-                font_stack: None,
-                font_size: None,
-                padding: Some(FlowchartThemeFacetEmission::new(precedence, true)),
-            },
-            &[],
-        );
+        recorder
+            .record_edge_label_emission(
+                &style,
+                FlowchartEdgeLabelThemeEmission {
+                    font_stack: None,
+                    font_size: None,
+                    padding: Some(FlowchartThemeFacetEmission::new(precedence, true)),
+                },
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2574,11 +2910,14 @@ mod tests {
             ),
         ] {
             let recorder = FlowchartThemeEvidenceRecorder::default();
-            recorder.record_edge_label_emission(
-                &style,
-                edge_label_emission(Some(font_stack), Some(font_size)),
-                &[],
-            );
+            recorder
+                .record_edge_label_emission(
+                    &style,
+                    edge_label_emission(Some(font_stack), Some(font_size)),
+                    &[],
+                    &meter,
+                )
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -2612,19 +2951,25 @@ mod tests {
             FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false);
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_edge_label_emission(
-            &style,
-            edge_label_emission(Some((no_override(), true)), Some((font_size_shadow, false))),
-            &[],
-        );
-        recorder.record_edge_label_emission(
-            &style,
-            edge_label_emission(
-                Some((no_override(), false)),
-                Some((font_size_shadow, false)),
-            ),
-            &[],
-        );
+        recorder
+            .record_edge_label_emission(
+                &style,
+                edge_label_emission(Some((no_override(), true)), Some((font_size_shadow, false))),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
+        recorder
+            .record_edge_label_emission(
+                &style,
+                edge_label_emission(
+                    Some((no_override(), false)),
+                    Some((font_size_shadow, false)),
+                ),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2660,7 +3005,9 @@ mod tests {
             .expect("resolve Flowchart EdgeLabel typography");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_edge_label_emission(&style, edge_label_emission(None, None), &[]);
+        recorder
+            .record_edge_label_emission(&style, edge_label_emission(None, None), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2694,7 +3041,9 @@ mod tests {
         assert!(style.font_size_selected(precedence));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, font_size_emission(precedence, true), &[]);
+        recorder
+            .record_node_emission(&style, font_size_emission(precedence, true), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2722,7 +3071,14 @@ mod tests {
             .expect("resolve Flowchart NodeLabel font size");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, font_size_emission(no_override(), false), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                font_size_emission(no_override(), false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2750,7 +3106,9 @@ mod tests {
             assert!(!style.font_size_selected(precedence));
 
             let recorder = FlowchartThemeEvidenceRecorder::default();
-            recorder.record_node_emission(&style, font_size_emission(precedence, false), &[]);
+            recorder
+                .record_node_emission(&style, font_size_emission(precedence, false), &[], &meter)
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -2779,7 +3137,9 @@ mod tests {
         assert!(style.font_stack_selected(precedence));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, font_stack_emission(precedence, true), &[]);
+        recorder
+            .record_node_emission(&style, font_stack_emission(precedence, true), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2808,7 +3168,14 @@ mod tests {
             .expect("resolve Flowchart NodeLabel font stack");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, font_stack_emission(no_override(), false), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                font_stack_emission(no_override(), false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2836,7 +3203,9 @@ mod tests {
             assert!(!style.font_stack_selected(precedence));
 
             let recorder = FlowchartThemeEvidenceRecorder::default();
-            recorder.record_node_emission(&style, font_stack_emission(precedence, false), &[]);
+            recorder
+                .record_node_emission(&style, font_stack_emission(precedence, false), &[], &meter)
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -2862,7 +3231,9 @@ mod tests {
             .expect("resolve Flowchart NodeLabel font stack");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[]);
+        recorder
+            .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2889,8 +3260,22 @@ mod tests {
             .expect("resolve unverified Flowchart NodeLabel font stack");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&first, font_stack_emission(no_override(), true), &[]);
-        recorder.record_node_emission(&second, font_stack_emission(no_override(), false), &[]);
+        recorder
+            .record_node_emission(
+                &first,
+                font_stack_emission(no_override(), true),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
+        recorder
+            .record_node_emission(
+                &second,
+                font_stack_emission(no_override(), false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2915,7 +3300,14 @@ mod tests {
         assert_eq!(style.stroke_width_value(no_override, true), Some(2.5));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, emission(false, false, true, false, false), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                emission(false, false, true, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2940,7 +3332,9 @@ mod tests {
             .expect("resolve Flowchart stroke width");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[]);
+        recorder
+            .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -2970,7 +3364,9 @@ mod tests {
             let recorder = FlowchartThemeEvidenceRecorder::default();
             let mut observed = FlowchartNodeThemeEmission::none();
             observed.stroke_width = FlowchartThemeFacetEmission::new(precedence, false);
-            recorder.record_node_emission(&style, observed, &[]);
+            recorder
+                .record_node_emission(&style, observed, &[], &meter)
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -2999,7 +3395,14 @@ mod tests {
         assert_eq!(style.stroke_dasharray_value(no_override, true), Some("4 2"));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, emission(false, false, false, true, false), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                emission(false, false, false, true, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3028,7 +3431,9 @@ mod tests {
             .expect("resolve Flowchart stroke dasharray");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[]);
+        recorder
+            .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3052,8 +3457,22 @@ mod tests {
             .expect("resolve unverified Flowchart stroke dasharray");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&first, emission(false, false, false, true, false), &[]);
-        recorder.record_node_emission(&second, emission(false, false, false, false, false), &[]);
+        recorder
+            .record_node_emission(
+                &first,
+                emission(false, false, false, true, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
+        recorder
+            .record_node_emission(
+                &second,
+                emission(false, false, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3080,7 +3499,9 @@ mod tests {
         let recorder = FlowchartThemeEvidenceRecorder::default();
         let mut observed = FlowchartNodeThemeEmission::none();
         observed.stroke_dasharray = FlowchartThemeFacetEmission::new(precedence, false);
-        recorder.record_node_emission(&style, observed, &[]);
+        recorder
+            .record_node_emission(&style, observed, &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3108,7 +3529,14 @@ mod tests {
         assert_eq!(style.radius_value(no_override, true), Some(8.0));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, emission(false, false, false, false, true), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                emission(false, false, false, false, true),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3137,7 +3565,9 @@ mod tests {
             .expect("resolve Flowchart radius");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[]);
+        recorder
+            .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3166,7 +3596,9 @@ mod tests {
             let recorder = FlowchartThemeEvidenceRecorder::default();
             let mut observed = FlowchartNodeThemeEmission::none();
             observed.radius = FlowchartThemeFacetEmission::new(precedence, false);
-            recorder.record_node_emission(&style, observed, &[]);
+            recorder
+                .record_node_emission(&style, observed, &[], &meter)
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -3184,6 +3616,9 @@ mod tests {
 
     #[test]
     fn unemitted_node_paint_is_residual_instead_of_applied() {
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         let theme = resolved_theme(ThemeTarget::Node);
         let style = FlowchartNodeThemeStyle {
             fill: Some(FlowchartPaintOutcome::Candidate {
@@ -3195,14 +3630,16 @@ mod tests {
             stroke_width: None,
             stroke_dasharray: None,
             radius: None,
-            matched_rules: BTreeSet::from([0]),
+            matched_rules: MatchedThemeRules::from_indices([0]),
             residual_rules: BTreeMap::new(),
             incomplete_rules: BTreeSet::new(),
             label: FlowchartLabelThemeStyle::default(),
         };
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[]);
+        recorder
+            .record_node_emission(&style, FlowchartNodeThemeEmission::none(), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3216,13 +3653,19 @@ mod tests {
 
     #[test]
     fn unobserved_edge_rule_is_not_applicable() {
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         let theme = resolved_edge_stroke_theme();
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(
-            &FlowchartNodeThemeStyle::default(),
-            emission(true, true, false, false, false),
-            &[],
-        );
+        recorder
+            .record_node_emission(
+                &FlowchartNodeThemeStyle::default(),
+                emission(true, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
 
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
@@ -3251,7 +3694,9 @@ mod tests {
         assert_eq!(style.stroke_value(precedence, true), Some("#ef4444"));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_emission(&style, edge_emission(precedence, true), &[]);
+        recorder
+            .record_edge_emission(&style, edge_emission(precedence, true), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3282,7 +3727,14 @@ mod tests {
         assert_eq!(style.stroke_dasharray_value(precedence, true), Some("4 2"));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_emission(&style, edge_dasharray_emission(precedence, true), &[]);
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_dasharray_emission(precedence, true),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3313,7 +3765,14 @@ mod tests {
         assert_eq!(style.stroke_width_value(precedence, true), Some(2.5));
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_emission(&style, edge_stroke_width_emission(precedence, true), &[]);
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_stroke_width_emission(precedence, true),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3344,7 +3803,14 @@ mod tests {
         assert_eq!(style.stroke_dasharray_value(precedence, true), None);
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_edge_emission(&style, edge_dasharray_emission(precedence, false), &[]);
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_dasharray_emission(precedence, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3369,8 +3835,22 @@ mod tests {
             .expect("resolve Flowchart Edge dasharray");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), false), &[]);
-        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), true), &[]);
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_dasharray_emission(no_override(), false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_dasharray_emission(no_override(), true),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3412,7 +3892,14 @@ mod tests {
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
         assert_eq!(style.stroke_dasharray_value(no_override(), true), None);
-        recorder.record_edge_emission(&style, edge_dasharray_emission(no_override(), false), &[]);
+        recorder
+            .record_edge_emission(
+                &style,
+                edge_dasharray_emission(no_override(), false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3441,7 +3928,9 @@ mod tests {
             assert_eq!(style.stroke_value(precedence, true), None);
 
             let recorder = FlowchartThemeEvidenceRecorder::default();
-            recorder.record_edge_emission(&style, edge_emission(precedence, false), &[]);
+            recorder
+                .record_edge_emission(&style, edge_emission(precedence, false), &[], &meter)
+                .expect("record metered theme emission");
             let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
             assert!(source_residuals.is_empty());
@@ -3467,8 +3956,12 @@ mod tests {
             .expect("resolve Flowchart Edge stroke");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_edge_emission(&style, edge_emission(no_override(), false), &[]);
-        recorder.record_edge_emission(&style, edge_emission(no_override(), true), &[]);
+        recorder
+            .record_edge_emission(&style, edge_emission(no_override(), false), &[], &meter)
+            .expect("record metered theme emission");
+        recorder
+            .record_edge_emission(&style, edge_emission(no_override(), true), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3490,7 +3983,9 @@ mod tests {
             .expect("resolve Flowchart Edge stroke");
         let recorder = FlowchartThemeEvidenceRecorder::default();
 
-        recorder.record_edge_emission(&style, edge_emission(no_override(), false), &[]);
+        recorder
+            .record_edge_emission(&style, edge_emission(no_override(), false), &[], &meter)
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());
@@ -3504,6 +3999,9 @@ mod tests {
 
     #[test]
     fn unmatched_node_variant_is_not_applicable() {
+        let meter = OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(
@@ -3521,11 +4019,14 @@ mod tests {
             .expect("compile variant theme")
             .resolve(DiagramFamilyId::FLOWCHART);
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(
-            &FlowchartNodeThemeStyle::default(),
-            emission(true, true, false, false, false),
-            &[],
-        );
+        recorder
+            .record_node_emission(
+                &FlowchartNodeThemeStyle::default(),
+                emission(true, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
 
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
@@ -3594,7 +4095,14 @@ mod tests {
         );
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&first, emission(true, true, false, false, false), &[]);
+        recorder
+            .record_node_emission(
+                &first,
+                emission(true, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
 
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
@@ -3635,7 +4143,9 @@ mod tests {
             FlowchartFacetPrecedence::new(FlowchartSourceFacetStatus::Admitted, false),
             false,
         );
-        recorder.record_node_emission(&style, observed, &[]);
+        recorder
+            .record_node_emission(&style, observed, &[], &meter)
+            .expect("record metered theme emission");
 
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
@@ -3675,8 +4185,22 @@ mod tests {
         let second = FlowchartNodeThemeStyle::resolve(Some(&theme), Some(2), &meter)
             .expect("resolve unverified palette node");
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&first, emission(true, true, false, false, false), &[]);
-        recorder.record_node_emission(&second, emission(false, true, false, false, false), &[]);
+        recorder
+            .record_node_emission(
+                &first,
+                emission(true, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
+        recorder
+            .record_node_emission(
+                &second,
+                emission(false, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
 
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
@@ -3722,7 +4246,14 @@ mod tests {
         assert!(style.ordinal_palette_fill.is_none());
 
         let recorder = FlowchartThemeEvidenceRecorder::default();
-        recorder.record_node_emission(&style, emission(true, true, false, false, false), &[]);
+        recorder
+            .record_node_emission(
+                &style,
+                emission(true, true, false, false, false),
+                &[],
+                &meter,
+            )
+            .expect("record metered theme emission");
         let (evidence, source_residuals) = recorder.finish(Some(&theme));
 
         assert!(source_residuals.is_empty());

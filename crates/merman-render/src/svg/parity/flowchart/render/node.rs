@@ -488,7 +488,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 font_size: font_size_emission,
             },
             &source_evidence.residuals,
-        );
+            ctx.work_meter,
+        )?;
     }
 
     // HandDrawn RoughJS generation may reject before the bounded SVG sink sees its output. Replay

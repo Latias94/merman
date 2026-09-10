@@ -154,7 +154,7 @@ fn record_cluster_shape_emission(
     receipt: FlowchartShapeFacetEmissionReceipt,
     fill_precedence: FlowchartFacetPrecedence,
     stroke_precedence: FlowchartFacetPrecedence,
-) {
+) -> crate::Result<()> {
     let source_residuals =
         compiled_styles.emitted_shape_source_residuals_with_receipt(cluster_id, receipt);
     ctx.theme_evidence.record_cluster_emission(
@@ -164,7 +164,9 @@ fn record_cluster_shape_emission(
             stroke: FlowchartThemeFacetEmission::new(stroke_precedence, receipt.stroke),
         },
         &source_residuals,
-    );
+        ctx.work_meter,
+    )?;
+    Ok(())
 }
 
 pub(in crate::svg::parity) fn render_flowchart_cluster(
@@ -313,7 +315,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             shape_source_receipt,
             fill_precedence,
             stroke_precedence,
-        );
+        )?;
         let _ = write!(
             out,
             r#"<g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
@@ -421,7 +423,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         shape_source_receipt,
         fill_precedence,
         stroke_precedence,
-    );
+    )?;
     let _ = write!(
         out,
         r#"<g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,

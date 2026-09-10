@@ -354,7 +354,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             ),
         },
         &source_residuals,
-    );
+        ctx.work_meter,
+    )?;
 
     let mut html_typography_statuses = (
         crate::flowchart::FlowchartSourceFacetStatus::Absent,

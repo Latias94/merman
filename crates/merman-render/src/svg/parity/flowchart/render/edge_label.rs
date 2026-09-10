@@ -35,7 +35,7 @@ fn record_edge_label_emission(
     padding_verified: bool,
     receipt: FlowchartEdgeLabelEmissionReceipt,
     sanitized_xhtml: Option<&str>,
-) {
+) -> crate::Result<()> {
     let html_typography_statuses = sanitized_xhtml.map_or(
         (
             crate::flowchart::FlowchartSourceFacetStatus::Absent,
@@ -122,7 +122,9 @@ fn record_edge_label_emission(
             padding,
         },
         &source_residuals,
-    );
+        ctx.work_meter,
+    )?;
+    Ok(())
 }
 
 fn padded_html_edge_label_background(
@@ -346,7 +348,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             typography_applicable,
             receipt,
             sanitized_xhtml,
-        );
+        )
     };
 
     fn fallback_midpoint(
@@ -428,7 +430,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             );
                         }
                         out.push_str("</g></g></g>");
-                        record_label_emission(label_type != "markdown", None);
+                        record_label_emission(label_type != "markdown", None)?;
                         return Ok(());
                     }
                 } else {
@@ -473,7 +475,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         );
                     }
                     out.push_str("</g></g></g>");
-                    record_label_emission(label_type != "markdown", None);
+                    record_label_emission(label_type != "markdown", None)?;
                     return Ok(());
                 }
             }
@@ -530,7 +532,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     );
                 }
                 out.push_str("</g></g></g>");
-                record_label_emission(label_type != "markdown", None);
+                record_label_emission(label_type != "markdown", None)?;
                 return Ok(());
             }
         }
@@ -542,7 +544,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         );
         write_flowchart_empty_svg_text_centered(out, false);
         out.push_str("</g></g>");
-        record_label_emission(false, None);
+        record_label_emission(false, None)?;
         return Ok(());
     }
 
@@ -605,7 +607,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html));
+            record_label_emission(true, Some(&label_html))?;
             return Ok(());
         }
 
@@ -679,7 +681,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 span_style_attr,
                 label_html
             );
-            record_label_emission(true, Some(&label_html));
+            record_label_emission(true, Some(&label_html))?;
             return Ok(());
         }
     }
@@ -691,7 +693,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         escape_xml_display(&div_style_prefix),
         span_style_attr
     );
-    record_label_emission(true, None);
+    record_label_emission(true, None)?;
     Ok(())
 }
 
@@ -761,7 +763,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                 typography_applicable,
                 receipt,
                 sanitized_xhtml,
-            );
+            )
         };
     ctx.theme_evidence.record_source_residuals(
         &compiled_label_styles.map_or_else(Vec::new, |styles| {
@@ -770,11 +772,11 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
 
     let Some(layout_edge) = ctx.layout_edges_by_key.get(&key) else {
-        record_label_emission(false, None, None);
+        record_label_emission(false, None, None)?;
         return Ok(());
     };
     let Some(label) = layout_edge.label.as_ref() else {
-        record_label_emission(false, None, None);
+        record_label_emission(false, None, None)?;
         return Ok(());
     };
 
@@ -856,7 +858,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             OptionalStyleXmlAttr(&html_label_style),
             label_html,
         );
-        record_label_emission(true, None, Some(&label_html));
+        record_label_emission(true, None, Some(&label_html))?;
         return Ok(());
     }
 
@@ -876,7 +878,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     );
     write_flowchart_svg_label_plan(out, &prepared, true);
     out.push_str("</g></g></g>");
-    record_label_emission(true, Some(&prepared), None);
+    record_label_emission(true, Some(&prepared), None)?;
     Ok(())
 }
 

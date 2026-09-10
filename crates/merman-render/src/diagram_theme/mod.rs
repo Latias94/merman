@@ -123,7 +123,8 @@ pub use presets::{
     theme_preset_descriptors,
 };
 pub(crate) use resolved::{
-    ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect, ResolvedThemeStyle,
+    MatchedThemeRules, ResolvedDiagramTheme, ResolvedProperty, ResolvedThemeEffect,
+    ResolvedThemeStyle,
 };
 pub(crate) use resolved::{ResolvedStyleProperty, ThemeTypographyProperty};
 pub use resources::{

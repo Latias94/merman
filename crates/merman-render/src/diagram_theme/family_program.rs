@@ -108,6 +108,13 @@ impl FamilyThemeProgram {
                 .compile_rule(ThemeRuleOrigin::new(rule_index, rule), rule.style());
         }
 
+        for slot in slots.values_mut() {
+            slot.common_static.freeze_static_matches();
+            for style in slot.variant_static.values_mut() {
+                style.freeze_static_matches();
+            }
+        }
+
         let mut ordinal_palette_indices = BTreeMap::new();
         let mut ordinal_palette_dispositions = BTreeMap::new();
         for (index, (target, _)) in spec.styles().ordinal_palettes().iter().enumerate() {
@@ -244,8 +251,8 @@ impl FamilyThemeProgram {
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
         let mut resolved = ResolvedThemeStyle::new(self.base_typography.clone());
         if let Some(slot) = self.slots.get(&target) {
-            slot.apply_static(&mut resolved, variant);
             charge_ordinal_candidates(work_meter, ordinal, slot.ordinal_candidate_count(variant))?;
+            slot.apply_static(&mut resolved, variant);
             slot.apply_ordinal(&self.spec, &mut resolved, variant, ordinal);
         }
         Ok(resolved)
