@@ -129,11 +129,6 @@ impl LegacyFamilyThemeBridge {
     }
 
     #[cfg(test)]
-    fn is_empty(&self) -> bool {
-        self.cached_family_count() == 0
-    }
-
-    #[cfg(test)]
     pub(super) fn owns_contribution_id(&self, opaque_id: &str) -> bool {
         let Some(family) = contribution_family(opaque_id) else {
             return false;
@@ -3761,7 +3756,7 @@ gitGraph
             .with_styles(ThemeRuleSet::default().with_rule(state_rule));
         let bridge = bridge(&state_only);
 
-        assert!(bridge.is_empty());
+        assert_eq!(bridge.cached_family_count(), 0);
         assert!(!bridge.owns_contribution_id("merman.legacy-family-theme.v1.flowchart.node.fill"));
         assert!(!bridge.owns_contribution_id("some-other-overlay"));
     }
