@@ -505,6 +505,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL)
         }
+        (DiagramFamilyId::TIMELINE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_TEXT_FILL)
+        }
         (DiagramFamilyId::JOURNEY, ThemeTarget::JourneyTask, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_JOURNEY_TASK_FILL)
         }
@@ -1923,7 +1926,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::TIMELINE
-        && target == ThemeTarget::TimelineEvent
+        && matches!(target, ThemeTarget::TimelineEvent | ThemeTarget::Text)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -6474,6 +6477,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::TIMELINE,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["event.text"],
+            ),
+            (
+                DiagramFamilyId::TIMELINE,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["event.text"],
+            ),
+            (
+                DiagramFamilyId::TIMELINE,
                 ThemeTarget::TimelineEvent,
                 Fill,
                 Transparent,
@@ -6665,7 +6682,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 174);
+        assert_eq!(qualified.len(), 176);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6702,7 +6719,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::TIMELINE)
                 .count(),
-            2
+            4
         );
         assert_eq!(
             qualified
@@ -7016,17 +7033,17 @@ mod tests {
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::TIMELINE {
-                assert_eq!(route.target(), ThemeTarget::TimelineEvent);
+                let expected = match route.target() {
+                    ThemeTarget::TimelineEvent => ThemeRouteCutoverProjection::TimelineEventFill,
+                    ThemeTarget::Text => ThemeRouteCutoverProjection::TimelineTextFill,
+                    _ => panic!("unexpected Timeline qualified route: {route:?}"),
+                };
                 assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
                 assert_eq!(
                     route.selector(),
                     ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
                 );
-                assert_eq!(
-                    projections,
-                    vec![ThemeRouteCutoverProjection::TimelineEventFill],
-                    "route={route:?}"
-                );
+                assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::PIE {
                 let expected = match (route.target(), route.facet()) {
                     (ThemeTarget::PieSlice, ThemeRouteCutoverFacet::Fill) => {
@@ -7589,19 +7606,6 @@ mod tests {
                 }
             }
 
-            let expected_text_disposition = if matches!(
-                family,
-                DiagramFamilyId::ARCHITECTURE
-                    | DiagramFamilyId::C4
-                    | DiagramFamilyId::CYNEFIN
-                    | DiagramFamilyId::ER
-                    | DiagramFamilyId::KANBAN
-                    | DiagramFamilyId::SANKEY
-            ) {
-                FamilyThemeDisposition::TypedAdapter
-            } else {
-                FamilyThemeDisposition::LegacyCompatibility
-            };
             assert_eq!(
                 classify_rule_facet(
                     family,
@@ -7609,7 +7613,7 @@ mod tests {
                     FamilyThemeSelectorShape::Static { variant: None },
                     FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Solid),
                 ),
-                expected_text_disposition,
+                FamilyThemeDisposition::TypedAdapter,
                 "{family} must retain its real generic text consumer"
             );
         }

@@ -11,12 +11,14 @@ use std::borrow::Cow;
 
 mod config;
 mod task_index;
+mod text_paint;
 mod theme;
 mod typography;
 
 use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
+pub(crate) use text_paint::{TimelineTextPaintPlan, TimelineTextPaintReceipt};
 pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
 pub(crate) use typography::{TimelineTypographyThemePlan, TimelineTypographyThemeReceipt};
 

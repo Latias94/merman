@@ -1120,6 +1120,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.event_theme(),
             artifact.typography_theme(),
+            artifact.text_paint(),
             effective_config_value,
             options,
         ),

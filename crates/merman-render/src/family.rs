@@ -1565,6 +1565,7 @@ pub(crate) struct TimelineFamilyArtifact {
     pair: FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout>,
     event_theme: crate::timeline::TimelineEventTheme,
     typography_theme: crate::timeline::TimelineTypographyThemePlan,
+    text_paint: crate::timeline::TimelineTextPaintPlan,
 }
 
 #[derive(Debug)]
@@ -2068,6 +2069,10 @@ impl PieFamilyArtifact {
 }
 
 impl TimelineFamilyArtifact {
+    pub(crate) const fn text_paint(&self) -> &crate::timeline::TimelineTextPaintPlan {
+        &self.text_paint
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<diagrams::timeline::TimelineDiagramRenderModel, TimelineDiagramLayout> {
@@ -2475,6 +2480,7 @@ impl BuiltinFamilyArtifact {
             Self::Timeline(artifact) => {
                 let mut evidence = artifact.event_theme().finish_evidence();
                 evidence.merge_accounted_from(artifact.typography_theme().finish_evidence());
+                evidence.merge_accounted_from(artifact.text_paint().finish_evidence());
                 Some(evidence)
             }
             _ => None,

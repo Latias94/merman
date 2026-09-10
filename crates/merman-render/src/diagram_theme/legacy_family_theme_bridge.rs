@@ -820,10 +820,6 @@ fn compile_timeline_family(
         "event.stroke",
         [("nodeBorder", reader.stroke(ThemeTarget::TimelineEvent))],
     );
-    contributions.add_theme_variables(
-        "event.text",
-        [("textColor", reader.text_fill(ThemeTarget::Text))],
-    );
     contributions.finish_into(builder)
 }
 
@@ -2137,14 +2133,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 192);
+        assert_eq!(status.matrix_route_count(), 188);
         assert_eq!(status.matrix_family_count(), 10);
         assert_eq!(status.dispatched_family_count(), 10);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                171, 21, 233, 61, 224, 197, 215, 106, 94, 156, 71, 114, 15, 21, 10, 139, 8, 104,
-                215, 133, 158, 232, 170, 118, 36, 175, 168, 88, 111, 108, 165, 28
+                39, 224, 168, 57, 201, 136, 69, 65, 69, 133, 232, 42, 128, 78, 100, 163, 15, 193,
+                40, 226, 154, 49, 138, 196, 84, 128, 246, 240, 71, 204, 151, 4
             ]
         );
         assert_eq!(
@@ -4889,7 +4885,7 @@ gitGraph
                 .contains("merman.legacy-family-theme.v1.timeline.event.stroke")
         );
         assert!(
-            artifact
+            !artifact
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.timeline.event.text")
         );

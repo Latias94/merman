@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 64;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 65;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    168, 221, 19, 73, 17, 101, 205, 162, 137, 32, 102, 0, 47, 65, 125, 216, 177, 116, 26, 110, 65,
-    215, 172, 166, 1, 62, 228, 23, 220, 73, 13, 179,
+    42, 127, 135, 206, 169, 58, 21, 100, 190, 213, 95, 175, 55, 103, 101, 204, 166, 213, 183, 33,
+    192, 248, 178, 175, 74, 145, 37, 138, 22, 95, 165, 6,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 47] = [
+); 48] = [
+    (
+        ThemeRouteCutoverProjection::TimelineTextFill,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::EdgeLabelFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -376,6 +380,8 @@ const TREE_VIEW_MARKER_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TreeViewMarkerPaint];
 const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
+const TIMELINE_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TimelineTextFill];
 const ER_TABLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ErTableOddFill,
     ThemeRouteCutoverProjection::ErTableEvenFill,
@@ -398,7 +404,37 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 350] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 354] = [
+    route(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TIMELINE_TEXT_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TIMELINE_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        TIMELINE_TEXT_FILL_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        TIMELINE_TEXT_FILL_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::REQUIREMENT,
         ThemeTarget::Relation,

@@ -41,6 +41,13 @@ record. The current source and generated contract are authoritative for these su
   values. The Radar writer emits the typed value through both CSS `color` and `fill`, allowing
   the native SVG/PNG route proof to observe the same title terminal. Explicit `Default` remains
   a separate route and is not implicitly authorized.
+- KTD17 v65 migrates Timeline static unqualified/Default `Text.fill` for solid and transparent
+  values, replacing only `event.text`. Root paint is shared by CSS and the terminal receipt;
+  titles, referenced arrowheads, and uncolored node terminals establish application. Section
+  palette labels and Redux node-border labels keep independent ownership. Explicit `textColor`
+  is NotApplicable; a titleless vertical diagram with independently colored nodes and no matching
+  marker reference has no inherited-fill consumer. Dynamic source colors remain residuals.
+  Classic, Neo, and HandDrawn witnesses bind SVG and PNG evidence. Event.stroke remains Legacy.
 - Treemap Text.fill is typed for static unqualified/Default solid and transparent paint. Label
   and value configuration owners remain independent; no participating visible text terminal is
   `NotApplicable`. Its old Text projection no longer requires a family bridge.

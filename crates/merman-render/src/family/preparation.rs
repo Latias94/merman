@@ -611,11 +611,17 @@ fn prepare_timeline_family(
         &layout,
         execution.work_meter_ref(),
     )?;
+    let text_paint = crate::timeline::TimelineTextPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Timeline(Box::new(
         TimelineFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             event_theme,
             typography_theme,
+            text_paint,
         },
     )))
 }

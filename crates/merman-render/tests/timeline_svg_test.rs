@@ -240,6 +240,134 @@ fn try_render_timeline_svg_with_resource_policy(
 }
 
 #[test]
+fn timeline_text_fill_uses_typed_root_paint_across_looks_and_directions() {
+    for theme_name in ["default", "redux", "reduxColor"] {
+        for look in ["classic", "neo", "handDrawn"] {
+            for direction in ["", " TD"] {
+                for variant in [None, Some(ThemeVariant::Default)] {
+                    for fill in [
+                        CanvasPaint::solid("#123456").unwrap(),
+                        CanvasPaint::Transparent,
+                    ] {
+                        let mut rule = ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(fill.clone()),
+                        );
+                        if let Some(variant) = variant {
+                            rule = rule.with_variant(variant);
+                        }
+                        let theme = timeline_event_rules_theme([rule]);
+                        let source = format!(
+                            "timeline{direction}\n    title Typed root paint\n    section Release\n    Plan : Ship\n"
+                        );
+                        let rendered = try_render_timeline_with_theme_and_engine(
+                            &source,
+                            &theme,
+                            Engine::new().with_site_config(MermaidConfig::from_value(
+                                serde_json::json!({ "theme": theme_name, "look": look }),
+                            )),
+                        )
+                        .expect("typed Timeline Text.fill");
+                        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                        let css = document
+                            .descendants()
+                            .find(|node| node.has_tag_name("style"))
+                            .and_then(|node| node.text())
+                            .unwrap();
+                        let root_css = css.split_once('}').unwrap().0;
+                        let expected = match fill {
+                            CanvasPaint::Transparent => "transparent",
+                            _ => "#123456",
+                        };
+                        assert!(
+                            root_css.ends_with(&format!("fill:{expected};")),
+                            "{root_css}"
+                        );
+                        assert!(document.root_element().children().any(|node| {
+                            node.has_tag_name("text") && node.text() == Some("Typed root paint")
+                        }));
+                        let completion = rendered.into_completion();
+                        let evidence =
+                            merman_render::__private::family_evidence(completion.report());
+                        assert_eq!(evidence.applied_count(), 1);
+                        assert_eq!(evidence.compatibility_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn timeline_text_fill_preserves_config_and_independent_label_colors() {
+    let theme = timeline_event_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    let source = "timeline\n    title Owned\n    section Release\n    Plan : Ship\n";
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "textColor": "#abcdef", "cScaleLabel0": "#fedcba" }
+    })));
+    let rendered = try_render_timeline_with_theme_and_engine(source, &theme, engine)
+        .expect("source-owned Text.fill");
+    assert!(rendered.svg().contains("fill:#abcdef;"));
+    assert!(rendered.svg().contains("text{fill:#fedcba;}"));
+    assert!(!rendered.svg().contains("#123456"));
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}
+
+#[test]
+fn timeline_text_fill_handles_titleless_and_zero_palette_consumers() {
+    let theme = timeline_event_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for direction in ["", " TD"] {
+        for limit in [0, 2] {
+            let source = format!("timeline{direction}\n    Plan : Ship\n");
+            let rendered = try_render_timeline_with_theme_and_engine(
+                &source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "themeVariables": { "THEME_COLOR_LIMIT": limit }
+                }))),
+            )
+            .expect("titleless Timeline root paint");
+            assert!(rendered.svg().contains("fill:#123456;"));
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            let applied = direction.is_empty() || limit == 0;
+            assert_eq!(evidence.applied_count(), usize::from(applied));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+            assert_eq!(evidence.compatibility_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_text_fill_does_not_certify_unsupported_siblings_or_ordinal_rules() {
+    let fill = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
+    let source = "timeline\n    title Typed paint\n    Plan : Ship\n";
+    let mixed = ThemeStylePatch {
+        paint: ThemePaintPatch {
+            opacity: Specified::Value(0.5),
+            ..fill.paint.clone()
+        },
+        ..fill.clone()
+    };
+    let mixed_theme = timeline_event_rules_theme([ThemeRule::new(ThemeTarget::Text, mixed)]);
+    assert!(try_render_timeline_with_theme(source, &mixed_theme).is_err());
+    let ordinal_theme = timeline_event_rules_theme([
+        ThemeRule::new(ThemeTarget::Text, fill).with_ordinal(OrdinalSelector::Exact(1))
+    ]);
+    assert!(try_render_timeline_with_theme(source, &ordinal_theme).is_err());
+}
+
+#[test]
 fn timeline_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
     let source = "timeline\n    section Release\n        2026 : Ship\n";
     let baseline = try_render_timeline_svg_with_resource_policy(

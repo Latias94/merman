@@ -390,7 +390,7 @@ impl CutoverWitnessProfile {
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
         if (matches!(
             route.family_id(),
-            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN
+            DiagramFamilyId::C4 | DiagramFamilyId::KANBAN | DiagramFamilyId::TIMELINE
         ) && route.target() == ThemeTarget::Text)
             || (route.family_id() == DiagramFamilyId::GIT_GRAPH
                 && matches!(
@@ -669,6 +669,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             Ok(JOURNEY_TEXT_PAINT_SOURCE)
         }
         (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
+            Ok(TIMELINE_EVENT_FILL_SOURCE)
+        }
+        (DiagramFamilyId::TIMELINE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(TIMELINE_EVENT_FILL_SOURCE)
         }
         (
@@ -1630,11 +1633,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_350_routes_and_460_artifact_witnesses() {
+    fn route_inventory_retains_354_routes_and_472_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 350);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 460);
+        assert_eq!(inventory.len(), 354);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 472);
     }
 
     #[test]

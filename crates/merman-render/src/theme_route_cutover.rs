@@ -376,11 +376,12 @@ pub enum ThemeRouteCutoverProjection {
     ErTableOddFill = 44,
     ErTableEvenFill = 45,
     RequirementRelationPaint = 46,
+    TimelineTextFill = 47,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 47] = [
+    const ALL: [Self; 48] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -428,6 +429,7 @@ impl ThemeRouteCutoverProjection {
         Self::ErTableOddFill,
         Self::ErTableEvenFill,
         Self::RequirementRelationPaint,
+        Self::TimelineTextFill,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -478,6 +480,7 @@ impl ThemeRouteCutoverProjection {
             Self::GanttTaskWarningStroke => "task.warning.stroke",
             Self::TimelineEventFill => "event.fill",
             Self::RequirementRelationPaint => "relation.paint",
+            Self::TimelineTextFill => "event.text",
         }
     }
 
@@ -531,6 +534,7 @@ impl ThemeRouteCutoverProjection {
             | Self::TimelineEventFill
             | Self::ErTableOddFill
             | Self::ErTableEvenFill
+            | Self::TimelineTextFill
             | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
@@ -664,6 +668,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::GanttTaskWarningStroke);
     pub const REPLACE_TIMELINE_EVENT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::TimelineEventFill);
+    pub const REPLACE_TIMELINE_TEXT_FILL: Self =
+        Self::replacing(ThemeRouteCutoverProjection::TimelineTextFill);
     pub const REPLACE_ER_TABLE_FILL: Self = Self(
         ThemeRouteCutoverProjection::ErTableOddFill.bit()
             | ThemeRouteCutoverProjection::ErTableEvenFill.bit(),

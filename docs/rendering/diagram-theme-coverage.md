@@ -4,7 +4,7 @@ This is a migration snapshot, not a stable support contract. It distinguishes a 
 consumer, an executable legacy compatibility route, and an explicitly Unsupported mechanism.
 A compiled theme is opt-in; the removed `PresentationTheme`/`HostTheme` APIs are not aliases.
 
-## Snapshot: 2026-09-09
+## Snapshot: 2026-09-10
 
 The source inventories, not this summary, authorize rendering and retirement:
 
@@ -12,15 +12,17 @@ The source inventories, not this summary, authorize rendering and retirement:
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
 | Families without a family-owned Legacy route | 23/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 10/33; 192 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families with executable Legacy routes | 10/33; 188 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 61 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v64; 350 routes / 460 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 62 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v65; 354 routes / 472 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
+output files. Version 65 adds four Timeline Text.fill routes (unqualified/Default,
+solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
+arrowhead fill. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
 solid/transparent), with Classic, Neo and HandDrawn witnesses for relation paths and referenced
 markers. Explicit `relationColor` retains ownership; any specified stroke suppresses the fill
 fallback. Requirement Text.fill remains on the bridge. Version 62 adds the remaining eight ER scalar routes: unqualified Table.fill,
@@ -160,8 +162,12 @@ Important boundaries that a family-level count cannot express:
   Default Text.fill preserve independent label/value config ownership; no participating text
   terminal means `NotApplicable`. Role-local sizes do not become a base FontSize consumer.
 - Timeline static unqualified/Default Event.fill is in KTD17, independently of its ordinal palette,
-  radius, opacity, and typography routes. Generic Text.fill and Event.stroke remain compatibility
-  surfaces; Title.fill is explicitly Unsupported because Timeline has no titleColor consumer.
+  radius, opacity, and typography routes. Static unqualified/Default Text.fill directly owns the
+  root inherited paint; explicit textColor retains ownership. The writer records titles,
+  referenced arrowheads, and node fill inheritance when the color-scale domain is empty.
+  Independently colored node labels retain their owners, and dynamic source colors remain
+  residuals. Unused marker definitions do not prove application. Event.stroke remains a
+  compatibility surface; Title.fill is Unsupported because Timeline has no titleColor consumer.
 - Gantt Task[Warning].stroke is typed and in KTD17. Today-marker and vertical-marker source/config
   ownership remains terminal-local; no applicable marker is not evidence of typed application.
 - Error-family bridge freedom does not erase unrelated detected-family compatibility from a lenient

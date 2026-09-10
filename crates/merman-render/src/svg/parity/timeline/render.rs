@@ -1,3 +1,4 @@
+use super::super::css::InfoCssWriter;
 use super::super::theme::TimelineTheme;
 use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
@@ -8,14 +9,18 @@ fn timeline_css(
     theme: &TimelineTheme,
     resolved_font_family_css: &str,
     resolved_font_size_css: &str,
+    text_fill: Option<&str>,
 ) -> TimelineCss {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let parts = info_css_parts_with_resolved_typography(
-        diagram_id,
+    let mut writer = InfoCssWriter::with_resolved_typography(
         effective_config,
         resolved_font_family_css,
         resolved_font_size_css,
     );
+    if let Some(fill) = text_fill {
+        writer = writer.with_text_color(fill);
+    }
+    let parts = writer.into_parts(diagram_id);
     let root_rule = parts.root_rule;
     let root_typography_emitted = !root_rule.is_empty();
     let mut out = parts.css_prefix;
@@ -31,11 +36,7 @@ fn timeline_css(
                 .get(i)
                 .cloned()
                 .unwrap_or_else(|| theme.node_border.clone());
-            let redux_fill = if theme.is_color_theme && !theme.is_dark_theme {
-                border_color.clone()
-            } else {
-                theme.main_bkg.clone()
-            };
+            let redux_fill = timeline_section_fill(theme, i, false).expect("existing section");
             let redux_stroke = if theme.is_color_theme {
                 border_color
             } else {
@@ -56,7 +57,7 @@ fn timeline_css(
                 scoped_svg_url(diagram_id, "drop-shadow"),
                 diagram_id,
                 section,
-                theme.node_border,
+                timeline_section_label_fill(theme, i).expect("existing section"),
                 theme.font_weight,
                 diagram_id,
                 section,
@@ -92,10 +93,10 @@ fn timeline_css(
                 section,
                 diagram_id,
                 section,
-                section_theme.c_scale,
+                timeline_section_fill(theme, i, false).expect("existing section"),
                 diagram_id,
                 section,
-                section_theme.c_scale_label,
+                timeline_section_label_fill(theme, i).expect("existing section"),
                 diagram_id,
                 section,
                 section_theme.c_scale_label,
@@ -163,6 +164,7 @@ fn timeline_css(
         font_size_css: parts.font_size_css,
         base_typography_emitted: parts.base_typography_emitted,
         root_typography_emitted,
+        text_color: parts.text_color,
     }
 }
 
@@ -172,6 +174,72 @@ struct TimelineCss {
     font_size_css: String,
     base_typography_emitted: bool,
     root_typography_emitted: bool,
+    text_color: String,
+}
+
+fn timeline_section_fill(theme: &TimelineTheme, slot: usize, neo_gradient: bool) -> Option<&str> {
+    let section = theme.sections.get(slot)?;
+    Some(if neo_gradient {
+        &theme.main_bkg
+    } else if theme.is_redux_theme {
+        if theme.is_color_theme && !theme.is_dark_theme {
+            theme.border_colors.get(slot).unwrap_or(&theme.node_border)
+        } else {
+            &theme.main_bkg
+        }
+    } else {
+        &section.c_scale
+    })
+}
+
+fn timeline_section_label_fill(theme: &TimelineTheme, slot: usize) -> Option<&str> {
+    let section = theme.sections.get(slot)?;
+    Some(if theme.is_redux_theme {
+        &theme.node_border
+    } else {
+        &section.c_scale_label
+    })
+}
+
+struct TimelineTextPaintEmissionState<'a> {
+    plan: &'a crate::timeline::TimelineTextPaintPlan,
+    theme: &'a TimelineTheme,
+    neo_gradient: bool,
+    receipt: Option<crate::timeline::TimelineTextPaintReceipt<'a>>,
+}
+
+impl TimelineTextPaintEmissionState<'_> {
+    fn record_node(&mut self, node: &TimelineNodeLayout, inline_fill: Option<&str>) {
+        let Some(receipt) = &mut self.receipt else {
+            return;
+        };
+        let slot = node
+            .section_class
+            .strip_prefix("section-")
+            .and_then(|suffix| suffix.parse::<i64>().ok())
+            .and_then(|section| section.checked_add(1))
+            .and_then(|slot| usize::try_from(slot).ok());
+        let shape_fill = inline_fill.or_else(|| {
+            slot.and_then(|slot| timeline_section_fill(self.theme, slot, self.neo_gradient))
+        });
+        let label_fill = slot.and_then(|slot| timeline_section_label_fill(self.theme, slot));
+        receipt.record_node(
+            shape_fill,
+            label_fill,
+            node.label_lines.iter().any(|line| !line.trim().is_empty()),
+        );
+    }
+
+    fn finish(self) -> Result<()> {
+        if let Some(receipt) = self.receipt
+            && !self.plan.record_terminal(receipt)
+        {
+            return Err(crate::Error::InvalidModel {
+                message: "Timeline text paint receipt did not match the terminal SVG".to_string(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Exact inline paint supplied to the node-background writer after output admission.
@@ -496,6 +564,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     layout: &TimelineDiagramLayout,
     event_theme: &crate::timeline::TimelineEventTheme,
     typography_theme: &crate::timeline::TimelineTypographyThemePlan,
+    text_paint: &crate::timeline::TimelineTextPaintPlan,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -532,6 +601,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         event_radius: Option<(&str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
+        text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<TimelineNodeEmission> {
         let node_local_id = format!("node-{node_count}");
@@ -666,6 +736,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             emitted_palette_fill,
             emitted_line_stroke,
         );
+        text_emission.record_node(n, effective_fill);
         options.checkpoint_emit()?;
         Ok(TimelineNodeEmission {
             inline_fill: is_event.then(|| direct_fill.or(palette_fill)).flatten(),
@@ -684,6 +755,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         event_radius: Option<(&'a str, f64)>,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
+        text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<(Option<&'a str>, bool, bool)> {
         let output_start = out.len();
@@ -699,6 +771,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             event_radius,
             event_emission,
             typography_emission,
+            text_emission,
             options,
         )?;
         let output = out.as_str().get(output_start..).unwrap_or_default();
@@ -721,6 +794,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         is_neo: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
+        text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let (event_index, emitted_opacity_token, emitted_opacity_matches) =
@@ -748,6 +822,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 event_radius,
                 event_emission,
                 typography_emission,
+                text_emission,
                 options,
             )?;
         out.push_str("</g>");
@@ -774,6 +849,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         is_neo: bool,
         event_emission: &mut TimelineEventEmissionState<'_>,
         typography_emission: &mut TimelineTypographyEmissionState<'_>,
+        text_emission: &mut TimelineTextPaintEmissionState<'_>,
         options: &SvgExecution<'_>,
     ) -> Result<()> {
         let node = &task.node;
@@ -796,6 +872,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             None,
             event_emission,
             typography_emission,
+            text_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -817,6 +894,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                         is_neo,
                         event_emission,
                         typography_emission,
+                        text_emission,
                         options,
                     )?;
                 }
@@ -832,6 +910,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                         is_neo,
                         event_emission,
                         typography_emission,
+                        text_emission,
                         options,
                     )?;
                     if let Some(connector) = task.connectors.get(index) {
@@ -898,17 +977,27 @@ pub(crate) fn render_timeline_diagram_svg_model(
     }
 
     let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme, layout);
+    let mut text_emission = TimelineTextPaintEmissionState {
+        plan: text_paint,
+        theme: &theme,
+        neo_gradient: use_neo_gradient,
+        receipt: text_paint.begin_terminal_receipt(layout, options.work_meter())?,
+    };
     let css = timeline_css(
         diagram_id,
         effective_config,
         &theme,
         typography_theme.font_family_css(),
         typography_theme.font_size_css(),
+        text_paint.fill_css(),
     );
     options.checkpoint_emit()?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
     out.checkpoint()?;
     typography_emission.record_css(&css);
+    if let Some(receipt) = &mut text_emission.receipt {
+        receipt.record_css(&css.text_color);
+    }
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     out.push_str(r#"<g/>"#);
@@ -921,6 +1010,9 @@ pub(crate) fn render_timeline_diagram_svg_model(
         escape_attr(&arrowhead_id)
     );
     out.checkpoint()?;
+    if let Some(receipt) = &mut text_emission.receipt {
+        receipt.record_marker();
+    }
     if is_redux_theme {
         let flood_opacity = if is_neo && theme.is_dark_theme {
             "0.2"
@@ -980,6 +1072,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             None,
             &mut event_emission,
             &mut typography_emission,
+            &mut text_emission,
             options,
         )?;
         out.push_str("</g>");
@@ -997,6 +1090,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 is_neo,
                 &mut event_emission,
                 &mut typography_emission,
+                &mut text_emission,
                 options,
             )?;
         }
@@ -1014,6 +1108,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             is_neo,
             &mut event_emission,
             &mut typography_emission,
+            &mut text_emission,
             options,
         )?;
     }
@@ -1029,6 +1124,9 @@ pub(crate) fn render_timeline_diagram_svg_model(
         );
         out.checkpoint()?;
         typography_emission.record_text_run(title);
+        if let Some(receipt) = &mut text_emission.receipt {
+            receipt.record_title(title);
+        }
     }
 
     if layout.direction == merman_core::diagrams::timeline::TimelineDirection::LeftToRight {
@@ -1043,6 +1141,11 @@ pub(crate) fn render_timeline_diagram_svg_model(
             marker_end = scoped_svg_url(diagram_id, "arrowhead"),
         );
         out.checkpoint()?;
+        if let Some(receipt) = &mut text_emission.receipt {
+            receipt.record_marker_reference(
+                arrowhead_id == scoped_svg_id(diagram_id, "arrowhead").to_string(),
+            );
+        }
     }
 
     out.push_str("</svg>\n");
@@ -1050,6 +1153,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     let rooted_svg = root_document.complete(out.finish()?)?;
     event_emission.finish()?;
     typography_emission.finish()?;
+    text_emission.finish()?;
     Ok(rooted_svg)
 }
 
@@ -1226,6 +1330,12 @@ mod tests {
                 None,
                 &merman_core::MermaidConfig::default(),
             ),
+            &crate::timeline::TimelineTextPaintPlan::resolve(
+                None,
+                &merman_core::MermaidConfig::default(),
+                execution.work_meter(),
+            )
+            .expect("text paint"),
             &serde_json::json!({}),
             &execution,
         )
