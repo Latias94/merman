@@ -57,7 +57,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = tree_view_css(effective_config_value);
+    let css = tree_view_css(diagram_id, effective_config_value);
     if let Some(title) = acc_title {
         let _ = write!(
             &mut out,
@@ -177,11 +177,11 @@ fn push_tree_view_node(
     Ok(())
 }
 
-fn tree_view_css(effective_config: &serde_json::Value) -> String {
+fn tree_view_css(diagram_id: SvgDiagramId<'_>, effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(
-        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: {}; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: {}; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        "#{diagram_id} .treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} #{diagram_id} .treeView-node-dir {{ font-weight: {}; }} #{diagram_id} .treeView-node-line {{ stroke: {}; }} #{diagram_id} .treeView-node-icon {{ color: {}; }} #{diagram_id} .treeView-node-description {{ font-size: {}; fill: {}; font-style: {}; white-space: pre; }} #{diagram_id} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
         theme.label_font_size_css,
         theme.label_color,
         TREE_VIEW_DIRECTORY_FONT_WEIGHT,

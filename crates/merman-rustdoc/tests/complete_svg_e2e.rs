@@ -1,8 +1,10 @@
-use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+mod support;
+use support::proc_macro_artifact;
 
 #[test]
 fn complete_svg_profile_renders_each_optional_engine() {
@@ -80,40 +82,6 @@ fn assert_doc_contains_svg(out_dir: &Path, page: &str) {
         .unwrap_or_else(|error| panic!("failed to read rustdoc HTML `{relative}`: {error}"));
     assert!(html.contains(r#"class="merman-rustdoc-diagram""#));
     assert!(html.contains("<svg"));
-}
-
-fn proc_macro_artifact() -> (PathBuf, PathBuf) {
-    let deps_dir = std::env::current_exe()
-        .expect("current rustdoc e2e test executable")
-        .parent()
-        .expect("rustdoc e2e test executable must be inside a deps directory")
-        .to_path_buf();
-    let extension = std::env::consts::DLL_EXTENSION;
-    let artifact = fs::read_dir(&deps_dir)
-        .unwrap()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_proc_macro_artifact(path, extension))
-        .max_by_key(|path| {
-            path.metadata()
-                .and_then(|metadata| metadata.modified())
-                .unwrap_or(UNIX_EPOCH)
-        })
-        .unwrap_or_else(|| {
-            panic!(
-                "failed to find compiled merman_rustdoc proc-macro artifact in {}",
-                deps_dir.display()
-            )
-        });
-    (deps_dir, artifact)
-}
-
-fn is_proc_macro_artifact(path: &Path, extension: &str) -> bool {
-    let Some(file_name) = path.file_name().and_then(OsStr::to_str) else {
-        return false;
-    };
-    path.extension().and_then(OsStr::to_str) == Some(extension)
-        && file_name.contains("merman_rustdoc")
 }
 
 fn unique_temp_dir() -> PathBuf {

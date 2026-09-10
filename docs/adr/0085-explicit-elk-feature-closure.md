@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted.
+Accepted. The Rustdoc default in decision 1 is superseded by ADR-0088 for the next release after
+`0.8.0-alpha.6`; the facade default and both crates' explicit aggregates remain unchanged.
 
 ## Date
 
@@ -24,8 +25,9 @@ serve all of those artifacts without hiding the legal and size consequences of t
 
 ## Decision
 
-1. `merman` and `merman-rustdoc` keep `complete-svg` as the ergonomic default, but define it as
-   `svg + layout-cytoscape + math`. It does not enable ELK.
+1. `merman` and `merman-rustdoc` define `complete-svg` as `svg + layout-cytoscape + math`. It does
+   not enable ELK. Both selected it by default in `0.8.0-alpha.6`; ADR-0088 changes only the
+   Rustdoc default to `svg + layout-cytoscape` in the next release.
 2. Both crates expose `complete-svg-elk = ["complete-svg", "layout-elk"]`. This is the explicit
    opt-in for the EPL-2.0 ELK implementation and its translated-source, attribution, and source-
    provenance obligations. The existing `layout-elk` leaf remains available for direct recipes.

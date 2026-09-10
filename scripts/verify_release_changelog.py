@@ -44,6 +44,12 @@ def first_release_heading(text: str, path: Path) -> tuple[str, str]:
         match = RELEASE_HEADING.match(line)
         if match is not None:
             heading_date = match.group("date")
+            if match.group("version") == "Unreleased":
+                if heading_date is not None:
+                    raise ReleaseChangelogError(
+                        f"{path}:{line_number} unversioned Unreleased heading must not have a date/status"
+                    )
+                return "Unreleased", "Unreleased"
             if heading_date is None:
                 raise ReleaseChangelogError(
                     f"{path}:{line_number} first release heading has no date/status"
@@ -66,6 +72,12 @@ def verify_repository(
             raise ReleaseChangelogError(f"cannot read {relative_path}: {exc}") from exc
         actual_version, release_date = first_release_heading(text, relative_path)
         expected_version = expected_heading_version(relative_path, version)
+        if actual_version == "Unreleased":
+            if require_date:
+                raise ReleaseChangelogError(
+                    f"{relative_path} must be versioned and dated before immutable release preflight"
+                )
+            continue
         if actual_version != expected_version:
             raise ReleaseChangelogError(
                 f"{relative_path} starts with {actual_version!r}, expected {expected_version!r}"
@@ -108,7 +120,7 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(f"release changelogs match {canonical}")
+    print(f"release changelogs are valid for {canonical}" + (" preflight" if args.require_date else " preparation"))
     return 0
 
 

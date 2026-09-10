@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "ca5a176c6317dd18b1d36dd56f4e83956922c551d53348604484e5c81e28c320",
+    "cargo_lock_sha256": "ae7cf8b44c86d3e3383eaddaea065d1feb430234734301e346163720130cf943",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -1346,6 +1346,16 @@
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/rust-lang/cargo"
+        },
+        {
+          "name": "proc-macro-crate",
+          "version": "3.5.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Bastian K\u00f6cher <git@kchr.de>"
+          ],
+          "repository": "https://github.com/bkchr/proc-macro-crate"
         }
       ]
     },
@@ -3108,6 +3118,14 @@
         {
           "name": "toml_datetime",
           "version": "1.1.1+spec-1.1.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [],
+          "repository": "https://github.com/toml-rs/toml"
+        },
+        {
+          "name": "toml_edit",
+          "version": "0.25.13+spec-1.1.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],

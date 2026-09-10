@@ -222,6 +222,8 @@ not move the tag or treat the exception as permission for a later prerelease.
 
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Use an unversioned `[Unreleased]` heading while the next workspace version is undecided, then add the selected version before release preflight. Immediately before the immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
+`python3 scripts/verify_release_changelog.py --version <workspace-version>` accepts an unversioned `[Unreleased]` entry during development and still checks every versioned projection against the supplied workspace version. Immutable preflight adds `--require-date`, which requires every first entry to name that version and a valid date; it never skips pending changes to validate an older release underneath them.
+
 Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
 
 | Surface | Registry or audience behavior | Changelog source |

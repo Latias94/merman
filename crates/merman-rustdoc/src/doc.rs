@@ -1,547 +1,160 @@
 use crate::error::{Error, Result};
-use crate::html::diagram_html;
-use crate::options::{FailMode, Options};
-use crate::render::{
-    HeadlessMermaidRenderer, IncludeResolver, ManifestIncludeResolver, MermaidRenderer,
-    RenderedDiagram, source_preview,
-};
-use crate::svg::validate_svg;
+use crate::options::{FailMode, Options, SourceMode};
+use crate::render::{RenderedDiagram, read_include_mmd, render_mermaid_diagram, source_preview};
+use merman_doc::{BlockKind, SvgVariants};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Fence {
-    ch: char,
-    len: usize,
-}
-
-pub(crate) fn rewrite_doc_lines(
-    lines: &[String],
-    next_diagram: &mut usize,
-    options: Options,
-) -> Result<Vec<String>> {
-    let mut render = HeadlessMermaidRenderer;
-    let mut include = ManifestIncludeResolver;
-    rewrite_doc_lines_with(lines, next_diagram, options, &mut render, &mut include)
-}
-
-fn rewrite_doc_lines_with<R, I>(
-    lines: &[String],
-    next_diagram: &mut usize,
-    options: Options,
-    render: &mut R,
-    include: &mut I,
-) -> Result<Vec<String>>
-where
-    R: MermaidRenderer,
-    I: IncludeResolver,
-{
-    let mut out = Vec::with_capacity(lines.len());
-    let mut i = 0;
-    let mut non_mermaid_fence = None;
-
-    while i < lines.len() {
-        let markdown = markdown_line(&lines[i]);
-
-        if let Some(fence) = non_mermaid_fence {
-            out.push(lines[i].clone());
-            if is_fence_end(markdown, fence) {
-                non_mermaid_fence = None;
+/// Prepare the lexical comment sugar before rustdoc's common indentation pass.
+/// Raw doc attributes are Markdown and must not lose literal list markers.
+pub(crate) fn prepare_literal(literal: &syn::LitStr) -> String {
+    let text = literal.value();
+    let source = literal.span().source_text().unwrap_or_default();
+    let block = source.starts_with("/**") || source.starts_with("/*!");
+    let sugared = block || source.starts_with("///") || source.starts_with("//!");
+    if !sugared {
+        return text;
+    }
+    let mut lines = text.lines().collect::<Vec<_>>();
+    if block {
+        let first = lines
+            .iter()
+            .position(|line| !line.trim().is_empty())
+            .unwrap_or(lines.len());
+        let end = lines
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+            .map_or(first, |index| index + 1);
+        lines = lines[first..end].to_vec();
+        let decorated_start = usize::from(
+            lines
+                .first()
+                .is_some_and(|line| !line.trim_start().starts_with('*')),
+        );
+        if !lines[decorated_start..].is_empty()
+            && lines[decorated_start..]
+                .iter()
+                .all(|line| line.trim().is_empty() || line.trim_start().starts_with('*'))
+        {
+            for line in &mut lines[decorated_start..] {
+                *line = line.trim_start().strip_prefix('*').unwrap_or("");
             }
-            i += 1;
-            continue;
         }
+    }
+    lines
+        .into_iter()
+        .map(|line| line.strip_prefix(' ').unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
-        if let Some(fence) = mermaid_fence_start(markdown) {
-            let start = i;
-            i += 1;
-            let mut body = Vec::new();
-            while i < lines.len() {
-                let line = markdown_line(&lines[i]);
-                if is_fence_end(line, fence) {
-                    break;
+pub(crate) fn common_indentation(fragments: &[syn::LitStr]) -> usize {
+    fragments
+        .iter()
+        .filter_map(|fragment| {
+            fragment
+                .value()
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .map(|line| line.bytes().take_while(|b| *b == b' ').count())
+                .min()
+        })
+        .min()
+        .unwrap_or(0)
+}
+
+pub(crate) fn normalize_document(fragments: &[String], indentation: usize) -> String {
+    let combined = fragments.join("\n");
+    combined
+        .lines()
+        .map(|line| {
+            &line[line
+                .bytes()
+                .take_while(|b| *b == b' ')
+                .count()
+                .min(indentation)..]
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(crate) fn rewrite_document(source: &str, options: &Options, namespace: &str) -> Result<String> {
+    let mut output = String::with_capacity(source.len());
+    let mut copied = 0;
+    for (index, block) in merman_doc::scan(source).into_iter().enumerate() {
+        output.push_str(&source[copied..block.span.start]);
+        let rendered = (|| {
+            let diagram_source = match block.kind {
+                BlockKind::Mermaid(source) => source,
+                BlockKind::Include(path) => read_include_mmd(&path)?,
+                BlockKind::Invalid(error) => return Err(Error::new(error.to_string())),
+            };
+            let diagram = render_mermaid_diagram(&diagram_source, index, options, namespace)
+                .map_err(|err| {
+                    Error::new(format!("near `{}`: {err}", source_preview(&diagram_source)))
+                })?;
+            let variants = match &diagram {
+                RenderedDiagram::Single(svg) => SvgVariants::Single(svg),
+                RenderedDiagram::RustdocTheme { light, dark } => {
+                    SvgVariants::RustdocTheme { light, dark }
                 }
-                body.push(line.to_string());
-                i += 1;
+            };
+            let mut html = String::new();
+            merman_doc::write_diagram_html(
+                &mut html,
+                None,
+                &diagram_source,
+                variants,
+                options.source == SourceMode::Details,
+            )
+            .map_err(|_| Error::new("failed to embed rendered SVG in Markdown"))?;
+            Ok(html)
+        })();
+        match rendered {
+            Ok(html) => block
+                .embedding
+                .with_trailing_boundary()
+                .write_html(&mut output, &html)
+                .map_err(|_| Error::new("failed to embed diagram in its Markdown container"))?,
+            Err(_) if options.fail == FailMode::KeepSource => {
+                output.push_str(&source[block.span.clone()])
             }
-
-            if i == lines.len() {
-                if options.fail == FailMode::KeepSource {
-                    out.extend(lines[start..].iter().cloned());
-                    break;
-                }
+            Err(err) => {
                 return Err(Error::new(format!(
-                    "unclosed Mermaid fence in rustdoc comment starting at doc line {}",
-                    start + 1
+                    "Mermaid block at doc line {}, column {}: {err}",
+                    block.location.line, block.location.column
                 )));
             }
-
-            let source = body.join("\n");
-            let origin = format!("Mermaid fence starting at doc line {}", start + 1);
-            match render_diagram_block(&source, next_diagram, options, &origin, render) {
-                Ok(block) => out.push(block),
-                Err(_) if options.fail == FailMode::KeepSource => {
-                    out.extend(lines[start..=i].iter().cloned());
-                }
-                Err(err) => return Err(err),
-            }
-            i += 1;
-            continue;
         }
-
-        match parse_include_mmd(markdown) {
-            Ok(Some(path)) => {
-                let block = include.read_include_mmd(&path).and_then(|source| {
-                    let origin = format!("include_mmd!(\"{path}\") at doc line {}", i + 1);
-                    render_diagram_block(&source, next_diagram, options, &origin, render)
-                });
-                match block {
-                    Ok(block) => out.push(block),
-                    Err(_) if options.fail == FailMode::KeepSource => out.push(lines[i].clone()),
-                    Err(err) => return Err(err),
-                }
-                i += 1;
-                continue;
-            }
-            Ok(None) => {}
-            Err(_) if options.fail == FailMode::KeepSource => {
-                out.push(lines[i].clone());
-                i += 1;
-                continue;
-            }
-            Err(err) => return Err(Error::new(format!("doc line {}: {err}", i + 1))),
-        }
-
-        if let Some(fence) = any_fence_start(markdown) {
-            non_mermaid_fence = Some(fence);
-        }
-
-        out.push(lines[i].clone());
-        i += 1;
+        copied = block.span.end;
     }
-
-    Ok(out)
-}
-
-fn render_diagram_block<R>(
-    source: &str,
-    next_diagram: &mut usize,
-    options: Options,
-    origin: &str,
-    render: &mut R,
-) -> Result<String>
-where
-    R: MermaidRenderer,
-{
-    let index = *next_diagram;
-    let diagram = render
-        .render_mermaid_diagram(source, index, options)
-        .map_err(|err| Error::new(format!("{origin} near `{}`: {err}", source_preview(source))))?;
-    validate_rendered_diagram(&diagram, options)
-        .map_err(|err| Error::new(format!("{origin} near `{}`: {err}", source_preview(source))))?;
-    *next_diagram += 1;
-    Ok(diagram_html(source, &diagram, options.source))
-}
-
-fn validate_rendered_diagram(diagram: &RenderedDiagram, options: Options) -> Result<()> {
-    match diagram {
-        RenderedDiagram::Single(svg) => validate_svg(svg, options.sanitize),
-        RenderedDiagram::RustdocTheme { light, dark } => {
-            validate_svg(light, options.sanitize)?;
-            validate_svg(dark, options.sanitize)
-        }
-    }
-}
-
-fn markdown_line(line: &str) -> &str {
-    line.strip_prefix(' ').unwrap_or(line)
-}
-
-fn any_fence_start(line: &str) -> Option<Fence> {
-    let trimmed = line.trim_start();
-    let mut chars = trimmed.chars();
-    let ch = chars.next()?;
-    if ch != '`' && ch != '~' {
-        return None;
-    }
-
-    let len = trimmed.chars().take_while(|current| *current == ch).count();
-    (len >= 3).then_some(Fence { ch, len })
-}
-
-fn mermaid_fence_start(line: &str) -> Option<Fence> {
-    let fence = any_fence_start(line)?;
-    let trimmed = line.trim_start();
-    let rest = trimmed
-        .char_indices()
-        .nth(fence.len)
-        .map(|(idx, _)| &trimmed[idx..])
-        .unwrap_or("")
-        .trim();
-    let info = rest
-        .trim_start_matches('{')
-        .split(|ch: char| ch.is_whitespace() || ch == '}' || ch == ',')
-        .next()
-        .unwrap_or("");
-
-    info.eq_ignore_ascii_case("mermaid").then_some(fence)
-}
-
-fn is_fence_end(line: &str, fence: Fence) -> bool {
-    let trimmed = line.trim_start();
-    let len = trimmed
-        .chars()
-        .take_while(|current| *current == fence.ch)
-        .count();
-    if len < fence.len {
-        return false;
-    }
-
-    let rest = trimmed
-        .char_indices()
-        .nth(len)
-        .map(|(idx, _)| &trimmed[idx..])
-        .unwrap_or("");
-    rest.trim().is_empty()
-}
-
-fn parse_include_mmd(line: &str) -> Result<Option<String>> {
-    let trimmed = line.trim();
-    let Some(rest) = trimmed.strip_prefix("include_mmd!") else {
-        return Ok(None);
-    };
-    let rest = rest.trim();
-    let Some(inner) = rest.strip_prefix('(').and_then(|s| s.strip_suffix(')')) else {
-        return Err(Error::new(
-            "invalid include_mmd! syntax in rustdoc comment; expected include_mmd!(\"path.mmd\")",
-        ));
-    };
-    let lit = syn::parse_str::<syn::LitStr>(inner.trim()).map_err(|err| {
-        Error::new(format!(
-            "invalid include_mmd! path literal in rustdoc comment: {err}"
-        ))
-    })?;
-    Ok(Some(lit.value()))
+    output.push_str(&source[copied..]);
+    Ok(output)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::{SanitizeMode, SourceMode, ThemeMode};
-
-    fn rewrite_with_fake_renderer(lines: &[&str]) -> Result<(Vec<String>, Vec<String>)> {
-        rewrite_with_fake_renderer_options(lines, Options::default())
-    }
-
-    fn rewrite_with_fake_renderer_options(
-        lines: &[&str],
-        options: Options,
-    ) -> Result<(Vec<String>, Vec<String>)> {
-        let lines = lines
-            .iter()
-            .map(|line| (*line).to_string())
-            .collect::<Vec<_>>();
-        let mut rendered_sources = Vec::new();
-        let mut render = |source: &str, index: usize, render_options: Options| {
-            assert_eq!(render_options.pipeline, options.pipeline);
-            assert_eq!(render_options.theme, options.theme);
-            rendered_sources.push(source.to_string());
-            Ok(fake_rendered_diagram(index, render_options.theme))
-        };
-        let mut include = |path: &str| Ok(format!("flowchart TD\nA[{path}] --> B[Done]"));
-        let mut next = 0;
-        let out = rewrite_doc_lines_with(&lines, &mut next, options, &mut render, &mut include)?;
-        Ok((out, rendered_sources))
-    }
-
     #[test]
-    fn rewrites_mermaid_fence_to_inline_svg_block() {
-        let (out, rendered_sources) = rewrite_with_fake_renderer(&[
-            " Intro",
-            " ```mermaid",
-            " flowchart TD",
-            "   A --> B",
-            " ```",
-            " Outro",
-        ])
-        .unwrap();
-
-        assert_eq!(rendered_sources, vec!["flowchart TD\n  A --> B"]);
-        assert_eq!(out[0], " Intro");
-        assert!(out[1].contains(r#"class="merman-rustdoc-diagram""#));
-        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
-        assert!(out[1].contains(r#"<svg id="diagram-0-dark"></svg>"#));
-        assert_eq!(out[2], " Outro");
-    }
-
-    #[test]
-    fn supports_tilde_mermaid_fences() {
-        let (out, rendered_sources) = rewrite_with_fake_renderer(&[
-            " Before",
-            " ~~~ mermaid",
-            " sequenceDiagram",
-            "   A->>B: hi",
-            " ~~~",
-        ])
-        .unwrap();
-
-        assert_eq!(rendered_sources, vec!["sequenceDiagram\n  A->>B: hi"]);
-        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
-    }
-
-    #[test]
-    fn include_mmd_uses_resolver_and_renders_result() {
-        let (out, rendered_sources) =
-            rewrite_with_fake_renderer(&[" Intro", " include_mmd!(\"docs/diagram.mmd\")"]).unwrap();
-
+    fn normalizes_lines_and_multiline_fragments_without_flattening_code() {
         assert_eq!(
-            rendered_sources,
-            vec!["flowchart TD\nA[docs/diagram.mmd] --> B[Done]"]
+            normalize_document(&[" Intro".into(), "".into(), "     example".into()], 1),
+            "Intro\n\n    example"
         );
-        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
-    }
-
-    #[test]
-    fn include_mmd_inside_non_mermaid_fence_is_preserved() {
-        let (out, rendered_sources) = rewrite_with_fake_renderer(&[
-            " ```rust",
-            " include_mmd!(\"docs/diagram.mmd\")",
-            " ```",
-        ])
-        .unwrap();
-
-        assert!(rendered_sources.is_empty());
         assert_eq!(
-            out,
-            vec![
-                " ```rust".to_string(),
-                " include_mmd!(\"docs/diagram.mmd\")".to_string(),
-                " ```".to_string()
-            ]
+            normalize_document(&["Intro\n\n    example".into()], 0),
+            "Intro\n\n    example"
         );
     }
-
     #[test]
-    fn source_details_adds_escaped_mermaid_source() {
-        let options = Options {
-            source: SourceMode::Details,
-            ..Options::default()
-        };
-        let (out, _rendered_sources) = rewrite_with_fake_renderer_options(
-            &[
-                " ```mermaid",
-                " flowchart TD",
-                "   A[<Start & Go>] --> B[Done]",
-                " ```",
-            ],
-            options,
-        )
-        .unwrap();
-
-        assert!(out[0].contains(r#"class="merman-rustdoc-source""#));
-        assert!(out[0].contains("Mermaid source"));
-        assert!(out[0].contains("A[&lt;Start &amp; Go&gt;]"));
-    }
-
-    #[test]
-    fn keep_source_preserves_fence_when_render_fails() {
-        let lines = [
-            " Intro",
-            " ```mermaid",
-            " flowchart TD",
-            "   A --> B",
-            " ```",
-            " Outro",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    fn tolerant_mode_keeps_a_failed_block_and_renders_the_next() {
+        let source =
+            "include_mmd!(\"missing-test.mmd\")\n\n```mermaid\nflowchart TD\nA-->B\n```\n**After**";
         let options = Options {
             fail: FailMode::KeepSource,
             ..Options::default()
         };
-        let mut render = |_source: &str, _index: usize, _options: Options| Err(Error::new("boom"));
-        let mut include = |_path: &str| Ok(String::new());
-        let mut next = 0;
-
-        let out =
-            rewrite_doc_lines_with(&lines, &mut next, options, &mut render, &mut include).unwrap();
-
-        assert_eq!(out, lines);
-        assert_eq!(next, 0);
-    }
-
-    #[test]
-    fn keep_source_preserves_include_when_file_read_fails() {
-        let lines = [" include_mmd!(\"missing.mmd\")"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let options = Options {
-            fail: FailMode::KeepSource,
-            ..Options::default()
-        };
-        let mut render = |_source: &str, index: usize, options: Options| {
-            Ok(fake_rendered_diagram(index, options.theme))
-        };
-        let mut include = |_path: &str| Err(Error::new("missing"));
-        let mut next = 0;
-
-        let out =
-            rewrite_doc_lines_with(&lines, &mut next, options, &mut render, &mut include).unwrap();
-
-        assert_eq!(out, lines);
-    }
-
-    #[test]
-    fn render_error_mentions_doc_line_and_source_preview() {
-        let lines = [
-            " Intro",
-            " ```mermaid",
-            " flowchart TD",
-            "   A --> B",
-            " ```",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-        let mut render =
-            |_source: &str, _index: usize, _options: Options| Err(Error::new("render failed"));
-        let mut include = |_path: &str| Ok(String::new());
-        let mut next = 0;
-
-        let err = rewrite_doc_lines_with(
-            &lines,
-            &mut next,
-            Options::default(),
-            &mut render,
-            &mut include,
-        )
-        .unwrap_err();
-        let err = err.to_string();
-
-        assert!(err.contains("Mermaid fence starting at doc line 2"));
-        assert!(err.contains("flowchart TD"));
-        assert!(err.contains("render failed"));
-    }
-
-    #[test]
-    fn invalid_include_syntax_mentions_doc_line() {
-        let lines = [" Intro", " include_mmd!(docs/diagram.mmd)"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let mut render = |_source: &str, index: usize, options: Options| {
-            Ok(fake_rendered_diagram(index, options.theme))
-        };
-        let mut include = |_path: &str| Ok(String::new());
-        let mut next = 0;
-
-        let err = rewrite_doc_lines_with(
-            &lines,
-            &mut next,
-            Options::default(),
-            &mut render,
-            &mut include,
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("doc line 2"));
-    }
-
-    #[test]
-    fn unclosed_mermaid_fence_is_an_error() {
-        let lines = [" ```mermaid", " flowchart TD"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let mut next = 0;
-        let mut render = |_source: &str, index: usize, options: Options| {
-            Ok(fake_rendered_diagram(index, options.theme))
-        };
-        let mut include = |_path: &str| Ok(String::new());
-
-        let err = rewrite_doc_lines_with(
-            &lines,
-            &mut next,
-            Options::default(),
-            &mut render,
-            &mut include,
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("unclosed Mermaid fence"));
-    }
-
-    #[test]
-    fn invalid_include_syntax_is_an_error() {
-        let err = parse_include_mmd("include_mmd!(docs/diagram.mmd)").unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("invalid include_mmd! path literal")
-        );
-    }
-
-    #[test]
-    fn strict_sanitize_rejects_dangerous_rendered_svg() {
-        let lines = [" ```mermaid", " flowchart TD", "   A --> B", " ```"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let mut render = |_source: &str, _index: usize, _options: Options| {
-            Ok(RenderedDiagram::Single(
-                r#"<svg><script>alert(1)</script></svg>"#.to_string(),
-            ))
-        };
-        let mut include = |_path: &str| Ok(String::new());
-        let mut next = 0;
-
-        let err = rewrite_doc_lines_with(
-            &lines,
-            &mut next,
-            Options::default(),
-            &mut render,
-            &mut include,
-        )
-        .unwrap_err();
-
-        assert!(err.to_string().contains("strict SVG sanitization"));
-        assert_eq!(next, 0);
-    }
-
-    #[test]
-    fn sanitize_off_allows_dangerous_rendered_svg() {
-        let lines = [" ```mermaid", " flowchart TD", "   A --> B", " ```"]
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        let options = Options {
-            sanitize: SanitizeMode::Off,
-            ..Options::default()
-        };
-        let mut render = |_source: &str, _index: usize, _options: Options| {
-            Ok(RenderedDiagram::Single(
-                r#"<svg><script>alert(1)</script></svg>"#.to_string(),
-            ))
-        };
-        let mut include = |_path: &str| Ok(String::new());
-        let mut next = 0;
-
-        let out =
-            rewrite_doc_lines_with(&lines, &mut next, options, &mut render, &mut include).unwrap();
-
-        assert!(out[0].contains("<script>"));
-        assert_eq!(next, 1);
-    }
-
-    fn fake_rendered_diagram(index: usize, theme: ThemeMode) -> RenderedDiagram {
-        match theme {
-            ThemeMode::Rustdoc => RenderedDiagram::RustdocTheme {
-                light: format!(r#"<svg id="diagram-{index}-light"></svg>"#),
-                dark: format!(r#"<svg id="diagram-{index}-dark"></svg>"#),
-            },
-            ThemeMode::Mermaid | ThemeMode::Fixed(_) => {
-                RenderedDiagram::Single(format!(r#"<svg id="diagram-{index}"></svg>"#))
-            }
-        }
+        let output = rewrite_document(source, &options, "test").unwrap();
+        assert!(output.contains("include_mmd!(\"missing-test.mmd\")"));
+        assert!(output.contains("<svg"));
+        assert!(output.contains("\n\n**After**"));
     }
 }

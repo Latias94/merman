@@ -730,9 +730,11 @@ impl FeatureGraph {
 
         let rustdoc = self.package("merman-rustdoc")?;
         let rustdoc_defaults = direct_feature_members(rustdoc, "default")?;
-        if rustdoc_defaults != expected_defaults {
+        let expected_rustdoc_defaults =
+            BTreeSet::from(["svg".to_string(), "layout-cytoscape".to_string()]);
+        if rustdoc_defaults != expected_rustdoc_defaults {
             return Err(matrix_error(format!(
-                "{}: merman-rustdoc default must equal `complete-svg`; expected {expected_defaults:?}, found {rustdoc_defaults:?}",
+                "{}: merman-rustdoc default must equal `svg` and `layout-cytoscape`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -1339,7 +1341,7 @@ mod tests {
             package(
                 "merman-rustdoc",
                 &[
-                    ("default", &["complete-svg"]),
+                    ("default", &["svg", "layout-cytoscape"]),
                     ("complete-svg", &["svg", "layout-cytoscape", "math"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
@@ -1407,22 +1409,32 @@ mod tests {
     }
 
     #[test]
-    fn rustdoc_default_must_be_exactly_complete_svg() {
-        let mut graph = product_contract_graph();
-        graph
-            .packages
-            .get_mut("merman-rustdoc")
-            .unwrap()
-            .features
-            .insert("default".to_string(), vec!["svg".to_string()]);
+    fn rustdoc_default_keeps_cytoscape_without_implicit_math() {
+        for defaults in [
+            vec!["svg".to_string()],
+            vec!["complete-svg".to_string()],
+            vec![
+                "svg".to_string(),
+                "layout-cytoscape".to_string(),
+                "math".to_string(),
+            ],
+        ] {
+            let mut graph = product_contract_graph();
+            graph
+                .packages
+                .get_mut("merman-rustdoc")
+                .unwrap()
+                .features
+                .insert("default".to_string(), defaults);
 
-        let error = graph.validate_product_feature_contracts().unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("merman-rustdoc default must equal `complete-svg`"),
-            "{error}"
-        );
+            let error = graph.validate_product_feature_contracts().unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("merman-rustdoc default must equal `svg` and `layout-cytoscape`"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

@@ -1,5 +1,6 @@
 mod builtin;
 mod context;
+mod embedding;
 mod final_validation;
 mod policy;
 mod preset;
@@ -65,7 +66,7 @@ pub fn rebase_svg_ids(
     session: &RenderSession,
 ) -> Result<String> {
     SvgPipeline::parity()
-        .with_postprocessor(RebaseSvgIdsPostprocessor::new(prefix))
+        .with_rebased_ids(prefix)
         .process_to_string(svg, session)
 }
 
@@ -176,13 +177,19 @@ impl AsRef<str> for ResvgCompatibleSvg {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InlineContract {
+    Browser,
+    Static,
+}
+
 #[derive(Clone)]
 pub struct SvgPipeline {
     preset: SvgPipelinePreset,
     postprocessors: Vec<Arc<dyn SvgPostprocessor>>,
     drop_native_duplicate_fallbacks: bool,
-    static_inline_admission: bool,
-    static_inline_validation: bool,
+    inline_contract: Option<InlineContract>,
+    isolate_ids: bool,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -200,8 +207,8 @@ impl fmt::Debug for SvgPipeline {
                 "drop_native_duplicate_fallbacks",
                 &self.drop_native_duplicate_fallbacks,
             )
-            .field("static_inline_admission", &self.static_inline_admission)
-            .field("static_inline_validation", &self.static_inline_validation)
+            .field("inline_contract", &self.inline_contract)
+            .field("isolate_ids", &self.isolate_ids)
             .finish()
     }
 }
@@ -230,8 +237,8 @@ impl SvgPipeline {
             preset,
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
-            static_inline_admission: false,
-            static_inline_validation: false,
+            inline_contract: None,
+            isolate_ids: false,
         }
     }
 
@@ -261,16 +268,38 @@ impl SvgPipeline {
     /// still available for cancellation and cumulative resource accounting.
     #[doc(hidden)]
     pub fn with_static_inline_contract(mut self, id_prefix: impl Into<String>) -> Self {
-        self.static_inline_admission = true;
-        self.static_inline_validation = true;
+        self.inline_contract = Some(InlineContract::Static);
         self.postprocessors
             .push(Arc::new(ForeignObjectFallbackPostprocessor));
         self.postprocessors.push(Arc::new(SanitizeCssPostprocessor));
         self.postprocessors
             .push(Arc::new(SanitizeSvgAttributesPostprocessor));
-        self.postprocessors
-            .push(Arc::new(RebaseSvgIdsPostprocessor::new(id_prefix)));
-        self
+        self.with_rebased_ids(id_prefix)
+    }
+
+    /// Adds Merman's browser-inline publication contract without converting HTML labels.
+    ///
+    /// Resource and selector-scope checks run before any configured transformation and again
+    /// after terminal processing. Safe XHTML labels and browser CSS remain available; select a
+    /// compatible preset separately when the consumer also needs a text-only SVG. Custom CSS
+    /// animation names remain document-global, matching Mermaid.
+    ///
+    /// As with the static-inline contract, the host must not introduce a `<base>` URL that changes
+    /// the resolution of same-document fragment references.
+    #[doc(hidden)]
+    pub fn with_browser_inline_contract(mut self, id_prefix: impl Into<String>) -> Self {
+        self.inline_contract = Some(InlineContract::Browser);
+        self.with_rebased_ids(id_prefix)
+    }
+
+    /// Isolates SVG IDs and their references without imposing an embedding safety contract.
+    ///
+    /// Renderer-certified Mindmap output first drops the redundant background-shape ID retained
+    /// by raw Mermaid parity. Other duplicate IDs remain errors.
+    #[doc(hidden)]
+    pub fn with_rebased_ids(mut self, id_prefix: impl Into<String>) -> Self {
+        self.isolate_ids = true;
+        self.with_postprocessor(RebaseSvgIdsPostprocessor::new(id_prefix))
     }
 
     pub fn with_postprocessor<P>(mut self, postprocessor: P) -> Self
@@ -360,7 +389,10 @@ impl SvgPipeline {
             }
             Err(error) => return Err(error),
         };
-        if self.static_inline_admission {
+        if self.isolate_ids {
+            current = embedding::normalize_renderer_ids(current, metadata, execution)?;
+        }
+        if self.inline_contract.is_some() {
             static_validation::validate_rustdoc_admission_svg(current.as_ref(), execution)?;
         }
 
@@ -409,8 +441,14 @@ impl SvgPipeline {
                 execution.checkpoint()
             })?;
         execution.preflight_svg_byte_count(finalized.len())?;
-        if self.static_inline_validation {
-            static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
+        match self.inline_contract {
+            Some(InlineContract::Static) => {
+                static_validation::validate_rustdoc_static_svg(finalized.as_ref(), execution)?;
+            }
+            Some(InlineContract::Browser) => {
+                static_validation::validate_rustdoc_admission_svg(finalized.as_ref(), execution)?;
+            }
+            None => {}
         }
         let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
             Some(
@@ -536,6 +574,183 @@ mod tests {
         let out = SvgPipeline::parity().process(svg, &session).unwrap();
         assert!(matches!(out, Cow::Borrowed(_)));
         assert_eq!(out, svg);
+    }
+
+    #[test]
+    fn browser_inline_contract_preserves_html_labels_and_rebases_references() {
+        let svg = r##"<svg id="root" xmlns="http://www.w3.org/2000/svg" aria-labelledby="title"><title id="title">Diagram</title><defs><marker id="arrow"/></defs><style>@keyframes dash{to{stroke-dashoffset:0}}#root .edge{animation:dash 20s linear infinite}#root #label{color:red}</style><path class="edge" marker-end="url(#arrow)"/><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml" id="label" style="transform:rotate(5deg)"><strong>Safe label</strong></div></foreignObject></svg>"##;
+        let output = SvgPipeline::parity()
+            .with_browser_inline_contract("embed")
+            .process_to_string(svg, &render_session())
+            .unwrap();
+
+        assert!(output.contains("<foreignObject"), "{output}");
+        assert!(output.contains("<strong>Safe label</strong>"), "{output}");
+        assert!(output.contains("transform:rotate(5deg)"), "{output}");
+        assert!(output.contains("animation:dash 20s"), "{output}");
+        assert!(output.contains(r#"id="embed-root""#), "{output}");
+        assert!(
+            output.contains(r#"aria-labelledby="embed-title""#),
+            "{output}"
+        );
+        assert!(output.contains("url(#embed-arrow)"), "{output}");
+        assert!(output.contains("#embed-root #embed-label"), "{output}");
+    }
+
+    #[test]
+    fn browser_inline_contract_accepts_renderer_owned_family_styles() {
+        for (name, source) in [
+            ("error", "error"),
+            ("eventmodeling", "eventmodeling\ntf 01 event Start"),
+            (
+                "ishikawa",
+                "ishikawa-beta\n    Problem\n        Cause\n            Detail",
+            ),
+            ("treeView", "treeView-beta\n    root/\n        file.txt"),
+            ("zenuml", "zenuml\nAlice->Bob: Hello"),
+            #[cfg(feature = "layout-cytoscape")]
+            ("mindmap", "mindmap\n  root\n    a\n    b"),
+            #[cfg(feature = "layout-cytoscape")]
+            (
+                "architecture",
+                "architecture-beta\nservice worker \"<a href='https://example.test'>Docs</a>\" [Worker]",
+            ),
+        ] {
+            let parsed = merman_core::Engine::new()
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("{name}: {error}"))
+                .unwrap();
+            let artifact =
+                crate::family::prepare(parsed, &crate::LayoutOptions::default(), render_session())
+                    .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let rendered = artifact
+                .render_svg(
+                    &crate::svg::SvgRenderOptions {
+                        diagram_id: Some(name.to_string()),
+                        ..Default::default()
+                    },
+                    &crate::svg::SvgDebugOptions::default(),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error}"))
+                .apply_pipeline(&SvgPipeline::parity().with_browser_inline_contract("embed"))
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert!(rendered.svg().contains(&format!("id=\"embed-{name}\"")));
+        }
+    }
+
+    #[test]
+    fn browser_inline_contract_rejects_external_html_and_escaped_css_resources() {
+        for (svg, expected) in [
+            (
+                r#"<svg><foreignObject><img xmlns="http://www.w3.org/1999/xhtml" src="https://tracker.test/image.png"/></foreignObject></svg>"#,
+                "forbidden <img>",
+            ),
+            (
+                r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml" style="background:u\72l(https://tracker.test/image.png)">Label</div></foreignObject></svg>"#,
+                "non-local CSS URL",
+            ),
+            (
+                r#"<svg id="root"><style>#root .label{background:u\72l('https://tracker.test/image.png')}</style></svg>"#,
+                "non-local CSS URL",
+            ),
+        ] {
+            let error = SvgPipeline::parity()
+                .with_browser_inline_contract("embed")
+                .process_to_string(svg, &render_session())
+                .unwrap_err();
+            assert!(error.to_string().contains(expected), "{svg}: {error}");
+        }
+    }
+
+    #[test]
+    fn inline_contract_admits_before_any_lossy_postprocessor() {
+        struct MustNotRun;
+        impl SvgPostprocessor for MustNotRun {
+            fn name(&self) -> &'static str {
+                "must-not-run"
+            }
+
+            fn process<'a>(
+                &self,
+                _: Cow<'a, str>,
+                _: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                panic!("unsafe SVG must be rejected before postprocessing")
+            }
+        }
+        for pipeline in [
+            SvgPipeline::parity()
+                .with_postprocessor(MustNotRun)
+                .with_browser_inline_contract("embed"),
+            SvgPipeline::parity()
+                .with_postprocessor(MustNotRun)
+                .with_static_inline_contract("embed"),
+        ] {
+            let error = pipeline
+                .process_to_string("<svg><script/></svg>", &render_session())
+                .unwrap_err();
+            assert!(error.to_string().contains("forbidden <script>"), "{error}");
+        }
+    }
+
+    #[test]
+    fn inline_contract_validates_after_all_custom_postprocessors() {
+        struct InjectResource;
+        impl SvgPostprocessor for InjectResource {
+            fn name(&self) -> &'static str {
+                "inject-resource"
+            }
+
+            fn process<'a>(
+                &self,
+                _: Cow<'a, str>,
+                _: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(Cow::Borrowed(
+                    r#"<svg><image href="https://tracker.test/image.png"/></svg>"#,
+                ))
+            }
+        }
+        for pipeline in [
+            SvgPipeline::parity().with_browser_inline_contract("embed"),
+            SvgPipeline::parity().with_static_inline_contract("embed"),
+        ] {
+            let error = pipeline
+                .with_postprocessor(InjectResource)
+                .process_to_string("<svg/>", &render_session())
+                .unwrap_err();
+            assert!(error.to_string().contains("non-local resource"), "{error}");
+        }
+    }
+
+    #[test]
+    fn static_inline_contract_still_converts_html_and_removes_animation() {
+        let svg = r#"<svg id="root"><style>@keyframes dash{to{opacity:0}}#root .edge{animation:dash 1s}</style><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Safe label</div></foreignObject></svg>"#;
+        let output = SvgPipeline::parity()
+            .with_static_inline_contract("embed")
+            .process_to_string(svg, &render_session())
+            .unwrap();
+
+        assert!(!output.contains("<foreignObject"), "{output}");
+        assert!(!output.contains("@keyframes"), "{output}");
+        assert!(!output.contains("animation:"), "{output}");
+        assert!(output.contains("Safe label"), "{output}");
+        assert!(output.contains(r#"id="embed-root""#), "{output}");
+    }
+
+    #[test]
+    fn rebasing_without_inline_contract_preserves_external_resources() {
+        let svg = r#"<svg id="root"><image href="https://example.test/image.png"/></svg>"#;
+        let output = SvgPipeline::parity()
+            .with_rebased_ids("embed")
+            .process_to_string(svg, &render_session())
+            .unwrap();
+
+        assert!(output.contains(r#"id="embed-root""#), "{output}");
+        assert!(
+            output.contains("https://example.test/image.png"),
+            "{output}"
+        );
     }
 
     #[test]

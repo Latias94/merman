@@ -1,17 +1,17 @@
 use super::config::{self, Config, Fragment, SourceDisplay};
-use super::html::{diagram_html_len, write_diagram_html};
 use super::svg::static_inline_pipeline;
 use crate::error::{CliError, FileOperation, safe_path};
 use crate::input::InputLimit;
 use crate::input::InputReadError;
-use crate::markdown::{
-    MarkdownFenceLocation, MarkdownReplacement, scan_rustdoc_replacements_limited_controlled,
-};
 use crate::resources::{
     ByteLedgerKind, CheckedBytes, CliResourceLimitId, CountLedgerKind, ResolvedResourcePolicy,
 };
 use crate::runtime::SharedWriter;
 use merman::OperationControl;
+use merman_doc::{
+    BlockKind, Embedding, Location as MarkdownFenceLocation, SvgVariants, visit_blocks,
+    write_diagram_html,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -258,10 +258,10 @@ impl GenerationState<'_> {
             self.append_render_html(
                 &mut output,
                 fragment.logical_source(),
-                fragment.source(),
+                fragment,
                 location,
                 fragment.text(),
-                fragment.source_display(),
+                &Embedding::default(),
             )?;
             output.into_bytes()
         };
@@ -277,52 +277,37 @@ impl GenerationState<'_> {
         let mut chart_count = self
             .resources
             .checked_count(CountLedgerKind::MarkdownCharts);
-        let replacements = match scan_rustdoc_replacements_limited_controlled(
+        let mut replacements = Vec::new();
+        visit_blocks(
             fragment.text(),
-            chart_count.max(),
-            self.control,
-        ) {
-            Ok(replacements) => replacements,
-            Err(crate::markdown::MarkdownReplacementScanError::Cancelled(cancelled)) => {
-                return Err(CliError::Render(merman::RenderError::Cancelled(cancelled)));
-            }
-            Err(crate::markdown::MarkdownReplacementScanError::ChartLimit {
-                observed,
-                line,
-                column,
-                ..
-            }) => {
-                let limit_error = chart_count
-                    .try_add(observed)
-                    .expect_err("scanner reported a count above the same policy limit");
-                return Err(CliError::rustdoc_content(
-                    fragment.source(),
-                    line,
-                    column,
-                    limit_error.to_string(),
-                ));
-            }
-            Err(error) => {
-                let location = replacement_error_location(&error);
-                return Err(CliError::rustdoc_content(
-                    fragment.source(),
-                    location.line,
-                    location.column,
-                    error.to_string(),
-                ));
-            }
-        };
-        let replacement_count = u64::try_from(replacements.len()).map_err(|_| {
-            CliError::rustdoc_content(
-                fragment.source(),
-                1,
-                1,
-                "Markdown chart count does not fit u64",
-            )
-        })?;
-        chart_count.try_add(replacement_count).map_err(|error| {
-            CliError::rustdoc_content(fragment.source(), 1, 1, error.to_string())
-        })?;
+            || {
+                self.control
+                    .checkpoint_at(merman::OperationPhase::Admission)
+                    .map_err(|cancelled| {
+                        CliError::Render(merman::RenderError::Cancelled(cancelled))
+                    })
+            },
+            |block| {
+                if let BlockKind::Invalid(error) = &block.kind {
+                    return Err(CliError::rustdoc_content(
+                        fragment.source(),
+                        block.location.line,
+                        block.location.column,
+                        error.to_string(),
+                    ));
+                }
+                chart_count.try_add(1).map_err(|error| {
+                    CliError::rustdoc_content(
+                        fragment.source(),
+                        block.location.line,
+                        block.location.column,
+                        error.to_string(),
+                    )
+                })?;
+                replacements.push(block);
+                Ok(())
+            },
+        )?;
         if replacements.is_empty() {
             self.charge_staged_output(
                 fragment.text().len(),
@@ -335,33 +320,36 @@ impl GenerationState<'_> {
         let mut output = String::new();
         let mut copied_until = 0;
         for replacement in replacements {
-            let span = replacement.source_span();
+            let span = replacement.span;
             self.charge_staged_output(
                 span.start - copied_until,
                 fragment.source(),
                 MarkdownFenceLocation { line: 1, column: 1 },
             )?;
             output.push_str(&fragment.text()[copied_until..span.start]);
-            let location = replacement.location();
-            match replacement {
-                MarkdownReplacement::Chart(chart) => self.append_render_html(
+            let location = replacement.location;
+            match replacement.kind {
+                BlockKind::Mermaid(source) => self.append_render_html(
                     &mut output,
                     fragment.logical_source(),
-                    fragment.source(),
+                    fragment,
                     location,
-                    chart.definition(),
-                    fragment.source_display(),
+                    &source,
+                    &replacement.embedding,
                 )?,
-                MarkdownReplacement::Include(include) => {
-                    let included = self.load_include(fragment, &include)?;
+                BlockKind::Include(path) => {
+                    let included = self.load_include(fragment, &path, location)?;
                     self.append_render_html(
                         &mut output,
                         &included.logical_path,
-                        fragment.source(),
+                        fragment,
                         location,
                         &included.text,
-                        fragment.source_display(),
+                        &replacement.embedding,
                     )?;
+                }
+                BlockKind::Invalid(_) => {
+                    unreachable!("invalid blocks were rejected during admission")
                 }
             }
             copied_until = span.end;
@@ -378,10 +366,10 @@ impl GenerationState<'_> {
     fn load_include(
         &mut self,
         fragment: &Fragment,
-        include: &crate::markdown::MarkdownInclude<'_>,
+        path: &str,
+        location: MarkdownFenceLocation,
     ) -> Result<LoadedInclude, CliError> {
-        let location = include.location();
-        let relative = validate_include_path(include.path()).map_err(|message| {
+        let relative = validate_include_path(path).map_err(|message| {
             CliError::rustdoc_content(fragment.source(), location.line, location.column, message)
         })?;
         let logical_path = config::portable_relative_path(&relative);
@@ -527,11 +515,12 @@ impl GenerationState<'_> {
         &mut self,
         output: &mut String,
         logical_path: &str,
-        diagnostic_path: &Path,
+        fragment: &Fragment,
         location: MarkdownFenceLocation,
         source: &str,
-        source_display: SourceDisplay,
+        embedding: &Embedding,
     ) -> Result<(), CliError> {
+        let diagnostic_path = fragment.source();
         let source_hash = super::sha256_hex(source.as_bytes());
         let occurrence = self
             .same_source_occurrences
@@ -556,17 +545,13 @@ impl GenerationState<'_> {
             location,
         )?;
         let wrapper_id = format!("{base_id}-wrapper");
-        let output_bytes = diagram_html_len(&wrapper_id, source, &light, &dark, source_display)
-            .ok_or_else(|| {
-                CliError::rustdoc_content(
-                    diagnostic_path,
-                    location.line,
-                    location.column,
-                    "generated Rustdoc diagram size overflow",
-                )
-            })?;
-        self.charge_staged_output(output_bytes, diagnostic_path, location)?;
-        write_diagram_html(output, &wrapper_id, source, &light, &dark, source_display).map_err(
+        let variants = SvgVariants::RustdocTheme {
+            light: &light,
+            dark: &dark,
+        };
+        let show_source = fragment.source_display() == SourceDisplay::Details;
+        let mut html = String::new();
+        write_diagram_html(&mut html, Some(&wrapper_id), source, variants, show_source).map_err(
             |error| {
                 CliError::rustdoc_content(
                     diagnostic_path,
@@ -575,7 +560,24 @@ impl GenerationState<'_> {
                     format!("failed to assemble Rustdoc diagram HTML: {error}"),
                 )
             },
-        )
+        )?;
+        let output_bytes = embedding.html_len(&html).ok_or_else(|| {
+            CliError::rustdoc_content(
+                diagnostic_path,
+                location.line,
+                location.column,
+                "generated Rustdoc diagram size overflow",
+            )
+        })?;
+        self.charge_staged_output(output_bytes, diagnostic_path, location)?;
+        embedding.write_html(output, &html).map_err(|error| {
+            CliError::rustdoc_content(
+                diagnostic_path,
+                location.line,
+                location.column,
+                format!("failed to assemble Rustdoc diagram HTML: {error}"),
+            )
+        })
     }
 
     fn render_svg(
@@ -751,24 +753,6 @@ fn source_preview(source: &str) -> String {
     }
 }
 
-fn replacement_error_location(
-    error: &crate::markdown::MarkdownReplacementScanError,
-) -> MarkdownFenceLocation {
-    match error {
-        crate::markdown::MarkdownReplacementScanError::ChartLimit { line, column, .. }
-        | crate::markdown::MarkdownReplacementScanError::UnclosedMermaidFence { line, column }
-        | crate::markdown::MarkdownReplacementScanError::InvalidInclude { line, column, .. } => {
-            MarkdownFenceLocation {
-                line: *line,
-                column: *column,
-            }
-        }
-        crate::markdown::MarkdownReplacementScanError::Cancelled(_) => {
-            unreachable!("controlled scanner cancellations are handled before location mapping")
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -837,13 +821,83 @@ mod tests {
 
         assert_eq!(first.fragments()[0].bytes(), second.fragments()[0].bytes());
         assert_eq!(first.diagrams(), 2);
-        assert!(output.starts_with("# API\r\n\r\nBefore.\r\n\r\n<style>"));
+        assert!(output.starts_with("# API\r\n\r\nBefore.\r\n\r\n\n\n<div"));
         assert!(output.ends_with("\r\n\r\nAfter.\r\n"));
         assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 2);
         assert!(output.contains("Mermaid source"));
         assert!(!output.contains("```mermaid"));
         assert!(!output.contains("include_mmd!"));
         assert_eq!(first.inputs().len(), 2);
+    }
+
+    #[test]
+    fn comments_and_indented_examples_do_not_read_missing_includes() {
+        let root = tempfile::tempdir().unwrap();
+        let source = concat!(
+            "<!--\ninclude_mmd!(\"missing-comment.mmd\")\n-->\n\n",
+            "    include_mmd!(\"missing-example.mmd\")\n\n",
+            "    ```mermaid\n    invalid-example\n    ```\n",
+        );
+        let config = write_config(root.path(), source, "hide");
+        let generated = generate_test(&config, &resources(), &stderr()).unwrap();
+        assert_eq!(generated.diagrams(), 0);
+        assert_eq!(generated.inputs().len(), 1);
+        assert_eq!(generated.fragments()[0].bytes(), source.as_bytes());
+    }
+
+    #[test]
+    fn lazy_include_continuations_report_a_source_location_before_file_access() {
+        let root = tempfile::tempdir().unwrap();
+        let config = write_config(
+            root.path(),
+            "> before\ninclude_mmd!(\"missing.mmd\")\n",
+            "hide",
+        );
+        let error = generate_test(&config, &resources(), &stderr())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("line 2, column 1"), "{error}");
+        assert!(error.contains("explicit container prefix"), "{error}");
+    }
+
+    #[test]
+    fn container_prefixes_are_included_in_the_exact_staged_output_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let config = write_config(
+            root.path(),
+            "> ```mermaid\n> flowchart LR\n> A-->B\n> ```\n> **After**\n",
+            "hide",
+        );
+        let generated = generate_test(&config, &resources(), &stderr()).unwrap();
+        let exact = generated.fragments()[0].bytes().len() as u64;
+        let mut exact_policy = resources();
+        exact_policy
+            .apply_override("max_staged_bytes", exact)
+            .unwrap();
+        let accepted = generate_test(&config, &exact_policy, &stderr()).unwrap();
+        assert_eq!(
+            accepted.fragments()[0].bytes(),
+            generated.fragments()[0].bytes()
+        );
+        let mut insufficient = resources();
+        insufficient
+            .apply_override("max_staged_bytes", exact - 1)
+            .unwrap();
+        let error = generate_test(&config, &insufficient, &stderr()).unwrap_err();
+        assert!(error.to_string().contains("max_staged_bytes"), "{error}");
+    }
+
+    #[test]
+    fn cancellation_stops_markdown_admission() {
+        let root = tempfile::tempdir().unwrap();
+        let config = write_config(root.path(), "include_mmd!(\"missing.mmd\")\n", "hide");
+        let control = OperationControl::new();
+        control.cancel();
+        let error = generate(&config, &resources(), &control, &stderr()).unwrap_err();
+        assert!(
+            matches!(error, CliError::Render(merman::RenderError::Cancelled(_))),
+            "{error}"
+        );
     }
 
     #[test]

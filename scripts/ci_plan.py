@@ -97,6 +97,7 @@ _CRATE_OWNER_RULES = (
         {"core", "hygiene", "node", "npm", "platform", "python", "web"},
     ),
     ("crates/merman-cli/", {"cli", "core", "hygiene"}),
+    ("crates/merman-doc/", {"cli", "core", "hygiene"}),
     ("crates/merman-export/", {"cli", "core", "hygiene"}),
     ("crates/merman-ffi/", {"core", "fuzz", "hygiene", "platform"}),
     ("crates/merman-node/", {"core", "hygiene", "node", "npm", "security"}),

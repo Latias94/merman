@@ -40,7 +40,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
 
-    let css = ishikawa_css(layout, effective_config);
+    let css = ishikawa_css(diagram_id, layout, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str(r#"<g/><g class="ishikawa">"#);
     options.checkpoint_emit()?;
@@ -459,7 +459,11 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
     out.push_str("</text>");
 }
 
-fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
+fn ishikawa_css(
+    diagram_id: SvgDiagramId<'_>,
+    layout: &IshikawaDiagramLayout,
+    effective_config: &serde_json::Value,
+) -> String {
     let theme = PresentationTheme::new(effective_config).ishikawa();
     let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
         .render_settings()
@@ -467,18 +471,18 @@ fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::V
         .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
 
     format!(
-        ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
-.ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
-.ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
-.ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
-.ishikawa text {{ font-family: {font_family}; font-size: {font_size}; fill: {text_color}; }}\
-.ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}\
-.ishikawa .ishikawa-label {{ text-anchor: end; }}\
-.ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
-.ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
-.ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}",
+        "#{diagram_id} .ishikawa .ishikawa-spine,#{diagram_id} .ishikawa .ishikawa-branch,#{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke: {line_color}; stroke-width: 2; fill: none; }}\
+#{diagram_id} .ishikawa .ishikawa-sub-branch {{ stroke-width: 1; }}\
+#{diagram_id} .ishikawa .ishikawa-arrow {{ fill: {line_color}; }}\
+#{diagram_id} .ishikawa .ishikawa-head {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
+#{diagram_id} .ishikawa .ishikawa-label-box {{ fill: {main_bkg}; stroke: {line_color}; stroke-width: 2; }}\
+#{diagram_id} .ishikawa text {{ font-family: {font_family}; font-size: {font_size}; fill: {text_color}; }}\
+#{diagram_id} .ishikawa .ishikawa-head-label {{ font-weight: 600; text-anchor: middle; dominant-baseline: middle; font-size: 14px; }}\
+#{diagram_id} .ishikawa .ishikawa-label {{ text-anchor: end; }}\
+#{diagram_id} .ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
+#{diagram_id} .ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
+#{diagram_id} .ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
+#{diagram_id} .ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}",
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
         font_family = theme.font_family,

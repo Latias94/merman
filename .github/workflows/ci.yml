@@ -485,11 +485,13 @@ jobs:
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
-      - name: Test exact Rustdoc artifact recipe
+      - name: Test Rustdoc math opt-in and exact artifact recipe
         if: matrix.parity
         run: |
+          cargo nextest run --locked -p merman-rustdoc --test regressions \
+            -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
-          cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
       - name: Test representative Cargo feature unification contract
         if: matrix.parity

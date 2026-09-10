@@ -2396,6 +2396,7 @@ dependencies = [
  "merman",
  "merman-analysis",
  "merman-ascii-test-contracts",
+ "merman-doc",
  "merman-render",
  "png",
  "rayon",
@@ -2443,6 +2444,16 @@ dependencies = [
  "unicode-width",
  "url",
  "web-time",
+]
+
+[[package]]
+name = "merman-doc"
+version = "0.8.0-alpha.6"
+dependencies = [
+ "pulldown-cmark",
+ "quick-xml",
+ "roxmltree 0.21.1",
+ "serde_json",
 ]
 
 [[package]]
@@ -2577,6 +2588,8 @@ name = "merman-rustdoc"
 version = "0.8.0-alpha.6"
 dependencies = [
  "merman",
+ "merman-doc",
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "roxmltree 0.21.1",
@@ -3198,6 +3211,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-crate"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
+dependencies = [
+ "toml_edit",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3214,8 +3236,15 @@ checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
  "bitflags 2.13.1",
  "memchr",
+ "pulldown-cmark-escape",
  "unicase",
 ]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pxfm"
@@ -4677,6 +4706,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.13+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6975367e4d2ef766d86af01ffad14b622fecc8d4357a998fbc4deb6e9bacaf9b"
+dependencies = [
+ "indexmap",
+ "toml_datetime",
+ "toml_parser",
+ "winnow",
 ]
 
 [[package]]

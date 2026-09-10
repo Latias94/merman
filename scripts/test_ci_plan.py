@@ -187,6 +187,7 @@ class PlannerTests(unittest.TestCase):
         fixtures = {
             "crates/merman-ascii/src/lib.rs": {"core", "hygiene"},
             "crates/merman-cli/src/main.rs": {"cli", "core", "hygiene"},
+            "crates/merman-doc/src/markdown.rs": {"cli", "core", "hygiene"},
             "crates/merman-wasm/src/lib.rs": {"core", "hygiene", "npm", "web"},
             "crates/merman-uniffi/src/lib.rs": {
                 "core",

@@ -188,7 +188,11 @@ fn validate(
                 )));
             }
             if is_forbidden_embedding_attribute(name)
-                || (inside_foreign_object && is_forbidden_xhtml_attribute(name))
+                || (inside_foreign_object
+                    && is_forbidden_xhtml_attribute(name)
+                    && !(safe_xhtml
+                        && element.eq_ignore_ascii_case("a")
+                        && name.eq_ignore_ascii_case("href")))
             {
                 return Err(static_validation_error(format!(
                     "rendered SVG contains forbidden embedding attribute {name:?}"
@@ -438,7 +442,7 @@ fn is_allowed_static_svg_element(name: &str) -> bool {
 fn is_allowed_static_xhtml_element(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
-        "abbr"
+        "a" | "abbr"
             | "b"
             | "bdi"
             | "bdo"
@@ -1517,6 +1521,35 @@ mod tests {
         ] {
             let error = validate(svg).expect_err("unsafe SVG");
             assert!(error.to_string().contains(expected), "{expected}: {error}");
+        }
+    }
+
+    #[test]
+    fn admission_allows_safe_xhtml_navigation_but_not_active_links() {
+        for href in [
+            "https://example.test/docs",
+            "/docs",
+            "mailto:docs@example.test",
+        ] {
+            let svg = format!(
+                r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="{href}">Docs</a></div></foreignObject></svg>"#
+            );
+            validate_admission_with_limits(&svg, RenderResourcePolicy::trusted_native()).unwrap();
+        }
+        for attributes in [
+            r#"href="javascript:alert(1)""#,
+            r#"href="data:text/html,hello""#,
+            r#"href="https://example.test" ping="https://tracker.test""#,
+            r#"href="https://example.test" onclick="run()""#,
+        ] {
+            let svg = format!(
+                r#"<svg><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a {attributes}>Docs</a></div></foreignObject></svg>"#
+            );
+            assert!(
+                validate_admission_with_limits(&svg, RenderResourcePolicy::trusted_native())
+                    .is_err(),
+                "{svg}"
+            );
         }
     }
 

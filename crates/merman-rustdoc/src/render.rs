@@ -2,75 +2,19 @@ use std::fs;
 use std::path::PathBuf;
 
 use merman::{
-    MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment,
-    SvgRequest, svg::SvgPipeline,
+    MermaidConfig, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
+    SvgEnvironment, SvgRequest,
+    svg::{RenderCapability, SvgOutputPolicy, SvgPipelinePreset},
 };
 use serde_json::Value;
 
 use crate::error::{Error, Result};
-use crate::options::{Options, PipelineMode, ThemeMode};
+use crate::options::{Options, PipelineMode, SanitizeMode, ThemeMode};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum RenderedDiagram {
     Single(String),
     RustdocTheme { light: String, dark: String },
-}
-
-pub(crate) trait MermaidRenderer {
-    fn render_mermaid_diagram(
-        &mut self,
-        source: &str,
-        index: usize,
-        options: Options,
-    ) -> Result<RenderedDiagram>;
-}
-
-impl<F> MermaidRenderer for F
-where
-    F: FnMut(&str, usize, Options) -> Result<RenderedDiagram>,
-{
-    fn render_mermaid_diagram(
-        &mut self,
-        source: &str,
-        index: usize,
-        options: Options,
-    ) -> Result<RenderedDiagram> {
-        self(source, index, options)
-    }
-}
-
-pub(crate) trait IncludeResolver {
-    fn read_include_mmd(&mut self, path: &str) -> Result<String>;
-}
-
-impl<F> IncludeResolver for F
-where
-    F: FnMut(&str) -> Result<String>,
-{
-    fn read_include_mmd(&mut self, path: &str) -> Result<String> {
-        self(path)
-    }
-}
-
-pub(crate) struct HeadlessMermaidRenderer;
-
-impl MermaidRenderer for HeadlessMermaidRenderer {
-    fn render_mermaid_diagram(
-        &mut self,
-        source: &str,
-        index: usize,
-        options: Options,
-    ) -> Result<RenderedDiagram> {
-        render_mermaid_diagram(source, index, options)
-    }
-}
-
-pub(crate) struct ManifestIncludeResolver;
-
-impl IncludeResolver for ManifestIncludeResolver {
-    fn read_include_mmd(&mut self, path: &str) -> Result<String> {
-        read_include_mmd(path)
-    }
 }
 
 pub(crate) fn source_preview(source: &str) -> String {
@@ -89,14 +33,22 @@ pub(crate) fn source_preview(source: &str) -> String {
     out
 }
 
-fn render_mermaid_diagram(source: &str, index: usize, options: Options) -> Result<RenderedDiagram> {
-    let base_id = diagram_id(source, index);
+pub(crate) fn render_mermaid_diagram(
+    source: &str,
+    index: usize,
+    options: &Options,
+    namespace: &str,
+) -> Result<RenderedDiagram> {
+    let base_id = match &options.id_prefix {
+        Some(prefix) => format!("{prefix}-{namespace}-{index}"),
+        None => format!("{namespace}-{index}"),
+    };
     match options.theme {
         ThemeMode::Rustdoc => {
             let light = render_mermaid_svg(
                 source,
                 index,
-                options.pipeline,
+                options,
                 &format!("{base_id}-light"),
                 Some("default"),
                 "rustdoc light theme",
@@ -104,7 +56,7 @@ fn render_mermaid_diagram(source: &str, index: usize, options: Options) -> Resul
             let dark = render_mermaid_svg(
                 source,
                 index,
-                options.pipeline,
+                options,
                 &format!("{base_id}-dark"),
                 Some("dark"),
                 "rustdoc dark theme",
@@ -112,25 +64,11 @@ fn render_mermaid_diagram(source: &str, index: usize, options: Options) -> Resul
             Ok(RenderedDiagram::RustdocTheme { light, dark })
         }
         ThemeMode::Mermaid => {
-            let svg = render_mermaid_svg(
-                source,
-                index,
-                options.pipeline,
-                &base_id,
-                None,
-                "Mermaid theme",
-            )?;
+            let svg = render_mermaid_svg(source, index, options, &base_id, None, "Mermaid theme")?;
             Ok(RenderedDiagram::Single(svg))
         }
         ThemeMode::Fixed(theme) => {
-            let svg = render_mermaid_svg(
-                source,
-                index,
-                options.pipeline,
-                &base_id,
-                Some(theme),
-                theme,
-            )?;
+            let svg = render_mermaid_svg(source, index, options, &base_id, Some(theme), theme)?;
             Ok(RenderedDiagram::Single(svg))
         }
     }
@@ -139,7 +77,7 @@ fn render_mermaid_diagram(source: &str, index: usize, options: Options) -> Resul
 fn render_mermaid_svg(
     source: &str,
     index: usize,
-    pipeline: PipelineMode,
+    options: &Options,
     diagram_id: &str,
     site_theme: Option<&str>,
     context: &str,
@@ -151,14 +89,22 @@ fn render_mermaid_svg(
         engine = engine.with_site_config(config);
     }
 
+    let policy = SvgOutputPolicy {
+        preset: match options.pipeline {
+            PipelineMode::Parity => SvgPipelinePreset::Parity,
+            PipelineMode::Readable => SvgPipelinePreset::Readable,
+            PipelineMode::ResvgSafe => SvgPipelinePreset::ResvgSafe,
+        },
+        root_background_color: Some(options.background.clone()),
+        ..Default::default()
+    };
+    let pipeline = match options.sanitize {
+        SanitizeMode::Strict => policy.pipeline().with_browser_inline_contract(diagram_id),
+        SanitizeMode::Off => policy.pipeline().with_rebased_ids(diagram_id),
+    };
     let request = SvgRequest {
         environment: SvgEnvironment::deterministic(),
-        pipeline: match pipeline {
-            // No post-processing is the parity pipeline for an SVG request.
-            PipelineMode::Parity => None,
-            PipelineMode::Readable => Some(SvgPipeline::readable()),
-            PipelineMode::ResvgSafe => Some(SvgPipeline::resvg_safe()),
-        },
+        pipeline: Some(pipeline),
         options: merman::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..Default::default()
@@ -169,8 +115,16 @@ fn render_mermaid_svg(
         .with_engine(engine)
         .render(RenderRequest::svg(source, OperationControl::new(), request))
         .map_err(|err| {
+            let hint = match &err {
+                RenderError::Svg(error)
+                    if error.missing_capability() == Some(RenderCapability::Math) =>
+                {
+                    "; enable the `math` or `complete-svg` feature on the `merman-rustdoc` dependency"
+                }
+                _ => "",
+            };
             Error::new(format!(
-                "failed to render Mermaid diagram #{} for rustdoc ({context}): {err}",
+                "failed to render Mermaid diagram #{} for rustdoc ({context}): {err}{hint}",
                 index + 1
             ))
         })?;
@@ -185,7 +139,7 @@ fn render_mermaid_svg(
     })
 }
 
-fn read_include_mmd(path: &str) -> Result<String> {
+pub(crate) fn read_include_mmd(path: &str) -> Result<String> {
     let base = std::env::var_os("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
@@ -198,11 +152,7 @@ fn read_include_mmd(path: &str) -> Result<String> {
     })
 }
 
-fn diagram_id(source: &str, index: usize) -> String {
-    format!("merman-rustdoc-{index}-{:016x}", fnv1a64(source.as_bytes()))
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
+pub(crate) fn stable_hash(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in bytes {
         hash ^= u64::from(*byte);
@@ -215,31 +165,19 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn diagram_ids_are_stable_and_indexed() {
-        assert_eq!(
-            diagram_id("flowchart TD\nA-->B", 0),
-            diagram_id("flowchart TD\nA-->B", 0)
-        );
-        assert_ne!(
-            diagram_id("flowchart TD\nA-->B", 0),
-            diagram_id("flowchart TD\nA-->B", 1)
-        );
-        assert_ne!(
-            diagram_id("flowchart TD\nA-->B", 0),
-            diagram_id("flowchart TD\nA-->C", 0)
-        );
+    fn render(source: &str, index: usize, options: Options) -> Result<RenderedDiagram> {
+        render_mermaid_diagram(source, index, &options, "merman-rustdoc-test")
     }
 
     #[test]
     fn default_rustdoc_theme_renders_light_and_dark_svgs() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
-        let rendered = render_mermaid_diagram(source, 0, Options::default()).unwrap();
+        let rendered = render(source, 0, Options::default()).unwrap();
 
         let RenderedDiagram::RustdocTheme { light, dark } = rendered else {
             panic!("expected rustdoc theme variants");
         };
-        assert!(light.contains(r#"id="merman-rustdoc-0-"#));
+        assert!(light.contains(r#"id="merman-rustdoc-test-0"#));
         assert!(light.contains("-light"));
         assert!(dark.contains("-dark"));
         assert_ne!(light, dark);
@@ -248,7 +186,7 @@ mod tests {
     #[test]
     fn fixed_theme_renders_single_svg() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
-        let rendered = render_mermaid_diagram(
+        let rendered = render(
             source,
             0,
             Options {
@@ -267,7 +205,7 @@ mod tests {
     EventConsumer <|.. OnClickConsumer
     OnClick <.. OnClickConsumer : uses
 "#;
-        let rendered = render_mermaid_diagram(
+        let rendered = render(
             source,
             0,
             Options {
@@ -297,7 +235,7 @@ mod tests {
 
     #[test]
     fn readable_pipeline_remains_an_explicit_fallback_overlay_option() {
-        let rendered = render_mermaid_diagram(
+        let rendered = render(
             "flowchart TD\nA[Start] --> B[Done]",
             0,
             Options {
@@ -323,7 +261,7 @@ mod tests {
 flowchart TD
 A[Source theme] --> B[Rustdoc theme]
 "#;
-        let source_default = render_mermaid_diagram(
+        let source_default = render(
             source,
             0,
             Options {
@@ -332,7 +270,7 @@ A[Source theme] --> B[Rustdoc theme]
             },
         )
         .unwrap();
-        let rustdoc = render_mermaid_diagram(source, 0, Options::default()).unwrap();
+        let rustdoc = render(source, 0, Options::default()).unwrap();
 
         let RenderedDiagram::Single(source_default_svg) = source_default else {
             panic!("expected fixed theme to render one SVG");
