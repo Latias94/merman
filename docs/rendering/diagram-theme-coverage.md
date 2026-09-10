@@ -217,6 +217,14 @@ inventory: it does not observe provider removal or close all release gates.
 Focused checks live in `merman-render` support-manifest/matrix/bridge unit tests and family SVG
 tests, plus `merman-theme-acceptance` cutover and retirement tests. KTD17 library tests require
 the `png` feature; running that crate with no default features alone does not exercise them.
+Bridge inventory changes also require the `legacy_projection_retirement` integration target,
+whose frozen counts and digests are independent of the renderer library tests:
+
+```sh
+cargo nextest run --locked -p merman-theme-acceptance \
+  --no-default-features --features png,layout-cytoscape \
+  --test legacy_projection_retirement --test route_cutover_runtime
+```
 
 The semantic baseline is pinned by `docs/adr/0001-upstream-baseline.md` and
 `tools/upstreams/REPOS.lock.json`. Config merge and precedence are documented in
