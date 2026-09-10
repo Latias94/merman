@@ -119,6 +119,7 @@ markdown = [
 network-icons = ["icons", "dep:hickory-resolver", "dep:reqwest", "dep:tokio"]
 parallel-markdown = ["markdown", "dep:rayon"]
 rustdoc = [
+    "dep:merman-doc",
     "markdown",
     "layout-cytoscape",
     "math",
@@ -138,6 +139,7 @@ hickory-resolver = { workspace = true, optional = true }
 merman = { workspace = true, default-features = false }
 merman-analysis = { workspace = true, optional = true, default-features = false }
 merman-render = { workspace = true, optional = true }
+merman-doc = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true

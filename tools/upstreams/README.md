@@ -70,7 +70,7 @@ CI, Pages, or release verification, and completed candidate/deferred evidence is
 live repository gate.
 
 Use the read-only **Mermaid upgrade admission** workflow with an exact ZenUML Core candidate
-version. It pins Node `24.6.0` and npm `11.17.0`, installs packages with lifecycle scripts disabled,
+version. It pins Node `24.21.0` and npm `12.0.2`, installs packages with lifecycle scripts disabled,
 runs the official command
 `npm audit signatures --json --include-attestations --registry=https://registry.npmjs.org/`,
 compares the selected and candidate fixture behavior in Chromium, validates strict inline SVG, and

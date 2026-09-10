@@ -65,9 +65,15 @@ def pack_npm(package: Path, destination: Path, npm: str) -> Path:
             capture_output=True,
         ).stdout
     )
-    if len(records) != 1:
-        raise SystemExit(f"expected one npm package, found {len(records)}")
-    record = records[0]
+    package_name = "@mermanjs/tree-sitter-mermaid"
+    if (
+        not isinstance(records, dict)
+        or set(records) != {package_name}
+        or not isinstance(records[package_name], dict)
+        or records[package_name].get("name") != package_name
+    ):
+        raise SystemExit(f"expected one npm package named {package_name}")
+    record = records[package_name]
     paths = {item["path"] for item in record["files"]}
     required = {
         "CMakeLists.txt",
@@ -124,8 +130,26 @@ def run_npm_consumer(consumer: Path, tarball: Path, npm: str, node: str) -> None
     if os.environ.get("TREE_SITTER_MERMAID_REQUIRE_PREBUILDS") == "1":
         environment["PREBUILDS_ONLY"] = "1"
     run(
-        [npm, "install", "--no-audit", "--no-fund"],
+        [npm, "install", "--ignore-scripts", "--no-audit", "--no-fund"],
         cwd=consumer,
+        env=environment,
+    )
+    run(
+        [npm, "install-scripts", "approve", "tree-sitter"],
+        cwd=consumer,
+        env=environment,
+    )
+    run(
+        [npm, "rebuild", "tree-sitter"],
+        cwd=consumer,
+        env=environment,
+    )
+    # npm 12 does not reliably match approved file-tarball paths on Windows.
+    # Invoke only this verified local package's installer; registry dependencies
+    # remain subject to the explicit approval above.
+    run(
+        [npm, "run", "install"],
+        cwd=consumer / "node_modules" / "@mermanjs" / "tree-sitter-mermaid",
         env=environment,
     )
     native_smoke = r"""

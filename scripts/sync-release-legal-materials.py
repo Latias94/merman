@@ -67,6 +67,7 @@ DUAL_LICENSE_CRATE_ROOTS = (
     "crates/merman-bindings-core",
     "crates/merman-cli",
     "crates/merman-core",
+    "crates/merman-doc",
     "crates/merman-editor-core",
     "crates/merman-export",
     "crates/merman-ffi",

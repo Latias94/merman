@@ -9,6 +9,7 @@ import {
 } from "./package-contract.mjs";
 import {
   assertSuccessfulNpmSpawn,
+  npmPackRecord,
   spawnNpmSync,
 } from "../../../scripts/npm-command.mjs";
 
@@ -58,8 +59,8 @@ function verifyPackage(packageRoot, packageName, role) {
     encoding: "utf8",
   });
   assertSuccessfulNpmSpawn(result, `npm pack for ${packageName}`);
-  const output = JSON.parse(result.stdout);
-  verifyPackedFileOwnership({ packageName, role, files: output[0]?.files ?? [] });
+  const output = npmPackRecord(result.stdout, packageName, { allowNpm11: true });
+  verifyPackedFileOwnership({ packageName, role, files: output.files ?? [] });
 }
 
 function existsForTarget(root, target) {

@@ -24,9 +24,9 @@ const webPackageJson = JSON.parse(
 
 test("dev, build, and test fail closed on the selected full browser artifact", () => {
   assert.match(npmrc, /^ignore-scripts=true$/mu);
-  assert.equal(packageJson.packageManager, "npm@11.17.0");
-  assert.equal(packageJson.engines.node, "^22.13.0 || >=24.0.0");
-  assert.equal(packageJson.engines.npm, ">=11.17.0");
+  assert.equal(packageJson.packageManager, "npm@12.0.2");
+  assert.equal(packageJson.engines.node, "^22.22.2 || ^24.15.0 || >=26.0.0");
+  assert.equal(packageJson.engines.npm, ">=12.0.2");
   assert.equal(packageJson.scripts.predev, undefined);
   assert.equal(packageJson.scripts.prebuild, undefined);
   assert.equal(packageJson.scripts.pretest, undefined);

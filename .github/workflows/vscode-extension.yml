@@ -126,9 +126,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install extension dependencies
         working-directory: tools/vscode-extension

@@ -59,7 +59,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         );
     }
 
-    let css = eventmodeling_css(&theme);
+    let css = eventmodeling_css(diagram_id, &theme);
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str("<g/>");
     options.checkpoint_emit()?;
@@ -156,10 +156,10 @@ fn normalize_eventmodeling_code_text(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn eventmodeling_css(theme: &EventModelingTheme) -> String {
+fn eventmodeling_css(diagram_id: SvgDiagramId<'_>, theme: &EventModelingTheme) -> String {
     format!(
-        ".em-swimlane text,.em-box span {{ font-family: {}; color: {}; }}\
-.em-relation {{ fill: none; }}",
+        "#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {}; color: {}; }}\
+#{diagram_id} .em-relation {{ fill: none; }}",
         theme.font_family_css, theme.text_color
     )
 }

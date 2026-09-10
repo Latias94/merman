@@ -1253,9 +1253,14 @@ def pack_group(
             output = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise PackageGroupError(f"{entry['name']}: npm pack emitted invalid JSON") from exc
-        if not isinstance(output, list) or len(output) != 1 or not isinstance(output[0], dict):
+        if (
+            not isinstance(output, dict)
+            or set(output) != {entry["name"]}
+            or not isinstance(output[entry["name"]], dict)
+            or output[entry["name"]].get("name") != entry["name"]
+        ):
             raise PackageGroupError(f"{entry['name']}: npm pack must report exactly one tarball")
-        filename = output[0].get("filename")
+        filename = output[entry["name"]].get("filename")
         if not isinstance(filename, str) or not (artifact_dir / filename).is_file():
             raise PackageGroupError(f"{entry['name']}: npm pack did not create its reported tarball")
     manifest = create_manifest(

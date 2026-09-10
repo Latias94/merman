@@ -3,10 +3,10 @@
   "version": "0.8.0-alpha.6",
   "private": true,
   "type": "module",
-  "packageManager": "npm@11.17.0",
+  "packageManager": "npm@12.0.2",
   "engines": {
-    "node": "^22.13.0 || >=24.0.0",
-    "npm": ">=11.17.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0",
+    "npm": ">=12.0.2"
   },
   "scripts": {
     "build:opaque-realm": "node scripts/build-opaque-realm.mjs",
@@ -73,7 +73,7 @@
     "fflate": "0.8.3",
     "i18next": "^26.3.6",
     "i18next-browser-languagedetector": "^8.2.1",
-    "js-yaml": "4.3.1",
+    "js-yaml": "4.3.2",
     "lucide-react": "^1.28.0",
     "mermaid": "11.17.2",
     "monaco-editor": "^0.55.1",

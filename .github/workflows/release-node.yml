@@ -154,9 +154,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.13.1"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Verify Node package contracts
         run: |
@@ -224,9 +227,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.13.1"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install pinned Node build dependencies
         run: npm ci --prefix platforms/node
@@ -416,9 +422,13 @@ jobs:
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.13.1"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: platforms/node/package-lock.json
+
+      - name: Install pinned npm
+        if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install pinned Node build dependencies
         if: matrix.target != 'linux-x64-musl' && matrix.target != 'linux-x64-gnu'
@@ -553,9 +563,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.13.1"
+          node-version: "24.21.0"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
+
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Verify recovery run identity
         if: ${{ needs.validate-inputs.outputs.recovery_run_id != '' }}

@@ -86,6 +86,10 @@
     "tree-sitter-cli": "0.26.12",
     "web-tree-sitter": "0.26.12"
   },
+  "allowScripts": {
+    "tree-sitter@0.25.1": true,
+    "tree-sitter-cli@0.26.12": true
+  },
   "peerDependencies": {
     "tree-sitter": "^0.25.0"
   },

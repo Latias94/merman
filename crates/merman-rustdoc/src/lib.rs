@@ -9,30 +9,18 @@
 //!
 //! # Install
 //!
-//! Use a normal dependency for the simplest setup:
+//! This checkout is ahead of published `0.8.0-alpha.6`. The dependency examples install alpha.6
+//! for the basic workflow. New `background`, `id_prefix`, and `inherit` options, Markdown container
+//! support, and the refactored behavior described here require this source checkout until the
+//! next workspace release; they are not available in alpha.6. This checkout also makes math
+//! opt-in. The quick-start recipe explicitly selects the smaller feature set because alpha.6
+//! still enables math by default.
+//!
+//! Keep the renderer out of ordinary builds with an optional documentation dependency:
 //!
 //! ```toml
 //! [dependencies]
-//! merman-rustdoc = "=0.8.0-alpha.5"
-//! ```
-//!
-//! This works for local `cargo doc` and for docs.rs because the examples below use
-//! `cfg_attr(doc, ...)`. The macro only expands during rustdoc builds, but Cargo will still compile
-//! the dependency during ordinary builds.
-//!
-//! The default enables deterministic SVG rendering: `svg`, Cytoscape layout, and math, without
-//! the optional EPL-2.0 ELK implementation or system clock, time-zone, random, or timing
-//! adapters. Use `complete-svg-elk` only when the artifact intentionally carries the ELK closure
-//! and its notices. For an expert minimal closure, use `default-features = false, features =
-//! ["svg"]`; add `layout-cytoscape`, `layout-elk`, or `math` only when those deliberately selected
-//! diagrams need them.
-//!
-//! If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
-//! documentation feature:
-//!
-//! ```toml
-//! [dependencies]
-//! merman-rustdoc = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"], optional = true }
+//! merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg", "layout-cytoscape"], optional = true }
 //!
 //! [features]
 //! doc-diagrams = ["dep:merman-rustdoc"]
@@ -41,18 +29,36 @@
 //! features = ["doc-diagrams"]
 //! ```
 //!
-//! With this optional setup, build docs locally with:
+//! Build locally with `cargo doc --features doc-diagrams`; docs.rs enables the feature through
+//! the metadata above. Leave `doc-diagrams` out of your default features. `cfg_attr` controls macro
+//! expansion, not Cargo dependency selection: enabling `doc-diagrams`, including through
+//! `--all-features`, compiles the renderer even during ordinary builds.
 //!
-//! ```sh
-//! cargo doc --features doc-diagrams
+//! For no renderer dependency in either ordinary builds or documentation builds, generate and
+//! commit fragments with `merman-cli rustdoc build/check`, then consume them through standard
+//! `#[doc = include_str!("...")]`. This also supports crate-level documentation.
+//!
+//! This checkout defaults to `svg` and `layout-cytoscape`, without math, the optional EPL-2.0
+//! ELK implementation, or system clock, time-zone, random, or timing adapters. When upgrading
+//! from alpha.6, add `math` to the dependency's features for math labels, or select `complete-svg`
+//! to retain the previous SVG, Cytoscape, and math combination. The separate `merman` facade
+//! keeps its `complete-svg` default. Use `complete-svg-elk` only when the artifact intentionally
+//! carries the ELK closure and its notices. For base SVG only, use:
+//!
+//! ```toml
+//! [dependencies]
+//! merman-rustdoc = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"], optional = true }
 //! ```
+//!
+//! Keep the documentation feature and docs.rs metadata above. Add `layout-cytoscape`, `layout-elk`,
+//! or `math` only when the diagrams need those capabilities.
 //!
 //! # Quickstart
 //!
 //! Put the attribute on any item whose docs contain a Mermaid fence:
 //!
 //! ````rust
-//! #[cfg_attr(doc, merman_rustdoc::merman)]
+//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
 //! /// Rendered by rustdoc as inline SVG:
 //! ///
 //! /// ```mermaid
@@ -68,12 +74,58 @@
 //! crate's `CARGO_MANIFEST_DIR`.
 //!
 //! ```rust
-//! #[cfg_attr(doc, merman_rustdoc::merman)]
+//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
 //! /// Crate architecture.
 //! ///
-//! /// include_mmd!("docs/architecture.mmd")
+//! /// include_mmd!("docs/diagrams/architecture.mmd")
 //! pub fn architecture() {}
 //! ```
+//!
+//! Use JSON-compatible quoted include paths; Rust raw-string paths are not supported. The macro
+//! reads includes during expansion but does not automatically track them for stable Cargo builds.
+//! To regenerate docs when only diagram files change, add this line to the `main` function in
+//! the consuming crate's `build.rs`:
+//!
+//! ```rust
+//! println!("cargo::rerun-if-changed=docs/diagrams");
+//! ```
+//!
+//! No build dependency is needed. Watch an existing dedicated directory, not just existing files,
+//! so additions, modifications, deletions, and restoration of missing `fail = "keep-source"`
+//! includes all invalidate the build. Then run `cargo doc` with the usual documentation features.
+//! If a build script already exists, add this instruction to it. The first `rerun-if-changed`
+//! instruction narrows Cargo's default package-wide tracking; explicitly retain the script's
+//! other file inputs when it previously relied on that default.
+//!
+//! Watched and included paths are relative to the consuming crate's manifest directory. An
+//! include under `../shared/docs/diagrams` needs that directory watched by the consumer's script.
+//! Package diagram files with the crate, accounting for any `[package] include` allowlist, and
+//! check `cargo package --list`. Paths outside the package are local workspace inputs, not
+//! portable published resources; copy diagrams into the package or use CLI-generated fragments.
+//!
+//! # Embedding defaults
+//!
+//! Embedded SVGs have a transparent canvas by default. Set `background = "white"`
+//! for the previous behavior, or use another CSS color independently of the Mermaid theme.
+//! IDs are automatically isolated per invocation, document, diagram, and theme.
+//! `id_prefix = "overview"` adds a namespace; it does not replace the unique suffix.
+//! Duplicate options are rejected.
+//!
+//! `scope = "tree"` defers rendering until Rust processes conditional compilation.
+//! Disabled functions, fields, and variants do not read includes or render diagrams.
+//! A child macro inherits parent tree rendering options and overrides explicitly supplied fields.
+//! `scope` is not inherited: its default remains `item`. Use `scope = "tree"` on the child to
+//! propagate its effective rendering options to its descendants. `inherit = "off"` starts from
+//! defaults, clearing any inherited `id_prefix`, before applying the child's explicit options.
+//! Imported and renamed attributes follow the same inheritance rules. On an item with no own
+//! documentation, `scope = "item"` is a no-op and does not save options for a later tree attribute.
+//! An inactive `cfg_attr` keeps the parent options. Cargo dependency renaming is supported.
+//!
+//! HTML comments, indented code, and non-Mermaid fences are preserved. Diagram fences and
+//! standalone include directives can appear in lists, blockquotes, footnotes, and nested
+//! combinations. Retain explicit container indentation and blockquote markers. Include directives
+//! on lazy continuation lines without those prefixes report an error; add the required prefix or
+//! use `fail = "keep-source"`. Dynamic `#[doc = include_str!(...)]` remains outside this macro.
 //!
 //! # Options
 //!
@@ -81,7 +133,7 @@
 //!
 //! ```rust
 //! #[cfg_attr(
-//!     doc,
+//!     all(doc, feature = "doc-diagrams"),
 //!     merman_rustdoc::merman(
 //!         scope = "item",
 //!         pipeline = "parity",
@@ -101,10 +153,13 @@
 //! | Option | Values | Default | Meaning |
 //! | --- | --- | --- | --- |
 //! | `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
+//! | `inherit` | `on`, `off` | `on` | Inherits parent tree rendering options, or starts from defaults before local overrides. |
 //! | `pipeline` | `parity`, `readable`, `resvg-safe` | `parity` | Selects the SVG output pipeline. |
 //! | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 //! | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
 //! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
+//! | `background` | CSS color | `transparent` | Sets the embedded SVG canvas background independently of the theme. |
+//! | `id_prefix` | ASCII letters, digits, `-`, `_` | automatic | Adds an optional namespace to automatically isolated diagram IDs. |
 //! | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
 //!
 //! `parity` is the default because rustdoc pages target browsers, which render Mermaid's native
@@ -118,7 +173,7 @@
 //!
 //! ````rust
 //! #[cfg_attr(
-//!     doc,
+//!     all(doc, feature = "doc-diagrams"),
 //!     merman_rustdoc::merman(scope = "tree")
 //! )]
 //! pub mod api {
@@ -130,12 +185,18 @@
 //! }
 //! ````
 //!
+//! For example, with `source = "details"` on a parent tree, a child annotation containing only
+//! `theme = "dark"` keeps the source details and changes the theme. Setting
+//! `inherit = "off", theme = "dark"` on that child restores `source = "hide"` and the other
+//! rendering defaults before selecting the dark theme.
+//!
 //! # Scope
 //!
 //! Supported today:
 //!
 //! - Mermaid fences using backticks or tildes.
 //! - `include_mmd!("path/to/file.mmd")` lines outside other Markdown code fences.
+//! - Diagrams within lists, blockquotes, and footnotes using explicit container prefixes.
 //! - Item docs on functions, modules, structs, traits, and impl blocks.
 //! - Recursive inline item docs with `scope = "tree"`.
 //! - Multiple diagrams on the same item.
@@ -159,7 +220,7 @@
 //! Put crate-level diagrams on a public module or item instead:
 //!
 //! ````rust
-//! #[cfg_attr(doc, merman_rustdoc::merman)]
+//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
 //! /// Crate architecture.
 //! ///
 //! /// ```mermaid
@@ -199,13 +260,9 @@ mod error;
 #[cfg(feature = "svg")]
 mod expand;
 #[cfg(feature = "svg")]
-mod html;
-#[cfg(feature = "svg")]
 mod options;
 #[cfg(feature = "svg")]
 mod render;
-#[cfg(feature = "svg")]
-mod svg;
 
 use proc_macro::TokenStream;
 #[cfg(feature = "svg")]
@@ -217,10 +274,11 @@ use syn::LitStr;
 
 /// Render Mermaid code fences in rustdoc comments as inline SVG.
 ///
-/// Use this with `cfg_attr` so normal builds do not need to expand diagrams:
+/// Use the optional `doc-diagrams` dependency setup in the crate documentation so normal builds
+/// neither compile the renderer nor expand diagrams while that feature is disabled:
 ///
 /// ````rust
-/// #[cfg_attr(doc, merman_rustdoc::merman)]
+/// #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
 /// /// ```mermaid
 /// /// flowchart TD
 /// ///   A --> B
@@ -230,6 +288,7 @@ use syn::LitStr;
 #[proc_macro_attribute]
 #[cfg(feature = "svg")]
 pub fn merman(args: TokenStream, input: TokenStream) -> TokenStream {
+    let namespace = invocation_namespace(&input);
     let input: TokenStream2 = input.into();
     let args: TokenStream2 = args.into();
 
@@ -238,7 +297,13 @@ pub fn merman(args: TokenStream, input: TokenStream) -> TokenStream {
         Err(err) => return compile_error_with_input(input, &err.to_string()),
     };
 
-    match expand::expand(input.clone(), options) {
+    let helper_name = match proc_macro_crate::crate_name("merman-rustdoc") {
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => name,
+        _ => "merman_rustdoc".to_string(),
+    };
+    let helper_ident = syn::Ident::new(&helper_name, proc_macro2::Span::call_site());
+    let helper = syn::parse_quote!(::#helper_ident);
+    match expand::expand(input.clone(), &options, &namespace, &helper) {
         Ok(output) => output.into(),
         Err(err) => compile_error_with_input(input, &err.to_string()),
     }
@@ -263,4 +328,81 @@ fn compile_error_with_input(input: TokenStream2, message: &str) -> TokenStream {
         #input
     }
     .into()
+}
+
+/// Internal delayed documentation expansion. Use the `merman` attribute instead.
+#[doc(hidden)]
+#[cfg(feature = "svg")]
+#[proc_macro]
+pub fn __render_doc(input: TokenStream) -> TokenStream {
+    let result = syn::parse::<expand::DeferredDoc>(input)
+        .map_err(error::Error::from)
+        .and_then(|deferred| {
+            let fragments = deferred
+                .documents
+                .iter()
+                .map(LitStr::value)
+                .collect::<Vec<_>>();
+            let document = doc::normalize_document(&fragments, deferred.indentation);
+            let namespace = deferred.namespace.value();
+            let marker = format!("{namespace}-__merman_callsite__");
+            let mut rendered = doc::rewrite_document(&document, &deferred.options, &marker)?;
+            if rendered.starts_with('\n') && rendered.ends_with('\n') {
+                rendered.push('\n');
+            }
+            Ok((rendered, namespace, marker))
+        });
+    match result {
+        Ok((document, namespace, marker)) => {
+            // Built-in location macros resolve the outer declarative-macro invocation, unlike
+            // procedural Span::call_site(), which can point into its definition.
+            let mut parts = document.split(&marker);
+            let first = parts.next().unwrap_or_default();
+            let rest =
+                parts.map(|part| quote! { #namespace, "-L", line!(), "-C", column!(), #part, });
+            quote!(concat!(#first, #(#rest)*)).into()
+        }
+        Err(err) => {
+            let message = LitStr::new(&err.to_string(), proc_macro2::Span::call_site());
+            quote!(compile_error!(#message)).into()
+        }
+    }
+}
+
+#[cfg(feature = "svg")]
+fn invocation_namespace(input: &TokenStream) -> String {
+    let span = proc_macro::Span::call_site();
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(std::path::PathBuf::from);
+    let file = span
+        .local_file()
+        .and_then(|file| {
+            manifest.as_ref().and_then(|base| {
+                file.strip_prefix(base)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())
+            })
+        })
+        .unwrap_or_else(|| {
+            let displayed = span.file();
+            let path = std::path::Path::new(&displayed);
+            if path.is_absolute() {
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            } else {
+                displayed
+            }
+        });
+    let file = file.replace('\\', "/");
+    let package = format!(
+        "{}@{}",
+        std::env::var("CARGO_PKG_NAME").unwrap_or_default(),
+        std::env::var("CARGO_PKG_VERSION").unwrap_or_default()
+    );
+    // Item tokens distinguish separate macro_rules expansions at one source location.
+    let identity = format!("{package}:{file}:{}:{}:{input}", span.line(), span.column());
+    format!(
+        "merman-rustdoc-{:016x}",
+        render::stable_hash(identity.as_bytes())
+    )
 }

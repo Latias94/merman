@@ -36,11 +36,7 @@ fn render_error_diagram_svg_inner(
             .write_open(&mut out, root_spec, root_chrome)?;
     options.checkpoint_emit()?;
     let css = info_css_with_config(diagram_id, effective_config);
-    let _ = write!(
-        &mut out,
-        r#"<style xmlns="http://www.w3.org/1999/xhtml">{}</style>"#,
-        css
-    );
+    let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(r#"<g/>"#);
     options.checkpoint_emit()?;
     out.push_str(r#"<g>"#);

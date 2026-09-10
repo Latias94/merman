@@ -1,7 +1,7 @@
 # ADR 0076: Capability-Driven Feature And Package Surfaces
 
 - Status: accepted; native prebuilt SKU policy superseded by ADR-0079; Rustdoc integration
-  ownership amended by ADR-0082; default feature closure amended by ADR-0085
+  ownership amended by ADR-0082; default feature closure amended by ADR-0085 and ADR-0088
 - Date: 2026-07-22
 - Descriptor: `capabilities/feature-surface-v1.json`, schema `1`
 - Artifact profiles: `capabilities/artifact-profiles-v1.json`, schema `1`
@@ -51,9 +51,9 @@ cannot express exclusions, and a cross-product of product, transport, runtime, a
 profiles would make the public API misleading. The user-facing `merman` facade and
 `merman-rustdoc` integration crate expose the same result-named `complete-svg` aggregate (`svg`,
 Cytoscape layout, and `math`), plus the explicit `complete-svg-elk` aggregate for the optional ELK
-closure. The Rustdoc default mirrors the facade so its accepted examples render without extra
-feature study. Other products and artifact profiles select direct positive leaves owned by their
-package. `complete-svg` is a convenience compile aggregate, not an absence or runtime-policy
+closure. ADR-0088 gives Rustdoc a smaller `svg + layout-cytoscape` default with explicit math;
+the facade retains its `complete-svg` default. Other products and artifact profiles select direct
+positive leaves owned by their package. `complete-svg` is a convenience compile aggregate, not an absence or runtime-policy
 contract. Runtime environment selection and resource profiles remain independent from the compiled
 capability set.
 
@@ -104,7 +104,8 @@ ADR-0082 supersedes only the assumption that the `merman-rustdoc` integration cr
 Rustdoc product boundary. It adds independently owned checked generation through the CLI. ADR-0085
 supersedes only the membership of the facade and Rustdoc `complete-svg` aggregate and the default
 CLI's ELK inclusion; this ADR's capability vocabulary, positive-feature rules, and artifact-profile
-authority remain in force.
+authority remain in force. ADR-0088 supersedes only the requirement that the Rustdoc default mirror
+the facade; the explicit aggregates retain their membership.
 
 ## Consequences
 

@@ -35,6 +35,7 @@ import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
 import {
   assertSuccessfulNpmSpawn,
+  npmPackRecord,
   spawnNpmSync,
 } from "../../../scripts/npm-command.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
@@ -1318,7 +1319,7 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
     encoding: "utf8",
   });
   assertSuccessfulNpmSpawn(result, "npm pack for WASM footprint staging test");
-  const files = JSON.parse(result.stdout)[0].files.map((file) => file.path);
+  const files = npmPackRecord(result.stdout, manifest.name).files.map((file) => file.path);
   assert(files.includes("artifact/merman_node.js"));
   assert(files.includes("artifact/merman_node_bg.wasm"));
   assert(files.includes("index.d.ts"));

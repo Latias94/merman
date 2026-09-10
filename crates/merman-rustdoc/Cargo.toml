@@ -20,16 +20,15 @@ proc-macro = true
 artifact-profile-required = true
 
 [features]
-# The published proc macro should render the complete deterministic SVG path out of
-# the box. Exact release artifacts still opt into their direct leaves below.
-default = ["complete-svg"]
+default = ["svg", "layout-cytoscape"]
 complete-svg = ["svg", "layout-cytoscape", "math"]
 complete-svg-elk = ["complete-svg", "layout-elk"]
 svg = [
     "dep:merman",
     "dep:proc-macro2",
     "dep:quote",
-    "dep:roxmltree",
+    "dep:merman-doc",
+    "dep:proc-macro-crate",
     "dep:serde_json",
     "dep:syn",
     "merman/svg",
@@ -42,7 +41,8 @@ math = ["svg", "merman/math"]
 merman = { workspace = true, default-features = false, optional = true }
 proc-macro2 = { workspace = true, optional = true }
 quote = { workspace = true, optional = true }
-roxmltree = { workspace = true, optional = true }
+merman-doc = { workspace = true, optional = true }
+proc-macro-crate = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 syn = { workspace = true, optional = true }
 
@@ -57,3 +57,6 @@ required-features = ["layout-cytoscape", "layout-elk", "math", "svg"]
 [[test]]
 name = "rustdoc_e2e"
 required-features = ["svg"]
+
+[dev-dependencies]
+roxmltree.workspace = true
