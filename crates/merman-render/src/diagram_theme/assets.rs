@@ -1140,6 +1140,7 @@ enum Woff2TableKind {
 
 #[derive(Debug, Clone, Copy)]
 struct Woff2TablePlan {
+    tag: [u8; 4],
     kind: Woff2TableKind,
     offset: usize,
     length: usize,
@@ -1227,18 +1228,22 @@ impl<'a> ByteCursor<'a> {
     }
 }
 
-fn woff2_table_kind(tag_index: u8, custom_tag: Option<&[u8]>) -> Woff2TableKind {
-    let tag = match tag_index {
-        3 => Some(&b"hmtx"[..]),
-        10 => Some(&b"glyf"[..]),
-        11 => Some(&b"loca"[..]),
-        63 => custom_tag,
-        _ => None,
-    };
-    match tag {
-        Some(b"glyf") => Woff2TableKind::Glyf,
-        Some(b"loca") => Woff2TableKind::Loca,
-        Some(b"hmtx") => Woff2TableKind::Hmtx,
+// WOFF2 table-directory flag indices, in the order defined by the format.
+const WOFF2_KNOWN_TAGS: [[u8; 4]; 63] = [
+    *b"cmap", *b"head", *b"hhea", *b"hmtx", *b"maxp", *b"name", *b"OS/2", *b"post", *b"cvt ",
+    *b"fpgm", *b"glyf", *b"loca", *b"prep", *b"CFF ", *b"VORG", *b"EBDT", *b"EBLC", *b"gasp",
+    *b"hdmx", *b"kern", *b"LTSH", *b"PCLT", *b"VDMX", *b"vhea", *b"vmtx", *b"BASE", *b"GDEF",
+    *b"GPOS", *b"GSUB", *b"EBSC", *b"JSTF", *b"MATH", *b"CBDT", *b"CBLC", *b"COLR", *b"CPAL",
+    *b"SVG ", *b"sbix", *b"acnt", *b"avar", *b"bdat", *b"bloc", *b"bsln", *b"cvar", *b"fdsc",
+    *b"feat", *b"fmtx", *b"fvar", *b"gvar", *b"hsty", *b"just", *b"lcar", *b"mort", *b"morx",
+    *b"opbd", *b"prop", *b"trak", *b"Zapf", *b"Silf", *b"Glat", *b"Gloc", *b"Feat", *b"Sill",
+];
+
+fn woff2_table_kind(tag: [u8; 4]) -> Woff2TableKind {
+    match &tag {
+        b"glyf" => Woff2TableKind::Glyf,
+        b"loca" => Woff2TableKind::Loca,
+        b"hmtx" => Woff2TableKind::Hmtx,
         _ => Woff2TableKind::Other,
     }
 }
@@ -1281,16 +1286,21 @@ fn preflight_woff2(
 
     let mut tables = Vec::with_capacity(table_count);
     let mut compressed_table_size = 0usize;
+    let mut font_tags = BTreeSet::new();
     for _ in 0..table_count {
         let flags = cursor.u8().ok_or_else(malformed)?;
         let tag_index = flags & 0x3f;
         let format = flags >> 6;
-        let custom_tag = if tag_index == 63 {
-            Some(cursor.take(4).ok_or_else(malformed)?)
+        let tag = if tag_index == 63 {
+            cursor.u32().ok_or_else(malformed)?.to_be_bytes()
         } else {
-            None
+            WOFF2_KNOWN_TAGS[usize::from(tag_index)]
         };
-        let kind = woff2_table_kind(tag_index, custom_tag);
+        // Collections may reuse tags across faces, but each face must have unique tags.
+        if flavor != u32::from_be_bytes(*b"ttcf") && !font_tags.insert(tag) {
+            return Err(malformed());
+        }
+        let kind = woff2_table_kind(tag);
         let original_length = usize::try_from(cursor.variable_128_u32().ok_or_else(malformed)?)
             .map_err(|_| malformed())?;
         resources.check_font_asset_decoded_bytes(original_length)?;
@@ -1309,6 +1319,7 @@ fn preflight_woff2(
             .checked_add(length)
             .ok_or_else(malformed)?;
         tables.push(Woff2TablePlan {
+            tag,
             kind,
             offset,
             length,
@@ -1340,7 +1351,7 @@ fn preflight_woff2(
                     .checked_add(face_tables)
                     .ok_or_else(malformed)?;
                 resources.check_font_table_count(table_references)?;
-                let mut face_indices = Vec::with_capacity(face_tables);
+                let mut face_tags = BTreeSet::new();
                 let mut glyf_index = None;
                 let mut loca_index = None;
                 for _ in 0..face_tables {
@@ -1348,10 +1359,9 @@ fn preflight_woff2(
                     if table_index >= table_count {
                         return Err(malformed());
                     }
-                    if face_indices.contains(&table_index) {
+                    if !face_tags.insert(tables[table_index].tag) {
                         return Err(malformed());
                     }
-                    face_indices.push(table_index);
                     match tables[table_index].kind {
                         Woff2TableKind::Glyf => glyf_index = Some(table_index),
                         Woff2TableKind::Loca => loca_index = Some(table_index),
@@ -2058,6 +2068,96 @@ mod tests {
             collection.extend_from_slice(&shifted);
         }
         collection
+    }
+
+    // This block is a valid Brotli stream for a 36-byte, zero-glyph glyf transform.
+    const EMPTY_GLYF_BROTLI: &[u8] = &[27, 35, 0, 248, 39, 0, 162, 140, 0, 64];
+
+    fn woff2_directory_fixture(directory: &[u8], table_count: u16, collection: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![0; 48];
+        bytes[..4].copy_from_slice(b"wOF2");
+        bytes[4..8].copy_from_slice(if collection.is_empty() {
+            &[0, 1, 0, 0]
+        } else {
+            b"ttcf"
+        });
+        bytes[12..14].copy_from_slice(&table_count.to_be_bytes());
+        write_u32(&mut bytes, 16, 128);
+        write_u32(&mut bytes, 20, EMPTY_GLYF_BROTLI.len() as u32);
+        bytes.extend_from_slice(directory);
+        bytes.extend_from_slice(collection);
+        bytes.extend_from_slice(EMPTY_GLYF_BROTLI);
+        while bytes.len() % 4 != 0 {
+            bytes.push(0);
+        }
+        let length = bytes.len() as u32;
+        write_u32(&mut bytes, 8, length);
+        bytes
+    }
+
+    #[test]
+    fn duplicate_loca_is_rejected_before_font_decompression() {
+        let bytes = woff2_directory_fixture(&[10, 0, 36, 11, 2, 0, 11, 2, 0], 3, &[]);
+        let error = canonicalize_font_asset(7, bytes.into(), &ThemeResourcePolicy::interactive())
+            .err()
+            .expect("duplicate loca must be rejected without panicking");
+        assert!(matches!(
+            error,
+            FontCatalogError::MalformedWoff2 { asset_index: 7 }
+        ));
+    }
+
+    #[test]
+    fn woff2_preflight_rejects_duplicate_tags_in_both_encodings() {
+        for tag_index in 0..63u8 {
+            let flags = if matches!(tag_index, 10 | 11) {
+                tag_index | 0xc0
+            } else {
+                tag_index
+            };
+            let bytes = woff2_directory_fixture(&[flags, 0, flags, 0], 2, &[]);
+            assert!(
+                matches!(
+                    preflight_woff2(&bytes, &ThemeResourcePolicy::interactive(), 0),
+                    Err(FontCatalogError::MalformedWoff2 { .. })
+                ),
+                "tag index {tag_index}"
+            );
+        }
+        for directory in [
+            vec![0, 0, 63, b'c', b'm', b'a', b'p', 0],
+            vec![63, b'T', b'E', b'S', b'T', 0, 63, b'T', b'E', b'S', b'T', 0],
+            vec![11, 2, 0, 63, b'l', b'o', b'c', b'a', 2, 0],
+        ] {
+            let bytes = woff2_directory_fixture(&directory, 2, &[]);
+            assert!(matches!(
+                preflight_woff2(&bytes, &ThemeResourcePolicy::interactive(), 0),
+                Err(FontCatalogError::MalformedWoff2 { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn woff2_collection_checks_tags_per_face_and_allows_shared_tables() {
+        // Two distinct glyf/loca pairs and one cmap shared by both faces are valid.
+        let directory = [10, 0, 36, 11, 2, 0, 10, 0, 36, 11, 2, 0, 0, 0];
+        let collection = [
+            0, 1, 0, 0, 2, 3, 0, 1, 0, 0, 0, 1, 4, 3, 0, 1, 0, 0, 2, 3, 4,
+        ];
+        let bytes = woff2_directory_fixture(&directory, 5, &collection);
+        let plan = preflight_woff2(&bytes, &ThemeResourcePolicy::interactive(), 0)
+            .expect("different faces can have the same tags or share a table");
+        assert_eq!(plan.face_table_counts, [3, 3]);
+
+        for indices in [[0, 1], [0, 0]] {
+            let mut collection = vec![0, 1, 0, 0, 1, 2, 0, 1, 0, 0];
+            collection.extend_from_slice(&indices);
+            let bytes = woff2_directory_fixture(&[0, 0, 0, 0], 2, &collection);
+            assert!(matches!(
+                preflight_woff2(&bytes, &ThemeResourcePolicy::interactive(), 0),
+                Err(FontCatalogError::MalformedWoff2 { .. })
+            ));
+        }
     }
 
     #[test]
