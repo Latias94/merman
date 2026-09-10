@@ -698,8 +698,8 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],
             &[
-                ".treeView-node-label { font-size: 16px; fill: #e5e7eb; white-space: pre; }",
-                ".treeView-node-line { stroke: #94a3b8; }",
+                "#presentation-theme-tree-view .treeView-node-label { font-size: 16px; fill: #e5e7eb; white-space: pre; }",
+                "#presentation-theme-tree-view .treeView-node-line { stroke: #94a3b8; }",
             ],
         ),
         (
@@ -709,8 +709,8 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
             ),
             &["#e5e7eb", "#111827", "#94a3b8"],
             &[
-                ".ishikawa .ishikawa-spine,.ishikawa .ishikawa-branch,.ishikawa .ishikawa-sub-branch { stroke: #94a3b8;",
-                ".ishikawa .ishikawa-head { fill: #111827; stroke: #94a3b8;",
+                "#presentation-theme-ishikawa .ishikawa .ishikawa-spine,#presentation-theme-ishikawa .ishikawa .ishikawa-branch,#presentation-theme-ishikawa .ishikawa .ishikawa-sub-branch { stroke: #94a3b8;",
+                "#presentation-theme-ishikawa .ishikawa .ishikawa-head { fill: #111827; stroke: #94a3b8;",
             ],
         ),
         (
@@ -720,6 +720,7 @@ fn presentation_theme_covers_additional_current_diagram_surfaces() {
                 "#e5e7eb", "#111827", "#1e293b", "#475569", "#34d399", "#60a5fa", "#f59e0b",
             ],
             &[
+                "#presentation-theme-eventmodeling .em-swimlane text,#presentation-theme-eventmodeling .em-box span {",
                 "class=\"em-swimlane\"><rect",
                 "fill=\"#1e293b\" stroke=\"#475569\"",
                 "stroke=\"#475569\" fill=\"#111827\"",
