@@ -347,6 +347,14 @@ fn fit_treemap_label_width(
     measurer: &dyn crate::text::TextMeasurer,
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<(f64, bool)> {
+    const MAX_WIDTH_SEARCH_STEPS: usize = 2_048;
+
+    if !font_size.is_finite() || !min_label_size.is_finite() {
+        return Err(crate::Error::InvalidModel {
+            message: "Treemap label font size must be finite during width fitting".to_owned(),
+        });
+    }
+
     let mut measurement_matches = initial_style.matches_measurement(style);
     if measure_treemap_computed_length(measurer, text, style, work_meter)? <= available_width
         || font_size <= min_label_size
@@ -359,7 +367,7 @@ fn fit_treemap_label_width(
     // huge authored font size cannot force millions of host measurements.
     let mut fitting = min_label_size;
     let mut too_large = font_size;
-    loop {
+    for _ in 0..MAX_WIDTH_SEARCH_STEPS {
         work_meter.charge_emit_work(1)?;
         let candidate = (fitting + (too_large - fitting) / 2.0).floor();
         if candidate <= fitting || candidate >= too_large {
@@ -1533,6 +1541,85 @@ mod tests {
         };
         assert_eq!(error.phase, merman_core::OperationPhase::Emit);
         assert_eq!(meter.used(), 0);
+    }
+
+    #[test]
+    fn treemap_width_search_strictly_progresses_for_extreme_overwide_labels() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+        struct FontSizeWidthMeasurer;
+
+        impl crate::text::TextMeasurer for FontSizeWidthMeasurer {
+            fn measure(
+                &self,
+                _text: &str,
+                style: &crate::text::TextStyle,
+            ) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: style.font_size,
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_text_computed_length_px(
+                &self,
+                _text: &str,
+                style: &crate::text::TextStyle,
+            ) -> f64 {
+                style.font_size
+            }
+        }
+
+        let measurer = FontSizeWidthMeasurer;
+        let layout = TreemapDiagramLayout {
+            title_height: 0.0,
+            width: 100.0,
+            height: 100.0,
+            use_max_width: true,
+            diagram_padding: 8.0,
+            show_values: true,
+            value_format: ",".to_string(),
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            sections: Vec::new(),
+            leaves: vec![leaf("over-wide", 1.0, 0.0, 100.0, 100.0)],
+        };
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({}));
+        let typography_theme = crate::treemap::TreemapTypographyThemePlan::resolve(
+            None,
+            &config,
+            &layout,
+            std::sync::Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )),
+        )
+        .unwrap();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 4_096)
+            .unwrap();
+
+        for initial_font_size in [1e20, f64::MAX] {
+            let initial_style = typography_theme.leaf_text_style(0, initial_font_size);
+            let mut style = initial_style.style().clone();
+            let meter = OperationWorkMeter::new(policy);
+            let (font_size, _) = fit_treemap_label_width(
+                initial_font_size,
+                16.0,
+                8.0,
+                "over-wide",
+                &mut style,
+                &initial_style,
+                &measurer,
+                &meter,
+            )
+            .unwrap();
+
+            assert_eq!(font_size, 16.0);
+            assert_eq!(style.font_size, 16.0);
+            assert!(meter.used() <= 4_096);
+        }
     }
 
     #[test]
