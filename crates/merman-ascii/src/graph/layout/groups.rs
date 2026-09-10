@@ -5,7 +5,7 @@ use crate::error::Result;
 use crate::operation::AsciiExecution;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use std::collections::HashSet;
+use rustc_hash::FxHashSet as HashSet;
 
 mod bounds;
 mod direction;

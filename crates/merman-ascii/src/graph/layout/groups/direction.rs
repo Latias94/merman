@@ -73,7 +73,7 @@ fn flowchart_external_connections(
 fn include_group_endpoint_scope(
     topology: &GraphGroupTopology<'_>,
     endpoint: &str,
-    scope: &mut std::collections::HashSet<usize>,
+    scope: &mut rustc_hash::FxHashSet<usize>,
 ) -> Result<()> {
     let Some(GraphEndpointIndex::Group(group_index)) = topology.endpoint_index(endpoint) else {
         return Ok(());

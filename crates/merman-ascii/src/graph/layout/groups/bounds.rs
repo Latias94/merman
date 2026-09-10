@@ -9,7 +9,8 @@ use crate::operation::AsciiExecution;
 use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use merman_core::OperationPhase;
-use std::collections::{HashMap, HashSet, VecDeque};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::collections::VecDeque;
 
 const EMPTY_GROUP_RANK_GAP: usize = 2;
 
@@ -619,7 +620,7 @@ fn leaf_group_rank_span(
         return Ok(0);
     }
     resources.charge_layout_work(leaf_group_levels.len())?;
-    let mut size_by_level = HashMap::<usize, usize>::new();
+    let mut size_by_level = HashMap::<usize, usize>::default();
     size_by_level
         .try_reserve(leaf_group_levels.len())
         .map_err(|_| AsciiError::AllocationFailed {
@@ -850,7 +851,7 @@ fn raw_group_bounds(
         return Ok(None);
     }
 
-    let mut layout_bounds_by_id = HashMap::new();
+    let mut layout_bounds_by_id = HashMap::default();
     layout_bounds_by_id
         .try_reserve(layouts.len())
         .map_err(|_| AsciiError::AllocationFailed {
@@ -869,13 +870,13 @@ fn raw_group_bounds(
                 bottom: isize::try_from(bottom).map_err(|_| grid_overflow(resources))?,
             });
     }
-    let mut completed = HashMap::<usize, Option<RawBounds>>::new();
+    let mut completed = HashMap::<usize, Option<RawBounds>>::default();
     completed
         .try_reserve(graph.groups.len())
         .map_err(|_| AsciiError::AllocationFailed {
             phase: AsciiResourceLimitPhase::LayoutWork.as_str(),
         })?;
-    let mut visiting = HashSet::<usize>::new();
+    let mut visiting = HashSet::<usize>::default();
     visiting
         .try_reserve(graph.groups.len())
         .map_err(|_| AsciiError::AllocationFailed {

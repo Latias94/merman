@@ -9,7 +9,7 @@ use crate::canvas::CanvasColor;
 use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::error::{AsciiError, Result};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 mod boundary;
 mod candidates;
@@ -154,7 +154,7 @@ impl RoutePlan {
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
-            suppressed_cells: HashSet::new(),
+            suppressed_cells: HashSet::default(),
             min_canvas_extent: CanvasExtent::default(),
         }
     }
@@ -326,7 +326,7 @@ impl RoutePlan {
         let primary_candidate = self.terminal_candidate(endpoint, diagram_type)?;
         let primary = self.cells[primary_candidate.cell.0];
 
-        let mut coordinate_index = HashMap::<CanvasCoord, Option<PlannedCellId>>::new();
+        let mut coordinate_index = HashMap::<CanvasCoord, Option<PlannedCellId>>::default();
         coordinate_index
             .try_reserve(self.cells.len())
             .map_err(|_| AsciiError::AllocationFailed {
@@ -541,7 +541,7 @@ impl RoutePlan {
             anchors,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
-            suppressed_cells: HashSet::new(),
+            suppressed_cells: HashSet::default(),
             min_canvas_extent: CanvasExtent { width, height },
         }
     }
