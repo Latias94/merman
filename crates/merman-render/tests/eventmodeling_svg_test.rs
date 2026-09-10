@@ -4,8 +4,9 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    OrdinalSelector, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
+    OrdinalSelector, ThemeAdmissionPolicy, ThemeColorValue, ThemePortabilityRequirement, ThemeRule,
+    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TrustedThemeLane,
+    TrustedThemeLanes, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -112,6 +113,32 @@ fn render_eventmodeling_with_theme_requirement_and_id(
     )
 }
 
+fn render_eventmodeling_with_raw_theme_css(theme: &DiagramTheme) -> family::RenderedFamilySvg {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeCSS": ".em-box span { color: #de3163; } .em-swimlane { fill: #2468ac; }"
+    })));
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
+        .expect("parse Event Modeling author CSS fixture")
+        .expect("detect Event Modeling author CSS fixture");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
+        ))
+        .begin_session_with_theme(theme)
+        .expect("begin trusted Event Modeling author CSS session");
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Event Modeling author CSS fixture")
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("eventmodeling-theme-css".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render Event Modeling author CSS fixture")
+}
+
 fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Value {
     let parsed = merman_render::__private::install_parse_compatibility(theme, Engine::new())
         .parse_diagram_for_render_model_sync(THEME_TEXT_SOURCE, ParseOptions::strict())
@@ -139,53 +166,67 @@ fn style_property<'a>(style: &'a str, expected_property: &str) -> Option<&'a str
         .next_back()
 }
 
-fn eventmodeling_terminal_text_values(svg: &str) -> (Vec<String>, Vec<String>) {
+fn eventmodeling_inherited_text_paint(svg: &str) -> (String, String, usize, usize) {
     let document = roxmltree::Document::parse(svg).expect("valid Event Modeling SVG");
-    let swimlane_fills = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("text")
-                && node.parent().is_some_and(|parent| {
-                    parent.attribute("class").is_some_and(|class| {
-                        class.split_ascii_whitespace().any(|c| c == "em-swimlane")
-                    })
-                })
-                && node
-                    .descendants()
-                    .filter_map(|descendant| descendant.text())
-                    .any(|text| !text.trim().is_empty())
-        })
-        .map(|node| {
-            node.attribute("fill")
-                .unwrap_or_else(|| panic!("missing Event Modeling swimlane fill: {svg}"))
-                .to_string()
-        })
-        .collect();
-    let box_colors = document
-        .descendants()
-        .filter(|node| {
-            node.is_element()
-                && node.tag_name().name() == "span"
-                && node.ancestors().any(|ancestor| {
-                    ancestor
-                        .attribute("class")
-                        .is_some_and(|class| class.split_ascii_whitespace().any(|c| c == "em-box"))
-                })
-                && node
-                    .descendants()
-                    .filter_map(|descendant| descendant.text())
-                    .any(|text| !text.trim().is_empty())
-        })
-        .map(|node| {
-            let style = node
-                .attribute("style")
-                .unwrap_or_else(|| panic!("missing Event Modeling box span style: {svg}"));
-            style_property(style, "color")
-                .unwrap_or_else(|| panic!("missing Event Modeling box span color: {svg}"))
-                .to_string()
-        })
-        .collect();
-    (swimlane_fills, box_colors)
+    let id = document
+        .root_element()
+        .attribute("id")
+        .expect("Event Modeling SVG id");
+    let stylesheet = eventmodeling_stylesheet(svg);
+    let root_rule = stylesheet
+        .split('}')
+        .filter_map(|rule| rule.split_once('{'))
+        .find_map(|(selector, body)| (selector.trim() == format!("#{id}")).then_some(body))
+        .expect("Event Modeling root text-paint rule");
+    let fill = style_property(root_rule, "fill")
+        .expect("root SVG text fill")
+        .to_string();
+    let color = style_property(root_rule, "color")
+        .expect("root XHTML text color")
+        .to_string();
+    let mut swimlanes = 0;
+    let mut boxes = 0;
+    for node in document.descendants().filter(|node| node.is_element()) {
+        let swimlane = node.has_tag_name("text")
+            && node
+                .parent()
+                .is_some_and(|parent| parent.attribute("class") == Some("em-swimlane"));
+        let box_text = node.tag_name().name() == "span"
+            && node
+                .ancestors()
+                .any(|ancestor| ancestor.attribute("class") == Some("em-box"));
+        if !swimlane && !box_text {
+            continue;
+        }
+        for ancestor in node
+            .ancestors()
+            .take_while(|ancestor| *ancestor != document.root_element())
+        {
+            assert!(
+                ancestor.attribute("fill").is_none(),
+                "local fill blocks text inheritance: {svg}"
+            );
+            assert!(
+                ancestor.attribute("color").is_none(),
+                "local color blocks text inheritance: {svg}"
+            );
+            if let Some(style) = ancestor.attribute("style") {
+                assert!(
+                    style_property(style, "fill").is_none(),
+                    "inline fill blocks themeCSS: {svg}"
+                );
+                assert!(
+                    style_property(style, "color").is_none(),
+                    "inline color blocks themeCSS: {svg}"
+                );
+            }
+        }
+        swimlanes += usize::from(swimlane);
+        boxes += usize::from(box_text);
+    }
+    // This proves the emitted CSS and inheritance structure. The browser probe separately
+    // checks computed values and author-CSS precedence, without approximating the cascade here.
+    (fill, color, swimlanes, boxes)
 }
 
 fn try_render_eventmodeling_svg_with_resource_policy(
@@ -265,10 +306,11 @@ fn eventmodeling_typed_text_fill_reaches_svg_and_xhtml_terminals() {
         let theme = eventmodeling_text_fill_theme(fill);
         let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
             .expect("render strict portable Event Modeling text fill");
-        let (swimlane_fills, box_colors) = eventmodeling_terminal_text_values(rendered.svg());
+        let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
-        assert_eq!(swimlane_fills, vec![expected; 3]);
-        assert_eq!(box_colors, vec![expected; 3]);
+        assert_eq!(fill, expected);
+        assert_eq!(color, expected);
+        assert_eq!((swimlanes, boxes), (3, 3));
 
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
@@ -290,10 +332,11 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     })));
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, engine)
         .expect("render site-owned Event Modeling text fill");
-    let (swimlane_fills, box_colors) = eventmodeling_terminal_text_values(rendered.svg());
+    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
-    assert_eq!(swimlane_fills, vec!["#fedcba"; 3]);
-    assert_eq!(box_colors, vec!["#fedcba"; 3]);
+    assert_eq!(fill, "#fedcba");
+    assert_eq!(color, "#fedcba");
+    assert_eq!((swimlanes, boxes), (3, 3));
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -302,6 +345,88 @@ fn eventmodeling_explicit_text_color_outranks_typed_text_fill() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_root_text_paint_allows_author_css_on_both_roles() {
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile baseline Event Modeling theme");
+    let typed_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for theme in [&empty_theme, &typed_theme] {
+        let rendered = render_eventmodeling_with_raw_theme_css(theme);
+        let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
+        assert_eq!(fill, color);
+        assert_eq!((swimlanes, boxes), (3, 3));
+        let stylesheet = eventmodeling_stylesheet(rendered.svg());
+        let compact = stylesheet
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>();
+        assert!(
+            compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac;}")
+                || compact.contains("#eventmodeling-theme-css.em-swimlane{fill:#2468ac}"),
+            "{stylesheet}"
+        );
+        assert!(
+            compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163;}")
+                || compact.contains("#eventmodeling-theme-css.em-boxspan{color:#de3163}"),
+            "{stylesheet}"
+        );
+        assert!(
+            !compact.contains(".em-swimlanetext{fill:"),
+            "local defaults must not block group inheritance"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires Node, tools/mermaid-cli dependencies, and Puppeteer's Chrome headless shell"]
+fn eventmodeling_browser_text_cascade() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .expect("compile baseline Event Modeling theme");
+    let typed_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    let baseline = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &empty_theme, Engine::new())
+        .expect("render browser Event Modeling baseline");
+    let typed = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &typed_theme, Engine::new())
+        .expect("render browser Event Modeling typed text");
+    let author_css = render_eventmodeling_with_raw_theme_css(&empty_theme);
+    let typed_author_css = render_eventmodeling_with_raw_theme_css(&typed_theme);
+    let fixtures = serde_json::json!([
+        { "name": "baseline", "svg": baseline.svg(), "fill": "rgb(51, 51, 51)", "color": "rgb(51, 51, 51)" },
+        { "name": "typed", "svg": typed.svg(), "fill": "rgb(18, 52, 86)", "color": "rgb(18, 52, 86)" },
+        { "name": "author-css", "svg": author_css.svg(), "fill": "rgb(36, 104, 172)", "color": "rgb(222, 49, 99)" },
+        { "name": "typed-author-css", "svg": typed_author_css.svg(), "fill": "rgb(36, 104, 172)", "color": "rgb(222, 49, 99)" },
+    ]);
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tools/debug/eventmodeling_text_cascade.mjs");
+    let mut child = Command::new("node")
+        .arg(script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("launch Event Modeling browser regression");
+    child
+        .stdin
+        .take()
+        .expect("browser fixture stdin")
+        .write_all(serde_json::to_string(&fixtures).unwrap().as_bytes())
+        .expect("send rendered SVG fixtures to browser");
+    let output = child
+        .wait_with_output()
+        .expect("wait for Event Modeling browser regression");
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    println!("{}", String::from_utf8_lossy(&output.stdout));
 }
 
 #[test]
@@ -623,10 +748,11 @@ fn eventmodeling_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
         .expect("compile Event Modeling text fill and ordinal palette theme");
     let rendered = render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new())
         .expect("typed Event Modeling text fill must shadow the unsupported palette");
-    let (swimlane_fills, box_colors) = eventmodeling_terminal_text_values(rendered.svg());
+    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
-    assert_eq!(swimlane_fills, vec!["#123456"; 3]);
-    assert_eq!(box_colors, vec!["#123456"; 3]);
+    assert_eq!(fill, "#123456");
+    assert_eq!(color, "#123456");
+    assert_eq!((swimlanes, boxes), (3, 3));
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
@@ -644,10 +770,10 @@ fn eventmodeling_empty_terminal_domain_marks_text_fill_not_applicable() {
     );
     let rendered = render_eventmodeling_with_theme("eventmodeling\n", &theme, Engine::new())
         .expect("render empty Event Modeling terminal domain");
-    let (swimlane_fills, box_colors) = eventmodeling_terminal_text_values(rendered.svg());
+    let (fill, color, swimlanes, boxes) = eventmodeling_inherited_text_paint(rendered.svg());
 
-    assert!(swimlane_fills.is_empty());
-    assert!(box_colors.is_empty());
+    assert_eq!((swimlanes, boxes), (0, 0));
+    assert_eq!(fill, color);
 
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());

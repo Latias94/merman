@@ -379,7 +379,7 @@ pub(crate) struct EventModelingTextThemeReceipt {
     expected_font_family: Box<str>,
     expected_font_size: Option<Box<str>>,
     stylesheet_emissions: usize,
-    terminal_matches: bool,
+    output_succeeded: bool,
 }
 
 impl EventModelingTextThemeReceipt {
@@ -396,7 +396,7 @@ impl EventModelingTextThemeReceipt {
             expected_font_family: expected_font_family.into(),
             expected_font_size: expected_font_size.map(Into::into),
             stylesheet_emissions: 0,
-            terminal_matches: true,
+            output_succeeded: true,
         }
     }
 
@@ -408,39 +408,46 @@ impl EventModelingTextThemeReceipt {
         diagram_id: impl Copy + std::fmt::Display,
     ) {
         self.stylesheet_emissions = self.stylesheet_emissions.saturating_add(1);
-        let _ = write!(
+        self.output_succeeded &= write!(
             out,
-            "#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {};",
-            self.expected_font_family
-        );
+            "#{diagram_id} {{ fill: {}; color: {}; }}#{diagram_id} .em-swimlane text,#{diagram_id} .em-box span {{ font-family: {};",
+            self.expected_fill, self.expected_fill, self.expected_font_family
+        )
+        .is_ok();
         if let Some(font_size) = self.expected_font_size.as_deref() {
-            let _ = write!(out, " font-size: {font_size};");
+            self.output_succeeded &= write!(out, " font-size: {font_size};").is_ok();
         }
-        let _ = write!(
-            out,
-            " color: {}; }}#{diagram_id} .em-relation {{ fill: none; }}",
-            self.expected_fill
-        );
+        self.output_succeeded &=
+            write!(out, " }}#{diagram_id} .em-relation {{ fill: none; }}").is_ok();
     }
 
-    pub(crate) fn record_swimlane_text(&mut self, text: &str, emitted_fill: &str) {
-        if text.trim().is_empty() {
-            return;
+    /// The text inherits paint from the SVG root and typography from its scoped role selector.
+    pub(crate) fn write_swimlane_text_start(
+        &mut self,
+        out: &mut impl std::fmt::Write,
+        text: &str,
+        x: impl std::fmt::Display,
+        y: impl std::fmt::Display,
+    ) {
+        self.output_succeeded &=
+            write!(out, r#"<text font-weight="bold" x="{x}" y="{y}">"#).is_ok();
+        if !text.trim().is_empty() {
+            self.emitted.swimlanes = self.emitted.swimlanes.saturating_add(1);
         }
-        self.emitted.swimlanes = self.emitted.swimlanes.saturating_add(1);
-        self.terminal_matches &= emitted_fill == self.expected_fill.as_ref();
     }
 
-    pub(crate) fn record_box_text(&mut self, text: &str, emitted_color: &str) {
-        if text.trim().is_empty() {
-            return;
+    /// XHTML wrappers own layout only, leaving color available to ordinary author CSS.
+    pub(crate) fn write_box_text_start(&mut self, out: &mut impl std::fmt::Write, text: &str) {
+        self.output_succeeded &= out
+            .write_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#)
+            .is_ok();
+        if !text.trim().is_empty() {
+            self.emitted.boxes = self.emitted.boxes.saturating_add(1);
         }
-        self.emitted.boxes = self.emitted.boxes.saturating_add(1);
-        self.terminal_matches &= emitted_color == self.expected_fill.as_ref();
     }
 
     fn proves_complete(&self) -> bool {
-        self.stylesheet_emissions == 1 && self.emitted == self.expected && self.terminal_matches
+        self.stylesheet_emissions == 1 && self.emitted == self.expected && self.output_succeeded
     }
 }
 
@@ -462,29 +469,89 @@ mod tests {
         };
         let mut missing_box = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
         let _ = write_receipt_stylesheet(&mut missing_box);
-        missing_box.record_swimlane_text("UI/Automation", "#123456");
+        let mut output = String::new();
+        missing_box.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
         assert!(!missing_box.proves_complete());
 
-        let mut mismatched_box = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
-        let _ = write_receipt_stylesheet(&mut mismatched_box);
-        mismatched_box.record_swimlane_text("UI/Automation", "#123456");
-        mismatched_box.record_box_text("View", "#abcdef");
-        assert!(!mismatched_box.proves_complete());
-
-        let mut extra_swimlane = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
-        let _ = write_receipt_stylesheet(&mut extra_swimlane);
-        extra_swimlane.record_swimlane_text("UI/Automation", "#123456");
-        extra_swimlane.record_swimlane_text("UI/A: Shop", "#123456");
-        extra_swimlane.record_box_text("View", "#123456");
-        assert!(!extra_swimlane.proves_complete());
+        for (swimlanes, boxes) in [(0, 1), (2, 1), (1, 2)] {
+            let mut incomplete = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+            let _ = write_receipt_stylesheet(&mut incomplete);
+            let mut output = String::new();
+            for _ in 0..swimlanes {
+                incomplete.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+            }
+            for _ in 0..boxes {
+                incomplete.write_box_text_start(&mut output, "View");
+            }
+            assert!(!incomplete.proves_complete());
+        }
 
         let mut complete = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
         let _ = write_receipt_stylesheet(&mut complete);
-        complete.record_swimlane_text("", "wrong-but-empty");
-        complete.record_box_text("   ", "wrong-but-empty");
-        complete.record_swimlane_text("UI/Automation", "#123456");
-        complete.record_box_text("View", "#123456");
+        let mut output = String::new();
+        complete.write_swimlane_text_start(&mut output, "", 0, 0);
+        complete.write_box_text_start(&mut output, "   ");
+        complete.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+        complete.write_box_text_start(&mut output, "View");
         assert!(complete.proves_complete());
+    }
+
+    #[test]
+    fn eventmodeling_text_receipt_writes_inheriting_text_openings() {
+        let mut receipt = EventModelingTextThemeReceipt::new(
+            EventModelingTextOccurrences {
+                swimlanes: 1,
+                boxes: 1,
+            },
+            "#123456",
+            "Fira Sans",
+            Some("24px"),
+        );
+        let _ = write_receipt_stylesheet(&mut receipt);
+        let mut swimlane = String::new();
+        receipt.write_swimlane_text_start(&mut swimlane, "UI/Automation", 30, 45);
+        assert_eq!(swimlane, r#"<text font-weight="bold" x="30" y="45">"#);
+        let mut box_text = String::new();
+        receipt.write_box_text_start(&mut box_text, "View");
+        assert_eq!(
+            box_text,
+            r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#
+        );
+        assert!(receipt.proves_complete());
+    }
+
+    #[test]
+    fn eventmodeling_text_receipt_rejects_failed_output() {
+        struct FailedOutput;
+        impl std::fmt::Write for FailedOutput {
+            fn write_str(&mut self, _: &str) -> std::fmt::Result {
+                Err(std::fmt::Error)
+            }
+        }
+        let expected = EventModelingTextOccurrences {
+            swimlanes: 1,
+            boxes: 1,
+        };
+        for failing_role in 0..3 {
+            let mut receipt = EventModelingTextThemeReceipt::new(expected, "#123456", "", None);
+            let mut output = String::new();
+            if failing_role == 0 {
+                receipt.write_stylesheet(&mut FailedOutput, "event-receipt");
+            } else {
+                receipt.write_stylesheet(&mut output, "event-receipt");
+            }
+            if failing_role == 1 {
+                receipt.write_swimlane_text_start(&mut FailedOutput, "UI/Automation", 30, 30);
+            } else {
+                receipt.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+            }
+            if failing_role == 2 {
+                receipt.write_box_text_start(&mut FailedOutput, "View");
+            } else {
+                receipt.write_box_text_start(&mut output, "View");
+            }
+            assert!(!receipt.proves_complete());
+        }
     }
 
     #[test]
@@ -497,23 +564,27 @@ mod tests {
             EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
         let stylesheet = write_receipt_stylesheet(&mut complete);
         assert!(stylesheet.contains(
-            "#event-receipt .em-swimlane text,#event-receipt .em-box span { font-family: Fira Sans; font-size: 24px; color: #123456; }"
+            "#event-receipt .em-swimlane text,#event-receipt .em-box span { font-family: Fira Sans; font-size: 24px; }"
         ));
+        assert!(stylesheet.contains("#event-receipt { fill: #123456; color: #123456; }"));
         assert!(stylesheet.contains("#event-receipt .em-relation { fill: none; }"));
-        complete.record_swimlane_text("UI/Automation", "#123456");
-        complete.record_box_text("View", "#123456");
+        let mut output = String::new();
+        complete.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+        complete.write_box_text_start(&mut output, "View");
         assert!(complete.proves_complete());
 
         let mut missing =
             EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
-        missing.record_swimlane_text("UI/Automation", "#123456");
-        missing.record_box_text("View", "#123456");
+        missing.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+        missing.write_box_text_start(&mut output, "View");
         assert!(!missing.proves_complete());
 
         let mut duplicate =
             EventModelingTextThemeReceipt::new(expected, "#123456", "Fira Sans", Some("24px"));
         let _ = write_receipt_stylesheet(&mut duplicate);
         let _ = write_receipt_stylesheet(&mut duplicate);
+        duplicate.write_swimlane_text_start(&mut output, "UI/Automation", 30, 30);
+        duplicate.write_box_text_start(&mut output, "View");
         assert!(!duplicate.proves_complete());
     }
 }

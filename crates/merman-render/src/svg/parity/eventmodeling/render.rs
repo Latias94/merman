@@ -24,7 +24,6 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = MermaidThemeAdapter::new(effective_config).eventmodeling();
-    let terminal_text_fill = text_theme.terminal_fill(&theme.text_color);
     let mut text_theme_receipt = text_theme.begin_terminal_receipt(&theme.text_color);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -70,27 +69,30 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     for swimlane in &layout.swimlanes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect><text fill="{}" font-weight="bold" x="{}" y="{}">"#,
+            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect>"#,
             fmt(swimlane.x),
             fmt(swimlane.y),
             fmt(swimlane.width),
             fmt(swimlane.height),
             escape_attr_display(&theme.swimlane_background_fill),
             escape_attr_display(&theme.swimlane_background_stroke),
-            escape_attr_display(terminal_text_fill),
-            fmt(swimlane.x + 30.0),
-            fmt(swimlane.y + 30.0)
         );
+        text_theme_receipt.write_swimlane_text_start(
+            &mut out,
+            &swimlane.label,
+            fmt(swimlane.x + 30.0),
+            fmt(swimlane.y + 30.0),
+        );
+        out.checkpoint()?;
         escape_xml_into(&mut out, &swimlane.label);
         out.push_str("</text></g>");
-        text_theme_receipt.record_swimlane_text(&swimlane.label, terminal_text_fill);
         out.checkpoint()?;
     }
 
     for box_layout in &layout.boxes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle; color: {};">"#,
+            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}">"#,
             fmt(box_layout.x),
             fmt(box_layout.y),
             fmt(box_layout.width),
@@ -101,11 +103,11 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
             fmt(box_layout.y + BOX_TEXT_PADDING),
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
             fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0)),
-            escape_attr_display(terminal_text_fill),
         );
+        text_theme_receipt.write_box_text_start(&mut out, &box_layout.text);
+        out.checkpoint()?;
         push_box_html_label(&mut out, &box_layout.text)?;
         out.push_str("</span></div></foreignObject></g>");
-        text_theme_receipt.record_box_text(&box_layout.text, terminal_text_fill);
         out.checkpoint()?;
     }
 
