@@ -357,29 +357,40 @@ pub enum OrdinalSelector {
 
 impl OrdinalSelector {
     pub fn exact(index: usize) -> Result<Self, ThemeCompileValidationError> {
-        if index == 0 {
-            return Err(ThemeCompileValidationError::InvalidNumber {
-                field: "style.ordinal.index",
-            });
-        }
-        Ok(Self::Exact(index))
+        let selector = Self::Exact(index);
+        selector.validate()?;
+        Ok(selector)
     }
 
     pub fn cycle(period: usize, offset: usize) -> Result<Self, ThemeCompileValidationError> {
-        if period == 0 || offset >= period {
-            return Err(ThemeCompileValidationError::InvalidNumber {
-                field: "style.ordinal",
-            });
-        }
-        Ok(Self::Cycle { period, offset })
+        let selector = Self::Cycle { period, offset };
+        selector.validate()?;
+        Ok(selector)
     }
 
     pub const fn matches(self, one_based_index: usize) -> bool {
         match self {
-            Self::Exact(index) => one_based_index == index,
+            Self::Exact(index) => index != 0 && one_based_index == index,
             Self::Cycle { period, offset } => {
-                one_based_index > 0 && (one_based_index - 1) % period == offset
+                period != 0
+                    && offset < period
+                    && one_based_index > 0
+                    && (one_based_index - 1) % period == offset
             }
+        }
+    }
+
+    fn validate(self) -> Result<(), ThemeCompileValidationError> {
+        match self {
+            Self::Exact(index) if index == 0 => Err(ThemeCompileValidationError::InvalidNumber {
+                field: "style.ordinal.index",
+            }),
+            Self::Cycle { period, offset } if period == 0 || offset >= period => {
+                Err(ThemeCompileValidationError::InvalidNumber {
+                    field: "style.ordinal",
+                })
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -684,6 +695,9 @@ impl ThemeRule {
                 family: family.as_str(),
             });
         }
+        if let Some(ordinal) = self.ordinal {
+            ordinal.validate()?;
+        }
         self.style.validate()
     }
 
@@ -843,6 +857,31 @@ mod tests {
 
     fn palette_color() -> ThemeColorValue {
         ThemeColorValue::parse("#2563eb").expect("valid test color")
+    }
+
+    #[test]
+    fn ordinal_matching_rejects_invalid_direct_variants_without_panicking() {
+        for selector in [
+            OrdinalSelector::Exact(0),
+            OrdinalSelector::Cycle {
+                period: 0,
+                offset: 0,
+            },
+            OrdinalSelector::Cycle {
+                period: 2,
+                offset: 2,
+            },
+        ] {
+            for index in [0, 1, 2, usize::MAX] {
+                assert!(!selector.matches(index), "{selector:?} matched {index}");
+            }
+        }
+        let cycle = OrdinalSelector::cycle(2, 1).unwrap();
+        assert!(!cycle.matches(0));
+        assert!(!cycle.matches(1));
+        assert!(cycle.matches(2));
+        assert!(cycle.matches(4));
+        assert!(OrdinalSelector::exact(1).unwrap().matches(1));
     }
 
     #[test]

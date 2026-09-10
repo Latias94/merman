@@ -223,6 +223,43 @@ mod tests {
     }
 
     #[test]
+    fn direct_invalid_ordinal_variants_are_rejected_at_compile_time() {
+        use crate::diagram_theme::{
+            CanvasPaint, OrdinalSelector, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+        };
+        for (ordinal, field) in [
+            (OrdinalSelector::Exact(0), "style.ordinal.index"),
+            (
+                OrdinalSelector::Cycle {
+                    period: 0,
+                    offset: 0,
+                },
+                "style.ordinal",
+            ),
+            (
+                OrdinalSelector::Cycle {
+                    period: 2,
+                    offset: 2,
+                },
+                "style.ordinal",
+            ),
+        ] {
+            let rule = ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+            )
+            .with_ordinal(ordinal);
+            let spec = DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule));
+            assert!(
+                matches!(DiagramThemeCompiler::new().compile(spec),
+                Err(ThemeCompileError::Validation(ThemeCompileValidationError::InvalidNumber { field: actual }))
+                    if actual == field),
+                "invalid ordinal {ordinal:?} must not reach rendering"
+            );
+        }
+    }
+
+    #[test]
     fn unused_effect_graph_does_not_expand_required_capabilities() {
         let effects = DiagramEffectSet::default()
             .with_graph(shadow_graph())
