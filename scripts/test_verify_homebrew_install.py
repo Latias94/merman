@@ -453,8 +453,8 @@ class InstallationFixture:
         source_man_root.mkdir(parents=True)
         for name in verifier.MANPAGE_NAMES:
             contents = self.manpage_contents(name)
-            (man_root / name).write_text(contents, encoding="utf-8")
-            (source_man_root / name).write_text(contents, encoding="utf-8")
+            (man_root / name).write_text(contents, encoding="utf-8", newline="\n")
+            (source_man_root / name).write_text(contents, encoding="utf-8", newline="\n")
 
         profile, authority = verifier._read_release_contract(self.contract_root)
         self.capabilities = {
@@ -501,7 +501,7 @@ class InstallationFixture:
             version=version,
             published=published,
         )
-        (self.prefix / "share/man/man1" / name).write_text(contents, encoding="utf-8")
+        (self.prefix / "share/man/man1" / name).write_text(contents, encoding="utf-8", newline="\n")
 
     @staticmethod
     def manpage_contents(
