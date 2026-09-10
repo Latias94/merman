@@ -1047,6 +1047,31 @@ pub fn binding_error_js_payload_json_bytes(error: &BindingError) -> Vec<u8> {
     })
 }
 
+/// Projects the complete error details for JSON-based transports.
+///
+/// Resource counts above JavaScript's exact integer range use canonical decimal strings.
+#[doc(hidden)]
+pub fn binding_error_js_details_json(
+    error: &BindingError,
+) -> Result<Option<serde_json::Value>, serde_json::Error> {
+    error
+        .details
+        .as_deref()
+        .map(|details| {
+            serde_json::to_value(ErrorDetails {
+                resource: details
+                    .resource
+                    .map(BindingResourceErrorDetails::js_safe_json),
+                diagnostic: details.diagnostic.as_ref(),
+                icon_registry: details.icon_registry.as_ref(),
+                cancellation: details.cancellation.as_ref(),
+                #[cfg(feature = "svg")]
+                theme_authoring: details.theme_authoring.as_ref(),
+            })
+        })
+        .transpose()
+}
+
 struct ErrorPayloadInput<'a, R, D> {
     status: BindingStatus,
     kind: BindingErrorKind,

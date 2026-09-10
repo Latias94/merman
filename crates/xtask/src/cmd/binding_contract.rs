@@ -359,14 +359,16 @@ fn render_node_wire_contract_json() -> String {
             },
             response: NodeDocumentLimitsProjection {
                 max_utf8_bytes: 26 * megabyte,
-                max_depth: 8,
+                // Version-tuple diagnostics nest supported tuples inside the error envelope.
+                max_depth: 9,
                 max_members: 32,
                 max_tokens: 128,
                 max_string_utf8_bytes: 16 * megabyte,
             },
             error: NodeDocumentLimitsProjection {
-                max_utf8_bytes: 256 * 1024,
-                max_depth: 8,
+                // Two 64 KiB fields can each expand sixfold as JSON escapes, plus envelope bytes.
+                max_utf8_bytes: megabyte,
+                max_depth: 9,
                 max_members: 32,
                 max_tokens: 128,
                 max_string_utf8_bytes: 64 * 1024,

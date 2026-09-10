@@ -86,14 +86,14 @@
     },
     "response": {
       "max_utf8_bytes": 27262976,
-      "max_depth": 8,
+      "max_depth": 9,
       "max_members": 32,
       "max_tokens": 128,
       "max_string_utf8_bytes": 16777216
     },
     "error": {
-      "max_utf8_bytes": 262144,
-      "max_depth": 8,
+      "max_utf8_bytes": 1048576,
+      "max_depth": 9,
       "max_members": 32,
       "max_tokens": 128,
       "max_string_utf8_bytes": 65536

@@ -228,6 +228,7 @@ class MermanException implements Exception {
     this.exactResourceDetails,
     this.resourceDetails,
     this.diagnosticDetails,
+    this.details,
     this.iconRegistryDetails,
     this.cancellationDetails,
   });
@@ -240,6 +241,9 @@ class MermanException implements Exception {
   final MermanExactResourceErrorDetails? exactResourceDetails;
   final MermanResourceErrorDetails? resourceDetails;
   final MermanDiagnosticErrorDetails? diagnosticDetails;
+
+  /// Complete core-owned details, including versioned theme-authoring diagnostics.
+  final Map<String, Object?>? details;
   final MermanIconRegistryErrorDetails? iconRegistryDetails;
   final MermanCancellationErrorDetails? cancellationDetails;
 
@@ -266,6 +270,7 @@ class MermanException implements Exception {
     MermanExactResourceErrorDetails? exactResourceDetails;
     MermanResourceErrorDetails? resourceDetails;
     MermanDiagnosticErrorDetails? diagnosticDetails;
+    Map<String, Object?>? details;
     MermanIconRegistryErrorDetails? iconRegistryDetails;
     MermanCancellationErrorDetails? cancellationDetails;
     if (metadata.isNotEmpty) {
@@ -282,8 +287,11 @@ class MermanException implements Exception {
         kind = MermanErrorKind.fromWireName(decoded['kind']);
         final decodedCapabilityId = decoded['capability_id'];
         capabilityId = decodedCapabilityId as String?;
-        final details = decoded['details'];
-        if (details is Map) {
+        final rawDetails = decoded['details'];
+        if (rawDetails is Map) {
+          details = Map<String, Object?>.unmodifiable(
+            Map<String, Object?>.from(rawDetails),
+          );
           final resource = details['resource'];
           if (resource is Map) {
             final parsed = _parseResourceErrorDetails(resource)!;
@@ -320,6 +328,7 @@ class MermanException implements Exception {
           codeName: codeName,
           message: message,
           diagnosticDetails: diagnosticDetails,
+          details: details,
         );
       }
       if (kind == MermanErrorKind.missingCapability && capabilityId != null) {
@@ -329,6 +338,7 @@ class MermanException implements Exception {
           message: message,
           capabilityId: capabilityId,
           diagnosticDetails: diagnosticDetails,
+          details: details,
         );
       }
       return MermanUnsupportedOperationException(
@@ -338,6 +348,7 @@ class MermanException implements Exception {
         kind: kind,
         capabilityId: capabilityId,
         diagnosticDetails: diagnosticDetails,
+        details: details,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_REENTRANT_CALL) {
@@ -346,6 +357,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        details: details,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_BUSY) {
@@ -354,6 +366,7 @@ class MermanException implements Exception {
         codeName: codeName,
         message: message,
         diagnosticDetails: diagnosticDetails,
+        details: details,
       );
     }
     if (status == native.MERMAN_NATIVE_STATUS_CANCELLED &&
@@ -364,6 +377,7 @@ class MermanException implements Exception {
         message: message,
         cancellationDetails: cancellationDetails,
         diagnosticDetails: diagnosticDetails,
+        details: details,
       );
     }
     return MermanException(
@@ -375,6 +389,7 @@ class MermanException implements Exception {
       exactResourceDetails: exactResourceDetails,
       resourceDetails: resourceDetails,
       diagnosticDetails: diagnosticDetails,
+      details: details,
       iconRegistryDetails: iconRegistryDetails,
       cancellationDetails: cancellationDetails,
     );
@@ -722,6 +737,7 @@ class MermanReentrantCallException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.details,
   }) : super(kind: MermanErrorKind.reentrantCall);
 }
 
@@ -732,6 +748,7 @@ class MermanBusyException extends MermanException {
     required super.codeName,
     required super.message,
     super.diagnosticDetails,
+    super.details,
   }) : super(kind: MermanErrorKind.busy);
 }
 
@@ -743,6 +760,7 @@ class MermanCancelledException extends MermanException {
     required super.message,
     required MermanCancellationErrorDetails cancellationDetails,
     super.diagnosticDetails,
+    super.details,
   }) : super(cancellationDetails: cancellationDetails);
 }
 
@@ -755,6 +773,7 @@ class MermanUnsupportedOperationException extends MermanException {
     super.kind,
     super.capabilityId,
     super.diagnosticDetails,
+    super.details,
   });
 }
 
@@ -766,6 +785,7 @@ class MermanUnknownOperationException
     required String codeName,
     required String message,
     super.diagnosticDetails,
+    super.details,
   }) : super(
          code: code,
          codeName: codeName,
@@ -783,6 +803,7 @@ class MermanMissingCapabilityException
     required String message,
     required String capabilityId,
     super.diagnosticDetails,
+    super.details,
   }) : super(
          code: code,
          codeName: codeName,

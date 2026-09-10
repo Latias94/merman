@@ -4,6 +4,14 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Advanced the direct UniFFI API to `8`. Errors now preserve the complete core-owned
+  details JSON, including theme-authoring diagnostic codes, paths, and structured context.
+  Regenerate language bindings and native libraries together; use the API 8 version probe.
+
 ## [0.8.0-alpha.6] - 2026-09-02
 
 This section describes alpha.6, whose matching XCFramework archive and checksum were attached to the GitHub Release on 2026-09-04.

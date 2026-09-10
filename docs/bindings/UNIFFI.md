@@ -5,13 +5,20 @@
 C ABI, and applications must not mix a generated UniFFI source projection with a different native
 library build.
 
-The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `8`. Its runtime contract is schema `1`; the C ABI and the
 text-measurement protocol have separate version ownership.
 
-API 7 preserves API 6's expanded `MermanAsciiCapability` admission fields and schema-2
+API 7 preserved API 6's expanded `MermanAsciiCapability` admission fields and schema-2
 `MermanAsciiOutputPlan` encoding, and protects the merged `MermanDiagramFamilyCapability.family_id`
 record plus the versioned `theme_catalog_json()` metadata catalog entrypoint. Regenerate Swift and Python projections with the matching
 native library; do not decode any changed record with an older generated source.
+
+API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
+complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
+`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
+cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
+probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
+and deploy the language projection with its matching native library.
 
 ## Public Model
 
@@ -25,9 +32,9 @@ The generated API exposes:
 - `MermanOperationControl` for caller-owned cancellation and optional monotonic deadlines;
 - `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `3` profiles and request-local overrides;
 - `MermanTextMeasurer` for synchronous host measurement; and
-- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, details_json, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
 
-`Merman::binding_api_version_v7()` reports `7`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v8()` reports `8`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -45,7 +52,7 @@ include the fields of the changed `MermanAsciiCapability` and `MermanError::Bind
 An API `4` generated binding therefore fails before it can decode an API `5` value.
 
 API `6` replaced `binding_api_version_v5()` with `binding_api_version_v6()` for the expanded ASCII
-capability and output-plan records. API `7` replaces `binding_api_version_v6()` with
+capability and output-plan records. API `7` replaced `binding_api_version_v6()` with
 `binding_api_version_v7()` after the diagram-family capability record changed. The same checksum
 limitation applies to each revised record, so stale generated source fails before decoding the new
 value. The version probe, generated projection, and native library are one deployment unit.
@@ -193,9 +200,10 @@ contract.
 - Move generated API 5 wrappers and libraries together to API 6 (historical) before consuming ASCII
   capability admission arrays or schema-2 output-plan encoding. Older prerelease wrappers must also
   be fully regenerated.
-- Move generated API 6 wrappers and libraries together to API 7 before consuming the merged
-  `family_id` capability record or `theme_catalog_json()` metadata catalog. Do not pair source
-  generated for one API version with a library whose runtime catalog reports another.
+- API 7 introduced the merged `family_id` capability record and `theme_catalog_json()` metadata
+  catalog. Move generated API 7 wrappers and libraries together to API 8 before decoding the added
+  `details_json` error field. Do not pair source generated for one API version with a library whose
+  runtime catalog reports another.
 
 ## Verification
 

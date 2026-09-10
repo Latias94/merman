@@ -28,13 +28,12 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 8;
 
-// UniFFI 0.32 method checksums include a record's type name but not its fields. API 7 therefore
-// replaces the API 6 version-probe symbol after the diagram-family capability record changed, so
-// stale generated bindings fail before decoding the changed record layout.
+// UniFFI method checksums do not protect every nested record layout. API 8 replaces the API 7
+// version probe so stale generated bindings fail before decoding the expanded error envelope.
 #[cfg(test)]
-const UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM: u16 = 60_120;
+const UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM: u16 = 21_723;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -118,6 +117,8 @@ pub enum MermanError {
         diagnostic: Option<MermanDiagnosticErrorDetails>,
         icon_registry: Option<MermanIconRegistryErrorDetails>,
         cancellation: Option<MermanCancelledDetails>,
+        /// Complete core-owned details object, including versioned theme-authoring diagnostics.
+        details_json: Option<String>,
         message: String,
     },
 }
@@ -165,6 +166,17 @@ impl MermanError {
                 reason: details.reason.to_string(),
                 phase: details.phase.to_string(),
             });
+        let details_json = match merman_bindings_core::binding_error_js_details_json(&error)
+            .and_then(|details| {
+                details
+                    .map(|details| serde_json::to_string(&details))
+                    .transpose()
+            }) {
+            Ok(details_json) => details_json,
+            Err(error) => {
+                return Self::internal(format!("failed to encode binding error details: {error}"));
+            }
+        };
         Self::Binding {
             code: status.code(),
             code_name: status.code_name().to_string(),
@@ -174,6 +186,7 @@ impl MermanError {
             diagnostic,
             icon_registry,
             cancellation,
+            details_json,
             message: error.message().to_string(),
         }
     }
@@ -189,6 +202,7 @@ impl MermanError {
             diagnostic: None,
             icon_registry: None,
             cancellation: None,
+            details_json: None,
             message: message.into(),
         }
     }
@@ -710,7 +724,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v7(&self) -> u32 {
+    pub fn binding_api_version_v8(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -1670,6 +1684,53 @@ mod tests {
         Merman::new()
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_operation_preserves_authoring_error_envelope() {
+        let request = || {
+            MermanOperationRequestV4 {
+            operation_id: "materialize-theme-json".to_string(),
+            source: r#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#.to_string(),
+            uri: None,
+            options_json: None,
+            control: None,
+        }
+        };
+        for error in [
+            engine().execute(request()).expect_err("invalid font stack"),
+            reusable_engine(None)
+                .execute(request())
+                .expect_err("invalid font stack"),
+        ] {
+            let MermanError::Binding {
+                code, details_json, ..
+            } = error;
+            assert_eq!(code, BindingStatus::InvalidArgument.code());
+            let details: Value =
+                serde_json::from_str(&details_json.expect("complete error details")).unwrap();
+            let authoring = &details["theme_authoring"];
+            assert_eq!(authoring["schema_version"], 1);
+            assert_eq!(
+                authoring["diagnostics"][0]["code"],
+                "theme-authoring.invalid-token-value"
+            );
+            assert_eq!(
+                authoring["diagnostics"][0]["path"],
+                "/styles/0/style/typography/font_stack"
+            );
+            assert_eq!(
+                authoring["diagnostics"][0]["details"],
+                serde_json::json!({"expected_domain_id": "font-stack"})
+            );
+            assert!(
+                !authoring["diagnostics"][0]["message"]
+                    .as_str()
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
+
     #[test]
     fn operation_control_can_be_cancelled_from_another_thread() {
         let control = MermanOperationControl::new(None);
@@ -2624,16 +2685,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
-        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 8);
+        assert_eq!(engine.binding_api_version_v8(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v6_generated_bindings_are_rejected_before_record_decoding() {
+    fn api_v7_generated_bindings_are_rejected_before_error_decoding() {
         assert_ne!(
-            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
-            UNIFFI_BINDING_API_V6_VERSION_METHOD_CHECKSUM
+            uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
+            UNIFFI_BINDING_API_V7_VERSION_METHOD_CHECKSUM
         );
         let generated_header = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2641,21 +2702,21 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8")
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
-            "API 6 probe symbol must stay absent so stale bindings fail before record decoding"
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7"),
+            "API 7 probe symbol must stay absent so stale bindings fail before record decoding"
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
-            "API 6 checksum symbol must stay absent from generated bindings"
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7"),
+            "API 7 checksum symbol must stay absent from generated bindings"
         );
     }
 

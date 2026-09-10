@@ -50,6 +50,7 @@ void main() {
   rejectsMalformedResourceDescriptors();
   textMeasurementFactoriesRejectMalformedValues();
   decodesMachineReadableNativeErrors();
+  preservesThemeAuthoringAndAdditiveErrorDetails();
   rejectsInconsistentNativeErrorRelations();
   acceptsFutureNativeCancellationPhases();
   rejectsMalformedNativeDiagnosticDetails();
@@ -67,9 +68,9 @@ void rejectsArchitectureSpecificApiPrefixMacros() {
     'lib/src/generated/native_abi.dart',
   ).readAsStringSync();
   _expect(
-    !RegExp(r'\bMERMAN_NATIVE_API_[A-Z0-9_]*_PREFIX_SIZE\b').hasMatch(
-      generated,
-    ),
+    !RegExp(
+      r'\bMERMAN_NATIVE_API_[A-Z0-9_]*_PREFIX_SIZE\b',
+    ).hasMatch(generated),
     'Flutter ffigen output must not expose architecture-specific API prefix '
     'macros; derive the table size from ffi.sizeOf instead',
   );
@@ -2572,4 +2573,47 @@ MermanException _expectMermanException(void Function() action) {
     return error;
   }
   throw StateError('expected MermanException');
+}
+
+void preservesThemeAuthoringAndAdditiveErrorDetails() {
+  final details = {
+    'theme_authoring': {
+      'schema_version': 1,
+      'diagnostics': [
+        {
+          'code': 'theme-authoring.invalid-token-value',
+          'severity': 'error',
+          'path': '/styles/0/style/typography/font_stack',
+          'details': {'expected_domain_id': 'font-stack'},
+          'message': 'font stack must not be empty',
+        },
+      ],
+    },
+    'future_details': {'retained': true},
+  };
+  final error = MermanException.fromNative(
+    native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'version': 1,
+          'ok': false,
+          'status': native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+          'status_name': 'invalid-argument',
+          'kind': 'generic',
+          'capability_id': null,
+          'details': details,
+          'message': 'invalid theme definition',
+        }),
+      ),
+    ),
+  );
+  _expect(
+    error.code == native.MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+    'theme authoring must preserve the error classification',
+  );
+  _expect(
+    jsonEncode(error.details) == jsonEncode(details),
+    'theme authoring and future details must survive the public error projection',
+  );
 }

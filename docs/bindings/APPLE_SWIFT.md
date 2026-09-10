@@ -12,6 +12,13 @@ The local SwiftPM package contains:
   generated C header, and module map; and
 - `scripts/build-apple-xcframework.sh`, which regenerates the Swift binding before packaging.
 
+API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
+complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
+`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
+cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
+probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
+and deploy the language projection with its matching native library.
+
 ## Build On macOS
 
 ```bash
@@ -47,7 +54,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV7() == 7 else {
+guard merman.bindingApiVersionV8() == 8 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -165,11 +172,10 @@ contract.
   `withTextMeasurer(...)`. Each call returns a new immutable bundle; no service can be installed on
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
-- Move API 6 generated source and native libraries together to API 7. API 7 preserves the ASCII
-  layout/width/encoding/fallback admission arrays and schema-2 output-plan encoding, and protects
-  the merged `MermanDiagramFamilyCapability.familyId` record plus the versioned
-  `themeCatalogJson()` metadata catalog; the generated source and native library must move
-  atomically. `MermanOperationRequestV4` remains the current
+- Move API 7 generated source and native libraries together to API 8 before decoding the added
+  `detailsJson` error field. API 8 retains the existing ASCII admission arrays, schema-2 output
+  plans, `MermanDiagramFamilyCapability.familyId`, and `themeCatalogJson()` catalog. The generated
+  source and native library must move atomically. `MermanOperationRequestV4` remains the current
   request record; add `control: nil` to generic request construction until the host adopts
   `MermanOperationControl`. Handle the optional `diagnostic`
   `MermanDiagnosticErrorDetails` payload on `MermanError.Binding` instead of inferring parser or

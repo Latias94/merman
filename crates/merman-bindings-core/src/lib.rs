@@ -60,8 +60,9 @@ pub use common::{
 };
 #[doc(hidden)]
 pub use common::{
-    BindingJsSafeResourceErrorDetails, binding_error_js_payload_json_bytes,
-    enforce_options_json_byte_budget, enforce_options_json_byte_len,
+    BindingJsSafeResourceErrorDetails, binding_error_js_details_json,
+    binding_error_js_payload_json_bytes, enforce_options_json_byte_budget,
+    enforce_options_json_byte_len,
 };
 pub use engine::BindingEngine;
 pub use lifecycle::{

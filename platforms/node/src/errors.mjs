@@ -102,6 +102,7 @@ export class MermanOperationError extends MermanError {
     this.codeName = payload.code_name ?? null;
     this.kind = payload.kind ?? "generic";
     this.capabilityId = payload.capability_id ?? null;
+    this.details = payload.details ?? null;
     this.resourceDetails = payload.details?.resource ?? null;
     this.diagnosticDetails = payload.details?.diagnostic ?? null;
     this.cancellationDetails = payload.details?.cancellation ?? null;

@@ -256,6 +256,8 @@ export declare class MermanOperationError extends MermanError {
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
+  /** Complete core-owned details, including versioned theme_authoring diagnostics. */
+  readonly details: Readonly<Record<string, unknown>> | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
   readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
   readonly cancellationDetails: MermanCancellationErrorDetails | null;

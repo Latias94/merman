@@ -651,7 +651,7 @@ public protocol MermanProtocol: AnyObject, Sendable {
 
     func asciiCapabilities()  -> [MermanAsciiCapability]
 
-    func bindingApiVersionV7()  -> UInt32
+    func bindingApiVersionV8()  -> UInt32
 
     func configurableLintRuleCatalog() throws  -> [MermanLintRuleCatalogEntry]
 
@@ -832,10 +832,10 @@ open func asciiCapabilities() -> [MermanAsciiCapability]  {
 })
 }
 
-open func bindingApiVersionV7() -> UInt32  {
+open func bindingApiVersionV8() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7(
+    uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -3891,7 +3891,10 @@ enum MermanError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
 
 
-    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, cancellation: MermanCancelledDetails?, message: String
+    case Binding(code: Int32, codeName: String, kind: MermanErrorKind, capabilityId: String?, resource: MermanResourceErrorDetails?, diagnostic: MermanDiagnosticErrorDetails?, iconRegistry: MermanIconRegistryErrorDetails?, cancellation: MermanCancelledDetails?,
+        /**
+         * Complete core-owned details object, including versioned theme-authoring diagnostics.
+         */detailsJson: String?, message: String
     )
 
 
@@ -3931,6 +3934,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             diagnostic: try FfiConverterOptionTypeMermanDiagnosticErrorDetails.read(from: &buf),
             iconRegistry: try FfiConverterOptionTypeMermanIconRegistryErrorDetails.read(from: &buf),
             cancellation: try FfiConverterOptionTypeMermanCancelledDetails.read(from: &buf),
+            detailsJson: try FfiConverterOptionString.read(from: &buf),
             message: try FfiConverterString.read(from: &buf)
             )
 
@@ -3945,7 +3949,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
 
 
 
-        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,cancellation,message):
+        case let .Binding(code,codeName,kind,capabilityId,resource,diagnostic,iconRegistry,cancellation,detailsJson,message):
             writeInt(&buf, Int32(1))
             FfiConverterInt32.write(code, into: &buf)
             FfiConverterString.write(codeName, into: &buf)
@@ -3955,6 +3959,7 @@ public struct FfiConverterTypeMermanError: FfiConverterRustBuffer {
             FfiConverterOptionTypeMermanDiagnosticErrorDetails.write(diagnostic, into: &buf)
             FfiConverterOptionTypeMermanIconRegistryErrorDetails.write(iconRegistry, into: &buf)
             FfiConverterOptionTypeMermanCancelledDetails.write(cancellation, into: &buf)
+            FfiConverterOptionString.write(detailsJson, into: &buf)
             FfiConverterString.write(message, into: &buf)
 
         }
@@ -5507,7 +5512,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_merman_uniffi_checksum_method_merman_ascii_capabilities() != 15855) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7() != 21723) {
+    if (uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8() != 7797) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_merman_uniffi_checksum_method_merman_configurable_lint_rule_catalog() != 46751) {

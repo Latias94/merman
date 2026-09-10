@@ -215,6 +215,12 @@ mod tests {
         let expected_envelope =
             serde_json::to_value(&contract_error).expect("contract error should serialize");
         assert_eq!(payload["details"]["theme_authoring"], expected_envelope);
+        assert_eq!(
+            crate::binding_error_js_details_json(&binding_error)
+                .expect("details projection should serialize")
+                .expect("theme failures have details")["theme_authoring"],
+            expected_envelope,
+        );
         assert_eq!(payload["details"]["theme_authoring"]["schema_version"], 1);
         assert_eq!(
             payload["details"]["theme_authoring"]["diagnostics"][0]["code"],

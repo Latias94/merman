@@ -2,7 +2,14 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-> **Alpha:** the source tree uses direct UniFFI binding API `7`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Alpha:** the source tree uses direct UniFFI binding API `8`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+
+API 8 adds the optional `details_json` (`detailsJson` in Swift) field to binding errors. Decode this
+complete core-owned JSON object to access `theme_authoring.schema_version` and each diagnostic's
+`code`, `path`, `details`, and `message`. Existing typed resource, parser, icon-registry, and
+cancellation fields remain available. The new `binding_api_version_v8()` / `bindingApiVersionV8()`
+probe rejects API 7 generated projections before they decode the changed error layout. Regenerate
+and deploy the language projection with its matching native library.
 
 ## Requirements
 
@@ -43,8 +50,8 @@ precondition(svg.hasPrefix("<svg"))
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
-The generated binding API is 7. `MermanOperationRequestV4` remains the current request record name;
-it does not identify the binding API version. API 7 preserves the API 6 ASCII layout/width/encoding/
+The generated binding API is 8. `MermanOperationRequestV4` remains the current request record name;
+it does not identify the binding API version. API 7 preserved the API 6 ASCII layout/width/encoding/
 fallback admission arrays and schema-2 output-plan encoding, and protects the changed diagram-family
 capability record plus the merged `MermanDiagramFamilyCapability.familyId` and versioned
 `themeCatalogJson()` metadata catalog. `MermanError.Binding` includes an optional

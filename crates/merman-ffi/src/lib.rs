@@ -8,9 +8,8 @@
 
 use merman::OperationControl;
 use merman_bindings_core::{
-    BindingDiagnosticErrorDetails, BindingEngine, BindingEngineAdmission,
-    BindingEngineAdmissionError, BindingEngineAdmissionMode, BindingEngineServices, BindingError,
-    BindingErrorKind, BindingIconRegistryErrorDetails, BindingOperationRequest,
+    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
+    BindingEngineServices, BindingError, BindingErrorKind, BindingOperationRequest,
     BindingResourceErrorDetails, BindingStatus, OperationKey, ValidatedArtifactContract,
 };
 #[cfg(feature = "svg")]
@@ -42,22 +41,8 @@ struct NativeFailure {
     status: MermanNativeStatus,
     kind: BindingErrorKind,
     capability_id: Option<&'static str>,
-    details: Option<Box<NativeFailureDetails>>,
+    details: Option<Box<serde_json::Value>>,
     message: Box<str>,
-}
-
-#[derive(Debug, Default)]
-struct NativeFailureDetails {
-    resource: Option<BindingResourceErrorDetails>,
-    diagnostic: Option<BindingDiagnosticErrorDetails>,
-    icon_registry: Option<BindingIconRegistryErrorDetails>,
-    cancellation: Option<NativeCancellationDetails>,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NativeCancellationDetails {
-    reason: &'static str,
-    phase: &'static str,
 }
 
 impl NativeFailure {
@@ -92,10 +77,7 @@ impl NativeFailure {
             kind,
             capability_id,
             details: resource.map(|resource| {
-                Box::new(NativeFailureDetails {
-                    resource: Some(resource),
-                    ..NativeFailureDetails::default()
-                })
+                Box::new(serde_json::json!({ "resource": resource.js_safe_json() }))
             }),
             message: message.into().into_boxed_str(),
         }
@@ -364,33 +346,8 @@ fn native_error_json(failure: &NativeFailure) -> Vec<u8> {
         "capability_id": failure.capability_id,
         "message": failure.message.as_ref(),
     });
-    if let Some(failure_details) = failure.details.as_deref() {
-        let mut details = serde_json::Map::new();
-        if let Some(resource) = failure_details.resource {
-            details.insert(
-                "resource".to_string(),
-                serde_json::json!(resource.js_safe_json()),
-            );
-        }
-        if let Some(diagnostic) = failure_details.diagnostic.as_ref() {
-            details.insert("diagnostic".to_string(), serde_json::json!(diagnostic));
-        }
-        if let Some(icon_registry) = failure_details.icon_registry.as_ref() {
-            details.insert(
-                "icon_registry".to_string(),
-                serde_json::json!(icon_registry),
-            );
-        }
-        if let Some(cancellation) = failure_details.cancellation {
-            details.insert(
-                "cancellation".to_string(),
-                serde_json::json!({
-                    "reason": cancellation.reason,
-                    "phase": cancellation.phase,
-                }),
-            );
-        }
-        payload["details"] = serde_json::Value::Object(details);
+    if let Some(details) = failure.details.as_deref() {
+        payload["details"] = details.clone();
     }
     serde_json::to_vec(&payload)
     .unwrap_or_else(|_| {
@@ -427,15 +384,15 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         BindingStatus::Busy => MERMAN_NATIVE_STATUS_BUSY,
         BindingStatus::Cancelled => MERMAN_NATIVE_STATUS_CANCELLED,
     };
-    let resource = error.resource_details();
-    let diagnostic = error.diagnostic_details().cloned();
-    let icon_registry = error.icon_registry_details().cloned();
-    let cancellation = error
-        .cancellation_details()
-        .map(|details| NativeCancellationDetails {
-            reason: details.reason,
-            phase: details.phase,
-        });
+    let details = match merman_bindings_core::binding_error_js_details_json(&error) {
+        Ok(details) => details,
+        Err(error) => {
+            return NativeFailure::new(
+                MERMAN_NATIVE_STATUS_INTERNAL_ERROR,
+                format!("failed to encode binding error details: {error}"),
+            );
+        }
+    };
     let mut failure = NativeFailure::classified(
         status,
         error.kind(),
@@ -443,18 +400,7 @@ fn native_failure_from_binding(error: BindingError) -> NativeFailure {
         None,
         error.message(),
     );
-    if resource.is_some()
-        || diagnostic.is_some()
-        || icon_registry.is_some()
-        || cancellation.is_some()
-    {
-        failure.details = Some(Box::new(NativeFailureDetails {
-            resource,
-            diagnostic,
-            icon_registry,
-            cancellation,
-        }));
-    }
+    failure.details = details.map(Box::new);
     failure
 }
 
@@ -2751,7 +2697,7 @@ mod tests {
     fn native_error_json_preserves_structured_diagnostic_details() {
         let error = BindingError::new(BindingStatus::ParseError, "invalid edge")
             .with_diagnostic_details(
-                BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
+                merman_bindings_core::BindingDiagnosticErrorDetails::new("flowchart.edge.invalid")
                     .with_span(merman_bindings_core::BindingDiagnosticSpan::new(
                         3, 8, "exact",
                     ))
@@ -2773,6 +2719,57 @@ mod tests {
         assert_eq!(
             payload["details"]["diagnostic"]["diagram_type"],
             "flowchart"
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn materialize_theme_operation_preserves_authoring_error_envelope() {
+        let api = api_table();
+        let mut result = native_result();
+        let mut engine = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        let source = br#"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#;
+        let request = native_request(MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON, source);
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        let payload: serde_json::Value = serde_json::from_slice(unsafe {
+            std::slice::from_raw_parts(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+            )
+        })
+        .unwrap();
+        let authoring = &payload["details"]["theme_authoring"];
+        assert_eq!(authoring["schema_version"], 1);
+        assert_eq!(
+            authoring["diagnostics"][0]["code"],
+            "theme-authoring.invalid-token-value"
+        );
+        assert_eq!(
+            authoring["diagnostics"][0]["path"],
+            "/styles/0/style/typography/font_stack"
+        );
+        assert_eq!(
+            authoring["diagnostics"][0]["details"],
+            serde_json::json!({"expected_domain_id": "font-stack"})
+        );
+        assert!(
+            !authoring["diagnostics"][0]["message"]
+                .as_str()
+                .unwrap()
+                .is_empty()
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(engine) },
+            MERMAN_NATIVE_STATUS_OK
         );
     }
 
@@ -4227,23 +4224,18 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             let failure = preflight_native_icon_pack_resource_limits(packs)
                 .expect_err("resource preflight must reject the synthetic lengths");
             assert_eq!(failure.status, MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED);
-            let failure_details = failure
-                .details
-                .expect("structured failure must retain details");
-            let resource = failure_details
-                .resource
-                .expect("resource failure must retain resource details");
-            assert_eq!(resource.limit_id, limit.stable_id());
-            assert_eq!(resource.phase, limit.descriptor().phase);
-            assert_eq!(resource.actual, actual);
-            assert_eq!(resource.max, limit.fixed_value());
-            assert_eq!(resource.profile, "constructor-fixed");
-            let details = failure_details
-                .icon_registry
-                .expect("resource failure must retain icon registry details");
-            assert_eq!(details.kind_id, "resource_limit_exceeded");
-            assert_eq!(details.pack_index, Some(pack_index));
-            assert_eq!(details.registration_name, None);
+            let payload: serde_json::Value =
+                serde_json::from_slice(&native_error_json(&failure)).unwrap();
+            let resource = &payload["details"]["resource"];
+            assert_eq!(resource["limit_id"], limit.stable_id());
+            assert_eq!(resource["phase"], limit.descriptor().phase);
+            assert_eq!(resource["actual"], actual);
+            assert_eq!(resource["max"], limit.fixed_value());
+            assert_eq!(resource["profile"], "constructor-fixed");
+            let details = &payload["details"]["icon_registry"];
+            assert_eq!(details["kind_id"], "resource_limit_exceeded");
+            assert_eq!(details["pack_index"], pack_index);
+            assert_eq!(details["registration_name"], serde_json::Value::Null);
         };
 
         assert_preflight_failure(
@@ -4619,6 +4611,9 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         for (operation_id, expected) in [
             ("analysis-json", cfg!(feature = "analysis")),
             ("ascii", cfg!(feature = "ascii")),
+            ("describe-theme-support-json", cfg!(feature = "svg")),
+            ("export-theme-preset-json", cfg!(feature = "svg")),
+            ("materialize-theme-json", cfg!(feature = "svg")),
             ("jpeg", cfg!(feature = "jpeg")),
             ("pdf", cfg!(feature = "pdf")),
             ("png", cfg!(feature = "png")),
@@ -4629,6 +4624,22 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                 operation_ids.iter().any(|id| id == operation_id),
                 expected,
                 "operation {operation_id} must follow merman-ffi features"
+            );
+        }
+        assert!(
+            metadata_ids.iter().any(|id| id == "theme-catalog"),
+            "theme catalog metadata must remain discoverable for every artifact"
+        );
+        for operation_id in operation_ids {
+            let key = OperationKey::from_id(operation_id.as_str().unwrap()).unwrap();
+            let code = merman_native_operation_code(key)
+                .expect("every advertised operation needs a native ABI code");
+            assert_eq!(merman_native_operation_key(code), Some(key));
+            assert_eq!(
+                merman_native_operation_descriptor(code)
+                    .unwrap()
+                    .operation_id,
+                Some(key.id())
             );
         }
         let capability_ids = catalog["capabilities"]["capability_ids"]
@@ -4693,9 +4704,18 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             .iter()
             .find(|limit| limit["id"] == "max_source_bytes")
             .expect("source limit");
+        let source_operation_ids = operation_ids
+            .iter()
+            .filter(|operation_id| {
+                merman_bindings_core::BindingOperationKind::from_id(operation_id.as_str().unwrap())
+                    .unwrap()
+                    .input_kind()
+                    == "mermaid-source"
+            })
+            .collect::<Vec<_>>();
         assert_eq!(
             source_limit["operation_ids"],
-            catalog["capabilities"]["operation_ids"]
+            serde_json::json!(source_operation_ids)
         );
 
         let expected_digest = format!(

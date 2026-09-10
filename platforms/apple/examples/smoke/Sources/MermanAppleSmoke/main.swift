@@ -5,7 +5,7 @@ import Merman
 struct MermanAppleSmoke {
     static func main() throws {
         let client = Merman()
-        guard client.bindingApiVersionV7() == 7 else {
+        guard client.bindingApiVersionV8() == 8 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
         let iconPack = MermanIconPack(
@@ -78,7 +78,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("resource failure did not return a binding error")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, resource, _, _, _, _):
+            case let .Binding(_, codeName, _, _, resource, _, _, _, _, _):
                 guard codeName == "MERMAN_RESOURCE_LIMIT_EXCEEDED",
                       resource?.cause == "ceiling",
                       resource?.limitId == "max_source_bytes",
@@ -86,6 +86,40 @@ struct MermanAppleSmoke {
                       (resource?.actual ?? 0) > (resource?.max ?? UInt64.max),
                       resource?.profile == "constrained" else {
                     throw SmokeError.failed("resource failure lost its structured details")
+                }
+            }
+        }
+
+        let invalidThemeRequest = MermanOperationRequestV4(
+            operationId: "materialize-theme-json",
+            source: #"{"authoring_schema_version":1,"expansion_version":1,"tokens":{},"styles":[{"kind":"rule","target":"node","style":{"typography":{"font_stack":[]}}}]}"#,
+            uri: nil,
+            optionsJson: nil,
+            control: nil
+        )
+        for operation: () throws -> MermanOperationResult in [
+            { try client.execute(request: invalidThemeRequest) },
+            { try engine.execute(request: invalidThemeRequest) },
+        ] {
+            do {
+                _ = try operation()
+                throw SmokeError.failed("invalid theme definition was accepted")
+            } catch let error as MermanError {
+                switch error {
+                case let .Binding(_, codeName, _, _, _, _, _, _, detailsJson, _):
+                    guard let data = detailsJson?.data(using: .utf8),
+                          let details = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let authoring = details["theme_authoring"] as? [String: Any],
+                          let diagnostics = authoring["diagnostics"] as? [[String: Any]],
+                          let diagnostic = diagnostics.first,
+                          let context = diagnostic["details"] as? [String: String],
+                          codeName == "MERMAN_INVALID_ARGUMENT",
+                          authoring["schema_version"] as? Int == 1,
+                          diagnostic["code"] as? String == "theme-authoring.invalid-token-value",
+                          diagnostic["path"] as? String == "/styles/0/style/typography/font_stack",
+                          context == ["expected_domain_id": "font-stack"] else {
+                        throw SmokeError.failed("theme authoring lost its structured details")
+                    }
                 }
             }
         }
@@ -103,7 +137,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("expired operation deadline did not cancel the request")
         } catch let error as MermanError {
             switch error {
-            case let .Binding(_, codeName, _, _, _, _, _, cancellation, _):
+            case let .Binding(_, codeName, _, _, _, _, _, cancellation, _, _):
                 guard codeName == "MERMAN_CANCELLED",
                       cancellation?.reason == "deadline_exceeded",
                       cancellation?.phase == "admission" else {
@@ -127,7 +161,7 @@ private func requireMissingCapability(
         try operation()
     } catch let error as MermanError {
         switch error {
-        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _, _):
+        case let .Binding(_, _, kind, actualCapabilityId, _, _, _, _, _, _):
             guard kind == .missingCapability, actualCapabilityId == capabilityId else {
                 throw SmokeError.failed(
                     "\(capabilityId) failure lost its missing-capability contract"
