@@ -1560,6 +1560,15 @@ fn parse_request_overlay_for_contract(
             "request options_json cannot set runtime_policy; configure it when creating the engine",
         ));
     }
+    #[cfg(feature = "svg")]
+    let (request_value, authoring_resources) =
+        if matches!(resource_scope, BindingResourceScope::ThemeAuthoring) {
+            let (normalized, policy) =
+                prepare_theme_authoring_options_value(request_value, Some(theme_resource_ceiling))?;
+            (normalized, Some(policy))
+        } else {
+            (request_value, None)
+        };
     parse_options_value_for_contract(&request_value, artifact_contract)?;
 
     #[cfg(feature = "svg")]
@@ -1576,8 +1585,12 @@ fn parse_request_overlay_for_contract(
     let mut normalized_wire = normalize_analysis_wrapper(request_value);
     let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
     #[cfg(feature = "svg")]
-    let theme_resources =
-        restrict_theme_resource_policy(theme_resource_ceiling, requested_resources.as_ref())?;
+    let theme_resources = match authoring_resources {
+        Some(policy) => policy,
+        None => {
+            restrict_theme_resource_policy(theme_resource_ceiling, requested_resources.as_ref())?
+        }
+    };
     Ok(BindingRequestOverlay::Override {
         normalized_wire,
         requested_resources,
@@ -1827,6 +1840,17 @@ pub fn prepare_theme_authoring_options_json(
     host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
 ) -> Result<(Vec<u8>, merman::svg::ThemeResourcePolicy), BindingError> {
     let value = options_json_value_with_theme_ceiling(options_json, host_ceiling)?;
+    let (normalized, theme_policy) = prepare_theme_authoring_options_value(value, host_ceiling)?;
+    serde_json::to_vec(&normalized)
+        .map(|normalized| (normalized, theme_policy))
+        .map_err(internal_json_error)
+}
+
+#[cfg(feature = "svg")]
+fn prepare_theme_authoring_options_value(
+    value: Value,
+    host_ceiling: Option<&merman::svg::ThemeResourcePolicy>,
+) -> Result<(Value, merman::svg::ThemeResourcePolicy), BindingError> {
     reject_ambiguous_analysis_wrappers(&value)?;
     validate_output_options_for_scope(&value, BindingResourceScope::ThemeAuthoring)?;
 
@@ -1854,9 +1878,7 @@ pub fn prepare_theme_authoring_options_json(
             );
     }
 
-    serde_json::to_vec(&normalized)
-        .map(|normalized| (normalized, theme_policy))
-        .map_err(internal_json_error)
+    Ok((normalized, theme_policy))
 }
 
 #[cfg(feature = "svg")]

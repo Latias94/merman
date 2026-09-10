@@ -2375,6 +2375,80 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
+    fn one_shot_and_reusable_theme_authoring_share_resource_admission() {
+        let engine = crate::BindingEngine::new(b"").expect("default engine");
+        for (operation, input) in [
+            ("materialize-theme-json", &b"{}"[..]),
+            ("describe-theme-support-json", &b"{}"[..]),
+            ("export-theme-preset-json", &b"editor-light"[..]),
+        ] {
+            for wrapper in [None, Some("analysis"), Some("merman")] {
+                let resources = serde_json::json!({
+                    "resources": { "limits": { "max_theme_encoded_bytes": 1 } }
+                });
+                let options = match wrapper {
+                    Some(wrapper) => serde_json::json!({ wrapper: resources }),
+                    None => resources,
+                };
+                let options = serde_json::to_vec(&options).unwrap();
+                let request =
+                    || BindingOperationRequest::new(operation, input).with_options_json(&options);
+                let one_shot = execute_once(request()).expect_err("theme input exceeds limit");
+                let reused = engine
+                    .execute(request())
+                    .expect_err("theme input exceeds limit");
+                assert_eq!(
+                    one_shot.status(),
+                    BindingStatus::ResourceLimitExceeded,
+                    "{operation}"
+                );
+                assert_eq!(
+                    reused.status(),
+                    one_shot.status(),
+                    "{operation} {wrapper:?}: {reused:?}"
+                );
+                assert_eq!(
+                    reused.resource_details(),
+                    one_shot.resource_details(),
+                    "{operation} {wrapper:?}"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn reusable_theme_authoring_accepts_exact_input_limit_without_changing_engine_ceiling() {
+        let definition = br##"{"authoring_schema_version":1,"expansion_version":1,"tokens":{"text":"#123456"}}"##;
+        let engine = crate::BindingEngine::new(b"").expect("default engine");
+        let expected = execute_once_data(BindingOperationRequest::new(
+            "materialize-theme-json",
+            definition,
+        ))
+        .expect("baseline definition");
+        for limit in [1, definition.len()] {
+            let options = serde_json::to_vec(&serde_json::json!({
+                "resources": { "limits": { "max_theme_encoded_bytes": limit } }
+            }))
+            .unwrap();
+            let rendered = engine.execute_data(
+                BindingOperationRequest::new("materialize-theme-json", definition)
+                    .with_options_json(&options),
+            );
+            if limit == 1 {
+                assert_eq!(
+                    rendered.unwrap_err().status(),
+                    BindingStatus::ResourceLimitExceeded
+                );
+            } else {
+                assert_eq!(rendered.expect("exact input byte limit"), expected);
+            }
+            assert_eq!(engine.materialize_theme(definition).unwrap(), expected);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
     fn one_shot_theme_authoring_rejects_unknown_resource_limits() {
         let error = execute_once(BindingOperationRequest {
             operation_id: "materialize-theme-json",
