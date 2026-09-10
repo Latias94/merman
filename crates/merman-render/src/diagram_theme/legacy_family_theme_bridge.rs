@@ -827,10 +827,7 @@ fn compile_timeline_family(
     );
     contributions.add_theme_variables(
         "event.text",
-        [
-            ("textColor", reader.text_fill(ThemeTarget::Text)),
-            ("titleColor", reader.text_fill(ThemeTarget::Title)),
-        ],
+        [("textColor", reader.text_fill(ThemeTarget::Text))],
     );
     contributions.finish_into(builder)
 }
@@ -2145,14 +2142,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 196);
+        assert_eq!(status.matrix_route_count(), 192);
         assert_eq!(status.matrix_family_count(), 10);
         assert_eq!(status.dispatched_family_count(), 10);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                196, 20, 123, 90, 218, 127, 243, 249, 139, 42, 11, 142, 108, 46, 47, 3, 35, 82, 96,
-                103, 64, 104, 72, 35, 229, 128, 30, 92, 120, 76, 152, 133
+                171, 21, 233, 61, 224, 197, 215, 106, 94, 156, 71, 114, 15, 21, 10, 139, 8, 104,
+                215, 133, 158, 232, 170, 118, 36, 175, 168, 88, 111, 108, 165, 28
             ]
         );
         assert_eq!(

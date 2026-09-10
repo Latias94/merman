@@ -22,7 +22,7 @@ fn unknown_catalog_ids_remain_visible_and_resolve_to_unverified() {
 
     let support = describe_theme_support(&query);
 
-    assert_eq!(support.claim_revision(), 60);
+    assert_eq!(support.claim_revision(), 61);
     assert_eq!(support.query(), &query);
     assert_eq!(support.state(), ThemeSupportStateV1::Unverified);
     assert_eq!(support.reason_ids(), ["theme-support.unknown-family"]);
@@ -281,6 +281,7 @@ fn generic_title_paint_routes_are_unsupported_without_a_title_color_consumer() {
         DiagramFamilyId::JOURNEY,
         DiagramFamilyId::KANBAN,
         DiagramFamilyId::SANKEY,
+        DiagramFamilyId::TIMELINE,
     ] {
         let query = ThemeSupportQueryV1::known(
             family.as_str(),

@@ -2686,7 +2686,7 @@ fn legacy_paint_variants(
         },
         Family::TIMELINE => match (target, channel) {
             (Target::TimelineEvent, Fill | Stroke) => DEFAULT,
-            (Target::Text | Target::Title, Fill) => DEFAULT,
+            (Target::Text, Fill) => DEFAULT,
             _ => &[],
         },
         Family::JOURNEY => match (target, channel) {
@@ -7569,6 +7569,7 @@ mod tests {
             DiagramFamilyId::ER,
             DiagramFamilyId::KANBAN,
             DiagramFamilyId::SANKEY,
+            DiagramFamilyId::TIMELINE,
         ] {
             for paint_kind in [
                 FamilyThemePaintKind::Transparent,

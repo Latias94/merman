@@ -44,6 +44,11 @@ record. The current source and generated contract are authoritative for these su
 - Treemap Text.fill is typed for static unqualified/Default solid and transparent paint. Label
   and value configuration owners remain independent; no participating visible text terminal is
   `NotApplicable`. Its old Text projection no longer requires a family bridge.
+- Timeline `Title.fill` is explicitly Unsupported. The Timeline title is a bare text terminal
+  that inherits the base SVG fill; Mermaid's Timeline writer has no `titleColor` consumer or
+  title-specific selector, so the old bridge contribution was removed rather than promoted to a
+  synthetic typed terminal. Timeline `Text.fill` and `TimelineEvent.stroke` remain separate
+  compatibility surfaces until their actual owners are migrated.
 - Journey no longer requires a family bridge. KTD23 v3 retires the two static Title.fill
   selector identities whose `themeVariables.titleColor` projection styled nonexistent cluster
   text. The actual title still uses `journey.titleColor` or inherits Text; unsupported active
@@ -1044,8 +1049,9 @@ receipt evidence. Explicit `themeVariables.fontSize` ownership reports `NotAppli
 `fontSize` remains the independent layout-size owner for vertical compensation and TopDown
 activity-line offsets. The title's local `4ex` size and role-local event paint do not prove either
 base-typography route. This typography migration itself adds no KTD17 scalar route. The subsequent
-unqualified/Default TimelineEvent.fill migration is independently authorized by KTD17; text/title
-and event-stroke surfaces remain compatibility-only or Unsupported.
+unqualified/Default TimelineEvent.fill migration is independently authorized by KTD17; Timeline
+text remains compatibility-only, `Title.fill` is Unsupported, and event-stroke remains a separate
+compatibility surface.
 
 The C5 Requirement slice now retires the family base `FontStack`/`FontSize` contribution property
 by property. `RequirementPaintThemePlan` resolves the final family size once and shares it with
