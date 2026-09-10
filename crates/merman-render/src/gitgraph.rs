@@ -12,7 +12,7 @@ use std::collections::HashMap;
 mod theme;
 
 pub(crate) use theme::{
-    GITGRAPH_NODE_PAINT_PATHS, GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt,
+    GITGRAPH_NODE_PAINT_DEFAULTS, GITGRAPH_PALETTE_SLOT_COUNT, GitGraphBranchStrokeReceipt,
     GitGraphCommitKind, GitGraphCommitPaletteRole, GitGraphNodePaintCss, GitGraphNodePalettePlan,
     GitGraphNodePaletteReceipt, GitGraphPaletteSource, GitGraphPaletteSurface,
     GitGraphPaletteSurfaceOwnership, GitGraphStaticPaintPlan, GitGraphTypographyCssEmission,

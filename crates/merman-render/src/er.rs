@@ -20,7 +20,7 @@ use config::{ErLayoutAlgorithm, ErLayoutSettings};
 #[cfg(test)]
 pub(crate) use theme::compile_er_entity_source_style;
 pub(crate) use theme::{
-    ER_PAINT_DEFAULT_PATHS, ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan,
+    ER_PAINT_DEFAULTS, ErAttributeTextRole, ErBaseFontSizePlan, ErEntityThemePlan,
     ErEntityThemeReceipt, ErRelationTerminalExpectation, compile_er_subgraph_source_style,
     subgraph_svg_text_facts,
 };

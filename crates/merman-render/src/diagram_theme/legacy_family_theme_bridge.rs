@@ -49,6 +49,7 @@ pub(super) const CONTRIBUTION_ID_PREFIX: &str = "merman.legacy-family-theme.v1."
 const EXPLICIT_MARKER_PAINT_CONTRIBUTION_ID: &str = "marker.paint";
 
 type BridgeResult<T> = Result<T, ThemeCompatibilityOverlayError>;
+type LegacyFamilyCompiler = fn(&mut OverlayBuilder, &FamilyStyleReader) -> BridgeResult<()>;
 
 /// Temporary, family-local compatibility inputs for Mermaid renderers that do not yet consume the
 /// typed theme program directly.
@@ -173,48 +174,22 @@ fn compile_selected_family(
     family_programs: &FamilyThemeProgramCache,
     family: DiagramFamilyId,
 ) -> Result<LegacyFamilyThemeArtifact, ThemeCompatibilityOverlayError> {
-    let dispatch = legacy_family_dispatch(family)?;
+    let compiler = legacy_family_compiler(family)?;
     let program = family_programs.get_or_compile(family);
     if !program.has_legacy_compatibility() {
         return Ok(LegacyFamilyThemeArtifact::default());
     }
 
+    let compiler = compiler.ok_or_else(|| {
+        ThemeCompatibilityOverlayError::provider_failure(
+            family.as_str(),
+            "family matrix declares legacy compatibility but dispatch is classified as bridge-free",
+        )
+    })?;
     let reader = FamilyStyleReader::new(family, program);
     let mut builder = OverlayBuilder::new(family);
-    match dispatch {
-        LegacyFamilyDispatch::Node => {
-            compile_node_family(&mut builder, &reader)?;
-        }
-        LegacyFamilyDispatch::Sequence => {
-            compile_sequence_family(&mut builder, &reader)?;
-        }
-        LegacyFamilyDispatch::Requirement => {
-            compile_requirement_family(&mut builder, &reader)?;
-        }
-        LegacyFamilyDispatch::Chart => {
-            compile_chart_family(&mut builder, &reader)?;
-        }
-        LegacyFamilyDispatch::Timeline => {
-            compile_timeline_family(&mut builder, &reader)?;
-        }
-        LegacyFamilyDispatch::NoLegacy => {
-            return Err(ThemeCompatibilityOverlayError::provider_failure(
-                family.as_str(),
-                "family matrix declares legacy compatibility but dispatch is classified as bridge-free",
-            ));
-        }
-    }
+    compiler(&mut builder, &reader)?;
     Ok(builder.finish())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LegacyFamilyDispatch {
-    Node,
-    Sequence,
-    Requirement,
-    Chart,
-    Timeline,
-    NoLegacy,
 }
 
 /// Matrix-derived readiness facts for retiring the compatibility bridge.
@@ -322,9 +297,9 @@ pub fn legacy_family_theme_bridge_inventory() -> LegacyFamilyThemeBridgeInventor
     let mut dispatched_families = BTreeSet::new();
     let mut dispatch_error_count = 0;
     for &family in DiagramFamilyId::all() {
-        match legacy_family_dispatch(family) {
-            Ok(LegacyFamilyDispatch::NoLegacy) => {}
-            Ok(_) => {
+        match legacy_family_compiler(family) {
+            Ok(None) => {}
+            Ok(Some(_)) => {
                 dispatched_families.insert(family);
             }
             Err(_) => dispatch_error_count += 1,
@@ -496,20 +471,18 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
-fn legacy_family_dispatch(
-    family: DiagramFamilyId,
-) -> Result<LegacyFamilyDispatch, ThemeCompatibilityOverlayError> {
-    let dispatch = match family {
+fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<LegacyFamilyCompiler>> {
+    let compiler: LegacyFamilyCompiler = match family {
         DiagramFamilyId::FLOWCHART
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
-        | DiagramFamilyId::BLOCK => LegacyFamilyDispatch::Node,
-        DiagramFamilyId::SEQUENCE => LegacyFamilyDispatch::Sequence,
-        DiagramFamilyId::REQUIREMENT => LegacyFamilyDispatch::Requirement,
+        | DiagramFamilyId::BLOCK => compile_node_family,
+        DiagramFamilyId::SEQUENCE => compile_sequence_family,
+        DiagramFamilyId::REQUIREMENT => compile_requirement_family,
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
-            LegacyFamilyDispatch::Chart
+            compile_chart_family
         }
-        DiagramFamilyId::TIMELINE => LegacyFamilyDispatch::Timeline,
+        DiagramFamilyId::TIMELINE => compile_timeline_family,
         DiagramFamilyId::STATE
         | DiagramFamilyId::ER
         | DiagramFamilyId::GIT_GRAPH
@@ -532,7 +505,7 @@ fn legacy_family_dispatch(
         | DiagramFamilyId::CYNEFIN
         | DiagramFamilyId::RAILROAD
         | DiagramFamilyId::VENN
-        | DiagramFamilyId::ZENUML => LegacyFamilyDispatch::NoLegacy,
+        | DiagramFamilyId::ZENUML => return Ok(None),
         _ => {
             return Err(ThemeCompatibilityOverlayError::provider_failure(
                 family.as_str(),
@@ -540,7 +513,7 @@ fn legacy_family_dispatch(
             ));
         }
     };
-    Ok(dispatch)
+    Ok(Some(compiler))
 }
 
 /// Observes the current matrix disposition and exact compatibility assignments for one route.
@@ -2089,8 +2062,9 @@ gitGraph
             .iter()
             .copied()
             .filter(|family| {
-                legacy_family_dispatch(*family).expect("built-in family dispatch")
-                    == LegacyFamilyDispatch::NoLegacy
+                legacy_family_compiler(*family)
+                    .expect("built-in family dispatch")
+                    .is_none()
             })
             .collect::<BTreeSet<_>>();
 
@@ -2421,8 +2395,9 @@ gitGraph
             .iter()
             .copied()
             .filter(|&family| {
-                legacy_family_dispatch(family).expect("built-in family dispatch")
-                    != LegacyFamilyDispatch::NoLegacy
+                legacy_family_compiler(family)
+                    .expect("built-in family dispatch")
+                    .is_some()
             })
             .collect::<BTreeSet<_>>();
         assert_eq!(matrix_legacy_families, dispatched_legacy_families);

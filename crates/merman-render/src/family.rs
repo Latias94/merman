@@ -2,6 +2,7 @@ mod capability;
 mod direct_static_paint;
 mod evidence_support;
 mod inherited_font_stack;
+mod parse_defaults;
 mod preparation;
 
 pub use capability::{RenderCapabilityPlan, plan_render};
@@ -18,6 +19,7 @@ pub(crate) use inherited_font_stack::{
     InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
     InheritedTextViewportFacts,
 };
+pub(crate) use parse_defaults::{FamilyPaintDefaultPaths, bind_theme_parse_defaults};
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,

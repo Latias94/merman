@@ -18,7 +18,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::{GITGRAPH_PALETTE_SLOT_COUNT, GitGraphCommitKind, palette_slot};
 
-pub(crate) const GITGRAPH_NODE_PAINT_PATHS: [&str; 6] = [
+const GITGRAPH_NODE_PAINT_PATHS: [&str; 6] = [
     "themeVariables.primaryColor",
     "themeVariables.mainBkg",
     "themeVariables.tagLabelBackground",
@@ -26,6 +26,13 @@ pub(crate) const GITGRAPH_NODE_PAINT_PATHS: [&str; 6] = [
     "themeVariables.nodeBorder",
     "themeVariables.tagLabelBorder",
 ];
+
+pub(crate) const GITGRAPH_NODE_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
+    crate::family::FamilyPaintDefaultPaths::new(
+        crate::DiagramFamilyId::GIT_GRAPH,
+        &[ThemeTarget::Node],
+        &GITGRAPH_NODE_PAINT_PATHS,
+    );
 
 #[derive(Debug, Default)]
 struct Observation {

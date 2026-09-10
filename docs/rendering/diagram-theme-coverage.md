@@ -187,6 +187,12 @@ eligibility receipt requires that exact ledger; scalar cutovers and JPEG/PDF smo
 C6b equal-depth certification remains paused. Browser SVG qualification and the remaining C7a
 authoring/consumer/preset gates are not complete. These counts do not establish stable readiness.
 
+Family paint adapters declare which targets require config-default ownership to be captured
+after detection and before theme derivation. The shared compiler binds those declarations;
+capturing ownership neither applies paint nor certifies a terminal. The legacy bridge separately
+maps each family to its executable compiler or an explicit bridge-free classification. Its
+dispatch inventory remains independent of the mechanism matrix.
+
 KTD18 ordinal and KTD19 typography decisions remain in the convergence addendum, backed by
 family tests and matrix classification. They do not yet constitute an independent combined
 bridge-removal authorization. The current route/dispatch inventory is deliberately only an

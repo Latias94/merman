@@ -335,13 +335,18 @@ pub(crate) struct ErEntityThemePlan {
     terminal_receipt: OnceLock<ErEntityThemeReceipt>,
 }
 
-pub(crate) const ER_PAINT_DEFAULT_PATHS: [&str; 5] = [
-    "themeVariables.textColor",
-    "themeVariables.nodeTextColor",
-    "themeVariables.lineColor",
-    "themeVariables.rowOdd",
-    "themeVariables.rowEven",
-];
+pub(crate) const ER_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
+    crate::family::FamilyPaintDefaultPaths::new(
+        crate::DiagramFamilyId::ER,
+        &[ThemeTarget::Text, ThemeTarget::Relation, ThemeTarget::Table],
+        &[
+            "themeVariables.textColor",
+            "themeVariables.nodeTextColor",
+            "themeVariables.lineColor",
+            "themeVariables.rowOdd",
+            "themeVariables.rowEven",
+        ],
+    );
 
 impl ErEntityThemePlan {
     pub(crate) fn resolve(

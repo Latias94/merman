@@ -70,59 +70,14 @@ impl DiagramThemeCompiler {
         let fingerprint =
             super::canonical::recipe_fingerprint(&spec, &catalog, &effective_requirements);
         let parse_compatibility_bridge = legacy_family_theme_bridge.clone();
-        let mut parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
+        let parse_compatibility = merman_core::__private::ThemeCompatibilityPlan::try_new(
             fingerprint,
             mermaid_config,
             move |family, control| parse_compatibility_bridge.overlay_for_family(family, control),
         )
         .expect("compiled Mermaid compatibility must satisfy the core plan contract");
-        if spec.styles().rules().iter().any(|rule| {
-            rule.target() == super::ThemeTarget::Node
-                && rule
-                    .family()
-                    .is_none_or(|family| family == crate::DiagramFamilyId::GIT_GRAPH)
-                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
-                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
-        }) {
-            parse_compatibility = parse_compatibility
-                .try_with_post_detection_default_paths(
-                    crate::DiagramFamilyId::GIT_GRAPH.as_str(),
-                    &crate::gitgraph::GITGRAPH_NODE_PAINT_PATHS,
-                )
-                .expect("GitGraph writer default paths satisfy the bounded core contract");
-        }
-        if spec.styles().rules().iter().any(|rule| {
-            matches!(
-                rule.target(),
-                super::ThemeTarget::Text | super::ThemeTarget::Relation | super::ThemeTarget::Table
-            ) && rule
-                .family()
-                .is_none_or(|family| family == crate::DiagramFamilyId::ER)
-                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
-                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
-        }) {
-            parse_compatibility = parse_compatibility
-                .try_with_post_detection_default_paths(
-                    crate::DiagramFamilyId::ER.as_str(),
-                    &crate::er::ER_PAINT_DEFAULT_PATHS,
-                )
-                .expect("ER writer default paths satisfy the bounded core contract");
-        }
-        if spec.styles().rules().iter().any(|rule| {
-            rule.target() == super::ThemeTarget::Relation
-                && rule
-                    .family()
-                    .is_none_or(|family| family == crate::DiagramFamilyId::REQUIREMENT)
-                && (!matches!(rule.style().paint.fill, super::Specified::Unspecified)
-                    || !matches!(rule.style().stroke.paint, super::Specified::Unspecified))
-        }) {
-            parse_compatibility = parse_compatibility
-                .try_with_post_detection_default_paths(
-                    crate::DiagramFamilyId::REQUIREMENT.as_str(),
-                    &[crate::requirement::REQUIREMENT_RELATION_PAINT_PATH],
-                )
-                .expect("Requirement writer default paths satisfy the bounded core contract");
-        }
+        let parse_compatibility =
+            crate::family::bind_theme_parse_defaults(parse_compatibility, &spec);
         let report = ThemeRecipeReport::compiled(
             ThemeRecipeFingerprint::from_bytes(fingerprint),
             catalog.fingerprint(),

@@ -17,7 +17,14 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-pub(crate) const REQUIREMENT_RELATION_PAINT_PATH: &str = "themeVariables.relationColor";
+const REQUIREMENT_RELATION_PAINT_PATH: &str = "themeVariables.relationColor";
+
+pub(crate) const REQUIREMENT_RELATION_PAINT_DEFAULTS: crate::family::FamilyPaintDefaultPaths =
+    crate::family::FamilyPaintDefaultPaths::new(
+        crate::DiagramFamilyId::REQUIREMENT,
+        &[ThemeTarget::Relation],
+        &[REQUIREMENT_RELATION_PAINT_PATH],
+    );
 
 /// One static cascade lane shared by Requirement paths and both marker definitions.
 #[derive(Debug)]
