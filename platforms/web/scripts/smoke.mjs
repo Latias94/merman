@@ -470,6 +470,7 @@ const expectedResourceLimitIds = [
   "max_model_items",
   "max_model_nesting_depth",
   "max_model_text_bytes",
+  "max_options_json_bytes",
   ...(hasCapability("svg") ? ["max_prepared_text_retained_bytes"] : []),
   "max_source_bytes",
   ...(hasCapability("svg")
