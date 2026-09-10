@@ -20,15 +20,26 @@ impl ThemeColorValue {
         if value.is_empty() {
             return Err(ThemeCompileValidationError::EmptyValue { field: "color" });
         }
-        ThemeColor::parse(value)
-            .map(Self)
-            .map_err(|_| ThemeCompileValidationError::InvalidColor {
-                value: value.to_string(),
-            })
+        let invalid = || ThemeCompileValidationError::InvalidColor {
+            value: value.to_string(),
+        };
+        let mut color = ThemeColor::parse(value).map_err(|_| invalid())?;
+        if matches!(
+            color.source_format(),
+            ColorSourceFormat::Rgb | ColorSourceFormat::Hsl
+        ) {
+            let css =
+                native_functional_color_css(value, color.source_format()).ok_or_else(invalid)?;
+            let native = css.parse::<svgtypes::Color>().map_err(|_| invalid())?;
+            if value.parse::<svgtypes::Color>() != Ok(native) {
+                color = ThemeColor::parse(&css).map_err(|_| invalid())?;
+            }
+        }
+        Ok(Self(color))
     }
 
     pub fn as_css(&self) -> String {
-        self.0.stringify()
+        self.as_css_cow().into_owned()
     }
 
     pub(crate) fn as_css_cow(&self) -> Cow<'_, str> {
@@ -53,6 +64,89 @@ impl ThemeColorValue {
     pub fn is_transparent(&self) -> bool {
         self.alpha() == 0.0
     }
+}
+
+// CSS Color 4 allows independent RGB number/percentage channels and case-insensitive hue units.
+// Keep this conversion within ThemeColor's accepted RGB/HSL syntax and let the native parser
+// perform HSL conversion, without inheriting Khroma's negative-hue channel behavior.
+fn native_functional_color_css(value: &str, format: ColorSourceFormat) -> Option<String> {
+    let body = value.split_once('(')?.1.strip_suffix(')')?;
+    let mut input = cssparser::ParserInput::new(body);
+    let mut parser = cssparser::Parser::new(&mut input);
+    let first = native_color_component(&mut parser)?;
+    let _ = parser.try_parse(cssparser::Parser::expect_comma);
+    let second = native_color_component(&mut parser)?;
+    let _ = parser.try_parse(cssparser::Parser::expect_comma);
+    let third = native_color_component(&mut parser)?;
+    let alpha = if parser.is_exhausted() {
+        1.0
+    } else {
+        parser
+            .try_parse(cssparser::Parser::expect_comma)
+            .or_else(|_| parser.expect_delim('/'))
+            .ok()?;
+        let (value, unit) = native_color_component(&mut parser)?;
+        match unit {
+            "" => value.clamp(0.0, 1.0),
+            "%" => value.clamp(0.0, 100.0) / 100.0,
+            _ => return None,
+        }
+    };
+    parser.expect_exhausted().ok()?;
+
+    let (function, channels) = match format {
+        ColorSourceFormat::Rgb => {
+            let [Some(red), Some(green), Some(blue)] =
+                [first, second, third].map(|(value, unit)| match unit {
+                    "" => Some(value.clamp(0.0, 255.0)),
+                    "%" => Some((value.clamp(0.0, 100.0) / 100.0) * 255.0),
+                    _ => None,
+                })
+            else {
+                return None;
+            };
+            ("rgb", format!("{red}, {green}, {blue}"))
+        }
+        ColorSourceFormat::Hsl => {
+            let (hue, unit) = first;
+            let turn = match unit.to_ascii_lowercase().as_str() {
+                "" | "deg" => 360.0,
+                "grad" => 400.0,
+                "rad" => std::f64::consts::TAU,
+                "turn" => 1.0,
+                _ => return None,
+            };
+            let hue = (hue.rem_euclid(turn) / turn) * 360.0;
+            let ((saturation, "%"), (lightness, "%")) = (second, third) else {
+                return None;
+            };
+            let saturation = saturation.clamp(0.0, 100.0);
+            let lightness = lightness.clamp(0.0, 100.0);
+            ("hsl", format!("{hue}, {saturation}%, {lightness}%"))
+        }
+        _ => return None,
+    };
+    Some(if alpha == 1.0 {
+        format!("{function}({channels})")
+    } else {
+        format!("{function}a({channels}, {alpha})")
+    })
+}
+
+fn native_color_component<'i>(parser: &mut cssparser::Parser<'i, '_>) -> Option<(f64, &'i str)> {
+    let start = parser.position();
+    let unit_length = match parser.next().ok()? {
+        cssparser::Token::Number { .. } => 0,
+        cssparser::Token::Percentage { .. } => 1,
+        cssparser::Token::Dimension { unit, .. } => unit.len(),
+        _ => return None,
+    };
+    // cssparser stores token values as f32; use its source slice to retain f64 channels and alpha.
+    let raw = parser.slice_from(start).trim();
+    let number_end = raw.len().checked_sub(unit_length)?;
+    let value = raw.get(..number_end)?.parse::<f64>().ok()?;
+    let unit = raw.get(number_end..)?;
+    value.is_finite().then_some((value, unit))
 }
 
 impl TryFrom<&str> for ThemeColorValue {
@@ -761,6 +855,109 @@ mod tests {
         let keyword = color("transparent");
         assert!(matches!(keyword.as_css_cow(), Cow::Owned(_)));
         assert_eq!(keyword.as_css_cow(), "#00000000");
+    }
+
+    #[test]
+    fn modern_color_css_preserves_channels_and_alpha_for_native_consumers() {
+        for (input, reference) in [
+            ("rgb(255 0 0 / .5)", "rgba(255, 0, 0, 0.5)"),
+            ("rgb(100% 0% 0% / 50%)", "rgba(255, 0, 0, 0.5)"),
+            ("rgba(255, 0, 0, 50%)", "rgba(255, 0, 0, 0.5)"),
+            ("hsl(120deg 100% 50%)", "rgb(0, 255, 0)"),
+            ("hsl(.5turn 100% 50% / 25%)", "rgba(0, 255, 255, 0.25)"),
+            ("hsl(200grad 100% 50%)", "rgb(0, 255, 255)"),
+            ("hsl(3.141592653589793rad 100% 50%)", "rgb(0, 255, 255)"),
+            ("hsl(.5TURN 100% 50%)", "rgb(0, 255, 255)"),
+            ("hsl(200GRAD 100% 50%)", "rgb(0, 255, 255)"),
+            ("hsl(-300deg 50% 50%)", "hsl(60, 50%, 50%)"),
+            ("hsl(-300GRAD 50% 50%)", "hsl(90, 50%, 50%)"),
+            ("hsl(1e308turn 100% 50%)", "rgb(255, 0, 0)"),
+            (
+                "hsl(120deg 100% 50% / .000000000000001)",
+                "rgba(0, 255, 0, 0.000000000000001)",
+            ),
+            ("rgb(100% 128 0)", "rgb(255, 128, 0)"),
+            ("rgb(128 100% 0)", "rgb(128, 255, 0)"),
+            ("rgb(50% 0% 0% / 1)", "rgb(127.5, 0, 0)"),
+            (
+                "rgb(255 0 0 / 0.123456789012345)",
+                "rgba(255, 0, 0, 0.123456789012345)",
+            ),
+            (
+                "rgb(.25 2.75 3.5 / 0.123456789012345)",
+                "rgba(0.25, 2.75, 3.5, 0.123456789012345)",
+            ),
+            (
+                "rgba(.25, 2.75, 3.5, 0.123456789012345)",
+                "rgba(0.25, 2.75, 3.5, 0.123456789012345)",
+            ),
+            (
+                "rgb(255 0 0 / .000000000000001)",
+                "rgba(255, 0, 0, 0.000000000000001)",
+            ),
+        ] {
+            let actual = color(input);
+            assert_eq!(
+                actual,
+                actual.clone(),
+                "non-finite internal channels: {input}"
+            );
+            let css = actual.as_css();
+            let expected = color(reference);
+            let native = css.parse::<svgtypes::Color>().unwrap_or_else(|error| {
+                panic!("typed color {input} emitted unsupported CSS {css}: {error}")
+            });
+            assert_eq!(
+                native,
+                reference.parse::<svgtypes::Color>().unwrap(),
+                "{input}"
+            );
+            assert_eq!(actual.alpha(), expected.alpha(), "{input}");
+            let actual_channels = ThemeColor::parse(&css).unwrap().rgba_channels();
+            let expected_channels = ThemeColor::parse(reference).unwrap().rgba_channels();
+            for (actual, expected) in [
+                (actual_channels.red, expected_channels.red),
+                (actual_channels.green, expected_channels.green),
+                (actual_channels.blue, expected_channels.blue),
+            ] {
+                assert!((actual - expected).abs() < 1e-10, "{input}: {css}");
+            }
+            assert_eq!(actual_channels.alpha, expected_channels.alpha, "{input}");
+            assert_eq!(actual.as_css_cow(), css, "{input}");
+        }
+    }
+
+    #[test]
+    fn non_finite_functional_color_components_are_rejected_before_native_serialization() {
+        for input in [
+            "hsl(1e999deg 100% 50%)",
+            "hsl(-1e999TURN 100% 50% / .5)",
+            "hsl(120deg 1e999% 50%)",
+            "hsl(120deg 100% 1e999%)",
+            "rgb(1e999 0 0)",
+            "rgb(255 0 0 / 1e999)",
+        ] {
+            assert!(matches!(
+                ThemeColorValue::parse(input),
+                Err(ThemeCompileValidationError::InvalidColor { value }) if value == input
+            ));
+        }
+    }
+
+    #[test]
+    fn native_supported_color_css_keeps_its_original_spelling() {
+        for input in [
+            "#abc",
+            "#AABBCC80",
+            "rgb(1,   2, 3)",
+            "RGB(10% 20% 30%)",
+            "rgba(1, 2, 3, .123456789012345)",
+            "hsl(120, 100%, 50%)",
+        ] {
+            let actual = color(input);
+            assert_eq!(actual.as_css(), input);
+            assert!(matches!(actual.as_css_cow(), Cow::Borrowed(value) if value == input));
+        }
     }
 
     #[test]

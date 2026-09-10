@@ -3712,6 +3712,85 @@ mod png_feature_tests {
         .expect("sealed SVG")
     }
 
+    fn assert_typed_color_png_pixel(input: &str, expected: [u8; 4]) {
+        let merman_render::diagram_theme::CanvasPaint::Solid(color) =
+            merman_render::diagram_theme::CanvasPaint::solid(input).expect("valid typed color")
+        else {
+            panic!("a solid typed color must remain solid");
+        };
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="{}"/></svg>"#,
+            color.as_css(),
+        );
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic color render session");
+        let svg = merman_render::svg::finalize_resvg_svg(&source, &session)
+            .expect("seal typed color SVG");
+        let bytes = svg_to_png(&svg, &RasterOptions::default()).expect("export typed color PNG");
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let mut reader = decoder.read_info().expect("read color PNG");
+        let mut pixels = vec![0; reader.output_buffer_size().expect("PNG output size")];
+        let info = reader.next_frame(&mut pixels).expect("decode color PNG");
+        assert_eq!((info.width, info.height), (16, 16));
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        let center = ((8 * info.width + 8) * 4) as usize;
+        assert_eq!(
+            &pixels[center..center + 4],
+            &expected,
+            "typed color {input}"
+        );
+    }
+
+    #[test]
+    fn typed_rgb_slash_alpha_keeps_native_png_channels() {
+        assert_typed_color_png_pixel("rgba(255, 0, 0, .5)", [255, 0, 0, 128]);
+        assert_typed_color_png_pixel("rgb(255 0 0 / .5)", [255, 0, 0, 128]);
+    }
+
+    #[test]
+    fn typed_percentage_alpha_keeps_native_png_channels() {
+        for input in ["rgb(100% 0% 0% / 50%)", "rgba(255, 0, 0, 50%)"] {
+            assert_typed_color_png_pixel(input, [255, 0, 0, 128]);
+        }
+    }
+
+    #[test]
+    fn typed_hsl_angle_units_keep_native_png_channels() {
+        assert_typed_color_png_pixel("hsl(120deg 100% 50%)", [0, 255, 0, 255]);
+        for input in [
+            "hsl(.5turn 100% 50%)",
+            "hsl(200grad 100% 50%)",
+            "hsl(3.141592653589793rad 100% 50%)",
+            "hsl(.5TURN 100% 50%)",
+            "hsl(200GRAD 100% 50%)",
+        ] {
+            assert_typed_color_png_pixel(input, [0, 255, 255, 255]);
+        }
+        assert_typed_color_png_pixel("hsl(.5turn 100% 50% / 25%)", [0, 255, 255, 64]);
+    }
+
+    #[test]
+    fn typed_negative_hue_keeps_native_png_channels() {
+        assert_typed_color_png_pixel("hsl(-300deg 50% 50%)", [191, 191, 64, 255]);
+    }
+
+    #[test]
+    fn typed_percentage_first_mixed_rgb_keeps_native_png_channels() {
+        assert_typed_color_png_pixel("rgb(100% 128 0)", [255, 128, 0, 255]);
+    }
+
+    #[test]
+    fn typed_number_first_mixed_rgb_keeps_native_png_channels() {
+        assert_typed_color_png_pixel("rgb(128 100% 0)", [128, 255, 0, 255]);
+    }
+
+    #[test]
+    fn typed_half_percentage_keeps_native_png_rounding() {
+        assert_typed_color_png_pixel("rgb(50% 0% 0% / 1)", [128, 0, 0, 255]);
+    }
+
     #[test]
     fn png_leaf_encodes_a_sealed_svg() {
         let bytes = svg_to_png(&compatible_svg(), &RasterOptions::default())
