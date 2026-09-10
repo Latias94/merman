@@ -23,6 +23,7 @@ class ResourceLimitId(str):
     MAX_MODEL_ITEMS: ClassVar[ResourceLimitId]
     MAX_MODEL_TEXT_BYTES: ClassVar[ResourceLimitId]
     MAX_MODEL_NESTING_DEPTH: ClassVar[ResourceLimitId]
+    MAX_OPTIONS_JSON_BYTES: ClassVar[ResourceLimitId]
     MAX_LAYOUT_WORK_UNITS: ClassVar[ResourceLimitId]
     MAX_PREPARED_TEXT_RETAINED_BYTES: ClassVar[ResourceLimitId]
     MAX_SVG_BYTES: ClassVar[ResourceLimitId]
@@ -88,6 +89,7 @@ ResourceLimitId.MAX_SOURCE_BYTES = ResourceLimitId("max_source_bytes")
 ResourceLimitId.MAX_MODEL_ITEMS = ResourceLimitId("max_model_items")
 ResourceLimitId.MAX_MODEL_TEXT_BYTES = ResourceLimitId("max_model_text_bytes")
 ResourceLimitId.MAX_MODEL_NESTING_DEPTH = ResourceLimitId("max_model_nesting_depth")
+ResourceLimitId.MAX_OPTIONS_JSON_BYTES = ResourceLimitId("max_options_json_bytes")
 ResourceLimitId.MAX_LAYOUT_WORK_UNITS = ResourceLimitId("max_layout_work_units")
 ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES = ResourceLimitId("max_prepared_text_retained_bytes")
 ResourceLimitId.MAX_SVG_BYTES = ResourceLimitId("max_svg_bytes")
@@ -120,6 +122,7 @@ RESOURCE_LIMIT_IDS = (
     ResourceLimitId.MAX_MODEL_ITEMS,
     ResourceLimitId.MAX_MODEL_TEXT_BYTES,
     ResourceLimitId.MAX_MODEL_NESTING_DEPTH,
+    ResourceLimitId.MAX_OPTIONS_JSON_BYTES,
     ResourceLimitId.MAX_LAYOUT_WORK_UNITS,
     ResourceLimitId.MAX_PREPARED_TEXT_RETAINED_BYTES,
     ResourceLimitId.MAX_SVG_BYTES,
@@ -154,6 +157,7 @@ _RESOURCE_LIMIT_METADATA = {
     "max_model_items": ("layout_model", True, 1),
     "max_model_text_bytes": ("layout_model", True, 1),
     "max_model_nesting_depth": ("layout_model", True, 1),
+    "max_options_json_bytes": ("options-json-preflight", False, 1),
     "max_layout_work_units": ("layout_model", True, 1),
     "max_prepared_text_retained_bytes": ("layout_model", True, 1),
     "max_svg_bytes": ("svg_output", True, 1),
