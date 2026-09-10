@@ -11,17 +11,20 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 23/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 10/33; 188 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
+| Families without a family-owned Legacy route | 24/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 9/33; 184 routes | Same bridge inventory; exact matrix and dispatch reconciliation |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 62 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v65; 354 routes / 472 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 63 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v66; 358 routes / 476 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v4; 62 routes / 124 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 65 adds four Timeline Text.fill routes (unqualified/Default,
-solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
+output files. Version 66 adds four Timeline Event.stroke routes (unqualified/Default,
+solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
+PNG; family receipts and SVG integration tests cover the shared node/label/line fanout. This does
+not qualify shadow-bearing nodes for native export. Version 65 adds four Timeline Text.fill routes
+(unqualified/Default, solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
 arrowhead fill. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
 solid/transparent), with Classic, Neo and HandDrawn witnesses for relation paths and referenced
 markers. Explicit `relationColor` retains ownership; any specified stroke suppresses the fill
@@ -83,7 +86,7 @@ family writer owns them. A bridge-free family may deliberately support only a na
 | XY Chart | Typed | Unsupported | Required |
 | Radar | Typed | Typed | Required |
 | Quadrant Chart | Typed | Unsupported | Required |
-| Timeline | Typed | Typed | Required |
+| Timeline | Typed | Typed | None |
 | Journey | Typed | Typed | None |
 | Architecture | Typed | Typed | None |
 | C4 | Typed | Typed | None |
@@ -166,8 +169,15 @@ Important boundaries that a family-level count cannot express:
   root inherited paint; explicit textColor retains ownership. The writer records titles,
   referenced arrowheads, and node fill inheritance when the color-scale domain is empty.
   Independently colored node labels retain their owners, and dynamic source colors remain
-  residuals. Unused marker definitions do not prove application. Event.stroke remains a
-  compatibility surface; Title.fill is Unsupported because Timeline has no titleColor consumer.
+  residuals. Unused marker definitions do not prove application. Static unqualified/Default
+  Event.stroke directly owns Redux's shared `nodeBorder` paint: ordinary shapes, section labels,
+  connectors, and the activity axis. Explicit `nodeBorder` retains ownership; Classic has no
+  consumer. Redux Color and Neo shapes keep their independent border/gradient colors while
+  labels and lines still consume the shared stroke. A title-only Redux diagram retains its
+  activity-axis consumer. Writer-owned receipts bind the original CSS declarations to emitted
+  terminals; KTD17 v66 separately proves the visible axis in SVG and PNG. Ordinal stroke remains
+  Unsupported, with matching winners reported as residuals. Timeline has no family bridge;
+  Title.fill remains Unsupported because Timeline has no titleColor consumer.
 - Gantt Task[Warning].stroke is typed and in KTD17. Today-marker and vertical-marker source/config
   ownership remains terminal-local; no applicable marker is not evidence of typed application.
 - Error-family bridge freedom does not erase unrelated detected-family compatibility from a lenient

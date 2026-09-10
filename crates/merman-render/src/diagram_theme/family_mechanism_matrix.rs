@@ -505,6 +505,9 @@ fn legacy_bridge_projections(
         (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL)
         }
+        (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Stroke) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_STROKE)
+        }
         (DiagramFamilyId::TIMELINE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Some(ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_TEXT_FILL)
         }
@@ -1921,6 +1924,23 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Radius | FamilyThemeRuleFacet::Opacity
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::TIMELINE
+        && target == ThemeTarget::TimelineEvent
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
         )
     {
         return FamilyThemeDisposition::TypedAdapter;
@@ -6504,6 +6524,20 @@ mod tests {
                 vec!["event.fill"],
             ),
             (
+                DiagramFamilyId::TIMELINE,
+                ThemeTarget::TimelineEvent,
+                Stroke,
+                Transparent,
+                vec!["event.stroke"],
+            ),
+            (
+                DiagramFamilyId::TIMELINE,
+                ThemeTarget::TimelineEvent,
+                Stroke,
+                Solid,
+                vec!["event.stroke"],
+            ),
+            (
                 DiagramFamilyId::TREE_VIEW,
                 ThemeTarget::NodeLabel,
                 Fill,
@@ -6682,7 +6716,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 176);
+        assert_eq!(qualified.len(), 178);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6719,7 +6753,7 @@ mod tests {
                 .iter()
                 .filter(|route| route.family_id() == DiagramFamilyId::TIMELINE)
                 .count(),
-            4
+            6
         );
         assert_eq!(
             qualified
@@ -7033,12 +7067,18 @@ mod tests {
                 };
                 assert_eq!(projections, vec![expected], "route={route:?}");
             } else if route.family_id() == DiagramFamilyId::TIMELINE {
-                let expected = match route.target() {
-                    ThemeTarget::TimelineEvent => ThemeRouteCutoverProjection::TimelineEventFill,
-                    ThemeTarget::Text => ThemeRouteCutoverProjection::TimelineTextFill,
+                let expected = match (route.target(), route.facet()) {
+                    (ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::TimelineEventFill
+                    }
+                    (ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Stroke) => {
+                        ThemeRouteCutoverProjection::TimelineEventStroke
+                    }
+                    (ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+                        ThemeRouteCutoverProjection::TimelineTextFill
+                    }
                     _ => panic!("unexpected Timeline qualified route: {route:?}"),
                 };
-                assert_eq!(route.facet(), ThemeRouteCutoverFacet::Fill);
                 assert_eq!(
                     route.selector(),
                     ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)

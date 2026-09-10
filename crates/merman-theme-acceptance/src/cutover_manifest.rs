@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 65;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 66;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    42, 127, 135, 206, 169, 58, 21, 100, 190, 213, 95, 175, 55, 103, 101, 204, 166, 213, 183, 33,
-    192, 248, 178, 175, 74, 145, 37, 138, 22, 95, 165, 6,
+    235, 250, 53, 134, 164, 248, 187, 14, 138, 58, 88, 3, 148, 41, 70, 153, 91, 177, 195, 10, 97,
+    233, 131, 190, 85, 139, 6, 27, 156, 159, 239, 38,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 48] = [
+); 49] = [
+    (
+        ThemeRouteCutoverProjection::TimelineEventStroke,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::TimelineTextFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -382,6 +386,8 @@ const TIMELINE_EVENT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineEventFill];
 const TIMELINE_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::TimelineTextFill];
+const TIMELINE_EVENT_STROKE_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::TimelineEventStroke];
 const ER_TABLE_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::ErTableOddFill,
     ThemeRouteCutoverProjection::ErTableEvenFill,
@@ -404,7 +410,37 @@ struct CutoverAuthorizationManifest<'a> {
     tombstones: &'a [RouteTombstone],
 }
 
-const ACTIVE_ROUTES: [RouteAuthorization; 354] = [
+const ACTIVE_ROUTES: [RouteAuthorization; 358] = [
+    route(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::TimelineEvent,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        TIMELINE_EVENT_STROKE_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::TimelineEvent,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        TIMELINE_EVENT_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::TimelineEvent,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        TIMELINE_EVENT_STROKE_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::TIMELINE,
+        ThemeTarget::TimelineEvent,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        TIMELINE_EVENT_STROKE_PROJECTIONS,
+    ),
     route(
         DiagramFamilyId::TIMELINE,
         ThemeTarget::Text,
@@ -3366,8 +3402,9 @@ mod tests {
         NODE_FILL_PROJECTIONS, NODE_LABEL_FILL_PROJECTIONS, NODE_STROKE_PROJECTIONS,
         PIE_SLICE_FILL_PROJECTIONS, PIE_SLICE_STROKE_PROJECTIONS, PROJECTION_ACTIONS,
         RouteAuthorization, RouteTombstone, TEXT_FILL_PROJECTIONS, TIMELINE_EVENT_FILL_PROJECTIONS,
-        TITLE_FILL_PROJECTIONS, TREE_VIEW_MARKER_PAINT_PROJECTIONS, authorize_cutover_routes,
-        reconcile_manifest, validate_projection_actions,
+        TIMELINE_EVENT_STROKE_PROJECTIONS, TITLE_FILL_PROJECTIONS,
+        TREE_VIEW_MARKER_PAINT_PROJECTIONS, authorize_cutover_routes, reconcile_manifest,
+        validate_projection_actions,
     };
 
     fn current_inventory() -> Vec<(ThemeRouteCutoverId, ThemeRouteCutoverProjectionSet)> {
@@ -3386,6 +3423,31 @@ mod tests {
         .expect("authorize current route inventory");
 
         assert_eq!(routes.routes().len(), ACTIVE_ROUTES.len());
+    }
+
+    #[test]
+    fn timeline_event_stroke_authority_replaces_only_static_scalar_routes() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::TIMELINE
+                    && route.id.target() == ThemeTarget::TimelineEvent
+                    && route.id.facet() == ThemeRouteCutoverFacet::Stroke
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for route in routes {
+            assert!(matches!(
+                route.id.selector(),
+                ThemeRouteCutoverSelector::StaticUnqualified
+                    | ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default)
+            ));
+            assert!(matches!(
+                route.id.value(),
+                ThemeRouteCutoverValue::Transparent | ThemeRouteCutoverValue::Solid
+            ));
+            assert_eq!(route.projections, TIMELINE_EVENT_STROKE_PROJECTIONS);
+        }
     }
 
     #[test]
@@ -3777,6 +3839,7 @@ mod tests {
             .filter(|route| {
                 route.id.family_id() == DiagramFamilyId::TIMELINE
                     && route.id.target() == ThemeTarget::TimelineEvent
+                    && route.id.facet() == ThemeRouteCutoverFacet::Fill
             })
             .collect::<Vec<_>>();
         assert_eq!(timeline_event_fill_routes.len(), 4);

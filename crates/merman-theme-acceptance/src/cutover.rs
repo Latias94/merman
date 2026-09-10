@@ -333,6 +333,10 @@ const TIMELINE_EVENT_FILL_SOURCE: &str = r#"timeline
   section Delivery
     Ship release : Completed
 "#;
+// This witness proves only the shared Redux activity-axis paint. Node and label fanout are
+// covered by family-owned receipts and SVG integration tests, not by this native PNG pair.
+const TIMELINE_EVENT_STROKE_AXIS_SOURCE: &str =
+    "timeline\n  title Cutover Timeline activity axis\n";
 const TREE_VIEW_PAINT_SOURCE: &str = "treeView-beta\nRoot/\n    Child\n";
 const TREE_VIEW_MARKER_PAINT_SOURCE: &str = "treeView-beta\nRoot icon(folder)\n";
 const KANBAN_TEXT_FILL_SOURCE: &str = r#"kanban
@@ -353,10 +357,12 @@ enum CutoverWitnessProfile {
     HandDrawnStatic,
     NeoStatic,
     NeoAnimated,
+    ReduxStatic,
 }
 
 impl CutoverWitnessProfile {
     const CLASSIC: [Self; 1] = [Self::ClassicStatic];
+    const TIMELINE_EVENT_STROKE: [Self; 1] = [Self::ReduxStatic];
     const TEXT_LOOKS: [Self; 3] = [Self::ClassicStatic, Self::NeoStatic, Self::HandDrawnStatic];
     const GANTT_WARNING: [Self; 2] = [Self::ClassicToday, Self::ClassicVertical];
     const CLUSTER: [Self; 2] = [Self::ClassicStatic, Self::HandDrawnStatic];
@@ -376,12 +382,16 @@ impl CutoverWitnessProfile {
             Self::HandDrawnStatic => "hand-drawn-static",
             Self::NeoStatic => "neo-static",
             Self::NeoAnimated => "neo-animated",
+            Self::ReduxStatic => "redux-static",
         }
     }
 
     const fn look(self) -> &'static str {
         match self {
-            Self::ClassicStatic | Self::ClassicToday | Self::ClassicVertical => "classic",
+            Self::ClassicStatic
+            | Self::ClassicToday
+            | Self::ClassicVertical
+            | Self::ReduxStatic => "classic",
             Self::HandDrawnStatic => "handDrawn",
             Self::NeoStatic | Self::NeoAnimated => "neo",
         }
@@ -406,7 +416,12 @@ impl CutoverWitnessProfile {
         {
             return &Self::TEXT_LOOKS;
         }
-        if route.family_id() == DiagramFamilyId::REQUIREMENT
+        if route.family_id() == DiagramFamilyId::TIMELINE
+            && route.target() == ThemeTarget::TimelineEvent
+            && route.facet() == ThemeRouteCutoverFacet::Stroke
+        {
+            &Self::TIMELINE_EVENT_STROKE
+        } else if route.family_id() == DiagramFamilyId::REQUIREMENT
             && route.target() == ThemeTarget::Relation
         {
             &Self::TEXT_LOOKS
@@ -670,6 +685,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         }
         (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Fill) => {
             Ok(TIMELINE_EVENT_FILL_SOURCE)
+        }
+        (DiagramFamilyId::TIMELINE, ThemeTarget::TimelineEvent, ThemeRouteCutoverFacet::Stroke) => {
+            Ok(TIMELINE_EVENT_STROKE_AXIS_SOURCE)
         }
         (DiagramFamilyId::TIMELINE, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(TIMELINE_EVENT_FILL_SOURCE)
@@ -1278,8 +1296,9 @@ fn cutover_renderer(witness: CutoverWitnessId) -> Renderer {
         "flowchart": { "htmlLabels": false },
         "themeVariables": theme_variables
     });
-    if witness.route().family_id() == DiagramFamilyId::MINDMAP
-        && witness.route().target() == ThemeTarget::Node
+    if (witness.route().family_id() == DiagramFamilyId::MINDMAP
+        && witness.route().target() == ThemeTarget::Node)
+        || profile == CutoverWitnessProfile::ReduxStatic
     {
         site_config["theme"] = serde_json::Value::String("redux".to_string());
     }
@@ -1613,6 +1632,65 @@ mod tests {
     }
 
     #[test]
+    fn timeline_event_stroke_has_visible_redux_axis_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            let render = |value| {
+                let route = inventory
+                    .iter()
+                    .copied()
+                    .find(|route| {
+                        route.family_id() == DiagramFamilyId::TIMELINE
+                            && route.target() == ThemeTarget::TimelineEvent
+                            && route.facet() == ThemeRouteCutoverFacet::Stroke
+                            && route.selector() == selector
+                            && route.value() == value
+                    })
+                    .expect("Timeline event stroke route");
+                assert_eq!(
+                    CutoverWitnessProfile::for_route(route),
+                    &[CutoverWitnessProfile::ReduxStatic]
+                );
+                let id = CutoverWitnessId::new(route, CutoverWitnessProfile::ReduxStatic);
+                let source = super::source_for_witness(id).expect("axis source");
+                assert_eq!(source, super::TIMELINE_EVENT_STROKE_AXIS_SOURCE);
+                let rendered =
+                    super::render_cutover_case(super::CutoverCase { id, source }, vec![route])
+                        .expect("Redux axis SVG witness");
+                let svg = rendered.document.sealed_svg().as_str();
+                assert!(svg.contains(r#"class="lineWrapper"><line"#));
+                assert!(
+                    !svg.contains(r#"class="timeline-node "#),
+                    "axis proof must not claim shadow-bearing nodes"
+                );
+                (route, rendered)
+            };
+            let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+            let (transparent_route, transparent) = render(ThemeRouteCutoverValue::Transparent);
+            let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                &solid.document,
+                &transparent.document,
+                solid_route,
+                transparent_route,
+                &merman_export::RasterOptions::default().with_scale(2.0),
+                merman::OperationControl::new(),
+            )
+            .expect("shared Redux axis paint must produce route-local native pixels");
+            for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                super::validate_cutover_target_receipt(
+                    CutoverTargetAdmissionContract::PortableNativePngV1,
+                    receipt,
+                )
+                .expect("axis PNG must satisfy unchanged native target admission");
+            }
+            assert_ne!(pair.receipt_digest(), [0; 32]);
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -1633,11 +1711,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_354_routes_and_472_artifact_witnesses() {
+    fn route_inventory_retains_358_routes_and_476_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 354);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 472);
+        assert_eq!(inventory.len(), 358);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 476);
     }
 
     #[test]

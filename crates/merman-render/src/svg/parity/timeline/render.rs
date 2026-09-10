@@ -10,6 +10,7 @@ fn timeline_css(
     resolved_font_family_css: &str,
     resolved_font_size_css: &str,
     text_fill: Option<&str>,
+    event_emission: &mut TimelineEventEmissionState<'_>,
 ) -> TimelineCss {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     let mut writer = InfoCssWriter::with_resolved_typography(
@@ -31,55 +32,51 @@ fn timeline_css(
         let sw = 17 - 3 * (i as i64);
 
         if theme.is_redux_theme {
-            let border_color = theme
-                .border_colors
-                .get(i)
-                .cloned()
-                .unwrap_or_else(|| theme.node_border.clone());
-            let redux_fill = timeline_section_fill(theme, i, false).expect("existing section");
             let redux_stroke = if theme.is_color_theme {
-                border_color
+                theme.border_colors.get(i).map(String::as_str)
             } else {
-                theme.node_border.clone()
+                Some(theme.node_border.as_str())
             };
             let _ = write!(
                 &mut out,
-                r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle{{fill:{};stroke:{};stroke-width:{};filter:{};}}#{} .section-{} text{{fill:{};font-weight:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};stroke-width:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
-                diagram_id,
-                section,
-                diagram_id,
-                section,
-                diagram_id,
-                section,
-                redux_fill,
-                redux_stroke,
+                r#"#{diagram_id} .section-{section} rect,#{diagram_id} .section-{section} path,#{diagram_id} .section-{section} circle{{"#,
+            );
+            if let Some(fill) = timeline_section_fill(theme, i, false) {
+                let _ = write!(&mut out, "fill:{fill};");
+            }
+            if let Some(receipt) = &mut event_emission.receipt {
+                let _ = receipt.write_shape_stroke_css(&mut out, i, redux_stroke);
+            } else if let Some(stroke) = redux_stroke {
+                let _ = write!(&mut out, "stroke:{stroke};");
+            }
+            let _ = write!(
+                &mut out,
+                r#"stroke-width:{};filter:{};}}#{diagram_id} .section-{section} text{{"#,
                 theme.stroke_width,
                 scoped_svg_url(diagram_id, "drop-shadow"),
-                diagram_id,
-                section,
-                timeline_section_label_fill(theme, i).expect("existing section"),
+            );
+            if let Some(receipt) = &mut event_emission.receipt {
+                let _ = receipt.write_label_fill_css(&mut out, i, &theme.node_border);
+            } else {
+                let _ = write!(&mut out, "fill:{};", theme.node_border);
+            }
+            let _ = write!(
+                &mut out,
+                r#"font-weight:{};}}#{diagram_id} .node-icon-{section}{{font-size:40px;color:{};}}#{diagram_id} .section-edge-{section}{{stroke:{};}}#{diagram_id} .edge-depth-{section}{{stroke-width:{sw};}}#{diagram_id} .section-{section} line{{stroke:{};stroke-width:3;}}#{diagram_id} .lineWrapper line{{"#,
                 theme.font_weight,
-                diagram_id,
-                section,
                 section_theme.c_scale_label,
-                diagram_id,
-                section,
                 section_theme.c_scale,
-                diagram_id,
-                section,
-                sw,
-                diagram_id,
-                section,
                 section_theme.c_scale_inv,
-                diagram_id,
-                theme.node_border,
-                theme.stroke_width,
-                diagram_id,
-                diagram_id,
-                diagram_id,
-                theme.disabled_fill,
-                diagram_id,
-                theme.disabled_text_fill,
+            );
+            if let Some(receipt) = &mut event_emission.receipt {
+                let _ = receipt.write_line_stroke_css(&mut out, i, &theme.node_border);
+            } else {
+                let _ = write!(&mut out, "stroke:{};", theme.node_border);
+            }
+            let _ = write!(
+                &mut out,
+                r#"stroke-width:{};}}#{diagram_id} .disabled,#{diagram_id} .disabled circle,#{diagram_id} .disabled text{{fill:{};}}#{diagram_id} .disabled text{{fill:{};}}"#,
+                theme.stroke_width, theme.disabled_fill, theme.disabled_text_fill,
             );
         } else {
             let _ = write!(
@@ -96,7 +93,7 @@ fn timeline_css(
                 timeline_section_fill(theme, i, false).expect("existing section"),
                 diagram_id,
                 section,
-                timeline_section_label_fill(theme, i).expect("existing section"),
+                timeline_section_label_fill(theme, i, None).expect("existing section"),
                 diagram_id,
                 section,
                 section_theme.c_scale_label,
@@ -183,7 +180,7 @@ fn timeline_section_fill(theme: &TimelineTheme, slot: usize, neo_gradient: bool)
         &theme.main_bkg
     } else if theme.is_redux_theme {
         if theme.is_color_theme && !theme.is_dark_theme {
-            theme.border_colors.get(slot).unwrap_or(&theme.node_border)
+            return theme.border_colors.get(slot).map(String::as_str);
         } else {
             &theme.main_bkg
         }
@@ -192,10 +189,14 @@ fn timeline_section_fill(theme: &TimelineTheme, slot: usize, neo_gradient: bool)
     })
 }
 
-fn timeline_section_label_fill(theme: &TimelineTheme, slot: usize) -> Option<&str> {
+fn timeline_section_label_fill<'a>(
+    theme: &'a TimelineTheme,
+    slot: usize,
+    event_stroke: Option<&'a str>,
+) -> Option<&'a str> {
     let section = theme.sections.get(slot)?;
     Some(if theme.is_redux_theme {
-        &theme.node_border
+        event_stroke.unwrap_or(&theme.node_border)
     } else {
         &section.c_scale_label
     })
@@ -205,6 +206,7 @@ struct TimelineTextPaintEmissionState<'a> {
     plan: &'a crate::timeline::TimelineTextPaintPlan,
     theme: &'a TimelineTheme,
     neo_gradient: bool,
+    event_stroke: Option<&'a str>,
     receipt: Option<crate::timeline::TimelineTextPaintReceipt<'a>>,
 }
 
@@ -222,7 +224,8 @@ impl TimelineTextPaintEmissionState<'_> {
         let shape_fill = inline_fill.or_else(|| {
             slot.and_then(|slot| timeline_section_fill(self.theme, slot, self.neo_gradient))
         });
-        let label_fill = slot.and_then(|slot| timeline_section_label_fill(self.theme, slot));
+        let label_fill =
+            slot.and_then(|slot| timeline_section_label_fill(self.theme, slot, self.event_stroke));
         receipt.record_node(
             shape_fill,
             label_fill,
@@ -503,6 +506,18 @@ impl<'a> TimelineEventEmissionState<'a> {
         self.theme.palette_fill_for_slot(slot)
     }
 
+    fn record_stroke_node(&mut self, node: &TimelineNodeLayout) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_stroke_node(node);
+        }
+    }
+
+    fn record_stroke_line(&mut self) {
+        if let Some(receipt) = self.receipt.as_mut() {
+            receipt.record_stroke_line();
+        }
+    }
+
     fn fill_for_event(&self, event_index: usize) -> Option<&str> {
         self.theme.fill_for_event(event_index)
     }
@@ -737,6 +752,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             emitted_line_stroke,
         );
         text_emission.record_node(n, effective_fill);
+        event_emission.record_stroke_node(n);
         options.checkpoint_emit()?;
         Ok(TimelineNodeEmission {
             inline_fill: is_event.then(|| direct_fill.or(palette_fill)).flatten(),
@@ -883,6 +899,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 for connector in &task.connectors {
                     options.checkpoint_emit()?;
                     write_timeline_connector(out, connector, Some(diagram_id))?;
+                    event_emission.record_stroke_line();
                 }
                 for event in &task.events {
                     render_event(
@@ -916,11 +933,13 @@ pub(crate) fn render_timeline_diagram_svg_model(
                     if let Some(connector) = task.connectors.get(index) {
                         options.checkpoint_emit()?;
                         write_timeline_connector(out, connector, None)?;
+                        event_emission.record_stroke_line();
                     }
                 }
                 for connector in task.connectors.iter().skip(task.events.len()) {
                     options.checkpoint_emit()?;
                     write_timeline_connector(out, connector, None)?;
+                    event_emission.record_stroke_line();
                 }
             }
         }
@@ -962,6 +981,8 @@ pub(crate) fn render_timeline_diagram_svg_model(
         };
     options.checkpoint_emit()?;
 
+    let mut event_emission = TimelineEventEmissionState::new(event_theme, is_redux_theme);
+
     // Mermaid's vertical renderer lowers the activity axis to the first root child and invokes
     // marker initialization without a diagram id. Preserve both observable source behaviors.
     if layout.direction == merman_core::diagrams::timeline::TimelineDirection::TopDown {
@@ -974,6 +995,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             y2 = fmt(layout.activity_line.y2),
         );
         out.checkpoint()?;
+        event_emission.record_stroke_line();
     }
 
     let mut typography_emission = TimelineTypographyEmissionState::new(typography_theme, layout);
@@ -981,6 +1003,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         plan: text_paint,
         theme: &theme,
         neo_gradient: use_neo_gradient,
+        event_stroke: event_theme.stroke_for_redux(),
         receipt: text_paint.begin_terminal_receipt(layout, options.work_meter())?,
     };
     let css = timeline_css(
@@ -990,6 +1013,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         typography_theme.font_family_css(),
         typography_theme.font_size_css(),
         text_paint.fill_css(),
+        &mut event_emission,
     );
     options.checkpoint_emit()?;
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
@@ -1003,7 +1027,6 @@ pub(crate) fn render_timeline_diagram_svg_model(
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
     let mut node_count = 0usize;
-    let mut event_emission = TimelineEventEmissionState::new(event_theme, is_redux_theme);
     let _ = write!(
         &mut out,
         r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
@@ -1034,19 +1057,23 @@ pub(crate) fn render_timeline_diagram_svg_model(
         out.checkpoint()?;
     }
     if use_neo_gradient {
-        let gradient_start =
-            crate::config::config_string(effective_config, &["themeVariables", "gradientStart"])
-                .unwrap_or_else(|| theme.node_border.clone());
-        let gradient_stop =
-            crate::config::config_string(effective_config, &["themeVariables", "gradientStop"])
-                .unwrap_or_else(|| gradient_start.clone());
         let _ = write!(
             &mut out,
-            r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+            r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#,
             escape_attr_display(diagram_id),
-            escape_attr(&gradient_start),
-            escape_attr(&gradient_stop),
         );
+        // Mermaid sets each stop independently. A missing/null variable removes the
+        // attribute; neither stop inherits nodeBorder or the other gradient stop.
+        for (offset, variable) in [("0%", "gradientStart"), ("100%", "gradientStop")] {
+            let _ = write!(&mut out, r#"<stop offset="{offset}""#);
+            if let Some(color) =
+                crate::config::config_string(effective_config, &["themeVariables", variable])
+            {
+                let _ = write!(&mut out, r#" stop-color="{}""#, escape_attr(&color));
+            }
+            out.push_str(r#" stop-opacity="1"/>"#);
+        }
+        out.push_str("</linearGradient></defs>");
         out.checkpoint()?;
     }
 
@@ -1141,6 +1168,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             marker_end = scoped_svg_url(diagram_id, "arrowhead"),
         );
         out.checkpoint()?;
+        event_emission.record_stroke_line();
         if let Some(receipt) = &mut text_emission.receipt {
             receipt.record_marker_reference(
                 arrowhead_id == scoped_svg_id(diagram_id, "arrowhead").to_string(),
@@ -1283,9 +1311,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn timeline_root_honors_disabled_max_width() {
-        let layout = TimelineDiagramLayout {
+    fn test_axis_layout() -> TimelineDiagramLayout {
+        TimelineDiagramLayout {
             direction: merman_core::diagrams::timeline::TimelineDirection::LeftToRight,
             bounds: Some(Bounds {
                 min_x: 0.0,
@@ -1310,7 +1337,12 @@ mod tests {
             title_x: 0.0,
             title_y: 20.0,
             use_max_width: false,
-        };
+        }
+    }
+
+    #[test]
+    fn timeline_root_honors_disabled_max_width() {
+        let layout = test_axis_layout();
         let options = SvgRenderOptions {
             diagram_id: Some("timelineFixed".to_string()),
             ..Default::default()
@@ -1353,5 +1385,71 @@ mod tests {
             "{root_open}"
         );
         assert!(!root_open.contains("max-width"), "{root_open}");
+    }
+
+    #[test]
+    fn timeline_raw_gradient_stops_have_no_node_border_or_other_stop_fallback() {
+        let cases = [
+            (serde_json::json!({}), None, None),
+            (
+                serde_json::json!({"gradientStart": null, "gradientStop": null}),
+                None,
+                None,
+            ),
+            (
+                serde_json::json!({"gradientStart": "#112233"}),
+                Some("#112233"),
+                None,
+            ),
+            (
+                serde_json::json!({"gradientStop": "#445566"}),
+                None,
+                Some("#445566"),
+            ),
+        ];
+        for (mut variables, expected_start, expected_stop) in cases {
+            variables["nodeBorder"] = serde_json::json!("#abcdef");
+            variables["useGradient"] = serde_json::json!(true);
+            // This renderer boundary accepts effective config directly. Public config merge
+            // materializes null overrides; testing that path cannot exercise absent stop attrs.
+            let effective_config = serde_json::json!({
+                "theme": "redux", "look": "neo", "themeVariables": variables,
+            });
+            let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+            let options = SvgRenderOptions::default();
+            let debug = SvgDebugOptions::default();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .expect("render session");
+            let execution = SvgExecution::unthemed_for_test(
+                &options,
+                &debug,
+                &session,
+                DiagramFamilyId::TIMELINE,
+            )
+            .expect("SVG execution");
+            let svg = render_timeline_diagram_svg_model(
+                &test_axis_layout(),
+                &crate::timeline::TimelineEventTheme::baseline(),
+                &crate::timeline::TimelineTypographyThemePlan::resolve(None, &config),
+                &crate::timeline::TimelineTextPaintPlan::resolve(
+                    None,
+                    &config,
+                    execution.work_meter(),
+                )
+                .expect("text paint"),
+                &effective_config,
+                &execution,
+            )
+            .expect("raw effective-config Timeline SVG");
+            let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+            let stops = document
+                .descendants()
+                .filter(|node| node.has_tag_name("stop"))
+                .collect::<Vec<_>>();
+            assert_eq!(stops.len(), 2);
+            assert_eq!(stops[0].attribute("stop-color"), expected_start);
+            assert_eq!(stops[1].attribute("stop-color"), expected_stop);
+        }
     }
 }

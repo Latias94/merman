@@ -482,8 +482,8 @@ fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<Legacy
         DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
             compile_chart_family
         }
-        DiagramFamilyId::TIMELINE => compile_timeline_family,
-        DiagramFamilyId::STATE
+        DiagramFamilyId::TIMELINE
+        | DiagramFamilyId::STATE
         | DiagramFamilyId::ER
         | DiagramFamilyId::GIT_GRAPH
         | DiagramFamilyId::C4
@@ -781,18 +781,6 @@ fn compile_chart_family(
         }
         _ => unreachable!("chart compatibility is limited to XY, Quadrant, and Radar"),
     }
-    contributions.finish_into(builder)
-}
-
-fn compile_timeline_family(
-    builder: &mut OverlayBuilder,
-    reader: &FamilyStyleReader,
-) -> BridgeResult<()> {
-    let mut contributions = FamilyContributions::new();
-    contributions.add_theme_variables(
-        "event.stroke",
-        [("nodeBorder", reader.stroke(ThemeTarget::TimelineEvent))],
-    );
     contributions.finish_into(builder)
 }
 
@@ -2072,6 +2060,7 @@ gitGraph
             actual,
             BTreeSet::from([
                 DiagramFamilyId::STATE,
+                DiagramFamilyId::TIMELINE,
                 DiagramFamilyId::ER,
                 DiagramFamilyId::GIT_GRAPH,
                 DiagramFamilyId::C4,
@@ -2101,27 +2090,27 @@ gitGraph
     #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            100, 240, 238, 42, 118, 143, 18, 137, 24, 67, 197, 66, 211, 226, 3, 115, 33, 204, 203,
-            28, 42, 250, 164, 153, 176, 12, 239, 98, 39, 175, 203, 145,
+            32, 241, 230, 160, 147, 122, 246, 130, 165, 99, 255, 195, 49, 194, 226, 48, 168, 78,
+            209, 37, 51, 64, 144, 193, 156, 85, 82, 126, 148, 37, 219, 46,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 188);
-        assert_eq!(status.matrix_family_count(), 10);
-        assert_eq!(status.dispatched_family_count(), 10);
+        assert_eq!(status.matrix_route_count(), 184);
+        assert_eq!(status.matrix_family_count(), 9);
+        assert_eq!(status.dispatched_family_count(), 9);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                39, 224, 168, 57, 201, 136, 69, 65, 69, 133, 232, 42, 128, 78, 100, 163, 15, 193,
-                40, 226, 154, 49, 138, 196, 84, 128, 246, 240, 71, 204, 151, 4
+                11, 115, 188, 152, 224, 135, 125, 1, 210, 172, 22, 58, 140, 252, 202, 199, 41, 176,
+                23, 134, 16, 21, 23, 235, 75, 70, 49, 226, 29, 103, 32, 170
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                40, 57, 158, 73, 73, 152, 15, 78, 240, 220, 196, 42, 209, 254, 126, 197, 89, 18,
-                48, 252, 1, 105, 0, 238, 214, 132, 137, 144, 29, 231, 12, 43
+                213, 12, 155, 245, 113, 226, 120, 62, 158, 243, 119, 137, 176, 82, 1, 32, 57, 165,
+                64, 215, 223, 210, 253, 161, 33, 248, 31, 191, 194, 44, 128, 102
             ]
         );
         assert_eq!(
@@ -4819,7 +4808,7 @@ gitGraph
     }
 
     #[test]
-    fn timeline_direct_fill_suppresses_only_the_property_local_bridge_projection() {
+    fn timeline_typed_paint_has_no_family_bridge_projection() {
         let spec = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default()
                 .with_rule(
@@ -4854,11 +4843,8 @@ gitGraph
                 .contribution_ids
                 .contains("merman.legacy-family-theme.v1.timeline.event.fill")
         );
-        assert!(
-            artifact
-                .contribution_ids
-                .contains("merman.legacy-family-theme.v1.timeline.event.stroke")
-        );
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
         assert!(
             !artifact
                 .contribution_ids
@@ -4871,6 +4857,9 @@ gitGraph
         );
         assert!(!bridge.owns_contribution_id(
             ThemeRouteCutoverProjection::TimelineEventFill.contribution_id()
+        ));
+        assert!(!bridge.owns_contribution_id(
+            ThemeRouteCutoverProjection::TimelineEventStroke.contribution_id()
         ));
     }
 }

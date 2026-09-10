@@ -377,11 +377,12 @@ pub enum ThemeRouteCutoverProjection {
     ErTableEvenFill = 45,
     RequirementRelationPaint = 46,
     TimelineTextFill = 47,
+    TimelineEventStroke = 48,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, feature = "internal-theme-acceptance"))]
-    const ALL: [Self; 48] = [
+    const ALL: [Self; 49] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -430,6 +431,7 @@ impl ThemeRouteCutoverProjection {
         Self::ErTableEvenFill,
         Self::RequirementRelationPaint,
         Self::TimelineTextFill,
+        Self::TimelineEventStroke,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -481,6 +483,7 @@ impl ThemeRouteCutoverProjection {
             Self::TimelineEventFill => "event.fill",
             Self::RequirementRelationPaint => "relation.paint",
             Self::TimelineTextFill => "event.text",
+            Self::TimelineEventStroke => "event.stroke",
         }
     }
 
@@ -535,6 +538,7 @@ impl ThemeRouteCutoverProjection {
             | Self::ErTableOddFill
             | Self::ErTableEvenFill
             | Self::TimelineTextFill
+            | Self::TimelineEventStroke
             | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
@@ -670,6 +674,8 @@ impl ThemeRouteCutoverProjectionSet {
         Self::replacing(ThemeRouteCutoverProjection::TimelineEventFill);
     pub const REPLACE_TIMELINE_TEXT_FILL: Self =
         Self::replacing(ThemeRouteCutoverProjection::TimelineTextFill);
+    pub const REPLACE_TIMELINE_EVENT_STROKE: Self =
+        Self::replacing(ThemeRouteCutoverProjection::TimelineEventStroke);
     pub const REPLACE_ER_TABLE_FILL: Self = Self(
         ThemeRouteCutoverProjection::ErTableOddFill.bit()
             | ThemeRouteCutoverProjection::ErTableEvenFill.bit(),
@@ -1387,6 +1393,12 @@ mod tests {
         assert_eq!(ThemeRouteCutoverProjection::EdgeLabelFill as u8, 43);
         assert_eq!(ThemeRouteCutoverProjection::ErTableOddFill as u8, 44);
         assert_eq!(ThemeRouteCutoverProjection::ErTableEvenFill as u8, 45);
+        assert_eq!(
+            ThemeRouteCutoverProjection::RequirementRelationPaint as u8,
+            46
+        );
+        assert_eq!(ThemeRouteCutoverProjection::TimelineTextFill as u8, 47);
+        assert_eq!(ThemeRouteCutoverProjection::TimelineEventStroke as u8, 48);
     }
 
     #[test]
@@ -1429,18 +1441,31 @@ mod tests {
     }
 
     #[test]
-    fn timeline_event_fill_projection_is_property_local() {
-        let projection = ThemeRouteCutoverProjection::TimelineEventFill;
-        let projections = ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL
-            .iter()
-            .collect::<Vec<_>>();
-
-        assert_eq!(projection.contribution_id(), "event.fill");
-        assert_eq!(
-            projection.action(),
-            ThemeRouteCutoverProjectionAction::Replace
-        );
-        assert_eq!(projections, vec![projection]);
+    fn timeline_paint_projections_are_property_local() {
+        for (projection, set, contribution_id) in [
+            (
+                ThemeRouteCutoverProjection::TimelineEventFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_FILL,
+                "event.fill",
+            ),
+            (
+                ThemeRouteCutoverProjection::TimelineTextFill,
+                ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_TEXT_FILL,
+                "event.text",
+            ),
+            (
+                ThemeRouteCutoverProjection::TimelineEventStroke,
+                ThemeRouteCutoverProjectionSet::REPLACE_TIMELINE_EVENT_STROKE,
+                "event.stroke",
+            ),
+        ] {
+            assert_eq!(projection.contribution_id(), contribution_id);
+            assert_eq!(
+                projection.action(),
+                ThemeRouteCutoverProjectionAction::Replace
+            );
+            assert_eq!(set.iter().collect::<Vec<_>>(), vec![projection]);
+        }
     }
 
     #[test]

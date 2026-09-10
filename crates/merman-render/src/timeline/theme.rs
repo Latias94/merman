@@ -10,7 +10,8 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
+    unsupported_residual_for_facet,
 };
 use crate::model::TimelineDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -61,6 +62,76 @@ struct TimelineEventPaint {
 }
 
 #[derive(Debug, Clone)]
+struct TimelineStrokePlan {
+    paint: TimelineEventPaint,
+    section_limit: usize,
+    shape_stroke: bool,
+    expected: TimelineStrokeConsumers,
+}
+
+// Count terminal property consumers, not raster coverage. A zero-length line still receives
+// its stroke; KTD17 separately requires a nondegenerate solid/transparent pixel witness.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TimelineStrokeConsumers {
+    shapes: usize,
+    labels: usize,
+    lines: usize,
+}
+
+impl TimelineStrokeConsumers {
+    fn record_node(
+        &mut self,
+        section_limit: usize,
+        shape_stroke: bool,
+        node: &crate::model::TimelineNodeLayout,
+    ) {
+        if timeline_section_slot(&node.section_class).is_some_and(|slot| slot < section_limit) {
+            self.shapes += usize::from(shape_stroke);
+            self.labels += usize::from(node.label_lines.iter().any(|line| !line.trim().is_empty()));
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TimelineStrokeRole {
+    Shape,
+    Label,
+    Line,
+}
+
+impl TimelineStrokeRole {
+    fn property(self) -> &'static str {
+        match self {
+            Self::Shape | Self::Line => "stroke",
+            Self::Label => "fill",
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TimelineStrokeReceipt {
+    plan: TimelineStrokePlan,
+    observed: TimelineStrokeConsumers,
+    css: TimelineStrokeConsumers,
+    css_valid: bool,
+}
+
+impl TimelineStrokeReceipt {
+    fn proves(&self) -> bool {
+        self.css_valid
+            && self.css.shapes
+                == if self.plan.shape_stroke {
+                    self.plan.section_limit
+                } else {
+                    0
+                }
+            && self.css.labels == self.plan.section_limit
+            && self.css.lines == self.plan.section_limit
+            && self.observed == self.plan.expected
+    }
+}
+
+#[derive(Debug, Clone)]
 struct TimelinePalettePaint {
     css: Box<str>,
     capability: Option<ThemeCapability>,
@@ -105,6 +176,7 @@ impl TimelineEventTerminalExpectation {
 #[derive(Debug)]
 pub(crate) struct TimelineEventTheme {
     events: Box<[TimelineEventTerminalExpectation]>,
+    stroke: Option<TimelineStrokePlan>,
     palette_slots: [Option<TimelinePalettePaint>; TIMELINE_PALETTE_SLOT_COUNT],
     palette_line_strokes: [Option<Box<str>>; TIMELINE_PALETTE_SLOT_COUNT],
     palette_nodes: Box<[TimelinePaletteNodeExpectation]>,
@@ -195,21 +267,79 @@ impl TimelineEventTheme {
         let mut winner_counts =
             BTreeMap::<(usize, crate::diagram_theme::ResolvedStyleProperty), usize>::new();
         let mut source_owned_fill_rule_occurrences = BTreeMap::<usize, usize>::new();
+        let static_style = theme.style_with_work_meter(
+            ThemeTarget::TimelineEvent,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
+        let source_owns_event_stroke = merman_core::__private::config_path_overrides_typed_default(
+            effective_config,
+            "themeVariables.nodeBorder",
+        );
+        // nodeBorder is a shared Redux terminal: labels and the activity axis consume it even
+        // when there are no events. Color and Neo shapes have independent paint owners.
+        let stroke_domain_active = timeline_is_redux_theme(effective_config)
+            && active_palette_slot_limit != 0
+            && !source_owns_event_stroke;
+        let mut stroke = if stroke_domain_active {
+            resolve_direct_static_stroke(
+                theme,
+                &static_style,
+                &[ThemeTarget::TimelineEvent],
+                DirectStaticSelectorDomain::Default,
+            )
+            .map(|paint| {
+                let (css, rule_index, capability) = paint.into_parts();
+                TimelineStrokePlan {
+                    paint: TimelineEventPaint {
+                        css,
+                        rule_index,
+                        capability,
+                    },
+                    section_limit: active_palette_slot_limit,
+                    shape_stroke: !effective_config
+                        .get_str("theme")
+                        .unwrap_or_default()
+                        .contains("color")
+                        && !super::TimelineConfigView::new(effective_config.as_value())
+                            .uses_neo_gradient(),
+                    expected: TimelineStrokeConsumers::default(),
+                }
+            })
+        } else {
+            None
+        };
+        if let Some(stroke) = &mut stroke {
+            for occurrence in &palette_node_occurrences {
+                work_meter.charge(1)?;
+                stroke.expected.record_node(
+                    stroke.section_limit,
+                    stroke.shape_stroke,
+                    occurrence.node,
+                );
+            }
+            stroke.expected.lines = 1;
+            for task in layout
+                .sections
+                .iter()
+                .flat_map(|section| &section.tasks)
+                .chain(&layout.orphan_tasks)
+            {
+                work_meter.charge(1)?;
+                stroke.expected.lines += task.connectors.len();
+            }
+        }
         let has_ordinal_event_rules = theme.family_rules().any(|(_, rule)| {
             rule.target() == ThemeTarget::TimelineEvent && rule.ordinal().is_some()
         });
         if event_count != 0 && !has_ordinal_event_rules {
-            let style = theme.style_with_work_meter(
-                ThemeTarget::TimelineEvent,
-                ThemeVariant::Default,
-                None,
-                work_meter,
-            )?;
-            collect_winners(&style, event_count, &mut winner_counts);
+            let style = &static_style;
+            collect_winners(style, event_count, &mut winner_counts);
             for (event, node) in events.iter_mut().zip(event_nodes.iter().copied()) {
                 apply_event_style(
                     theme,
-                    &style,
+                    style,
                     event,
                     node,
                     timeline_event_fill_source_owned(effective_config, node),
@@ -279,20 +409,29 @@ impl TimelineEventTheme {
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
-                    if !selector.ordinal_domain_intersects_occurrence_count(event_count) {
+                    let property = resolved_style_property_for_facet(facet);
+                    let is_stroke = matches!(facet, FamilyThemeRuleFacet::Stroke(_));
+                    if is_stroke && !stroke_domain_active {
+                        // A non-consuming facet cannot seal the whole rule: its fill, geometry,
+                        // or unsupported siblings still need their own winner accounting.
                         continue;
                     }
-                    let route_won = winner_counts
-                        .contains_key(&(rule_index, resolved_style_property_for_facet(facet)));
-                    let qualified_variant = matches!(
-                        selector,
-                        FamilyThemeSelectorShape::Static { variant: Some(_) }
-                            | FamilyThemeSelectorShape::Ordinal {
-                                variant: Some(_),
-                                ..
-                            }
-                    );
-                    if !route_won && !qualified_variant {
+                    let is_static_stroke =
+                        is_stroke && matches!(selector, FamilyThemeSelectorShape::Static { .. });
+                    if !is_static_stroke
+                        && !selector.ordinal_domain_intersects_occurrence_count(event_count)
+                    {
+                        continue;
+                    }
+                    let route_won = if is_static_stroke {
+                        static_style
+                            .stroke_resolution()
+                            .winner()
+                            .is_some_and(|winner| winner.rule_index() == rule_index)
+                    } else {
+                        winner_counts.contains_key(&(rule_index, property))
+                    };
+                    if !route_won {
                         continue;
                     }
                     observation.applicable = true;
@@ -300,10 +439,12 @@ impl TimelineEventTheme {
                         (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Radius) => {
                             let property = resolved_style_property_for_facet(facet);
                             if winner_counts.get(&(rule_index, property)).copied()
-                                == Some(event_count)
-                                && events
-                                    .iter()
-                                    .all(|event| event.radius_rule_index == Some(rule_index))
+                                == Some(
+                                    events
+                                        .iter()
+                                        .filter(|event| event.radius_rule_index == Some(rule_index))
+                                        .count(),
+                                )
                             {
                                 observation.radius_pending = true;
                             } else {
@@ -313,10 +454,14 @@ impl TimelineEventTheme {
                         (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Opacity) => {
                             let property = resolved_style_property_for_facet(facet);
                             if winner_counts.get(&(rule_index, property)).copied()
-                                == Some(event_count)
-                                && events
-                                    .iter()
-                                    .all(|event| event.opacity_rule_index == Some(rule_index))
+                                == Some(
+                                    events
+                                        .iter()
+                                        .filter(|event| {
+                                            event.opacity_rule_index == Some(rule_index)
+                                        })
+                                        .count(),
+                                )
                             {
                                 observation.opacity_pending = true;
                             } else {
@@ -337,12 +482,20 @@ impl TimelineEventTheme {
                                 .get(&rule_index)
                                 .copied()
                                 .unwrap_or_default();
-                            if wins == Some(event_count)
-                                && typed_count.saturating_add(source_owned_count) == event_count
-                            {
+                            if wins == Some(typed_count.saturating_add(source_owned_count)) {
                                 if typed_count != 0 {
                                     observation.fill_pending = true;
                                 }
+                            } else {
+                                observation.incomplete = true;
+                            }
+                        }
+                        (FamilyThemeDisposition::TypedAdapter, FamilyThemeRuleFacet::Stroke(_)) => {
+                            if stroke
+                                .as_ref()
+                                .is_some_and(|stroke| stroke.paint.rule_index == rule_index)
+                            {
+                                observation.stroke_pending = true;
                             } else {
                                 observation.incomplete = true;
                             }
@@ -411,6 +564,7 @@ impl TimelineEventTheme {
             } else if observation.radius_pending
                 || observation.opacity_pending
                 || observation.fill_pending
+                || observation.stroke_pending
             {
                 let mut capabilities = BTreeSet::new();
                 if observation.radius_pending {
@@ -428,12 +582,16 @@ impl TimelineEventTheme {
                             .map(|fill| fill.capability)
                     }));
                 }
+                if observation.stroke_pending {
+                    capabilities.extend(stroke.as_ref().map(|stroke| stroke.paint.capability));
+                }
                 pending.insert(
                     key,
                     TimelineEventPendingEvidence {
                         radius: observation.radius_pending,
                         opacity: observation.opacity_pending,
                         fill: observation.fill_pending,
+                        stroke: observation.stroke_pending,
                         capabilities,
                     },
                 );
@@ -445,6 +603,7 @@ impl TimelineEventTheme {
         let palette_nodes_are_nonempty = !palette_nodes.is_empty();
         Ok(Self {
             events: events.into_boxed_slice(),
+            stroke,
             palette_slots,
             palette_line_strokes,
             palette_nodes: palette_nodes.into_boxed_slice(),
@@ -459,6 +618,7 @@ impl TimelineEventTheme {
     pub(crate) fn baseline() -> Self {
         Self {
             events: Box::new([]),
+            stroke: None,
             palette_slots: std::array::from_fn(|_| None),
             palette_line_strokes: std::array::from_fn(|_| None),
             palette_nodes: Box::new([]),
@@ -489,6 +649,10 @@ impl TimelineEventTheme {
             .map(|fill| fill.css.as_ref())
     }
 
+    pub(crate) fn stroke_for_redux(&self) -> Option<&str> {
+        self.stroke.as_ref().map(|stroke| stroke.paint.css.as_ref())
+    }
+
     pub(crate) fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
         self.palette_slots
             .get(slot)
@@ -510,13 +674,16 @@ impl TimelineEventTheme {
         &self,
         is_redux_theme: bool,
     ) -> Option<TimelineEventThemeReceipt> {
-        (!self.pending.is_empty() || self.palette_key.is_some()).then(|| {
-            TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
-                self.events.clone(),
-                (!is_redux_theme).then_some(super::MERMAID_EVENT_RADIUS_TOKEN),
-                self.palette_nodes.clone(),
-            )
-        })
+        (!self.pending.is_empty() || self.palette_key.is_some() || self.stroke.is_some()).then(
+            || {
+                TimelineEventThemeReceipt::from_expectations_with_baseline_and_palette(
+                    self.events.clone(),
+                    (!is_redux_theme).then_some(super::MERMAID_EVENT_RADIUS_TOKEN),
+                    self.palette_nodes.clone(),
+                )
+                .with_stroke(self.stroke.clone())
+            },
+        )
     }
 
     pub(crate) fn record_terminal(&self, receipt: TimelineEventThemeReceipt) -> bool {
@@ -766,6 +933,7 @@ struct TimelineEventRuleObservation {
     radius_pending: bool,
     opacity_pending: bool,
     fill_pending: bool,
+    stroke_pending: bool,
 }
 
 #[derive(Debug, Default)]
@@ -773,6 +941,7 @@ struct TimelineEventPendingEvidence {
     radius: bool,
     opacity: bool,
     fill: bool,
+    stroke: bool,
     capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -790,6 +959,7 @@ pub(crate) struct TimelineEventThemeReceipt {
     radius_rules: BTreeSet<usize>,
     opacity_rules: BTreeSet<usize>,
     fill_rules: BTreeSet<usize>,
+    stroke: Option<TimelineStrokeReceipt>,
     palette_capabilities: BTreeSet<ThemeCapability>,
 }
 
@@ -825,6 +995,7 @@ impl TimelineEventThemeReceipt {
             radius_rules: BTreeSet::new(),
             opacity_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
+            stroke: None,
             palette_capabilities: BTreeSet::new(),
         }
     }
@@ -846,6 +1017,7 @@ impl TimelineEventThemeReceipt {
             radius_rules: BTreeSet::new(),
             opacity_rules: BTreeSet::new(),
             fill_rules: BTreeSet::new(),
+            stroke: None,
             palette_capabilities: BTreeSet::new(),
         }
     }
@@ -906,6 +1078,90 @@ impl TimelineEventThemeReceipt {
         }
     }
 
+    fn with_stroke(mut self, plan: Option<TimelineStrokePlan>) -> Self {
+        self.stroke = plan.map(|plan| TimelineStrokeReceipt {
+            plan,
+            observed: TimelineStrokeConsumers::default(),
+            css: TimelineStrokeConsumers::default(),
+            css_valid: true,
+        });
+        self
+    }
+
+    pub(crate) fn write_shape_stroke_css(
+        &mut self,
+        out: &mut impl std::fmt::Write,
+        slot: usize,
+        configured: Option<&str>,
+    ) -> std::fmt::Result {
+        self.write_stroke_declaration(out, slot, TimelineStrokeRole::Shape, configured)
+    }
+
+    pub(crate) fn write_label_fill_css(
+        &mut self,
+        out: &mut impl std::fmt::Write,
+        slot: usize,
+        configured: &str,
+    ) -> std::fmt::Result {
+        self.write_stroke_declaration(out, slot, TimelineStrokeRole::Label, Some(configured))
+    }
+
+    pub(crate) fn write_line_stroke_css(
+        &mut self,
+        out: &mut impl std::fmt::Write,
+        slot: usize,
+        configured: &str,
+    ) -> std::fmt::Result {
+        self.write_stroke_declaration(out, slot, TimelineStrokeRole::Line, Some(configured))
+    }
+
+    // The receipt owns the actual property bytes. Source-owned Color/Neo shapes never enter
+    // the shared nodeBorder domain, even though the base Redux stylesheet has a shape rule.
+    fn write_stroke_declaration(
+        &mut self,
+        out: &mut impl std::fmt::Write,
+        slot: usize,
+        role: TimelineStrokeRole,
+        configured: Option<&str>,
+    ) -> std::fmt::Result {
+        let stroke = self.stroke.as_mut().filter(|stroke| {
+            !matches!(role, TimelineStrokeRole::Shape) || stroke.plan.shape_stroke
+        });
+        let paint = if let Some(stroke) = stroke.as_ref() {
+            Some(stroke.plan.paint.css.as_ref())
+        } else {
+            configured
+        };
+        let result = match paint {
+            Some(paint) => write!(out, "{}:{paint};", role.property()),
+            None => Ok(()),
+        };
+        if let Some(stroke) = stroke {
+            let count = match role {
+                TimelineStrokeRole::Shape => &mut stroke.css.shapes,
+                TimelineStrokeRole::Label => &mut stroke.css.labels,
+                TimelineStrokeRole::Line => &mut stroke.css.lines,
+            };
+            stroke.css_valid &= result.is_ok() && slot == *count;
+            *count += 1;
+        }
+        result
+    }
+
+    pub(crate) fn record_stroke_node(&mut self, node: &crate::model::TimelineNodeLayout) {
+        if let Some(stroke) = &mut self.stroke {
+            stroke
+                .observed
+                .record_node(stroke.plan.section_limit, stroke.plan.shape_stroke, node);
+        }
+    }
+
+    pub(crate) fn record_stroke_line(&mut self) {
+        if let Some(stroke) = &mut self.stroke {
+            stroke.observed.lines += 1;
+        }
+    }
+
     fn proves(&self, expected_event_count: usize) -> bool {
         self.expectations.len() == expected_event_count
             && self.next_event_index == expected_event_count
@@ -913,6 +1169,10 @@ impl TimelineEventThemeReceipt {
             && self.next_palette_index == self.palette_expectations.len()
             && self.palette_nodes_seen == self.palette_expectations.len()
             && self.palette_values_match
+            && self
+                .stroke
+                .as_ref()
+                .is_none_or(TimelineStrokeReceipt::proves)
     }
 
     pub(crate) fn record_palette_node(
@@ -949,6 +1209,10 @@ impl TimelineEventThemeReceipt {
         (!pending.radius || self.radius_rules.contains(&rule_index))
             && (!pending.opacity || self.opacity_rules.contains(&rule_index))
             && (!pending.fill || self.fill_rules.contains(&rule_index))
+            && (!pending.stroke
+                || self.stroke.as_ref().is_some_and(|stroke| {
+                    stroke.plan.paint.rule_index == rule_index && stroke.proves()
+                }))
     }
 }
 
@@ -1029,6 +1293,7 @@ mod tests {
                 radius: true,
                 opacity: true,
                 fill: false,
+                stroke: false,
                 capabilities: std::collections::BTreeSet::new(),
             }
         ));
@@ -1068,6 +1333,7 @@ mod tests {
             radius: false,
             opacity: false,
             fill: true,
+            stroke: false,
             capabilities: [ThemeCapability::SolidPaint].into_iter().collect(),
         };
 
@@ -1211,5 +1477,176 @@ mod tests {
         malformed.record_palette_node(Some(0), Some("#123456"), Some("#edcba9"));
         malformed.record_palette_node(Some(1), Some("#654321"), Some("#9abcde"));
         assert!(!malformed.proves(0));
+    }
+
+    fn stroke_node() -> crate::model::TimelineNodeLayout {
+        crate::model::TimelineNodeLayout {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 20.0,
+            content_width: 20.0,
+            padding: 10.0,
+            section_class: "section--1".into(),
+            label: "Release".into(),
+            label_lines: vec!["Release".into()],
+            kind: "section".into(),
+        }
+    }
+
+    fn stroke_receipt(shape_stroke: bool) -> TimelineEventThemeReceipt {
+        TimelineEventThemeReceipt::new(0).with_stroke(Some(super::TimelineStrokePlan {
+            paint: TimelineEventPaint {
+                css: "#123456".into(),
+                rule_index: 7,
+                capability: ThemeCapability::SolidPaint,
+            },
+            section_limit: 1,
+            shape_stroke,
+            expected: super::TimelineStrokeConsumers {
+                shapes: usize::from(shape_stroke),
+                labels: 1,
+                lines: 1,
+            },
+        }))
+    }
+
+    fn write_stroke_rules(receipt: &mut TimelineEventThemeReceipt, out: &mut impl std::fmt::Write) {
+        receipt
+            .write_shape_stroke_css(out, 0, Some("#abcdef"))
+            .unwrap();
+        receipt.write_label_fill_css(out, 0, "#abcdef").unwrap();
+        receipt.write_line_stroke_css(out, 0, "#abcdef").unwrap();
+    }
+
+    #[test]
+    fn timeline_stroke_receipt_owns_actual_css_and_counts_terminal_roles() {
+        for shape_stroke in [true, false] {
+            let mut receipt = stroke_receipt(shape_stroke);
+            let mut css = String::new();
+            write_stroke_rules(&mut receipt, &mut css);
+            assert_eq!(
+                css,
+                if shape_stroke {
+                    "stroke:#123456;fill:#123456;stroke:#123456;"
+                } else {
+                    "stroke:#abcdef;fill:#123456;stroke:#123456;"
+                }
+            );
+            receipt.record_stroke_node(&stroke_node());
+            receipt.record_stroke_line();
+            assert!(receipt.proves(0));
+            assert!(receipt.proves_rule(
+                7,
+                &TimelineEventPendingEvidence {
+                    stroke: true,
+                    ..Default::default()
+                }
+            ));
+            assert!(!receipt.proves_rule(
+                8,
+                &TimelineEventPendingEvidence {
+                    stroke: true,
+                    ..Default::default()
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn timeline_stroke_receipt_rejects_missing_duplicate_or_wrong_slot_css() {
+        for failure in [
+            "missing-shape",
+            "missing-label",
+            "missing-line",
+            "duplicate",
+            "wrong-slot",
+        ] {
+            let mut receipt = stroke_receipt(true);
+            let mut css = String::new();
+            if failure != "missing-shape" {
+                receipt
+                    .write_shape_stroke_css(&mut css, 0, Some("#abcdef"))
+                    .unwrap();
+            }
+            if failure != "missing-label" {
+                receipt
+                    .write_label_fill_css(&mut css, usize::from(failure == "wrong-slot"), "#abcdef")
+                    .unwrap();
+            }
+            if failure != "missing-line" {
+                receipt
+                    .write_line_stroke_css(&mut css, 0, "#abcdef")
+                    .unwrap();
+            }
+            if failure == "duplicate" {
+                receipt
+                    .write_line_stroke_css(&mut css, 0, "#abcdef")
+                    .unwrap();
+            }
+            receipt.record_stroke_node(&stroke_node());
+            receipt.record_stroke_line();
+            assert!(!receipt.proves(0), "{failure}");
+        }
+    }
+
+    #[test]
+    fn timeline_stroke_receipt_rejects_missing_duplicate_or_unmatched_consumers() {
+        for failure in [
+            "missing-node",
+            "missing-line",
+            "duplicate-node",
+            "duplicate-line",
+            "wrong-slot",
+            "empty-label",
+        ] {
+            let mut receipt = stroke_receipt(true);
+            write_stroke_rules(&mut receipt, &mut String::new());
+            let mut node = stroke_node();
+            if failure == "wrong-slot" {
+                node.section_class = "section-1".into();
+            }
+            if failure == "empty-label" {
+                node.label_lines = vec![" ".into()];
+            }
+            if failure != "missing-node" {
+                receipt.record_stroke_node(&node);
+            }
+            if failure != "missing-line" {
+                receipt.record_stroke_line();
+            }
+            if failure == "duplicate-node" {
+                receipt.record_stroke_node(&node);
+            }
+            if failure == "duplicate-line" {
+                receipt.record_stroke_line();
+            }
+            assert!(!receipt.proves(0), "{failure}");
+        }
+    }
+
+    #[test]
+    fn timeline_stroke_receipt_retains_css_writer_failure() {
+        struct Reject;
+        impl std::fmt::Write for Reject {
+            fn write_str(&mut self, _: &str) -> std::fmt::Result {
+                Err(std::fmt::Error)
+            }
+        }
+        let mut receipt = stroke_receipt(true);
+        assert!(
+            receipt
+                .write_shape_stroke_css(&mut Reject, 0, Some("#abcdef"))
+                .is_err()
+        );
+        receipt
+            .write_label_fill_css(&mut String::new(), 0, "#abcdef")
+            .unwrap();
+        receipt
+            .write_line_stroke_css(&mut String::new(), 0, "#abcdef")
+            .unwrap();
+        receipt.record_stroke_node(&stroke_node());
+        receipt.record_stroke_line();
+        assert!(!receipt.proves(0));
     }
 }
