@@ -21,8 +21,8 @@ fn ktd23_authorizes_the_independent_full_retirement_inventory() {
 #[test]
 fn bridge_inventory_reports_live_legacy_routes_without_visual_proof() {
     const EXPECTED_MATRIX_ROUTE_DIGEST: [u8; 32] = [
-        227, 238, 209, 149, 185, 5, 241, 42, 79, 16, 17, 146, 54, 118, 155, 136, 143, 0, 170, 221,
-        174, 40, 107, 119, 178, 9, 95, 13, 128, 207, 0, 245,
+        228, 206, 102, 249, 236, 14, 50, 23, 22, 205, 116, 66, 16, 224, 67, 168, 111, 65, 76, 7,
+        222, 217, 87, 69, 33, 178, 83, 54, 145, 105, 221, 71,
     ];
     const EXPECTED_MATRIX_FAMILY_DIGEST: [u8; 32] = [
         118, 180, 155, 132, 95, 252, 137, 117, 138, 183, 64, 127, 248, 160, 172, 77, 18, 205, 185,
