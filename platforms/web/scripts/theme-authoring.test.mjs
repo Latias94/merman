@@ -5,6 +5,7 @@ import { initMerman } from "../dist/runtime-core.js";
 import {
   describeThemeSupport,
   materializeTheme,
+  renderSvg,
 } from "../dist/runtime-render.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 
@@ -79,4 +80,46 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
   const raw = '{"authoring_schema_version":1,"expansion_version":1,"tokens":{}}';
   runtime.materializeTheme(raw);
   assert.equal(calls.at(-1).definition, raw);
+});
+
+
+test("ordinary SVG options reject non-finite numbers while preserving explicit null", async () => {
+  const calls = [];
+  const runtime = bindSurfaceRuntime(
+    async () => ({
+      default: async () => {},
+      transportApiVersion: () => 5,
+      renderSvg(source, options) {
+        calls.push({ source, options });
+        return "<svg/>";
+      },
+    }),
+    { initMerman, renderSvg },
+  );
+  await runtime.initMerman();
+
+  for (const value of [NaN, Infinity, -Infinity]) {
+    assert.throws(
+      () => runtime.renderSvg("flowchart LR\nA --> B", {
+        version: 3,
+        site_config: { fixed_today: value },
+      }),
+      { name: "TypeError", message: /options contains a non-finite number/ },
+    );
+  }
+  assert.deepEqual(calls, [], "invalid ordinary options must not reach the WASM transport");
+
+  runtime.renderSvg("flowchart LR\nA --> B", {
+    version: 3,
+    theme: null,
+    site_config: { fixed_today: null },
+  });
+  assert.deepEqual(calls.at(-1), {
+    source: "flowchart LR\nA --> B",
+    options: JSON.stringify({
+      version: 3,
+      theme: null,
+      site_config: { fixed_today: null },
+    }),
+  });
 });
