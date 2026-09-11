@@ -255,6 +255,32 @@ test("terminal observation exposes a tspan moved outside its owning surface", as
   expect(containsTextBounds(observation, 1_000)).toBe(false);
 });
 
+for (const [name, extraCss] of [
+  ["hidden text", `${NOTE_TEXT}{visibility:hidden}`],
+  ["transparent text", `${NOTE_TEXT}{opacity:0}`],
+  ["undisplayed text", `${NOTE_TEXT}{display:none}`],
+  ["zero-size text", `${NOTE_TEXT}{font-size:0}`],
+  ["transparent ancestor", ".legacy-note{opacity:0}"],
+  ["undisplayed ancestor", ".legacy-note{display:none}"],
+  ["transparent SVG fill", `${NOTE_TEXT}{fill-opacity:0}`],
+  ["fully clipped text", `${NOTE_TEXT}{clip-path:inset(100%)}`],
+] as const) {
+  test(`terminal observation rejects ${name}`, async ({ page }) => {
+    await expect(
+      observeThemeTextSurfaces(page, fixtureSvg({ extraCss }), [PROBE]),
+    ).rejects.toThrow(/visible|positive area/u);
+  });
+}
+
+test("pixel observation restores authored text style", async ({ page }) => {
+  const svg = fixtureSvg({}).replace('font-family="Inter"', 'font-family="Inter" style="font-weight:600"');
+  await page.setContent(svg);
+  const root = page.locator("svg");
+  const before = await root.evaluate((element) => new XMLSerializer().serializeToString(element));
+  await observeMountedThemeTextSurfaces(root, [PROBE]);
+  expect(await root.evaluate((element) => new XMLSerializer().serializeToString(element))).toBe(before);
+});
+
 test("terminal observation rejects a selector with zero matches", async ({
   page,
 }) => {

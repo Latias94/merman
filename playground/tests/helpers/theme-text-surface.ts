@@ -95,6 +95,28 @@ export async function observeMountedThemeTextSurfaces(
         const surface = exactlyOne(probe.surfaceSelector, "surface");
         const textStyle = getComputedStyle(text);
         const surfaceStyle = getComputedStyle(surface);
+        if (textStyle.visibility !== "visible" || !text.textContent?.trim()) {
+          throw new Error(`Terminal text must be visible: ${probe.textSelector}`);
+        }
+        for (let ancestor: Element | null = text; ancestor;) {
+          const style = getComputedStyle(ancestor);
+          if (
+            style.display === "none" || Number(style.opacity) !== 1 ||
+            style.contentVisibility === "hidden"
+          ) {
+            throw new Error(`Terminal text must be visible and opaque: ${probe.textSelector}`);
+          }
+          const root = ancestor.getRootNode();
+          ancestor = ancestor.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+        }
+        if (text instanceof SVGElement && Number(textStyle.fillOpacity) !== 1) {
+          throw new Error(`Terminal text fill must be visible and opaque: ${probe.textSelector}`);
+        }
+        const textBounds = bounds(text);
+        const surfaceBounds = bounds(surface);
+        if ([textBounds, surfaceBounds].some((rect) => rect.widthMilliPx <= 0 || rect.heightMilliPx <= 0)) {
+          throw new Error(`Terminal text and surface require positive area: ${probe.textSelector}`);
+        }
         return {
           role: probe.role,
           occurrenceId: probe.occurrenceId,
@@ -107,20 +129,49 @@ export async function observeMountedThemeTextSurfaces(
                 ? surfaceStyle.fill
                 : surfaceStyle.backgroundColor,
           finalFontIdentity: textStyle.fontFamily,
-          textBounds: bounds(text),
-          surfaceBounds: bounds(surface),
+          textBounds,
+          surfaceBounds,
         };
       });
     },
     probes,
   );
 
-  return browserObservations.map((observation) => ({
+  const observations = browserObservations.map((observation) => ({
     ...observation,
     finalTextPaint: parseComputedRgb(observation.finalTextPaint),
     backgroundPaint: parseComputedRgb(observation.backgroundPaint),
     artifactDigest,
   }));
+
+  // Geometry and computed paint alone cannot prove that clipping or occlusion left any ink.
+  // Compare actual browser pixels with only this occurrence's paint suppressed, then restore
+  // its exact authored style before returning the observation of the original artifact.
+  for (const probe of probes) {
+    const text = svgLocator.locator(probe.textSelector);
+    const before = await svgLocator.screenshot({ animations: "disabled", caret: "hide" });
+    const authoredStyle = await text.getAttribute("style");
+    let after: Buffer;
+    try {
+      await text.evaluate((element) => {
+        if (!(element instanceof SVGElement || element instanceof HTMLElement)) {
+          throw new Error("Terminal text requires a styleable element.");
+        }
+        element.style.setProperty("opacity", "0", "important");
+      });
+      after = await svgLocator.screenshot({ animations: "disabled", caret: "hide" });
+    } finally {
+      await text.evaluate((element, style) => {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      }, authoredStyle);
+    }
+    if (before.equals(after)) {
+      throw new Error(`Terminal text must contribute visible pixels: ${probe.textSelector}`);
+    }
+  }
+
+  return observations;
 }
 
 export function textSurfaceContrastRatio(
@@ -142,6 +193,15 @@ export function containsTextBounds(
   observation: ThemeTextSurfaceObservation,
   toleranceMilliPx: number,
 ): boolean {
+  if (
+    !Number.isFinite(toleranceMilliPx) || toleranceMilliPx < 0 ||
+    [observation.textBounds, observation.surfaceBounds].some((bounds) =>
+      Object.values(bounds).some((value) => !Number.isFinite(value)) ||
+      bounds.widthMilliPx <= 0 || bounds.heightMilliPx <= 0
+    )
+  ) {
+    return false;
+  }
   const textRight =
     observation.textBounds.xMilliPx + observation.textBounds.widthMilliPx;
   const textBottom =
