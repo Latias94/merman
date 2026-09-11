@@ -1024,6 +1024,9 @@ if (hasCapability("ascii")) {
 }
 
 assert.match(api.encodeOptions(options), /deterministic/);
+assert.equal(api.encodeOptions({ explicit: null }), '{"explicit":null}');
+assert.throws(() => api.encodeOptions({ invalid: Number.NaN }), /options contains a non-finite number/);
+assert.throws(() => api.encodeOptions({ invalid: Number.POSITIVE_INFINITY }), /options contains a non-finite number/);
 if (hasCapability("svg")) {
   assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 }

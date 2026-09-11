@@ -1,4 +1,5 @@
 import { encodeOptions, getMerman } from "./runtime-core.js";
+import { encodeJsonInput } from "./json-input.js";
 import {
   assertNavigableSvgForDom,
   prepareNavigableSvgForDomMount,
@@ -76,19 +77,7 @@ function encodeThemeAuthoringInput(
   value: ThemeDefinitionV1 | ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
   label: string
 ): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  const encoded = JSON.stringify(value, (_key, child) => {
-    if (typeof child === "number" && !Number.isFinite(child)) {
-      throw new TypeError(`${label} contains a non-finite number`);
-    }
-    return child;
-  });
-  if (encoded === undefined) {
-    throw new TypeError(`${label} must be JSON-serializable`);
-  }
-  return encoded;
+  return typeof value === "string" ? value : encodeJsonInput(value, label);
 }
 
 export function renderSvgWithTextMeasurer(

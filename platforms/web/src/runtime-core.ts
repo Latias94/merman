@@ -1,3 +1,4 @@
+import { encodeJsonInput } from "./json-input.js";
 import {
   createMermanRuntimeState,
   currentMermanRuntimeState,
@@ -236,7 +237,7 @@ export function encodeOptions(
   if (options === undefined) {
     return undefined;
   }
-  return typeof options === "string" ? options : JSON.stringify(options);
+  return typeof options === "string" ? options : encodeJsonInput(options, "options");
 }
 
 export function withResourceOptions<T extends CommonBindingOptions>(
