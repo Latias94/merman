@@ -76,8 +76,13 @@ let RenderOutput::Svg(Some(svg)) = output else {
 `ThemePreset` currently contains `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, `ayu-dark`, `brutalist`, `spotless`, and `cyberpunk`. Presets are
 visual theme data. They do not select `look: neo`, an ELK renderer, an SVG pipeline, or a product
-behavior profile. The preset's Mermaid compatibility values are limited to the explicit
-compatibility lane owned by the theme.
+behavior profile. The seven retained recipes use the explicit Mermaid compatibility lane.
+The three native alpha candidates (`brutalist`, `spotless`, `cyberpunk`) use recipe revision 5
+without Mermaid compatibility fields. Presets describe visual styles and do not bundle font files
+or select the host's font-source/embedding policy. Applications supply font resources through the
+existing theme asset API when they need self-contained output. Acceptance fixtures may provide
+explicit font resources, but that validates a declared resource profile rather than the unmodified
+catalog recipe. All qualified scopes remain empty.
 
 Use the versioned authoring contract for compact cross-family tokens. The materializer expands one
 definition into a complete editable spec; the ordinary compiler remains the only semantic compiler:

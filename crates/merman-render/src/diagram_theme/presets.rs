@@ -269,16 +269,26 @@ mod tests {
         (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
     }
 
+    fn is_native_candidate(preset: ThemePreset) -> bool {
+        matches!(
+            preset,
+            ThemePreset::Brutalist | ThemePreset::Spotless | ThemePreset::Cyberpunk
+        )
+    }
+
     #[test]
-    fn built_in_presets_keep_mermaid_compatibility_without_layout_or_look() {
+    fn built_in_presets_scope_mermaid_compatibility_without_layout_or_look() {
         for preset in all_presets() {
             let (theme, _) = compiled(preset);
             let config = theme.spec().mermaid().to_mermaid_config();
 
-            assert_eq!(config.get_str("theme"), Some("base"));
+            assert_eq!(
+                config.get_str("theme"),
+                (!is_native_candidate(preset)).then_some("base")
+            );
             assert_eq!(
                 config.get_bool("darkMode"),
-                Some(preset.is_dark()),
+                (!is_native_candidate(preset)).then_some(preset.is_dark()),
                 "{} dark-mode compatibility value",
                 preset.id()
             );
@@ -333,7 +343,14 @@ mod tests {
             assert_eq!(entry.authoring_schema_version(), 1);
             assert_eq!(entry.expansion_version(), 1);
             assert_eq!(entry.spec_schema_version(), 1);
-            assert_eq!(entry.recipe_revision(), 4);
+            assert_eq!(
+                entry.recipe_revision(),
+                if is_native_candidate(descriptor.preset()) {
+                    5
+                } else {
+                    4
+                }
+            );
             assert_eq!(descriptor.maturity(), "alpha");
             assert!(descriptor.qualified_cells().is_empty());
             assert_eq!(descriptor.export_kind(), "complete_spec");
@@ -386,7 +403,12 @@ mod tests {
             if catalog_fingerprint != actual_recipe {
                 mismatches.push(format!("{}: {actual_recipe}", descriptor.preset().id()));
             }
-            assert_eq!(entry.resource_fingerprint(), actual_resources.as_str());
+            if entry.resource_fingerprint() != actual_resources.as_str() {
+                mismatches.push(format!(
+                    "{} resources: {actual_resources}",
+                    descriptor.preset().id()
+                ));
+            }
             assert!(
                 recipe_fingerprints.insert(catalog_fingerprint),
                 "catalog recipes must have unique fingerprints"
@@ -459,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn preset_complete_spec_exports_preserve_mermaid_compatibility() {
+    fn preset_complete_spec_exports_preserve_each_recipe_profile() {
         let compiler = DiagramThemeCompiler::new();
         for descriptor in theme_preset_descriptors() {
             let merman_theme_contract::PresetExportV1::CompleteSpec { complete_spec } = compiler
@@ -468,6 +490,14 @@ mod tests {
             else {
                 panic!("current preset recipes require the complete_spec export variant")
             };
+            assert!(
+                complete_spec.assets.is_none(),
+                "presets must not bundle fonts or choose host font policy"
+            );
+            if is_native_candidate(descriptor.preset()) {
+                assert!(complete_spec.mermaid.is_none());
+                continue;
+            }
             let mermaid = complete_spec
                 .mermaid
                 .as_ref()

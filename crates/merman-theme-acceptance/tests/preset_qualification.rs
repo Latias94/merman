@@ -12,6 +12,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
         let preset = descriptor.preset();
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
         let report = inspect_preset_admission(preset).unwrap();
+        let native_candidate = matches!(preset.id(), "brutalist" | "spotless" | "cyberpunk");
         assert_eq!(report.preset(), preset);
         assert_eq!(report.recipe_fingerprint(), theme.recipe_fingerprint());
         assert_eq!(
@@ -38,23 +39,29 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             );
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
+                let family_complete = native_candidate && family == DiagramFamilyId::STATE;
                 assert_eq!(
                     observation.status(),
-                    TargetAdmissionStatus::Rejected,
+                    if family_complete {
+                        TargetAdmissionStatus::HostDependent
+                    } else {
+                        TargetAdmissionStatus::Rejected
+                    },
                     "{} {} {:?}",
                     preset.id(),
                     family,
                     observation.artifact_kind()
                 );
-                assert!(
+                assert_eq!(
                     observation
                         .reasons()
-                        .contains(&TargetAdmissionReason::ThemeEvidenceIncomplete)
+                        .contains(&TargetAdmissionReason::ThemeEvidenceIncomplete),
+                    !family_complete,
                 );
                 assert_eq!(
                     observation.mermaid_residual_count(),
-                    2,
-                    "the explicit base/dark-mode compatibility requests remain residuals"
+                    if native_candidate { 0 } else { 2 },
+                    "only retained recipes request base/dark-mode compatibility"
                 );
                 assert_eq!(
                     observation.bridge_residual_count(),
@@ -74,7 +81,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
             assert!(
                 pair[0]
                     .reasons()
-                    .contains(&TargetAdmissionReason::SvgFontsNotSelfContained)
+                    .contains(&TargetAdmissionReason::SvgFontsNotSelfContained),
             );
         }
         assert!(

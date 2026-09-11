@@ -233,21 +233,22 @@ package lists and compiles a production consumer whose acceptance imports must f
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
 The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
-State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 all
-60 artifact observations are Rejected: every recipe deliberately retains the explicit Mermaid
-`base` and `darkMode` compatibility fields, yielding two compatibility residuals per family.
-Flowchart also retains three bridge contributions. Sequence retains one unsupported generic
-`Text.fill` request even though its role-specific labels have direct paint writers. Standalone
-SVG additionally reports `SvgFontsNotSelfContained` under this profile's default font policy.
-These are production target receipts, not failures inferred from C6 proof themes.
+State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 the
+60 artifact observations comprise 6 HostDependent State outputs from the native candidates and
+54 Rejected outputs. The seven retained recipes keep explicit Mermaid `base` and `darkMode`
+requests (two compatibility residuals per family). Native candidates omit those requests.
+All recipes leave font resources to the host; standalone SVG fonts are not self-contained and
+native text retains host font dependencies. Flowchart still reports three bridge residuals and Sequence still reports
+one unsupported generic `Text.fill` residual for every recipe. State admission alone does not
+prove semantic or visual preset qualification. All catalog qualified scopes remain empty.
 
 `inspect_preset_admission` binds the exact compiled recipe/resource fingerprints, source digests,
 shared document/resource identities, target receipts, and actual artifact bytes. The admission
 inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
-Preserve the explicitly retained compatibility behavior until native candidate recipes and their
-font-resource requirements receive a deliberate revision. Do not suppress these residuals to make
-qualification pass. The fixed 18-cell C6a ledger remains unchanged.
+Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
+resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to
+make qualification pass. The fixed 18-cell C6a ledger remains unchanged.
 
 The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
 and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound

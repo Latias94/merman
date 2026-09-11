@@ -17,7 +17,6 @@ const CATALOG_SCHEMA_VERSION: u32 = 1;
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
 const EXPANSION_VERSION: u32 = 1;
 const SPEC_SCHEMA_VERSION: u32 = 1;
-const RECIPE_REVISION: u32 = 4;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
@@ -38,12 +37,12 @@ const AYU_LIGHT_RECIPE_V4_FINGERPRINT: &str =
     "e62e3c175ac47801ec2fe2a631fe253aeaf60dc58f00917920ce1c0ccd45ea00";
 const AYU_DARK_RECIPE_V4_FINGERPRINT: &str =
     "3ebcce80dfe68ee9fd312ddd4fdc6e0f556eb46e74d1ebd84e835bc039a64c87";
-const BRUTALIST_RECIPE_V4_FINGERPRINT: &str =
-    "5448ef8d839c93571ee826e79cadb18e0c7dfb336c3740ee6bde2b209a30c03e";
-const SPOTLESS_RECIPE_V4_FINGERPRINT: &str =
-    "b9423638c5aa87c6ad3fe99e201b6b9946ff691b1e594246959f9f39ca24aea7";
-const CYBERPUNK_RECIPE_V4_FINGERPRINT: &str =
-    "c440c72c44c22a3982639b5b6c1641eb788069ea88422c6251ea855fb9a4bab3";
+const BRUTALIST_RECIPE_V5_FINGERPRINT: &str =
+    "cff2165b390d27fe5dd03bb60cefb18489dd9375fd37f1167036e427f452c30a";
+const SPOTLESS_RECIPE_V5_FINGERPRINT: &str =
+    "c177e9885bb2ad7ccaf59f83702c43a01b913b6a4964f24abdc00c1c6b2a346b";
+const CYBERPUNK_RECIPE_V5_FINGERPRINT: &str =
+    "50f78a13cd0e939271b1d33480df8d2b3cc5cac667b23990560ad5a819f28336";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
 #[derive(Clone, Copy)]
@@ -74,11 +73,18 @@ pub(super) struct PresetPalette {
     pub(super) kanban_task_labels: &'static [&'static str],
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PresetRecipeProfile {
+    RetainedMermaidCompatibility,
+    Native,
+}
+
 pub(super) struct PresetCatalogEntry {
     preset: ThemePreset,
     id: &'static str,
     display_name: &'static str,
     dark_mode: bool,
+    profile: PresetRecipeProfile,
     maturity: &'static str,
     catalog_schema_version: u32,
     authoring_schema_version: u32,
@@ -204,6 +210,7 @@ const fn entry(
     id: &'static str,
     display_name: &'static str,
     dark_mode: bool,
+    profile: PresetRecipeProfile,
     recipe_fingerprint: &'static str,
     palette: PresetPalette,
 ) -> PresetCatalogEntry {
@@ -212,12 +219,16 @@ const fn entry(
         id,
         display_name,
         dark_mode,
+        profile,
         maturity: ALPHA,
         catalog_schema_version: CATALOG_SCHEMA_VERSION,
         authoring_schema_version: AUTHORING_SCHEMA_VERSION,
         expansion_version: EXPANSION_VERSION,
         spec_schema_version: SPEC_SCHEMA_VERSION,
-        recipe_revision: RECIPE_REVISION,
+        recipe_revision: match profile {
+            PresetRecipeProfile::RetainedMermaidCompatibility => 4,
+            PresetRecipeProfile::Native => 5,
+        },
         recipe_fingerprint,
         resource_fingerprint: DEFAULT_RESOURCE_FINGERPRINT,
         recipe_builder: build_cross_family_recipe,
@@ -240,6 +251,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-light",
         "Editor Light",
         false,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         EDITOR_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
@@ -276,6 +288,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-dark",
         "Editor Dark",
         true,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         EDITOR_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
@@ -312,6 +325,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "one-dark",
         "One Dark",
         true,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         ONE_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
@@ -351,6 +365,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-light",
         "Gruvbox Light",
         false,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         GRUVBOX_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
@@ -387,6 +402,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-dark",
         "Gruvbox Dark",
         true,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         GRUVBOX_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
@@ -426,6 +442,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-light",
         "Ayu Light",
         false,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         AYU_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
@@ -462,6 +479,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-dark",
         "Ayu Dark",
         true,
+        PresetRecipeProfile::RetainedMermaidCompatibility,
         AYU_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
@@ -498,7 +516,8 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "brutalist",
         "Brutalist",
         false,
-        BRUTALIST_RECIPE_V4_FINGERPRINT,
+        PresetRecipeProfile::Native,
+        BRUTALIST_RECIPE_V5_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -537,7 +556,8 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "spotless",
         "Spotless",
         false,
-        SPOTLESS_RECIPE_V4_FINGERPRINT,
+        PresetRecipeProfile::Native,
+        SPOTLESS_RECIPE_V5_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -573,7 +593,8 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "cyberpunk",
         "Cyberpunk",
         true,
-        CYBERPUNK_RECIPE_V4_FINGERPRINT,
+        PresetRecipeProfile::Native,
+        CYBERPUNK_RECIPE_V5_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",
@@ -651,11 +672,13 @@ pub(crate) fn materialize_spec_wire(
     );
     let mut spec =
         materialize_theme_with_resource_policy(&entry.definition(), resources)?.into_spec();
-    spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
-        theme: Some("base".to_owned()),
-        dark_mode: Some(entry.dark_mode),
-        variables: None,
-    });
+    if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
+        spec.mermaid = Some(MermaidThemeCompatibilityWireV1 {
+            theme: Some("base".to_owned()),
+            dark_mode: Some(entry.dark_mode),
+            variables: None,
+        });
+    }
     Ok(spec)
 }
 
