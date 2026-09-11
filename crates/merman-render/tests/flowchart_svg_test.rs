@@ -6236,3 +6236,193 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         "expected supported flowchart fixture formulas to replace source delimiters: {svg}"
     );
 }
+
+fn flowchart_title_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
+    let mut styles = ThemeRuleSet::default();
+    for rule in rules {
+        styles = styles.with_rule(rule);
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(styles))
+        .unwrap()
+}
+
+fn flowchart_title_rule(color: &str) -> ThemeRule {
+    ThemeRule::new(
+        ThemeTarget::Title,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+    )
+}
+
+#[test]
+fn flowchart_and_swimlane_title_fill_preserve_cluster_css_consumers() {
+    let baseline = flowchart_title_theme([]);
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for look in ["classic", "neo", "handDrawn"] {
+                for explicit_default in [false, true] {
+                    let source = format!(
+                        "---\ntitle: Diagram title\nconfig:\n  look: {look}\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n{}---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n",
+                        if swimlane { "  layout: swimlane\n" } else { "" }
+                    );
+                    let mut rule = flowchart_title_rule("#2468ac");
+                    if explicit_default {
+                        rule = rule.with_variant(ThemeVariant::Default);
+                    }
+                    let theme = flowchart_title_theme([rule]);
+                    let render = |theme: &DiagramTheme, engine| {
+                        prepare_flowchart_family_with_theme_engine_and_portability(
+                            &source,
+                            theme,
+                            engine,
+                            ThemePortabilityRequirement::RequirePortable,
+                        )
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                        .expect("portable cluster title")
+                    };
+                    let typed = render(&theme, Engine::new());
+                    let legacy = render(&baseline, Engine::new().with_site_config(MermaidConfig::from_value(
+                        serde_json::json!({ "themeVariables": { "titleColor": "#2468ac", "nodeTextColor": "#333" } })
+                    )));
+                    assert_eq!(
+                        typed.svg(),
+                        legacy.svg(),
+                        "swimlane={swimlane}, html={html}, look={look}, default={explicit_default}"
+                    );
+                    let evidence =
+                        merman_render::__private::family_evidence(typed.into_completion().report());
+                    assert_eq!(evidence.applied_count(), 1);
+                    assert_eq!(evidence.theme_residual_count(), 0);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_title_evidence_tracks_cluster_occurrences_and_property_winners() {
+    use merman_render::diagram_theme::OrdinalSelector;
+    let source =
+        "flowchart TD\nsubgraph One[First]\nA[Alpha]\nend\nsubgraph Two[Second]\nB[Beta]\nend\n";
+    for (source, rules, not_applicable, residual) in [
+        (
+            "---\ntitle: Diagram title\n---\nflowchart TD\nA[Alpha]\n",
+            vec![flowchart_title_rule("#2468ac")],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![
+                flowchart_title_rule("#2468ac").with_variant(ThemeVariant::Default),
+                flowchart_title_rule("#123456"),
+            ],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(2))],
+            0,
+            1,
+        ),
+        (
+            source,
+            vec![flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(3))],
+            1,
+            0,
+        ),
+        (
+            source,
+            vec![
+                flowchart_title_rule("#2468ac").with_ordinal(OrdinalSelector::Exact(1)),
+                flowchart_title_rule("#123456"),
+            ],
+            1,
+            0,
+        ),
+    ] {
+        let theme = flowchart_title_theme(rules);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), not_applicable);
+        assert_eq!(evidence.theme_residual_count(), residual);
+        let strict = prepare_flowchart_family_with_theme(source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+        assert_eq!(strict.is_err(), residual != 0);
+    }
+}
+
+#[test]
+fn flowchart_title_fill_preserves_configuration_and_html_source_ownership() {
+    for html in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: {html}\n  flowchart:\n    htmlLabels: {html}\n---\nflowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\nstyle Group color:#123456\n"
+        );
+        let theme = flowchart_title_theme([flowchart_title_rule("#2468ac")]);
+        for config_owned in [false, true] {
+            let engine = if config_owned {
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({ "themeVariables": { "titleColor": "#abcdef" } }),
+                ))
+            } else {
+                Engine::new()
+            };
+            let rendered = prepare_flowchart_family_with_theme_engine_and_portability(
+                &source,
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            // SVG cluster labels do not emit the local label_style color; HTML spans do.
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(!html && !config_owned)
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(html || config_owned)
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_title_transparency_and_clear_have_distinct_evidence() {
+    let source = "flowchart TD\nsubgraph Group[Group title]\nA[Alpha]\nend\n";
+    for fill in [Specified::Value(CanvasPaint::Transparent), Specified::Clear] {
+        let clear = matches!(fill, Specified::Clear);
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = fill;
+        let theme = flowchart_title_theme([ThemeRule::new(ThemeTarget::Title, patch)]);
+        let rendered = prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+        if !clear {
+            assert!(
+                rendered
+                    .svg()
+                    .contains(".cluster-label text{fill:transparent;}")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(!clear));
+        assert_eq!(evidence.theme_residual_count(), usize::from(clear));
+    }
+}

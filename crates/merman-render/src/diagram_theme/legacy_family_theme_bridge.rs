@@ -640,10 +640,6 @@ fn compile_node_family(
             ],
         );
     }
-    contributions.add_theme_variables(
-        "title.fill",
-        [("titleColor", reader.text_fill(ThemeTarget::Title))],
-    );
     let edge_paint = reader.stroke_or_fill(ThemeTarget::Edge);
     contributions.add_theme_variables(
         ThemeRouteCutoverProjection::EdgeStroke.contribution_id(),
@@ -2095,14 +2091,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 172);
+        assert_eq!(status.matrix_route_count(), 164);
         assert_eq!(status.matrix_family_count(), 7);
         assert_eq!(status.dispatched_family_count(), 7);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                181, 229, 163, 168, 18, 50, 168, 254, 182, 70, 45, 144, 98, 225, 160, 46, 191, 88,
-                182, 147, 198, 171, 26, 226, 57, 215, 109, 217, 67, 243, 191, 133
+                227, 238, 209, 149, 185, 5, 241, 42, 79, 16, 17, 146, 54, 118, 155, 136, 143, 0,
+                170, 221, 174, 40, 107, 119, 178, 9, 95, 13, 128, 207, 0, 245
             ]
         );
         assert_eq!(

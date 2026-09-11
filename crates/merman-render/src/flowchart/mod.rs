@@ -185,3 +185,6 @@ pub(crate) use theme_evidence::{
     FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder,
     FlowchartThemeFacetEmission,
 };
+
+mod title_paint;
+pub(crate) use title_paint::FlowchartTitlePaintPlan;

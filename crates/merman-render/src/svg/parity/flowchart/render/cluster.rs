@@ -344,6 +344,31 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             write_flowchart_svg_label_plan(out, &prepared, true);
         }
         out.push_str("</g></g></g>");
+        if ctx.title_paint.requested() {
+            let facts = if label_type == "markdown" {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(render_title)
+            } else {
+                crate::text::VisibleTextStyleFacts::plain_text(
+                    if crate::flowchart::flowchart_label_is_empty_for_render(render_title) {
+                        ""
+                    } else {
+                        render_title
+                    },
+                )
+            };
+            // Assigned-class CSS still reaches tspans even though inline label_style is omitted.
+            ctx.title_paint.record_label(
+                cluster.id.as_str(),
+                &facts,
+                super::super::css::cluster_title_class_foreground(
+                    ctx.class_defs,
+                    classes,
+                    ctx.work_meter,
+                )?,
+                ctx.work_meter,
+            )?;
+        }
+
         ctx.theme_evidence.record_source_residuals(
             &compiled_styles
                 .emitted_label_source_residuals(cluster.id.as_str(), label_type != "markdown"),
@@ -436,6 +461,14 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         span_style_attr,
         title_html
     );
+    if ctx.title_paint.requested() {
+        ctx.title_paint.record_label(
+            cluster.id.as_str(),
+            &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(title_html.as_ref()),
+            compiled_styles.source_label_foreground_status(),
+            ctx.work_meter,
+        )?;
+    }
     ctx.theme_evidence.record_source_residuals(
         &compiled_styles.emitted_html_label_source_residuals(
             cluster.id.as_str(),

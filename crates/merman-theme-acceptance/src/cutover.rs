@@ -398,6 +398,13 @@ impl CutoverWitnessProfile {
     }
 
     fn for_route(route: ThemeRouteCutoverDescriptor) -> &'static [Self] {
+        if matches!(
+            route.family_id(),
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+        ) && route.target() == ThemeTarget::Title
+        {
+            return &Self::TEXT_LOOKS;
+        }
         if (matches!(
             route.family_id(),
             DiagramFamilyId::C4 | DiagramFamilyId::KANBAN | DiagramFamilyId::TIMELINE
@@ -495,6 +502,13 @@ fn expected_cutover_witnesses(routes: &[ThemeRouteCutoverDescriptor]) -> Vec<Cut
 
 fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'static str> {
     match (route.family_id(), route.target(), route.facet()) {
+        (DiagramFamilyId::FLOWCHART, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(FLOWCHART_CLUSTER_SOURCE)
+        }
+        (DiagramFamilyId::SWIMLANE, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
+            Ok(SWIMLANE_CLUSTER_SOURCE)
+        }
+
         (DiagramFamilyId::C4, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok("---\ntitle: C4 inherited paint\n---\nC4Context\nSystem(service, \"Service\")\n")
         }
@@ -1780,11 +1794,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_362_routes_and_488_artifact_witnesses() {
+    fn route_inventory_retains_370_routes_and_512_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 362);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 488);
+        assert_eq!(inventory.len(), 370);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 512);
     }
 
     #[test]

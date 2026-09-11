@@ -388,6 +388,12 @@ fn legacy_bridge_projections(
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
         (
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
+            ThemeTarget::Title,
+            ThemeRouteCutoverFacet::Fill,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_TITLE_FILL),
+
+        (
             DiagramFamilyId::FLOWCHART
             | DiagramFamilyId::SWIMLANE
             | DiagramFamilyId::BLOCK
@@ -1574,7 +1580,7 @@ pub(super) fn classify_rule_facet(
     if matches!(
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-    ) && target == ThemeTarget::Cluster
+    ) && matches!(target, ThemeTarget::Cluster | ThemeTarget::Title)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -1589,6 +1595,7 @@ pub(super) fn classify_rule_facet(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
+        && (target != ThemeTarget::Title || matches!(facet, FamilyThemeRuleFacet::Fill(_)))
     {
         return FamilyThemeDisposition::TypedAdapter;
     }
@@ -5712,6 +5719,20 @@ mod tests {
                 vec!["cluster.stroke"],
             ),
             (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::FLOWCHART,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
+            ),
+            (
                 DiagramFamilyId::GANTT,
                 ThemeTarget::Title,
                 Fill,
@@ -6528,6 +6549,20 @@ mod tests {
                 Stroke,
                 Solid,
                 vec!["cluster.stroke"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Title,
+                Fill,
+                Transparent,
+                vec!["title.fill"],
+            ),
+            (
+                DiagramFamilyId::SWIMLANE,
+                ThemeTarget::Title,
+                Fill,
+                Solid,
+                vec!["title.fill"],
             ),
             (
                 DiagramFamilyId::TIMELINE,
@@ -6750,14 +6785,14 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 180);
+        assert_eq!(qualified.len(), 184);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
                     .iter()
                     .filter(|route| route.family_id() == family)
                     .count(),
-                12,
+                14,
                 "family={family:?}"
             );
         }

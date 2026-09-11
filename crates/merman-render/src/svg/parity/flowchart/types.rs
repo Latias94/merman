@@ -37,6 +37,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(in crate::svg::parity::flowchart) resolved_theme:
         Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+    pub(in crate::svg::parity::flowchart) title_paint:
+        &'a crate::flowchart::FlowchartTitlePaintPlan,
     pub(in crate::svg::parity::flowchart) theme_evidence:
         &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) emit: FlowchartEmitCheckpoint<'a>,

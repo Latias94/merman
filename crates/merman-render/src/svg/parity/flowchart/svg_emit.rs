@@ -293,7 +293,13 @@ pub(super) fn render_flowchart_svg_model(
         flowchart_node_theme_ordinals(&model.nodes, &model.subgraphs, layout.uses_elk_adapter_dom);
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
+    let title_paint = crate::flowchart::FlowchartTitlePaintPlan::resolve(
+        options.resolved_theme(),
+        effective_config,
+        options.work_meter(),
+    )?;
     let ctx = FlowchartRenderCtx {
+        title_paint: &title_paint,
         model,
         diagram_id,
         diagram_type,
@@ -377,6 +383,7 @@ pub(super) fn render_flowchart_svg_model(
         hierarchy_plan.rendered_cluster_ids(),
         ctx.work_meter,
     )?;
+    title_paint.begin_terminal_emission(hierarchy_plan.rendered_cluster_ids(), ctx.work_meter)?;
     let marker_plan = FlowchartMarkerEmissionPlan::prepare(&ctx, &hierarchy_plan)?;
 
     let mut edge_path_cache: FxHashMap<
@@ -467,6 +474,7 @@ pub(super) fn render_flowchart_svg_model(
         &font_family,
         font_size,
         &model.class_defs,
+        Some(&title_paint),
     )?;
     if swimlane_layout.is_some() {
         super::swimlane::write_swimlane_css(&mut out, diagram_id);
@@ -574,7 +582,11 @@ pub(super) fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
-    root_document.complete(out.finish()?)
+    let rooted = root_document.complete(out.finish()?)?;
+    if title_paint.requested() {
+        theme_evidence.record_title_evidence(title_paint.finish_evidence());
+    }
+    Ok(rooted)
 }
 
 fn flowchart_node_theme_ordinals<'a>(

@@ -70,6 +70,38 @@ fn flowchart_classdef_css_declarations(declarations: &[String]) -> (String, Stri
     )
 }
 
+/// SVG cluster labels omit inline label styles, but assigned classes still reach their tspans.
+pub(in crate::svg::parity::flowchart) fn cluster_title_class_foreground(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    work: &crate::resources::OperationWorkMeter,
+) -> Result<crate::flowchart::FlowchartSourceFacetStatus> {
+    use crate::flowchart::FlowchartSourceFacetStatus;
+    let mut status = FlowchartSourceFacetStatus::Absent;
+    for class in classes {
+        work.charge(1)?;
+        let Some(declarations) = class_defs.get(class) else {
+            continue;
+        };
+        for declaration in declarations {
+            work.charge(declaration.len())?;
+        }
+        let (_, text_style) = flowchart_classdef_css_declarations(declarations);
+        for raw in crate::flowchart::flowchart_split_mermaid_style_decls(&text_style) {
+            if let Some(declaration) =
+                crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw)
+                && declaration.property() == "fill"
+            {
+                status = status.merge(FlowchartSourceFacetStatus::from_parts(
+                    true,
+                    crate::mermaid_style::is_supported_css_color_value(declaration.value()),
+                ));
+            }
+        }
+    }
+    Ok(status)
+}
+
 fn flowchart_classdef_cssom_set(
     cssom: &mut IndexMap<String, FlowchartClassDefCssDeclaration>,
     raw: &str,
@@ -168,6 +200,7 @@ pub(in crate::svg::parity) fn write_flowchart_css<DiagramId, DropShadowId, DropS
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
+    title_paint: Option<&crate::flowchart::FlowchartTitlePaintPlan>,
 ) -> Result<()>
 where
     DiagramId: SvgDiagramIdValue,
@@ -243,10 +276,13 @@ where
         font_family,
         node_text_color
     );
+    let _ = write!(out, "#{id} .cluster-label text{{");
+    write_cluster_title_paint(out, title_paint, title_color, false);
+    let _ = write!(out, "}}#{id} .cluster-label span{{");
+    write_cluster_title_paint(out, title_paint, title_color, true);
     let _ = write!(
-        &mut *out,
-        r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
-        id, title_color, id, title_color, id, id, id, node_text_color, node_text_color
+        out,
+        "}}#{id} .cluster-label span p{{background-color:transparent;}}#{id} .label text,#{id} span{{fill:{node_text_color};color:{node_text_color};}}"
     );
     let _ = write!(
         &mut *out,
@@ -271,10 +307,13 @@ where
         label_bkg
     );
     let _ = write!(
-        &mut *out,
-        "#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}",
-        id, cluster_bkg, cluster_border, id, title_color, id, title_color
+        out,
+        "#{id} .cluster rect{{fill:{cluster_bkg};stroke:{cluster_border};stroke-width:1px;}}#{id} .cluster text{{"
     );
+    write_cluster_title_paint(out, title_paint, title_color, false);
+    let _ = write!(out, "}}#{id} .cluster span{{");
+    write_cluster_title_paint(out, title_paint, title_color, true);
+    out.push('}');
     let _ = write!(
         &mut *out,
         r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
@@ -367,6 +406,20 @@ where
     Ok(())
 }
 
+fn write_cluster_title_paint(
+    out: &mut impl std::fmt::Write,
+    plan: Option<&crate::flowchart::FlowchartTitlePaintPlan>,
+    configured: &str,
+    html: bool,
+) {
+    if let Some(plan) = plan {
+        let _ = plan.write_css(out, configured, html);
+    } else {
+        let property = if html { "color" } else { "fill" };
+        let _ = write!(out, "{property}:{configured};");
+    }
+}
+
 #[cfg(test)]
 fn flowchart_css(
     diagram_id: &str,
@@ -385,6 +438,7 @@ fn flowchart_css(
         font_family,
         font_size,
         class_defs,
+        None,
     )?;
     Ok(out)
 }
@@ -482,6 +536,7 @@ mod tests {
             "sans-serif",
             16.0,
             &class_defs,
+            None,
         )
         .expect_err("the fixed Flowchart CSS prefix must exceed the tiny ceiling");
 

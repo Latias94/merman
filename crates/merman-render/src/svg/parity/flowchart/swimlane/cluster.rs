@@ -404,6 +404,14 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             OptionalStyleXmlAttr(label_style),
             title_html,
         );
+        if ctx.title_paint.requested() {
+            ctx.title_paint.record_label(
+                lane.id.as_str(),
+                &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(title_html.as_ref()),
+                compiled.source_label_foreground_status(),
+                ctx.work_meter,
+            )?;
+        }
         ctx.theme_evidence
             .record_source_residuals(&compiled.emitted_html_label_source_residuals(
                 lane.id.as_str(),
@@ -452,6 +460,19 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             prepared_title && prepared.emitted_admitted_typography(),
         );
         out.push_str("</g></g>");
+        if ctx.title_paint.requested() {
+            ctx.title_paint.record_label(
+                lane.id.as_str(),
+                &crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(render_title),
+                super::super::css::cluster_title_class_foreground(
+                    ctx.class_defs,
+                    class_names,
+                    ctx.work_meter,
+                )?,
+                ctx.work_meter,
+            )?;
+        }
+
         ctx.theme_evidence.record_source_residuals(
             &compiled.emitted_label_source_residuals(lane.id.as_str(), prepared_title),
         );
