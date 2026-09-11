@@ -232,6 +232,23 @@ exclude its independent acceptance modules. `scripts/verify_theme_acceptance_bou
 package lists and compiles a production consumer whose acceptance imports must fail. These
 boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
 
+The preset admission runner executes all ten exact catalog recipes against fixed Flowchart,
+State, and Sequence sources, then exports each completed document to PNG. On 2026-09-11 all
+60 artifact observations are Rejected: every recipe deliberately retains the explicit Mermaid
+`base` and `darkMode` compatibility fields, yielding two compatibility residuals per family.
+Flowchart also retains three bridge contributions. Sequence retains one unsupported generic
+`Text.fill` request even though its role-specific labels have direct paint writers. Standalone
+SVG additionally reports `SvgFontsNotSelfContained` under this profile's default font policy.
+These are production target receipts, not failures inferred from C6 proof themes.
+
+`inspect_preset_admission` binds the exact compiled recipe/resource fingerprints, source digests,
+shared document/resource identities, target receipts, and actual artifact bytes. The admission
+inventory is the first stage of preset qualification; it does not issue
+`PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
+Preserve the explicitly retained compatibility behavior until native candidate recipes and their
+font-resource requirements receive a deliberate revision. Do not suppress these residuals to make
+qualification pass. The fixed 18-cell C6a ledger remains unchanged.
+
 The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
 and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound
 containment assertion. A local Firefox probe reports the text element at x=6px against a root at

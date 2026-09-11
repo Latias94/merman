@@ -47,3 +47,7 @@ required-features = ["png", "jpeg", "pdf"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }
+
+[[test]]
+name = "preset_qualification"
+required-features = ["png"]

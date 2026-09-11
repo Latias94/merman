@@ -40,6 +40,15 @@ mod observation;
 #[cfg(feature = "png")]
 mod runner;
 
+#[cfg(feature = "png")]
+mod preset_qualification;
+
+#[cfg(feature = "png")]
+pub use preset_qualification::{
+    PresetAdmissionError, PresetAdmissionObservation, PresetAdmissionReport,
+    PresetQualificationSpec, inspect_preset_admission,
+};
+
 mod route_retirement_manifest;
 
 #[cfg(feature = "png")]
