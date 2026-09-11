@@ -94,9 +94,10 @@ constructors now require the profile and admission arguments; there is no implic
 
 Constructing a Rust cell is only constructing metadata, not issuing proof. Built-in scopes remain
 empty. The archive companion below projects fresh evidence only for its declared profile and actual
-artifact build. Flowchart retains bridge residuals; Sequence retains unsupported generic-text
-requests only where completed role writers do not cover their fills, or other requested facets
-remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
+artifact build. Flowchart now reports HostDependent without bridge residuals for the fixed
+native-candidate admission sources; it has no qualified profile yet. Sequence retains unsupported
+generic-text requests only where completed role writers do not cover their fills, or other
+requested facets remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
 their existing dispositions. The positive qualification profile covers only its declared State/Sequence SVG/PNG scenarios.
 Sequence checks actor, message, note, loop, and autonumber label assignments plus activation
 styles in SVG; PNG independently checks actor/note surfaces and label ink, message strokes, and
