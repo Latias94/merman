@@ -126,15 +126,27 @@ jobs:
         with:
           tool: cargo-semver-checks@0.50.0
 
-      - name: Install CLI asset validators
+      - name: Install CLI validators and native qualification fonts
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core
 
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Qualify native presets from the clean release source
+        run: |
+          python3 scripts/qualify_theme_presets.py --output target/preset-qualification.json
+          python3 scripts/qualify_theme_presets.py --check target/preset-qualification.json
+
+      - name: Upload scoped native preset qualification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preset-qualification-${{ needs.validate-inputs.outputs.source_sha }}-linux
+          path: target/preset-qualification.json
+          if-no-files-found: error
 
       - name: Verify ADR identities
         run: python3 scripts/adr_identity.py

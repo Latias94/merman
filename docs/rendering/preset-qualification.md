@@ -38,6 +38,18 @@ metadata may change the binary digest in another checkout. Generate that candida
 rather than weakening the comparison. Store records as CI artifacts or under ignored `target/`,
 not as self-updating checked-in source fixtures.
 
+## Release preflight
+
+`versions-and-packages` in Release Preflight runs both commands against the immutable source SHA
+selected by input validation. Its Ubuntu host installs DejaVu system fonts for the declared native
+profile; those files are runner prerequisites, not library or preset assets. A failed execution or
+freshness check fails the job. The successful record is uploaded as
+`preset-qualification-<source_sha>-linux`, preserving the source/host scope beside other release
+artifacts. Qualification does not edit the source catalog or embed its own binary digest.
+
+This job owns a native Linux host observation. It does not qualify Web, Flutter, another host font
+environment, or every shipped artifact profile. Those consumers still use final target admission.
+
 ## Remaining publication boundary
 
 These records supply clean-build provenance and executable freshness checks for the scoped runner.
