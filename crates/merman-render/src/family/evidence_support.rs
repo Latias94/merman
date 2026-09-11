@@ -365,13 +365,15 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
     for (domain_index, domain) in domains.iter().copied().enumerate() {
         match domain.resolution {
             TerminalStyleResolution::Direct(target) => {
-                debug_assert!(target_domains.insert(target, domain_index).is_none());
+                let previous = target_domains.insert(target, domain_index);
+                debug_assert!(previous.is_none());
             }
             TerminalStyleResolution::Textual {
                 owned_rule_targets, ..
             } => {
                 for target in owned_rule_targets.iter().copied() {
-                    debug_assert!(target_domains.insert(target, domain_index).is_none());
+                    let previous = target_domains.insert(target, domain_index);
+                    debug_assert!(previous.is_none());
                 }
             }
         }
