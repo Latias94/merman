@@ -204,6 +204,21 @@ radar-beta
 axis North,East,South,West
 curve Current{3,4,2,3}
 "#;
+// Exercise all inherited text terminals and the independently owned title fallback.
+// Keep unrelated chart paint transparent so native text proofs observe glyph ink.
+const RADAR_TEXT_SOURCE: &str = r#"---
+config:
+  radar:
+    axisColor: transparent
+    graticuleColor: transparent
+    curveOpacity: 0
+    curveStrokeWidth: 0
+---
+radar-beta
+title Cutover radar text
+axis North,East,South,West
+curve Current{3,4,2,3}
+"#;
 // Links are painted after labels in Mermaid's Sankey renderer. Keep this witness's links
 // transparent so the route-local PNG proof observes the intended text terminal rather than a
 // later, opaque link stroke covering the glyphs.
@@ -585,6 +600,9 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
             ThemeTarget::Axis,
             ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
         ) => Ok(RADAR_AXIS_SOURCE),
+        (DiagramFamilyId::RADAR, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Ok(RADAR_TEXT_SOURCE)
+        }
         (DiagramFamilyId::RADAR, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(RADAR_TITLE_SOURCE)
         }
@@ -1856,6 +1874,79 @@ mod tests {
     }
 
     #[test]
+    fn radar_text_base_and_title_fallback_have_independent_native_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        // Base derives textColor from primaryTextColor and titleColor from tertiaryTextColor,
+        // so these consumers can be owned independently. Default instead propagates an explicit
+        // textColor override to titleColor; using it here would legitimately own both channels.
+        // Pin each Base consumer in turn and prove the remaining native glyph pixels.
+        for owner in ["titleColor", "textColor"] {
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+            ] {
+                let render = |value| {
+                    let route = inventory
+                        .iter()
+                        .copied()
+                        .find(|route| {
+                            route.family_id() == DiagramFamilyId::RADAR
+                                && route.target() == ThemeTarget::Text
+                                && route.facet() == ThemeRouteCutoverFacet::Fill
+                                && route.selector() == selector
+                                && route.value() == value
+                        })
+                        .expect("Radar text fill route");
+                    assert_eq!(
+                        route.projections(),
+                        super::ThemeRouteCutoverProjectionSet::REPLACE_RADAR_TEXT_PAINT
+                    );
+                    let id = CutoverWitnessId::new(route, CutoverWitnessProfile::ClassicStatic);
+                    let source = super::source_for_witness(id).expect("text source");
+                    assert_eq!(source, super::RADAR_TEXT_SOURCE);
+                    let case = super::CutoverCase { id, source };
+                    let theme = super::compile_cutover_theme(case).expect("typed text theme");
+                    let renderer = super::cutover_renderer(id).with_engine(
+                        super::Engine::new().with_site_config(super::MermaidConfig::from_value(
+                            serde_json::json!({
+                                "theme": "base",
+                                "htmlLabels": false,
+                                "themeVariables": { (owner): "#112233" }
+                            }),
+                        )),
+                    );
+                    let document = super::render_cutover_document(&renderer, case, theme)
+                        .expect("independent Radar text consumer SVG");
+                    let svg = document.sealed_svg().as_str();
+                    assert_eq!(svg.matches("class=\"radarAxisLabel\"").count(), 4);
+                    assert_eq!(svg.matches("class=\"radarLegendText\"").count(), 1);
+                    assert_eq!(svg.matches("class=\"radarTitle\"").count(), 1);
+                    (route, document)
+                };
+                let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                let (transparent_route, transparent) = render(ThemeRouteCutoverValue::Transparent);
+                let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                    &solid,
+                    &transparent,
+                    solid_route,
+                    transparent_route,
+                    &merman_export::RasterOptions::default().with_scale(2.0),
+                    merman::OperationControl::new(),
+                )
+                .expect("each independently unowned Radar text consumer must change native glyph pixels");
+                for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                    super::validate_cutover_target_receipt(
+                        CutoverTargetAdmissionContract::PortableNativePngV1,
+                        receipt,
+                    )
+                    .expect("Radar text PNG must satisfy unchanged native target admission");
+                }
+                assert_ne!(pair.receipt_digest(), [0; 32]);
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -1876,11 +1967,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_380_routes_and_522_artifact_witnesses() {
+    fn route_inventory_retains_384_routes_and_526_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 380);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 522);
+        assert_eq!(inventory.len(), 384);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 526);
     }
 
     #[test]

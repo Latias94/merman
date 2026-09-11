@@ -8,8 +8,9 @@ fn write_radar_css<'a, I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
     theme: &'a RadarTheme,
-    title_theme: &'a crate::radar::RadarTitleThemePlan,
     axis_paint: &'a crate::radar::RadarAxisPaintPlan,
+    text_paint: &'a crate::radar::RadarTextPaintPlan,
+    mut text_receipt: Option<&mut crate::radar::RadarTextPaintReceipt>,
     mut axis_receipt: Option<&mut crate::radar::RadarAxisPaintReceipt>,
     typography: &'a crate::radar::RadarTypographyThemePlan,
     series_colors: &[String],
@@ -22,7 +23,7 @@ where
     let diagram_id = super::super::util::css_selector_diagram_id(diagram_id);
     let font_family_css = typography.font_family_css();
     let font_size_css = typography.font_size_css();
-    let title_fill_css = title_theme.fill_css().unwrap_or(theme.title_color.as_str());
+    let title_fill_css = text_paint.title_color();
     let base_font_emission = write_mermaid_base_css_prefix_with_font_emission(
         out,
         diagram_id,
@@ -30,13 +31,16 @@ where
             font_family: font_family_css,
             font_size_css,
             normal_edge_stroke_width_css: "1px",
-            text_color: &theme.text_color,
+            text_color: text_paint.text_color(),
             line_color: axis_paint.line_color(),
             error_bkg: &theme.error_bkg_color,
             error_text: &theme.error_text_color,
         },
     )?;
 
+    if let Some(receipt) = text_receipt.as_deref_mut() {
+        receipt.record_base_css(text_paint.text_color());
+    }
     if let Some(receipt) = axis_receipt.as_deref_mut() {
         receipt.record_base_line_css(axis_paint.line_color());
     }
@@ -47,6 +51,9 @@ where
         diagram_id, font_size_css, title_fill_css, title_fill_css
     );
     out.checkpoint()?;
+    if let Some(receipt) = text_receipt {
+        receipt.record_title_css("radarTitle", title_fill_css, title_fill_css);
+    }
     let _ = write!(
         out,
         r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
@@ -175,12 +182,15 @@ pub(crate) fn render_radar_diagram_svg_model(
     let title_theme = crate::radar::RadarTitleThemePlan::baseline();
     let axis_paint =
         crate::radar::RadarAxisPaintPlan::baseline(&effective_config, layout.axes.len());
+    let text_paint =
+        crate::radar::RadarTextPaintPlan::baseline(&effective_config, layout, model, diagram_title);
     render_radar_diagram_svg_model_with_theme_plans(
         layout,
         model,
         &series_paint,
         &title_theme,
         &axis_paint,
+        &text_paint,
         &typography,
         effective_config.as_value(),
         diagram_title,
@@ -194,6 +204,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     series_paint: &crate::radar::RadarSeriesPaintPlan,
     title_theme: &crate::radar::RadarTitleThemePlan,
     axis_paint: &crate::radar::RadarAxisPaintPlan,
+    text_paint: &crate::radar::RadarTextPaintPlan,
     typography: &crate::radar::RadarTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -266,14 +277,16 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
     let mut axis_paint_receipt = axis_paint.begin_terminal_receipt();
+    let mut text_paint_receipt = text_paint.begin_terminal_receipt();
     let mut typography_receipt =
         typography.begin_terminal_receipt(layout.axes.len(), layout.legend_items.len());
     let typography_css_emission = write_radar_css(
         &mut out,
         diagram_id,
         &theme,
-        title_theme,
         axis_paint,
+        text_paint,
+        text_paint_receipt.as_mut(),
         axis_paint_receipt.as_mut(),
         typography,
         series_paint.colors(),
@@ -291,10 +304,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         receipt.record_css_emission(typography_css_emission);
     }
     if let Some(receipt) = title_theme_receipt.as_mut() {
-        receipt.record_stylesheet(
-            "radarTitle",
-            title_theme.fill_css().unwrap_or(theme.title_color.as_str()),
-        );
+        receipt.record_stylesheet("radarTitle", text_paint.title_color());
     }
 
     let _ = write!(
@@ -327,6 +337,9 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         out.checkpoint()?;
     }
     write_radar_axes(&mut out, &layout.axes, |axis_index, label| {
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_axis(axis_index, "radarAxisLabel", label);
+        }
         if let Some(receipt) = axis_paint_receipt.as_mut() {
             receipt.record_axis_line(axis_index, "radarAxisLine");
             receipt.record_axis_label(axis_index, "radarAxisLabel");
@@ -396,6 +409,9 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         if let Some(receipt) = series_paint_receipt.as_mut() {
             receipt.record_legend(series_paint, legend_index, item.class_index);
         }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_legend(legend_index, "radarLegendText", label);
+        }
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_legend_label(legend_index, label);
         }
@@ -431,6 +447,9 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         }
     };
     out.checkpoint()?;
+    if let Some(receipt) = text_paint_receipt.as_mut() {
+        receipt.record_title("radarTitle", title_visible);
+    }
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_title(title_visible);
     }
@@ -468,6 +487,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             message: "Radar axis paint receipt did not match the terminal SVG".to_string(),
         });
     }
+    if let Some(receipt) = text_paint_receipt
+        && !text_paint.record_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Radar text paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
     Ok(rooted)
 }
 
@@ -490,8 +516,27 @@ mod tests {
             &mut css,
             "radar",
             &theme,
-            &crate::radar::RadarTitleThemePlan::baseline(),
             &crate::radar::RadarAxisPaintPlan::baseline(&effective_config, 0),
+            &crate::radar::RadarTextPaintPlan::baseline(
+                &effective_config,
+                &crate::model::RadarDiagramLayout {
+                    bounds: None,
+                    svg_width: 0.0,
+                    svg_height: 0.0,
+                    center_x: 0.0,
+                    center_y: 0.0,
+                    radius: 0.0,
+                    axis_label_factor: 1.0,
+                    title_y: 0.0,
+                    axes: Vec::new(),
+                    graticules: Vec::new(),
+                    curves: Vec::new(),
+                    legend_items: Vec::new(),
+                },
+                &RadarDiagramRenderModel::default(),
+                None,
+            ),
+            None,
             None,
             &typography,
             &series_colors,

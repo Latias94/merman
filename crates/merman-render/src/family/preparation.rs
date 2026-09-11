@@ -708,12 +708,22 @@ fn prepare_radar_family(
         layout.axes.len(),
         execution.work_meter_ref(),
     )?;
+    let text_paint = crate::radar::RadarTextPaintPlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        &layout,
+        &model,
+        effective_title,
+        &title_theme,
+        execution.work_meter_ref(),
+    )?;
     Ok(BuiltinFamilyArtifact::Radar(Box::new(
         RadarFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             series_paint,
             title_theme,
             axis_paint,
+            text_paint,
             typography_theme,
         },
     )))

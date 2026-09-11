@@ -377,11 +377,12 @@ pub enum ThemeRouteCutoverProjection {
     RequirementTextFill = 49,
     RadarLinePaint = 50,
     RadarAxisPaint = 51,
+    RadarTextPaint = 52,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 52] = [
+    const ALL: [Self; 53] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -434,6 +435,7 @@ impl ThemeRouteCutoverProjection {
         Self::RequirementTextFill,
         Self::RadarLinePaint,
         Self::RadarAxisPaint,
+        Self::RadarTextPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -489,6 +491,7 @@ impl ThemeRouteCutoverProjection {
             Self::RequirementTextFill => "requirement.text",
             Self::RadarLinePaint => "chart.text",
             Self::RadarAxisPaint => "chart.axis",
+            Self::RadarTextPaint => "chart.text",
         }
     }
 
@@ -547,6 +550,7 @@ impl ThemeRouteCutoverProjection {
             | Self::RequirementTextFill
             | Self::RadarLinePaint
             | Self::RadarAxisPaint
+            | Self::RadarTextPaint
             | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
@@ -608,6 +612,8 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_LIFELINE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
+    pub const REPLACE_RADAR_TEXT_PAINT: Self =
+        Self::replacing(ThemeRouteCutoverProjection::RadarTextPaint);
     pub const REPLACE_RADAR_AXIS_PAINT: Self = Self(
         ThemeRouteCutoverProjection::RadarLinePaint.bit()
             | ThemeRouteCutoverProjection::RadarAxisPaint.bit(),
@@ -1419,6 +1425,7 @@ mod tests {
         assert_eq!(ThemeRouteCutoverProjection::RequirementTextFill as u8, 49);
         assert_eq!(ThemeRouteCutoverProjection::RadarLinePaint as u8, 50);
         assert_eq!(ThemeRouteCutoverProjection::RadarAxisPaint as u8, 51);
+        assert_eq!(ThemeRouteCutoverProjection::RadarTextPaint as u8, 52);
     }
 
     #[test]

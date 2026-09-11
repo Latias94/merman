@@ -208,6 +208,7 @@ pub(crate) struct RadarTitleThemePlan {
     fill_css: Option<Box<str>>,
     typed_fill_capability: Option<ThemeCapability>,
     evidence: FamilyThemeEvidence,
+    fallback_evidence: FamilyThemeEvidence,
     pending_fill_key: Option<FamilyThemeMechanismKey>,
     terminal_receipt: OnceLock<()>,
 }
@@ -308,10 +309,11 @@ impl RadarTitleThemePlan {
             }
         }
 
+        let mut fallback_evidence = FamilyThemeEvidence::from_theme(Some(theme));
         let source_owned_fill = [config_owns_fill];
         reconcile_unsupported_terminal_domains(
             theme,
-            &mut evidence,
+            &mut fallback_evidence,
             &[UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Title,
                 TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
@@ -343,6 +345,7 @@ impl RadarTitleThemePlan {
             fill_css,
             typed_fill_capability,
             evidence,
+            fallback_evidence,
             pending_fill_key,
             terminal_receipt: OnceLock::new(),
         })
@@ -353,6 +356,7 @@ impl RadarTitleThemePlan {
             fill_css: None,
             typed_fill_capability: None,
             evidence: FamilyThemeEvidence::default(),
+            fallback_evidence: FamilyThemeEvidence::default(),
             pending_fill_key: None,
             terminal_receipt: OnceLock::new(),
         }
@@ -374,8 +378,20 @@ impl RadarTitleThemePlan {
         })
     }
 
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
+    pub(crate) fn finish_evidence(
+        &self,
+        text_paint: &super::RadarTextPaintPlan,
+    ) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        if text_paint.has_verified_title_fallback() {
+            // Generic Text paint is a real higher-priority title fill. Override only the
+            // palette fallback, after its writer has finalized; title rules/effects retain
+            // their independently reconciled outcomes.
+            evidence.mark_not_applicable(FamilyThemeMechanismKey::OrdinalPalette {
+                target: ThemeTarget::Title,
+            });
+        }
+        evidence.merge_accounted_from(self.fallback_evidence.clone());
         if let Some(key) = self.pending_fill_key.clone()
             && self.terminal_receipt.get().is_some()
             && let Some(capability) = self.typed_fill_capability

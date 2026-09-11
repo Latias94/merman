@@ -387,6 +387,9 @@ fn legacy_bridge_projections(
     selector: ThemeRouteCutoverSelector,
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
+        (DiagramFamilyId::RADAR, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
+            Some(ThemeRouteCutoverProjectionSet::REPLACE_RADAR_TEXT_PAINT)
+        }
         (
             DiagramFamilyId::RADAR,
             ThemeTarget::Axis,
@@ -2391,7 +2394,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::RADAR
-        && target == ThemeTarget::Title
+        && matches!(target, ThemeTarget::Title | ThemeTarget::Text)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -6160,6 +6163,20 @@ mod tests {
             ),
             (
                 DiagramFamilyId::RADAR,
+                ThemeTarget::Text,
+                Fill,
+                Transparent,
+                vec!["chart.text"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Text,
+                Fill,
+                Solid,
+                vec!["chart.text"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
                 ThemeTarget::Axis,
                 Fill,
                 Transparent,
@@ -6841,7 +6858,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 190);
+        assert_eq!(qualified.len(), 192);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -7440,62 +7457,6 @@ mod tests {
                 | LegacyCompatibilityRouteKey::EffectBinding { family, .. } => family,
             })
             .collect::<std::collections::BTreeSet<_>>();
-        let radar_routes = legacy_compatibility_route_inventory()
-            .into_iter()
-            .filter(|route| {
-                matches!(
-                    route,
-                    LegacyCompatibilityRouteKey::RuleFacet {
-                        family: DiagramFamilyId::RADAR,
-                        ..
-                    }
-                )
-            })
-            .collect::<Vec<_>>();
-        let radar_text_fill = radar_routes
-            .iter()
-            .filter(|route| {
-                matches!(
-                    route,
-                    LegacyCompatibilityRouteKey::RuleFacet {
-                        target: ThemeTarget::Text,
-                        facet: FamilyThemeRuleFacet::Fill(_),
-                        ..
-                    }
-                )
-            })
-            .count();
-        let radar_axis_fill = radar_routes
-            .iter()
-            .filter(|route| {
-                matches!(
-                    route,
-                    LegacyCompatibilityRouteKey::RuleFacet {
-                        target: ThemeTarget::Axis,
-                        facet: FamilyThemeRuleFacet::Fill(_),
-                        ..
-                    }
-                )
-            })
-            .count();
-        let radar_axis_stroke = radar_routes
-            .iter()
-            .filter(|route| {
-                matches!(
-                    route,
-                    LegacyCompatibilityRouteKey::RuleFacet {
-                        target: ThemeTarget::Axis,
-                        facet: FamilyThemeRuleFacet::Stroke(_),
-                        ..
-                    }
-                )
-            })
-            .count();
-        assert_eq!(radar_routes.len(), 4);
-        assert_eq!(
-            (radar_text_fill, radar_axis_fill, radar_axis_stroke),
-            (4, 0, 0)
-        );
         let mut counts = std::collections::BTreeMap::new();
         for route in legacy_compatibility_route_inventory() {
             let family = match route {
@@ -7513,7 +7474,6 @@ mod tests {
                 (DiagramFamilyId::CLASS, 26),
                 (DiagramFamilyId::FLOWCHART, 24),
                 (DiagramFamilyId::QUADRANT_CHART, 16),
-                (DiagramFamilyId::RADAR, 4),
                 (DiagramFamilyId::SWIMLANE, 24),
                 (DiagramFamilyId::XY_CHART, 16),
             ]
@@ -7528,7 +7488,6 @@ mod tests {
                 DiagramFamilyId::CLASS,
                 DiagramFamilyId::FLOWCHART,
                 DiagramFamilyId::QUADRANT_CHART,
-                DiagramFamilyId::RADAR,
                 DiagramFamilyId::SWIMLANE,
                 DiagramFamilyId::XY_CHART,
             ]

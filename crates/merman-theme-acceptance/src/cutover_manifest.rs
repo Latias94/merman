@@ -11,19 +11,23 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 70;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 71;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    38, 140, 55, 182, 43, 74, 145, 135, 53, 191, 108, 110, 146, 34, 56, 252, 149, 244, 118, 119,
-    15, 226, 139, 213, 103, 179, 161, 36, 51, 0, 92, 52,
+    147, 82, 6, 230, 53, 17, 201, 189, 6, 66, 73, 193, 91, 111, 206, 242, 17, 114, 157, 153, 89,
+    153, 6, 138, 229, 71, 205, 59, 146, 232, 184, 219,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 52] = [
+); 53] = [
+    (
+        ThemeRouteCutoverProjection::RadarTextPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::RadarLinePaint,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -430,7 +434,10 @@ const RADAR_AXIS_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
     ThemeRouteCutoverProjection::RadarAxisPaint,
 ];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 380] = [
+const RADAR_TEXT_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] =
+    &[ThemeRouteCutoverProjection::RadarTextPaint];
+
+const ACTIVE_ROUTES: [RouteAuthorization; 384] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Title,
@@ -3280,6 +3287,36 @@ const ACTIVE_ROUTES: [RouteAuthorization; 380] = [
         ThemeRouteCutoverFacet::Stroke,
         ThemeRouteCutoverValue::Solid,
         RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_TEXT_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Text,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_TEXT_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_TEXT_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_TEXT_PAINT_PROJECTIONS,
     ),
 ];
 
@@ -3609,6 +3646,37 @@ mod tests {
         .expect("authorize current route inventory");
 
         assert_eq!(routes.routes().len(), ACTIVE_ROUTES.len());
+    }
+
+    #[test]
+    fn radar_text_authority_replaces_exact_static_text_fill_routes() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::RADAR
+                    && route.id.target() == ThemeTarget::Text
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 4);
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for value in [
+                ThemeRouteCutoverValue::Transparent,
+                ThemeRouteCutoverValue::Solid,
+            ] {
+                let route = routes
+                    .iter()
+                    .find(|route| route.id.selector() == selector && route.id.value() == value)
+                    .expect("bounded Radar text fill route");
+                assert_eq!(route.id.facet(), ThemeRouteCutoverFacet::Fill);
+                assert_eq!(
+                    route.projections,
+                    &[ThemeRouteCutoverProjection::RadarTextPaint]
+                );
+            }
+        }
     }
 
     #[test]

@@ -477,10 +477,9 @@ fn legacy_family_compiler(family: DiagramFamilyId) -> BridgeResult<Option<Legacy
         | DiagramFamilyId::SWIMLANE
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::BLOCK => compile_node_family,
-        DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART | DiagramFamilyId::RADAR => {
-            compile_chart_family
-        }
-        DiagramFamilyId::SEQUENCE
+        DiagramFamilyId::XY_CHART | DiagramFamilyId::QUADRANT_CHART => compile_chart_family,
+        DiagramFamilyId::RADAR
+        | DiagramFamilyId::SEQUENCE
         | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::TIMELINE
         | DiagramFamilyId::STATE
@@ -733,22 +732,7 @@ fn compile_chart_family(
                 ],
             );
         }
-        DiagramFamilyId::RADAR => {
-            contributions.add_theme_variables(
-                "chart.text",
-                [
-                    ("titleColor", title),
-                    ("textColor", text),
-                    ("lineColor", axis_line.clone()),
-                ],
-            );
-            let mut radar = Map::new();
-            if let Some(axis_line) = axis_line {
-                radar.insert("axisColor".to_string(), Value::String(axis_line));
-            }
-            contributions.add_root_object("chart.axis", "radar", radar);
-        }
-        _ => unreachable!("chart compatibility is limited to XY, Quadrant, and Radar"),
+        _ => unreachable!("chart compatibility is limited to XY and Quadrant"),
     }
     contributions.finish_into(builder)
 }
@@ -2056,6 +2040,7 @@ gitGraph
         assert_eq!(
             actual,
             BTreeSet::from([
+                DiagramFamilyId::RADAR,
                 DiagramFamilyId::SEQUENCE,
                 DiagramFamilyId::STATE,
                 DiagramFamilyId::REQUIREMENT,
@@ -2087,29 +2072,76 @@ gitGraph
     }
 
     #[test]
+    fn radar_paint_rules_leave_materialized_mermaid_config_unchanged() {
+        const SOURCE: &str = "radar-beta\ntitle Direct Radar\naxis A,B,C\ncurve Current{1,2,3}\n";
+        let styles = [ThemeTarget::Text, ThemeTarget::Title, ThemeTarget::Axis]
+            .into_iter()
+            .fold(ThemeRuleSet::default(), |styles, target| {
+                styles.with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default().with_fill(solid("#123456")),
+                    )
+                    .for_family(DiagramFamilyId::RADAR),
+                )
+            });
+        let spec = DiagramThemeSpec::new().with_styles(styles);
+        assert!(
+            legacy_family_compiler(DiagramFamilyId::RADAR)
+                .unwrap()
+                .is_none()
+        );
+        let artifact = bridge(&spec).compile_for_family(DiagramFamilyId::RADAR);
+        assert!(artifact.overlay.is_empty());
+        assert!(artifact.contribution_ids.is_empty());
+        let resolver = bridge(&spec);
+        let plan = ThemeCompatibilityPlan::try_new(
+            [0x5a; 32],
+            MermaidConfig::empty_object(),
+            move |family, control| resolver.overlay_for_family(family, control),
+        )
+        .unwrap();
+        for theme_name in ["default", "base", "dark"] {
+            let engine = merman_core::Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"theme": theme_name}),
+            ));
+            let baseline = engine.parse_metadata_sync(SOURCE).unwrap();
+            let themed = install_theme_compatibility(engine, &plan)
+                .parse_metadata_sync(SOURCE)
+                .unwrap();
+            assert_eq!(
+                themed.effective_config.as_value(),
+                baseline.effective_config.as_value(),
+                "{theme_name}"
+            );
+            assert_eq!(fallback_contribution_count(&themed), 0);
+        }
+    }
+
+    #[test]
     fn bridge_inventory_is_derived_from_matrix_and_dispatch() {
         const EXPECTED_DISPATCH_FAMILY_DIGEST: [u8; 32] = [
-            177, 166, 70, 135, 80, 102, 102, 183, 131, 212, 17, 161, 129, 7, 172, 10, 157, 136, 16,
-            253, 34, 217, 50, 229, 150, 190, 91, 113, 248, 163, 212, 177,
+            235, 191, 4, 235, 121, 168, 8, 55, 101, 132, 44, 176, 65, 180, 3, 170, 199, 104, 120,
+            224, 115, 163, 156, 114, 93, 123, 226, 190, 67, 122, 30, 118,
         ];
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 154);
-        assert_eq!(status.matrix_family_count(), 7);
-        assert_eq!(status.dispatched_family_count(), 7);
+        assert_eq!(status.matrix_route_count(), 150);
+        assert_eq!(status.matrix_family_count(), 6);
+        assert_eq!(status.dispatched_family_count(), 6);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                187, 209, 29, 7, 247, 227, 179, 191, 101, 143, 57, 97, 197, 114, 2, 183, 154, 195,
-                75, 181, 84, 100, 238, 184, 212, 42, 222, 85, 95, 171, 222, 204
+                170, 245, 201, 139, 141, 156, 194, 182, 126, 192, 92, 49, 39, 37, 88, 249, 19, 226,
+                197, 160, 61, 27, 202, 87, 105, 223, 160, 191, 151, 105, 128, 101
             ]
         );
         assert_eq!(
             status.matrix_family_digest(),
             [
-                118, 180, 155, 132, 95, 252, 137, 117, 138, 183, 64, 127, 248, 160, 172, 77, 18,
-                205, 185, 186, 22, 107, 192, 172, 101, 0, 90, 178, 21, 83, 124, 220
+                220, 157, 145, 114, 47, 193, 89, 43, 240, 101, 250, 129, 67, 186, 100, 66, 82, 248,
+                81, 10, 126, 186, 19, 173, 44, 254, 21, 139, 104, 15, 81, 183
             ]
         );
         assert_eq!(

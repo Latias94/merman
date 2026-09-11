@@ -1631,6 +1631,7 @@ pub(crate) struct RadarFamilyArtifact {
     series_paint: crate::radar::RadarSeriesPaintPlan,
     title_theme: crate::radar::RadarTitleThemePlan,
     axis_paint: crate::radar::RadarAxisPaintPlan,
+    text_paint: crate::radar::RadarTextPaintPlan,
     typography_theme: crate::radar::RadarTypographyThemePlan,
 }
 
@@ -1985,6 +1986,10 @@ impl RadarFamilyArtifact {
         &self.series_paint
     }
 
+    pub(crate) const fn text_paint(&self) -> &crate::radar::RadarTextPaintPlan {
+        &self.text_paint
+    }
+
     pub(crate) const fn axis_paint(&self) -> &crate::radar::RadarAxisPaintPlan {
         &self.axis_paint
     }
@@ -1999,8 +2004,9 @@ impl RadarFamilyArtifact {
 
     fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.series_paint.finish_evidence();
-        evidence.merge_accounted_from(self.title_theme.finish_evidence());
+        evidence.merge_accounted_from(self.title_theme.finish_evidence(&self.text_paint));
         evidence.merge_accounted_from(self.axis_paint.finish_evidence());
+        evidence.merge_accounted_from(self.text_paint.finish_evidence());
         evidence.merge_accounted_from(self.typography_theme.finish_evidence());
         evidence
     }

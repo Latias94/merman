@@ -11,12 +11,12 @@ The source inventories, not this summary, authorize rendering and retirement:
 | Inventory | Snapshot | Source |
 | --- | --- | --- |
 | Families with at least one direct typed surface | 33/33 | `crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs` |
-| Families without a family-owned Legacy route | 26/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
-| Families with executable Legacy routes | 7/33; 154 routes | Block 44, Class 26, Flowchart 24, Quadrant Chart 16, Radar 4, Swimlane 24, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
+| Families without a family-owned Legacy route | 27/33 | `crates/merman-render/src/diagram_theme/legacy_family_theme_bridge.rs` |
+| Families with executable Legacy routes | 6/33; 150 routes | Block 44, Class 26, Flowchart 24, Quadrant Chart 16, Swimlane 24, XY Chart 16. Exact family and route counts are guarded by a renderer test. |
 | Base FontStack | 32 Typed / 0 Legacy / 1 Unsupported | Mechanism matrix |
 | Base FontSize | 18 Typed / 0 Legacy / 15 Unsupported | Mechanism matrix |
-| Public support claims | Revision 68 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
-| KTD17 scalar cutover | v70; 380 routes / 522 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
+| Public support claims | Revision 69 | `crates/merman-render/src/diagram_theme/support_manifest.rs` |
+| KTD17 scalar cutover | v71; 384 routes / 526 route-profile witnesses | `crates/merman-theme-acceptance/src/cutover_manifest.rs` and `cutover.rs` |
 | KTD23 historical retirement | v5; 66 routes / 132 value probes | `crates/merman-theme-acceptance/src/route_retirement_manifest.rs` |
 
 KTD23 v5 retires Sequence's four static unqualified/Default `Text.fill` and `Title.fill`
@@ -26,7 +26,9 @@ value probes authorize deletion without claiming a new typed text consumer. Thre
 SVG comparisons preserve the actual title, actor, group, message, control, and note paint.
 
 Each KTD17 route-profile witness binds SVG and PNG evidence; it is not a count of individual
-output files. Version 70 adds eight Radar Axis.fill/stroke static routes (solid/transparent,
+output files. Version 71 adds four Radar Text.fill routes (solid/transparent, unqualified/Default).
+Classic SVG/PNG witnesses cover inherited axis/legend text and the title fill fallback.
+Radar no longer has a family bridge dispatch. Version 70 adds eight Radar Axis.fill/stroke static routes (solid/transparent,
 unqualified/Default), with Classic SVG and native PNG evidence for axis-line stroke. The label
 CSS `color` projection is preserved; it does not become a new label `fill` consumer. `lineColor`
 and `axisColor` remain independently owned. Version 69 adds two Radar Title.fill Default routes.
@@ -76,8 +78,10 @@ Radar static-unqualified and explicit `Default` `Title.fill` now share one direc
 authorization for solid and transparent values. Static unqualified/Default Axis.fill and Axis.stroke now use the same direct axis-line paint
 consumer, with any specified stroke suppressing the fill fallback. Explicit `radar.axisColor`
 owns the visible axis channel; emitting unused marker CSS cannot certify an application.
-The remaining four Radar bridge routes are unqualified/Default Text.fill (solid/transparent),
-which still use the Mermaid compatibility adapter.
+Text.fill now directly owns inherited axis/legend text and the unclaimed title fill fallback.
+A Title.fill winner or explicit title-color owner blocks that fallback without taking ownership
+of unrelated label text. Ordinal requests are reconciled over non-empty axis labels, visible legend
+labels, then the non-empty title. Radar has no remaining family bridge routes or dispatch.
 
 ## Family Boundaries
 
