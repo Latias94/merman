@@ -9,6 +9,8 @@ fn write_radar_css<'a, I>(
     diagram_id: I,
     theme: &'a RadarTheme,
     title_theme: &'a crate::radar::RadarTitleThemePlan,
+    axis_paint: &'a crate::radar::RadarAxisPaintPlan,
+    mut axis_receipt: Option<&mut crate::radar::RadarAxisPaintReceipt>,
     typography: &'a crate::radar::RadarTypographyThemePlan,
     series_colors: &[String],
     mut record_series_rule: impl FnMut(usize, &str),
@@ -29,11 +31,15 @@ where
             font_size_css,
             normal_edge_stroke_width_css: "1px",
             text_color: &theme.text_color,
-            line_color: &theme.line_color,
+            line_color: axis_paint.line_color(),
             error_bkg: &theme.error_bkg_color,
             error_text: &theme.error_text_color,
         },
     )?;
+
+    if let Some(receipt) = axis_receipt.as_deref_mut() {
+        receipt.record_base_line_css(axis_paint.line_color());
+    }
 
     let _ = write!(
         out,
@@ -45,18 +51,24 @@ where
         out,
         r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
         diagram_id,
-        theme.axis_color,
+        axis_paint.axis_color(),
         fmt(theme.axis_stroke_width)
     );
     out.checkpoint()?;
+    if let Some(receipt) = axis_receipt.as_deref_mut() {
+        receipt.record_axis_line_css("radarAxisLine", axis_paint.axis_color());
+    }
     let _ = write!(
         out,
         r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
         diagram_id,
         fmt(theme.axis_label_font_size),
-        theme.axis_color
+        axis_paint.axis_color()
     );
     out.checkpoint()?;
+    if let Some(receipt) = axis_receipt {
+        receipt.record_axis_label_css("radarAxisLabel", axis_paint.axis_color());
+    }
     let _ = write!(
         out,
         r#"#{} .radarGraticule{{fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}"#,
@@ -161,11 +173,14 @@ pub(crate) fn render_radar_diagram_svg_model(
     let series_paint = crate::radar::RadarSeriesPaintPlan::baseline(&effective_config, model);
     let typography = crate::radar::RadarTypographyThemePlan::resolve(None, &effective_config);
     let title_theme = crate::radar::RadarTitleThemePlan::baseline();
+    let axis_paint =
+        crate::radar::RadarAxisPaintPlan::baseline(&effective_config, layout.axes.len());
     render_radar_diagram_svg_model_with_theme_plans(
         layout,
         model,
         &series_paint,
         &title_theme,
+        &axis_paint,
         &typography,
         effective_config.as_value(),
         diagram_title,
@@ -178,6 +193,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     model: &RadarDiagramRenderModel,
     series_paint: &crate::radar::RadarSeriesPaintPlan,
     title_theme: &crate::radar::RadarTitleThemePlan,
+    axis_paint: &crate::radar::RadarAxisPaintPlan,
     typography: &crate::radar::RadarTypographyThemePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -249,6 +265,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     out.checkpoint()?;
     let mut series_paint_receipt = series_paint.begin_terminal_receipt();
     let mut title_theme_receipt = title_theme.begin_terminal_receipt();
+    let mut axis_paint_receipt = axis_paint.begin_terminal_receipt();
     let mut typography_receipt =
         typography.begin_terminal_receipt(layout.axes.len(), layout.legend_items.len());
     let typography_css_emission = write_radar_css(
@@ -256,6 +273,8 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         diagram_id,
         &theme,
         title_theme,
+        axis_paint,
+        axis_paint_receipt.as_mut(),
         typography,
         series_paint.colors(),
         |rule_index, color| {
@@ -308,6 +327,10 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
         out.checkpoint()?;
     }
     write_radar_axes(&mut out, &layout.axes, |axis_index, label| {
+        if let Some(receipt) = axis_paint_receipt.as_mut() {
+            receipt.record_axis_line(axis_index, "radarAxisLine");
+            receipt.record_axis_label(axis_index, "radarAxisLabel");
+        }
         if let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_axis_label(axis_index, label);
         }
@@ -438,6 +461,13 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             message: "Radar title paint receipt did not match the terminal SVG".to_string(),
         });
     }
+    if let Some(receipt) = axis_paint_receipt
+        && !axis_paint.record_terminal(receipt)
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Radar axis paint receipt did not match the terminal SVG".to_string(),
+        });
+    }
     Ok(rooted)
 }
 
@@ -461,6 +491,8 @@ mod tests {
             "radar",
             &theme,
             &crate::radar::RadarTitleThemePlan::baseline(),
+            &crate::radar::RadarAxisPaintPlan::baseline(&effective_config, 0),
+            None,
             &typography,
             &series_colors,
             |_, _| {},

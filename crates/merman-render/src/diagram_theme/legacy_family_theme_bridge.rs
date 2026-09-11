@@ -2095,14 +2095,14 @@ gitGraph
 
         let status = legacy_family_theme_bridge_inventory();
         assert_eq!(status.dispatch_error_count(), 0);
-        assert_eq!(status.matrix_route_count(), 162);
+        assert_eq!(status.matrix_route_count(), 154);
         assert_eq!(status.matrix_family_count(), 7);
         assert_eq!(status.dispatched_family_count(), 7);
         assert_eq!(
             status.matrix_route_digest(),
             [
-                228, 206, 102, 249, 236, 14, 50, 23, 22, 205, 116, 66, 16, 224, 67, 168, 111, 65,
-                76, 7, 222, 217, 87, 69, 33, 178, 83, 54, 145, 105, 221, 71
+                187, 209, 29, 7, 247, 227, 179, 191, 101, 143, 57, 97, 197, 114, 2, 183, 154, 195,
+                75, 181, 84, 100, 238, 184, 212, 42, 222, 85, 95, 171, 222, 204
             ]
         );
         assert_eq!(

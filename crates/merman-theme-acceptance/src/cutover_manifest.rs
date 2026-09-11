@@ -11,19 +11,27 @@ use merman_render::diagram_theme::ThemeVariant;
 
 use crate::runner::{C6ProofError, C6ProofResult};
 
-const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 69;
+const CUTOVER_AUTHORIZATION_MANIFEST_VERSION: u16 = 70;
 
 // Acceptance-owned authority. Update this digest together with the manifest version only after
 // reviewing the complete route inventory and its projection obligations.
 pub(super) const EXPECTED_AUTHORIZED_MANIFEST_DIGEST: [u8; 32] = [
-    188, 139, 43, 171, 214, 82, 26, 6, 227, 0, 232, 246, 174, 95, 167, 171, 4, 6, 208, 6, 71, 16,
-    248, 77, 180, 136, 102, 104, 40, 30, 177, 128,
+    38, 140, 55, 182, 43, 74, 145, 135, 53, 191, 108, 110, 146, 34, 56, 252, 149, 244, 118, 119,
+    15, 226, 139, 213, 103, 179, 161, 36, 51, 0, 92, 52,
 ];
 
 const PROJECTION_ACTIONS: [(
     ThemeRouteCutoverProjection,
     ThemeRouteCutoverProjectionAction,
-); 50] = [
+); 52] = [
+    (
+        ThemeRouteCutoverProjection::RadarLinePaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
+    (
+        ThemeRouteCutoverProjection::RadarAxisPaint,
+        ThemeRouteCutoverProjectionAction::Replace,
+    ),
     (
         ThemeRouteCutoverProjection::RequirementTextFill,
         ThemeRouteCutoverProjectionAction::Replace,
@@ -417,7 +425,12 @@ struct CutoverAuthorizationManifest<'a> {
 const REQUIREMENT_TEXT_FILL_PROJECTIONS: &[ThemeRouteCutoverProjection] =
     &[ThemeRouteCutoverProjection::RequirementTextFill];
 
-const ACTIVE_ROUTES: [RouteAuthorization; 372] = [
+const RADAR_AXIS_PAINT_PROJECTIONS: &[ThemeRouteCutoverProjection] = &[
+    ThemeRouteCutoverProjection::RadarLinePaint,
+    ThemeRouteCutoverProjection::RadarAxisPaint,
+];
+
+const ACTIVE_ROUTES: [RouteAuthorization; 380] = [
     route(
         DiagramFamilyId::FLOWCHART,
         ThemeTarget::Title,
@@ -3207,6 +3220,66 @@ const ACTIVE_ROUTES: [RouteAuthorization; 372] = [
         ThemeRouteCutoverFacet::Fill,
         ThemeRouteCutoverValue::Solid,
         TITLE_FILL_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Fill,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Transparent,
+        RADAR_AXIS_PAINT_PROJECTIONS,
+    ),
+    route_variant(
+        DiagramFamilyId::RADAR,
+        ThemeTarget::Axis,
+        ThemeVariant::Default,
+        ThemeRouteCutoverFacet::Stroke,
+        ThemeRouteCutoverValue::Solid,
+        RADAR_AXIS_PAINT_PROJECTIONS,
     ),
 ];
 
@@ -3536,6 +3609,45 @@ mod tests {
         .expect("authorize current route inventory");
 
         assert_eq!(routes.routes().len(), ACTIVE_ROUTES.len());
+    }
+
+    #[test]
+    fn radar_axis_authority_requires_both_legacy_projection_obligations() {
+        let routes = ACTIVE_ROUTES
+            .iter()
+            .filter(|route| {
+                route.id.family_id() == DiagramFamilyId::RADAR
+                    && route.id.target() == ThemeTarget::Axis
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(routes.len(), 8);
+        for selector in [
+            ThemeRouteCutoverSelector::StaticUnqualified,
+            ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+        ] {
+            for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+                for value in [
+                    ThemeRouteCutoverValue::Transparent,
+                    ThemeRouteCutoverValue::Solid,
+                ] {
+                    let route = routes
+                        .iter()
+                        .find(|route| {
+                            route.id.selector() == selector
+                                && route.id.facet() == facet
+                                && route.id.value() == value
+                        })
+                        .expect("bounded Radar axis paint route");
+                    assert_eq!(
+                        route.projections,
+                        &[
+                            ThemeRouteCutoverProjection::RadarLinePaint,
+                            ThemeRouteCutoverProjection::RadarAxisPaint,
+                        ]
+                    );
+                }
+            }
+        }
     }
 
     #[test]

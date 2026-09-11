@@ -388,6 +388,11 @@ fn legacy_bridge_projections(
 ) -> Option<ThemeRouteCutoverProjectionSet> {
     match (family, target, facet) {
         (
+            DiagramFamilyId::RADAR,
+            ThemeTarget::Axis,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Some(ThemeRouteCutoverProjectionSet::REPLACE_RADAR_AXIS_PAINT),
+        (
             DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE,
             ThemeTarget::Title,
             ThemeRouteCutoverFacet::Fill,
@@ -2360,6 +2365,25 @@ pub(super) fn classify_rule_facet(
         && matches!(
             facet,
             FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::RADAR
+        && target == ThemeTarget::Axis
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            ) | FamilyThemeRuleFacet::Stroke(
                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
@@ -6135,6 +6159,34 @@ mod tests {
                 vec!["title.fill"],
             ),
             (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Axis,
+                Fill,
+                Transparent,
+                vec!["chart.text", "chart.axis"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Axis,
+                Fill,
+                Solid,
+                vec!["chart.text", "chart.axis"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Axis,
+                Stroke,
+                Transparent,
+                vec!["chart.text", "chart.axis"],
+            ),
+            (
+                DiagramFamilyId::RADAR,
+                ThemeTarget::Axis,
+                Stroke,
+                Solid,
+                vec!["chart.text", "chart.axis"],
+            ),
+            (
                 DiagramFamilyId::RAILROAD,
                 ThemeTarget::Title,
                 Fill,
@@ -6789,7 +6841,7 @@ mod tests {
             .copied()
             .collect::<Vec<_>>();
 
-        assert_eq!(qualified.len(), 186);
+        assert_eq!(qualified.len(), 190);
         for family in [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE] {
             assert_eq!(
                 qualified
@@ -6944,7 +6996,9 @@ mod tests {
                 && route.target() == ThemeTarget::Text
             {
                 3
-            } else if route.family_id() == DiagramFamilyId::C4
+            } else if (route.family_id() == DiagramFamilyId::RADAR
+                && route.target() == ThemeTarget::Axis)
+                || route.family_id() == DiagramFamilyId::C4
                 || (matches!(
                     route.family_id(),
                     DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
@@ -7437,10 +7491,10 @@ mod tests {
                 )
             })
             .count();
-        assert_eq!(radar_routes.len(), 12);
+        assert_eq!(radar_routes.len(), 4);
         assert_eq!(
             (radar_text_fill, radar_axis_fill, radar_axis_stroke),
-            (4, 4, 4)
+            (4, 0, 0)
         );
         let mut counts = std::collections::BTreeMap::new();
         for route in legacy_compatibility_route_inventory() {
@@ -7459,7 +7513,7 @@ mod tests {
                 (DiagramFamilyId::CLASS, 26),
                 (DiagramFamilyId::FLOWCHART, 24),
                 (DiagramFamilyId::QUADRANT_CHART, 16),
-                (DiagramFamilyId::RADAR, 12),
+                (DiagramFamilyId::RADAR, 4),
                 (DiagramFamilyId::SWIMLANE, 24),
                 (DiagramFamilyId::XY_CHART, 16),
             ]

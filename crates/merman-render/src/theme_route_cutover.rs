@@ -375,11 +375,13 @@ pub enum ThemeRouteCutoverProjection {
     TimelineTextFill = 47,
     TimelineEventStroke = 48,
     RequirementTextFill = 49,
+    RadarLinePaint = 50,
+    RadarAxisPaint = 51,
 }
 
 impl ThemeRouteCutoverProjection {
     #[cfg(any(test, merman_internal_theme_acceptance))]
-    const ALL: [Self; 50] = [
+    const ALL: [Self; 52] = [
         Self::NodeFill,
         Self::NodeStroke,
         Self::EdgeStroke,
@@ -430,6 +432,8 @@ impl ThemeRouteCutoverProjection {
         Self::TimelineTextFill,
         Self::TimelineEventStroke,
         Self::RequirementTextFill,
+        Self::RadarLinePaint,
+        Self::RadarAxisPaint,
     ];
 
     pub const fn contribution_id(self) -> &'static str {
@@ -483,6 +487,8 @@ impl ThemeRouteCutoverProjection {
             Self::TimelineTextFill => "event.text",
             Self::TimelineEventStroke => "event.stroke",
             Self::RequirementTextFill => "requirement.text",
+            Self::RadarLinePaint => "chart.text",
+            Self::RadarAxisPaint => "chart.axis",
         }
     }
 
@@ -539,6 +545,8 @@ impl ThemeRouteCutoverProjection {
             | Self::TimelineTextFill
             | Self::TimelineEventStroke
             | Self::RequirementTextFill
+            | Self::RadarLinePaint
+            | Self::RadarAxisPaint
             | Self::RequirementRelationPaint => ThemeRouteCutoverProjectionAction::Replace,
         }
     }
@@ -600,6 +608,10 @@ impl ThemeRouteCutoverProjectionSet {
     pub const REPLACE_LIFELINE_STROKE: Self =
         Self::replacing(ThemeRouteCutoverProjection::LifelineStroke);
     pub const REPLACE_TITLE_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TitleFill);
+    pub const REPLACE_RADAR_AXIS_PAINT: Self = Self(
+        ThemeRouteCutoverProjection::RadarLinePaint.bit()
+            | ThemeRouteCutoverProjection::RadarAxisPaint.bit(),
+    );
     pub const REPLACE_TEXT_FILL: Self = Self::replacing(ThemeRouteCutoverProjection::TextFill);
     pub const REPLACE_GITGRAPH_TEXT_FILL: Self = Self(
         ThemeRouteCutoverProjection::TextFill.bit()
@@ -776,7 +788,8 @@ impl ThemeRouteCutoverDescriptor {
 
     /// Returns the SVG paint channel used by the renderer for this semantic route.
     ///
-    /// Sequence Message fill, GitGraph Edge fill, and ER/Requirement Relation fill control native stroke colors.
+    /// Sequence Message fill, GitGraph Edge fill, Radar Axis fill, and ER/Requirement Relation fill
+    /// control native stroke colors.
     /// These routes
     /// are observed in the emitted stroke channel during raster admission, while their semantic
     /// facet remains `Fill` in the route identity and evidence.
@@ -791,6 +804,8 @@ impl ThemeRouteCutoverDescriptor {
                 && self.target() == ThemeTarget::Message)
                 || (self.family_id() == DiagramFamilyId::GIT_GRAPH
                     && self.target() == ThemeTarget::Edge)
+                || (self.family_id() == DiagramFamilyId::RADAR
+                    && self.target() == ThemeTarget::Axis)
                 || (matches!(
                     self.family_id(),
                     DiagramFamilyId::ER | DiagramFamilyId::REQUIREMENT
@@ -1402,6 +1417,8 @@ mod tests {
         assert_eq!(ThemeRouteCutoverProjection::TimelineTextFill as u8, 47);
         assert_eq!(ThemeRouteCutoverProjection::TimelineEventStroke as u8, 48);
         assert_eq!(ThemeRouteCutoverProjection::RequirementTextFill as u8, 49);
+        assert_eq!(ThemeRouteCutoverProjection::RadarLinePaint as u8, 50);
+        assert_eq!(ThemeRouteCutoverProjection::RadarAxisPaint as u8, 51);
     }
 
     #[test]

@@ -191,6 +191,19 @@ title Cutover radar title
 axis A,B,C
 curve Current{3,4,2}
 "#;
+// Isolate the axis stroke from later graticule/curve paint. Four cardinal axes provide
+// horizontal and vertical native raster terminals for both Axis.fill fallback and Axis.stroke.
+const RADAR_AXIS_SOURCE: &str = r#"---
+config:
+  radar:
+    graticuleColor: transparent
+    curveOpacity: 0
+    curveStrokeWidth: 0
+---
+radar-beta
+axis North,East,South,West
+curve Current{3,4,2,3}
+"#;
 // Links are painted after labels in Mermaid's Sankey renderer. Keep this witness's links
 // transparent so the route-local PNG proof observes the intended text terminal rather than a
 // later, opaque link stroke covering the glyphs.
@@ -567,6 +580,11 @@ fn source_for_route(route: ThemeRouteCutoverDescriptor) -> C6ProofResult<&'stati
         (DiagramFamilyId::RAILROAD, ThemeTarget::Text, ThemeRouteCutoverFacet::Fill) => {
             Ok(RAILROAD_TITLE_SOURCE)
         }
+        (
+            DiagramFamilyId::RADAR,
+            ThemeTarget::Axis,
+            ThemeRouteCutoverFacet::Fill | ThemeRouteCutoverFacet::Stroke,
+        ) => Ok(RADAR_AXIS_SOURCE),
         (DiagramFamilyId::RADAR, ThemeTarget::Title, ThemeRouteCutoverFacet::Fill) => {
             Ok(RADAR_TITLE_SOURCE)
         }
@@ -1774,6 +1792,70 @@ mod tests {
     }
 
     #[test]
+    fn radar_axis_fill_fallback_and_stroke_have_native_axis_png_evidence() {
+        let inventory = legacy_replacing_typed_theme_routes().expect("route inventory");
+        for facet in [ThemeRouteCutoverFacet::Fill, ThemeRouteCutoverFacet::Stroke] {
+            for selector in [
+                ThemeRouteCutoverSelector::StaticUnqualified,
+                ThemeRouteCutoverSelector::StaticVariant(ThemeVariant::Default),
+            ] {
+                let render = |value| {
+                    let route = inventory
+                        .iter()
+                        .copied()
+                        .find(|route| {
+                            route.family_id() == DiagramFamilyId::RADAR
+                                && route.target() == ThemeTarget::Axis
+                                && route.facet() == facet
+                                && route.selector() == selector
+                                && route.value() == value
+                        })
+                        .expect("Radar axis paint route");
+                    assert_eq!(
+                        route.projections(),
+                        super::ThemeRouteCutoverProjectionSet::REPLACE_RADAR_AXIS_PAINT
+                    );
+                    let id = CutoverWitnessId::new(route, CutoverWitnessProfile::ClassicStatic);
+                    let source = super::source_for_witness(id).expect("axis source");
+                    assert_eq!(source, super::RADAR_AXIS_SOURCE);
+                    let rendered =
+                        super::render_cutover_case(super::CutoverCase { id, source }, vec![route])
+                            .expect("Radar axis SVG witness");
+                    assert_eq!(
+                        rendered
+                            .document
+                            .sealed_svg()
+                            .as_str()
+                            .matches("class=\"radarAxisLine\"")
+                            .count(),
+                        4
+                    );
+                    (route, rendered)
+                };
+                let (solid_route, solid) = render(ThemeRouteCutoverValue::Solid);
+                let (transparent_route, transparent) = render(ThemeRouteCutoverValue::Transparent);
+                let pair = merman::__theme_acceptance::export_theme_route_cutover_png_pair(
+                    &solid.document,
+                    &transparent.document,
+                    solid_route,
+                    transparent_route,
+                    &merman_export::RasterOptions::default().with_scale(2.0),
+                    merman::OperationControl::new(),
+                )
+                .expect("Axis.fill fallback and Axis.stroke must each change native axis pixels");
+                for receipt in [pair.solid().receipt(), pair.transparent().receipt()] {
+                    super::validate_cutover_target_receipt(
+                        CutoverTargetAdmissionContract::PortableNativePngV1,
+                        receipt,
+                    )
+                    .expect("axis PNG must satisfy unchanged native target admission");
+                }
+                assert_ne!(pair.receipt_digest(), [0; 32]);
+            }
+        }
+    }
+
+    #[test]
     fn every_legacy_replacing_typed_route_has_terminal_svg_and_png_proof() {
         let authorization = run_route_cutover_witnesses().expect("prove typed bridge cutovers");
 
@@ -1794,11 +1876,11 @@ mod tests {
     }
 
     #[test]
-    fn route_inventory_retains_372_routes_and_514_artifact_witnesses() {
+    fn route_inventory_retains_380_routes_and_522_artifact_witnesses() {
         let inventory = legacy_replacing_typed_theme_routes().expect("derive route inventory");
 
-        assert_eq!(inventory.len(), 372);
-        assert_eq!(expected_cutover_witnesses(&inventory).len(), 514);
+        assert_eq!(inventory.len(), 380);
+        assert_eq!(expected_cutover_witnesses(&inventory).len(), 522);
     }
 
     #[test]

@@ -713,3 +713,222 @@ fn radar_series_palette_fails_closed_for_a_non_twelve_theme_color_limit() {
         Some((DiagramFamilyId::RADAR, 1))
     );
 }
+
+#[test]
+fn radar_axis_static_paint_reaches_terminal_without_bridge() {
+    use merman_render::diagram_theme::ThemeVariant;
+    for stroke in [false, true] {
+        for variant in [None, Some(ThemeVariant::Default)] {
+            for (paint, css) in [
+                (CanvasPaint::solid("#123456").unwrap(), "#123456"),
+                (CanvasPaint::Transparent, "transparent"),
+            ] {
+                let patch = if stroke {
+                    ThemeStylePatch::default().with_stroke(paint)
+                } else {
+                    ThemeStylePatch::default().with_fill(paint)
+                };
+                let mut rule =
+                    ThemeRule::new(ThemeTarget::Axis, patch).for_family(DiagramFamilyId::RADAR);
+                if let Some(variant) = variant {
+                    rule = rule.with_variant(variant);
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(
+                        DiagramThemeSpec::new()
+                            .with_styles(ThemeRuleSet::default().with_rule(rule)),
+                    )
+                    .unwrap();
+                let rendered = render_radar_with_theme_and_engine(
+                    "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+                    &theme,
+                    Engine::new(),
+                );
+                let stylesheet = radar_stylesheet(rendered.svg());
+                assert!(
+                    stylesheet.contains(&format!(".radarAxisLine{{stroke:{css};")),
+                    "{stylesheet}"
+                );
+                assert!(
+                    stylesheet.contains(&format!(".radarAxisLabel{{font-size:12px;color:{css};")),
+                    "{stylesheet}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.compatibility_residual_count(), 0);
+            }
+        }
+    }
+}
+
+fn radar_axis_rules(rules: impl IntoIterator<Item = ThemeStylePatch>) -> DiagramTheme {
+    let rules = rules
+        .into_iter()
+        .fold(ThemeRuleSet::default(), |rules, patch| {
+            rules.with_rule(
+                ThemeRule::new(ThemeTarget::Axis, patch).for_family(DiagramFamilyId::RADAR),
+            )
+        });
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap()
+}
+
+#[test]
+fn radar_axis_stroke_priority_is_independent_of_rule_grouping() {
+    let fill = CanvasPaint::solid("#123456").unwrap();
+    let stroke = CanvasPaint::solid("#abcdef").unwrap();
+    for patches in [
+        vec![
+            ThemeStylePatch::default()
+                .with_fill(fill.clone())
+                .with_stroke(stroke.clone()),
+        ],
+        vec![
+            ThemeStylePatch::default().with_stroke(stroke.clone()),
+            ThemeStylePatch::default().with_fill(fill.clone()),
+        ],
+    ] {
+        let count = patches.len();
+        let theme = radar_axis_rules(patches);
+        let rendered = render_radar_with_theme_and_engine(
+            "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+            &theme,
+            Engine::new(),
+        );
+        assert!(radar_stylesheet(rendered.svg()).contains(".radarAxisLine{stroke:#abcdef;"));
+        assert!(!radar_stylesheet(rendered.svg()).contains("#123456"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), count - 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn radar_axis_unsupported_stroke_width_remains_residual_in_mixed_and_split_rules() {
+    let paint = ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap());
+    let width = ThemeStylePatch::default().with_stroke_width(7.0).unwrap();
+    for patches in [
+        vec![paint.clone().with_stroke_width(7.0).unwrap()],
+        vec![paint.clone(), width],
+    ] {
+        let theme = radar_axis_rules(patches);
+        let rendered = render_radar_with_theme_requirement(
+            "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert!(
+            radar_stylesheet(rendered.svg())
+                .contains(".radarAxisLine{stroke:#123456;stroke-width:2;}")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert!(evidence.theme_residual_count() > 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+        let error = match render_radar_with_theme_requirement(
+            "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+        ) {
+            Ok(_) => panic!("unsupported axis width must reject strict rendering"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::RADAR, 1))
+        );
+    }
+}
+
+#[test]
+fn radar_axis_configuration_owns_only_its_color_channel() {
+    let theme = radar_axis_rules([
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap())
+    ]);
+    for (config, axis, line, applied) in [
+        (
+            serde_json::json!({"radar":{"axisColor":"#abcdef"}}),
+            "#abcdef",
+            "#123456",
+            false,
+        ),
+        (
+            serde_json::json!({"themeVariables":{"lineColor":"#abcdef"}}),
+            "#123456",
+            "#abcdef",
+            true,
+        ),
+        (
+            serde_json::json!({"radar":{"axisColor":"#abcdef"},"themeVariables":{"lineColor":"#fedcba"}}),
+            "#abcdef",
+            "#fedcba",
+            false,
+        ),
+    ] {
+        let rendered = render_radar_with_theme_and_engine(
+            "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        );
+        let css = radar_stylesheet(rendered.svg());
+        assert!(
+            css.contains(&format!(".radarAxisLine{{stroke:{axis};")),
+            "{css}"
+        );
+        assert!(
+            css.contains(&format!(".marker{{fill:{line};stroke:{line};")),
+            "{css}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(applied));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert_eq!(evidence.compatibility_residual_count(), 0);
+    }
+}
+
+#[test]
+fn radar_static_axis_stroke_overrides_ordinal_palette_in_strict_mode() {
+    let palette = OrdinalPalette::new([
+        ThemeColorValue::parse("#abcdef").unwrap(),
+        ThemeColorValue::parse("#fedcba").unwrap(),
+    ])
+    .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default()
+                    .with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Axis,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::RADAR),
+                    )
+                    .with_ordinal_palette(ThemeTarget::Axis, palette),
+            ),
+        )
+        .unwrap();
+    let rendered = render_radar_with_theme_and_engine(
+        "radar-beta\naxis A,B,C\ncurve Current{3,4,2}\n",
+        &theme,
+        Engine::new(),
+    );
+    assert!(radar_stylesheet(rendered.svg()).contains(".radarAxisLine{stroke:#123456;"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.compatibility_residual_count(), 0);
+}

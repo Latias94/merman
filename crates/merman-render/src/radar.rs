@@ -11,9 +11,11 @@ use crate::text::TextMeasurer;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
 
+mod axis_paint;
 mod config;
 mod theme;
 
+pub(crate) use axis_paint::{RadarAxisPaintPlan, RadarAxisPaintReceipt};
 pub(crate) use config::RadarConfigView;
 pub(crate) use theme::{
     RadarSeriesPaintPlan, RadarTitleThemePlan, RadarTypographyCssEmission, RadarTypographyThemePlan,
