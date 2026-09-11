@@ -222,19 +222,22 @@ fn push_tree_view_node(
             context.effective_config,
             context.work_meter,
         )?;
-        let native_paint_suffix =
-            if icon.current_color_use == crate::svg::IconCurrentColorUse::Consumed {
-                crate::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX
-            } else {
-                ""
-            };
         let current_color_use = icon.current_color_use;
         let icon_svg = icon.svg;
+        out.push_str("<g");
+        if theme.typed_icon_color_css().is_some()
+            && current_color_use == crate::svg::IconCurrentColorUse::Consumed
+        {
+            let _ = write!(
+                out,
+                r#" id="treeView-icon-{}{}""#,
+                node.id,
+                crate::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX,
+            );
+        }
         let _ = write!(
             out,
-            r#"<g id="treeView-icon-{}{}" class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
-            node.id,
-            native_paint_suffix,
+            r#" class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
             fmt(node.x + context.layout.padding_x),
             fmt(node.y + context.layout.padding_y),
             icon_svg

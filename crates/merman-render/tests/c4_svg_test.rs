@@ -1158,6 +1158,12 @@ System(framed, "Framed", "A component-shaped system", $shape="component")
     assert!(!svg.contains("<<person>>"));
     assert!(!svg.contains("<<system>>"));
     assert!(!svg.contains("<<external_person>>"));
+    assert!(
+        document
+            .descendants()
+            .all(|node| node.attribute("data-look").is_none()),
+        "Classic C4 must retain the upstream DOM without an unused look attribute"
+    );
 }
 
 #[test]

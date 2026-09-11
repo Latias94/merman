@@ -1036,11 +1036,9 @@ fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies(
     for label in ["Fixed", "Missing", "Empty"] {
         let icon = tree_view_icon_group_for_label(&document, label);
         assert_eq!(
-            icon.attribute("id").is_some_and(
-                |id| id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
-            ),
-            false,
-            "fixed/unknown/empty icon must not be marked as a native currentColor terminal: {label}"
+            icon.attribute("id"),
+            None,
+            "fixed/unknown/empty icon must retain the upstream group without a paint marker: {label}"
         );
     }
     let current = tree_view_icon_group_for_label(&document, "Current");
@@ -1337,6 +1335,11 @@ App.tsx icon(logos:react)
 
     for label in ["src", "file.txt"] {
         let icon_group = tree_view_icon_group_for_label(&document, label);
+        assert_eq!(
+            icon_group.attribute("id"),
+            None,
+            "unthemed icons must keep the upstream DOM without a typed paint marker"
+        );
         let icon_svg = tree_view_icon_svg_for_label(&document, label);
 
         assert_eq!(icon_svg.attribute("width"), Some("14"));

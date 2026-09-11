@@ -598,11 +598,14 @@ impl TreeViewThemePlan {
     }
 
     pub(crate) fn icon_color_css<'a>(&'a self, baseline: &'a str) -> &'a str {
+        self.typed_icon_color_css().unwrap_or(baseline)
+    }
+
+    pub(crate) fn typed_icon_color_css(&self) -> Option<&str> {
         self.icon_color
             .as_ref()
             .map(|assignment| assignment.paint.css())
             .or(self.icon_fallback_color.as_deref())
-            .unwrap_or(baseline)
     }
 
     pub(crate) fn font_family_css<'a>(&'a self, baseline: &'a str) -> &'a str {
@@ -625,11 +628,7 @@ impl TreeViewThemePlan {
             self.line_color
                 .as_ref()
                 .map(|assignment| assignment.paint.css()),
-            (self
-                .icon_color
-                .as_ref()
-                .map(|assignment| assignment.paint.css()))
-            .or(self.icon_fallback_color.as_deref()),
+            self.typed_icon_color_css(),
             self.inherited_font_stack.font_family_css(),
             label_count,
             icon_count,

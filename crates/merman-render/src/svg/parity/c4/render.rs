@@ -987,13 +987,16 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let classes = c4_shape_classes(s.type_c4_shape.as_str());
                 let _ = write!(
                     &mut out,
-                    r#"<g transform="translate({}, {})"><g id="{}" class="node {}" data-look="{}">"#,
+                    r#"<g transform="translate({}, {})"><g id="{}" class="node {}""#,
                     fmt(s.x + s.width / 2.0),
                     fmt(s.y + s.height / 2.0),
                     escape_attr_display(scoped_svg_id(diagram_id, &s.alias)),
                     classes,
-                    escape_attr_display(look.as_str()),
                 );
+                if look != crate::c4::C4Look::Classic {
+                    let _ = write!(out, r#" data-look="{}""#, look.as_str());
+                }
+                out.push_str(">");
                 out.checkpoint()?;
 
                 c4_write_unified_shape(
