@@ -4,7 +4,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -283,6 +288,73 @@ jobs:
         self.assertIn("      - 'v*'\n", text)
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
+
+    def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
+        text = read(WORKFLOW_ROOT / "release.yml")
+        native = workflow_job(text, "verify-release-archives-native")
+        gate = workflow_job(text, "release-verification-gate")
+        self.assertIn(
+            "QUALIFY_PRESETS: ${{ matrix.package == 'merman-cli' && matrix.target == 'x86_64-unknown-linux-gnu' }}",
+            native,
+        )
+        self.assertIn("ref: ${{ needs.plan.outputs.source_sha }}", native)
+        self.assertIn("path: target/verified-release-assets", native)
+        self.assertNotIn("path: verified-release-assets\n", native)
+        self.assertIn("fonts-dejavu-core", native)
+        self.assertIn("--execute", native)
+        self.assertIn("--preset-qualification-output", native)
+        self.assertIn("--preset-qualification-check", native)
+        self.assertIn("path: target/preset-qualification.json", native)
+        self.assertIn("if-no-files-found: error", native)
+        self.assertNotIn("continue-on-error:", native)
+        self.assertIn("- verify-release-archives-native", gate)
+        self.assertIn("needs.verify-release-archives-native.result", gate)
+        self.assertIn('"$NATIVE_RESULT" != success', gate)
+        for job in ("attest-release-assets", "generate-cli-registry-candidates", "host"):
+            self.assertIn("release-verification-gate", workflow_job(text, job))
+
+    @unittest.skipUnless(shutil.which("bash"), "workflow command requires Bash")
+    def test_native_archive_command_routes_qualification_and_stops_on_failure(self) -> None:
+        native = workflow_job(read(WORKFLOW_ROOT / "release.yml"), "verify-release-archives-native")
+        step = native.split("      - name: Execute final product archive\n", 1)[1]
+        command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        with tempfile.TemporaryDirectory(prefix="merman release step ") as temporary:
+            root = Path(temporary)
+            verifier = root / "record arguments.py"
+            verifier.write_text(
+                "import json, os, sys\n"
+                "with open(os.environ['ARGUMENT_LOG'], 'a') as log:\n"
+                "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                "sys.exit(int(os.environ['VERIFY_EXIT']))\n",
+                encoding="utf-8",
+            )
+            for qualify, package, target, exit_code in (
+                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 0),
+                ("false", "merman-cli", "aarch64-apple-darwin", 0),
+                ("false", "merman-lsp", "x86_64-pc-windows-msvc", 0),
+                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 7),
+            ):
+                with self.subTest(qualify=qualify, package=package, target=target, exit_code=exit_code):
+                    log = root / f"{qualify}-{package}-{target}-{exit_code}.jsonl"
+                    result = subprocess.run(
+                        ["bash", "-c", command], cwd=root, capture_output=True, text=True,
+                        env={**os.environ, "PACKAGE": package, "TARGET": target,
+                             "QUALIFY_PRESETS": qualify, "VERIFIER": str(verifier),
+                             "GITHUB_WORKSPACE": str(root), "RELEASE_VERSION": "1.2.3",
+                             "ARGUMENT_LOG": str(log), "VERIFY_EXIT": str(exit_code)},
+                    )
+                    self.assertEqual(result.returncode, exit_code, result.stderr)
+                    calls = [json.loads(line) for line in log.read_text().splitlines()]
+                    extension = "zip" if "windows" in target else "tar.xz"
+                    archive = f"target/verified-release-assets/{package}-{target}.{extension}"
+                    common = [archive, "--checksum", archive + ".sha256", "--target", target,
+                              "--version", "1.2.3", "--repo-root", str(root), "--execute"]
+                    expected = [common]
+                    if qualify == "true":
+                        expected = [common + ["--preset-qualification-output", "target/preset-qualification.json"]]
+                        if exit_code == 0:
+                            expected.append(common + ["--preset-qualification-check", "target/preset-qualification.json"])
+                    self.assertEqual(calls, expected)
 
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")

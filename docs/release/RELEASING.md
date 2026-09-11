@@ -295,6 +295,12 @@ extra hashes. pub.dev uses a member-level content comparison because Dart rewrit
 Platform GitHub Release asset uploads fail closed on an existing name, and Tree-sitter native
 prebuild recovery stays within the same workflow run.
 
+The formal Release's final Linux CLI archive must also pass
+[scoped preset qualification](../rendering/preset-qualification.md) and fresh replay before the
+release verification gate passes. Its State/Sequence system-font observations are retained as a
+workflow artifact bound to the final archive; they do not populate public preset qualification
+cells or qualify other targets.
+
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
 Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds. A complete native release still requires explicit, successful owner workflow runs for every authorized artifact surface; absence of an owner run is incomplete delivery, not an implicit skip.

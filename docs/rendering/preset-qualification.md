@@ -66,6 +66,20 @@ embed a binary's own digest into that binary.
 This job owns a native Linux host observation. It does not qualify Web, Flutter, another host font
 environment, or every shipped artifact profile. Those consumers still use final target admission.
 
+## Final release archive
+
+The formal `Release` workflow also qualifies the final `x86_64-unknown-linux-gnu` CLI archive in
+`verify-release-archives-native`, after central bundle verification. It checks out the pinned
+release source, installs the same DejaVu system-font dependency, and runs the existing archive
+verifier with `--execute` plus qualification output and replay. Downloaded assets and the record
+stay under ignored `target/` so the qualification runner can enforce a clean source tree.
+
+The job uploads `preset-qualification-<source_sha>-x86_64-unknown-linux-gnu` only after replay
+succeeds. A qualification or upload failure fails the native verification job and blocks the
+existing release gate, attestation, registry candidates, and GitHub Release creation. The record
+is a workflow artifact, not a published preset catalog or an additional member of the immutable
+release bundle. Other native rows retain their product smoke checks without claiming this profile.
+
 ## Remaining publication boundary
 
 These records supply clean-build provenance and executable freshness checks for the scoped runner.

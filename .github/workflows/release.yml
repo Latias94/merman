@@ -472,6 +472,7 @@ jobs:
       contents: read
     env:
       PACKAGE: ${{ matrix.package }}
+      QUALIFY_PRESETS: ${{ matrix.package == 'merman-cli' && matrix.target == 'x86_64-unknown-linux-gnu' }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       TARGET: ${{ matrix.target }}
       VERIFIER: ${{ matrix.verifier }}
@@ -485,13 +486,21 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: verified-release-assets
-          path: verified-release-assets
+          path: target/verified-release-assets
+      - name: Install Rust for native preset qualification
+        if: env.QUALIFY_PRESETS == 'true'
+        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+      - name: Install native qualification fonts
+        if: env.QUALIFY_PRESETS == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes fonts-dejavu-core
       - name: Parse generated PowerShell installers
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $path = Join-Path 'verified-release-assets' "$env:PACKAGE-installer.ps1"
+          $path = Join-Path 'target/verified-release-assets' "$env:PACKAGE-installer.ps1"
           [scriptblock]::Create([IO.File]::ReadAllText($path)) | Out-Null
       - name: Execute final product archive
         shell: bash
@@ -501,14 +510,27 @@ jobs:
           if [[ "$TARGET" == *-windows-* ]]; then
             extension=zip
           fi
-          archive="$PACKAGE-$TARGET.$extension"
-          python3 "$VERIFIER" \
-            "verified-release-assets/$archive" \
-            --checksum "verified-release-assets/$archive.sha256" \
-            --target "$TARGET" \
-            --version "$RELEASE_VERSION" \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --execute
+          archive="target/verified-release-assets/$PACKAGE-$TARGET.$extension"
+          verification_args=(
+            "$archive" --checksum "$archive.sha256"
+            --target "$TARGET" --version "$RELEASE_VERSION"
+            --repo-root "$GITHUB_WORKSPACE" --execute
+          )
+          if [[ "$QUALIFY_PRESETS" == true ]]; then
+            python3 "$VERIFIER" "${verification_args[@]}" \
+              --preset-qualification-output target/preset-qualification.json
+            python3 "$VERIFIER" "${verification_args[@]}" \
+              --preset-qualification-check target/preset-qualification.json
+          else
+            python3 "$VERIFIER" "${verification_args[@]}"
+          fi
+      - name: Upload final CLI preset qualification
+        if: env.QUALIFY_PRESETS == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preset-qualification-${{ needs.plan.outputs.source_sha }}-${{ matrix.target }}
+          path: target/preset-qualification.json
+          if-no-files-found: error
 
   release-verification-gate:
     needs:
