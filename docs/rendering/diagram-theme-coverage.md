@@ -259,10 +259,13 @@ must remain HostDependent with only declared host-font reasons; unresolved fonts
 source or compatibility residual reject the run. No font or rule is injected. Negative tests cover
 wrong-preset artifacts, blank output, missing ink, and recipe/resource/schema drift.
 
-These execution-local receipts do not yet supply persisted renderer/compiler/writer build identity,
-release freshness verification, or generated catalog promotion. Public qualified scopes remain
-empty; the C7a preset gate is therefore still open. A candidate build must rerun the checks, and a
-host-dependent State result cannot qualify Flowchart, Sequence, or a portable resource profile.
+The [clean-build qualification runner](preset-qualification.md) now records the source commit,
+lockfile, actual Release executable, toolchain/host, and complete scoped execution evidence. Its
+freshness check rebuilds and reruns qualification and rejects any record mismatch. Public qualified
+scopes remain empty: the current family/output-only projection cannot describe host-font conditions,
+and generated catalog promotion still needs that scope and freshness connection. The C7a preset
+gate remains open. A host-dependent State result cannot qualify Flowchart, Sequence, or a portable
+resource profile.
 
 Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
 resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to

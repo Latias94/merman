@@ -51,3 +51,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acce
 [[test]]
 name = "preset_qualification"
 required-features = ["png"]
+
+[[example]]
+name = "preset_qualification"
+required-features = ["png"]
