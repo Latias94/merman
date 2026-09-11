@@ -68,8 +68,8 @@ labels and the diagram title consume `textColor`. Ownership is captured before t
 projection, so derived colors cannot become explicit owners. Title.fill remains Unsupported.
 ER no longer requires its family bridge.
 
-Radar static-unqualified `Title.fill` now has a direct typed writer and KTD17 SVG/PNG
-authorization for solid and transparent values. Explicit `Default` remains a separate route.
+Radar static-unqualified and explicit `Default` `Title.fill` now share one direct typed writer and KTD17 SVG/PNG
+authorization for solid and transparent values.
 
 ## Family Boundaries
 
