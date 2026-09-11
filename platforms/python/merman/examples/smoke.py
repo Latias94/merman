@@ -1,6 +1,7 @@
 import json
 
 import merman
+from theme_authoring import run_theme_authoring_smoke
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
@@ -198,6 +199,7 @@ def main() -> None:
         raise RuntimeError("expired operation deadline did not cancel the request")
 
     engine.close()
+    run_theme_authoring_smoke()
     print("merman Python UniFFI smoke passed")
 
 

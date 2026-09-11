@@ -1,0 +1,184 @@
+"""Exercise shared theme JSON through an installed, generated UniFFI consumer."""
+
+import json
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+import merman
+
+
+FIXTURES = (
+    Path(__file__).resolve().parents[4]
+    / "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1"
+)
+SOURCES = {
+    "flowchart": "flowchart LR\nA[Alpha] --> B[Beta]\n",
+    "state": "stateDiagram-v2\n[*] --> Active\nActive --> [*]\n",
+    "sequence": "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: World\n",
+}
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def execute_json(client, operation: str, source: str):
+    result = client.execute(merman.MermanOperationRequestV4(
+        operation_id=operation, source=source, uri=None, options_json=None, control=None,
+    ))
+    require(result.operation_id == operation, "operation identity changed")
+    require(result.media_type == "application/json", "expected JSON output")
+    return json.loads(bytes(result.data))
+
+
+def fixture_canonical_bytes(value) -> bytes:
+    # These frozen vectors contain ASCII keys and integral numbers only. This is an
+    # independent oracle for that bounded domain, not a general RFC 8785 implementation.
+    def integral_numbers(item):
+        if isinstance(item, float):
+            require(item.is_integer(), "fixture left the integral-number oracle domain")
+            return int(item)
+        if isinstance(item, dict):
+            require(all(key.isascii() for key in item), "fixture keys must remain ASCII")
+            return {key: integral_numbers(value) for key, value in item.items()}
+        if isinstance(item, list):
+            return [integral_numbers(value) for value in item]
+        return item
+
+    return json.dumps(
+        integral_numbers(value), sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    ).encode("utf-8")
+
+
+def render_definition(client, definition: str, family: str) -> str:
+    materialized = execute_json(client, "materialize-theme-json", definition)
+    require(
+        [materialized[key] for key in (
+            "schema_version", "authoring_schema_version", "expansion_version", "spec_schema_version",
+        )] == [1, 1, 1, 1],
+        "materialization version tuple changed",
+    )
+    # The intermediate spec is passed directly to the render operation, never persisted.
+    return client.render_svg(SOURCES[family], json.dumps({
+        "version": 3,
+        "theme": {"spec": materialized["spec"]},
+        "site_config": {"htmlLabels": False},
+        "svg": {"diagram_id": f"python-authoring-{family}"},
+    }, allow_nan=False))
+
+
+def state_fill(svg: str) -> str:
+    root = ET.fromstring(svg)
+    states = [element for element in root.iter()
+              if "statediagram-state" in element.get("class", "").split()
+              and "".join(element.itertext()).strip() == "Active"]
+    require(len(states) == 1, "expected one visible Active state")
+    shapes = [element for element in states[0].iter()
+              if "label-container" in element.get("class", "").split()]
+    require(len(shapes) == 1, "expected one Active state shape")
+    shape = shapes[0]
+    # Inspect the writer's terminal declaration; do not recreate stylesheet cascade.
+    declarations = dict(part.split(":", 1) for part in shape.get("style", "").split(";")
+                        if ":" in part)
+    return declarations.get("fill", shape.get("fill", "")).removesuffix("!important").strip()
+
+
+def run_theme_authoring_smoke() -> None:
+    api = merman.Merman()
+    engine = merman.MermanEngine(None, None)
+    fresh = merman.MermanEngine(None, None)
+    try:
+        definitions = {}
+        for name in ("light", "dark"):
+            readable = (FIXTURES / f"{name}.definition.json").read_text(encoding="utf-8")
+            definition = json.loads(readable)
+            expected_definition = (FIXTURES / f"{name}.definition.canonical.json").read_bytes().strip()
+            expected_spec = (FIXTURES / f"{name}.spec.canonical.json").read_bytes().strip()
+            require(fixture_canonical_bytes(definition) == expected_definition,
+                    f"{name} canonical definition differs from the Rust typed vector")
+            exported = json.dumps(definition, indent=2, ensure_ascii=False, allow_nan=False)
+            require(fixture_canonical_bytes(json.loads(exported)) == expected_definition,
+                    f"{name} readable export changed the definition")
+            for client in (api, engine, fresh):
+                materialized = execute_json(client, "materialize-theme-json", exported)
+                require(fixture_canonical_bytes(materialized["spec"]) == expected_spec,
+                        f"{name} bound materialization differs from the fixed spec oracle")
+            definitions[name] = exported
+
+        for family in SOURCES:
+            light = render_definition(engine, definitions["light"], family)
+            dark = render_definition(engine, definitions["dark"], family)
+            require(light != dark, f"{family} ignored light/dark tokens")
+            require(light == render_definition(engine, definitions["light"], family),
+                    f"{family} leaked dark state into reused light render")
+            require(light == render_definition(fresh, definitions["light"], family),
+                    f"{family} disagrees across independent engines")
+            require(light == render_definition(api, definitions["light"], family),
+                    f"{family} one-shot render disagrees with engine render")
+            ET.fromstring(dark)
+            if family == "state":
+                require(state_fill(light) == "#fef3c7", "light surface missed its terminal")
+                require(state_fill(dark) == "#172554", "dark surface missed its terminal")
+
+        edited = json.loads(definitions["light"])
+        edited["styles"] = [{
+            "kind": "rule", "target": "state", "family": "state",
+            "style": {"fill": "#123abc"},
+        }]
+        require(state_fill(render_definition(engine, json.dumps(edited), "state")) == "#123abc",
+                "family-scoped rule failed to override the token-derived terminal fill")
+        require(render_definition(engine, json.dumps(edited), "sequence")
+                == render_definition(engine, definitions["light"], "sequence"),
+                "State rule leaked into Sequence")
+        require(state_fill(render_definition(engine, definitions["light"], "state")) == "#fef3c7",
+                "State override leaked into the next unmodified theme")
+
+        cold_spec = {"styles": [{
+            "kind": "rule", "target": "state", "family": "state",
+            "style": {"fill": "#456def"},
+        }]}
+        cold_engine = merman.MermanEngine(None, None)
+        try:
+            cold_svg = cold_engine.render_svg(SOURCES["state"], json.dumps({
+                "version": 3, "theme": {"spec": cold_spec},
+                "site_config": {"htmlLabels": False},
+            }))
+            require(state_fill(cold_svg) == "#456def",
+                    "complete spec must cold-start without a materialized definition")
+        finally:
+            cold_engine.close()
+
+        for preset in ("brutalist", "spotless", "cyberpunk"):
+            exported = execute_json(api, "export-theme-preset-json", preset)
+            require(exported["kind"] == "complete_spec", "preset must export a closed recipe")
+            spec = exported["complete_spec"]
+            require("assets" not in spec and "mermaid" not in spec,
+                    "native preset export must not embed fonts or Mermaid compatibility")
+            options = {"version": 3, "site_config": {"htmlLabels": False},
+                       "svg": {"diagram_id": f"python-preset-{preset}"}}
+            from_preset = engine.render_svg(SOURCES["state"], json.dumps({
+                **options, "theme": {"preset": preset},
+            }))
+            from_export = fresh.render_svg(SOURCES["state"], json.dumps({
+                **options, "theme": {"spec": spec},
+            }))
+            require(from_preset == from_export, f"{preset} export changed the rendered recipe")
+
+        query = {"schema_version": 1, "family": "er", "output": "standalone-svg",
+                 "target": "title", "facet": "fill"}
+        for client in (api, engine):
+            support = execute_json(client, "describe-theme-support-json", json.dumps(query))
+            require(support["query"] == query and support["state"] == "unsupported"
+                    and bool(support["reason_ids"]),
+                    "unsupported ER title paint must remain explainable")
+        print("Python theme authoring passed: shared vectors, three families, isolation, "
+              "rule, cold start, preset export, discovery")
+    finally:
+        fresh.close()
+        engine.close()
+
+
+if __name__ == "__main__":
+    run_theme_authoring_smoke()

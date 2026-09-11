@@ -64,6 +64,40 @@ cargo build -p merman-uniffi --profile native-distribution --no-default-features
 cargo run -p merman-uniffi --no-default-features --features binding-generation --example generate_python_package -- --metadata-library target/native-distribution/libmerman_uniffi.rlib --cdylib target/native-distribution/merman_uniffi.dll --package-dir platforms/python/merman
 ```
 
+## Theme authoring consumer verification
+
+The repository's `platforms/python/merman/examples/theme_authoring.py` exercises an installed
+Python package through generated UniFFI bindings. Run it with the interpreter that has the matching
+wheel installed, from a repository checkout:
+
+```bash
+python platforms/python/merman/examples/theme_authoring.py
+```
+
+The ordinary wheel smoke also runs this witness, so the existing Python CI, release preflight, and
+final-wheel smoke paths cover it. To build and install the current wheel into the smoke environment:
+
+```bash
+python scripts/build-python-uniffi-wheel.py --run-smoke
+```
+
+The consumer reads the shared light/dark authoring vectors used by the Rust typed-builder tests.
+It checks readable JSON export, canonical definition bytes, and complete materialized specs against
+those fixed files with an independent Python oracle restricted to their ASCII-key/integral-number
+domain. It does not implement a general canonical JSON encoder. `materialize-theme-json` returns a
+versioned envelope whose `spec` is passed directly to `render_svg` through `theme.spec`; the consumer
+never writes an intermediate spec file.
+
+Flowchart, State, and Sequence renders must agree across one-shot and reusable clients and preserve
+light-dark-light isolation. The witness checks State's emitted surface fill, adds a family-scoped
+State rule, proves that rule does not affect Sequence, renders a separate cold-start complete spec,
+and compares each native candidate's preset selection with its exported complete spec. An ER
+`title.fill` support query must return `unsupported` with explanatory reason IDs.
+
+These checks establish a real non-Rust SVG authoring workflow. They do not qualify presets or claim
+PNG/PDF support for the default Python wheel. Font resources and font policy remain host-owned;
+the native candidate exports contain neither embedded fonts nor Mermaid compatibility fields.
+
 ## API
 
 The package re-exports the generated UniFFI API:

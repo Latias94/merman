@@ -250,6 +250,15 @@ Preserve the seven retained recipes' compatibility behavior and the host's font 
 resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to
 make qualification pass. The fixed 18-cell C6a ledger remains unchanged.
 
+The 2026-09-11 installed Python wheel consumer now runs shared light/dark definition and spec
+oracles through generated UniFFI bindings. It verifies Flowchart/State/Sequence SVG reuse and
+isolation, terminal State fill and a family-scoped override, complete-spec cold start, exact native
+preset export/render equivalence, and explanatory Unsupported discovery. The existing wheel smoke
+invokes this witness in Python CI, preflight, and final-wheel verification. The local run uses the
+`python-uniffi-native` profile on aarch64-apple-darwin; other platforms retain their CI owners.
+The default Python wheel has no PNG capability. This closes the missing executable non-Rust SVG
+consumer witness, not C7a eligibility, contract freeze, or preset qualification.
+
 The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
 and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound
 containment assertion. A local Firefox probe reports the text element at x=6px against a root at
