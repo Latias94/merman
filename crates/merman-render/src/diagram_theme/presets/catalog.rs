@@ -17,33 +17,33 @@ const CATALOG_SCHEMA_VERSION: u32 = 1;
 const AUTHORING_SCHEMA_VERSION: u32 = 1;
 const EXPANSION_VERSION: u32 = 1;
 const SPEC_SCHEMA_VERSION: u32 = 1;
-const RECIPE_REVISION: u32 = 3;
+const RECIPE_REVISION: u32 = 4;
 const ALPHA: &str = "alpha";
 const PROJECT_LICENSE: &str = "MIT OR Apache-2.0";
 const NO_QUALIFIED_CELLS: &[ThemePresetQualifiedCell] = &[];
 const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
-const EDITOR_LIGHT_RECIPE_V3_FINGERPRINT: &str =
-    "3cacaaab346b39e9ff3ea0d2c4ef84daa3b90805cfd677c7efe55f4fee494d6a";
-const EDITOR_DARK_RECIPE_V3_FINGERPRINT: &str =
-    "4487602f285a20782f6e150cc34d41c64156175aeaa52308d78cc7889648339b";
-const ONE_DARK_RECIPE_V3_FINGERPRINT: &str =
-    "b59be74941b224f7710430bef6aea7a2f73c2dca8047c86970f6d8d799648c36";
-const GRUVBOX_LIGHT_RECIPE_V3_FINGERPRINT: &str =
-    "93cb21a070d853bd81818a031021e2c9f02785930a153c40ffc8b92ba88842ff";
-const GRUVBOX_DARK_RECIPE_V3_FINGERPRINT: &str =
-    "221cd05dc295576219afa2916d1ca600538033eecb5054e15180f394b71bf96a";
-const AYU_LIGHT_RECIPE_V3_FINGERPRINT: &str =
-    "c4d8d724e25d44efead0b344d24c3b50db6b8529b29967c26b268a6380ecdd13";
-const AYU_DARK_RECIPE_V3_FINGERPRINT: &str =
-    "b0c20b50fab86b82caf25df8f1bc7096b969e4dffd252e3279ca74284dda77c2";
-const BRUTALIST_RECIPE_V3_FINGERPRINT: &str =
-    "ea28883d99aa8f39707850dd146d35e3aa0aa2753895e87e4a1b04451c5f3049";
-const SPOTLESS_RECIPE_V3_FINGERPRINT: &str =
-    "95ef186ab422e6ded6ad5f2e14e7082cbda4ee8d53a670fbea084a2e6de7e05c";
-const CYBERPUNK_RECIPE_V3_FINGERPRINT: &str =
-    "12f0802e9a1345dae80df6c915fb2c2a1f688331c9decca642390cfa3163adeb";
+const EDITOR_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+    "a98b7a6e93bbbc17832c6be11ebe09008c5382a38d2a27fc5ca52f5abb2e5411";
+const EDITOR_DARK_RECIPE_V4_FINGERPRINT: &str =
+    "49a46a985abe9a53194f8aa6d5c95f79383eb562f63097a684992ff001829aa0";
+const ONE_DARK_RECIPE_V4_FINGERPRINT: &str =
+    "c94f5100f62f6664da322275127c4f60556c3339ef3ba03d0c9ace84a44230da";
+const GRUVBOX_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+    "fe8ac082387f78aeaa7ae198d57b358991b395e2b212de4eb03d0c62151c6b90";
+const GRUVBOX_DARK_RECIPE_V4_FINGERPRINT: &str =
+    "d0cd109708af411f35fee3a6e8e2c8c133280942f855af97e706efaf3b05dd42";
+const AYU_LIGHT_RECIPE_V4_FINGERPRINT: &str =
+    "e62e3c175ac47801ec2fe2a631fe253aeaf60dc58f00917920ce1c0ccd45ea00";
+const AYU_DARK_RECIPE_V4_FINGERPRINT: &str =
+    "3ebcce80dfe68ee9fd312ddd4fdc6e0f556eb46e74d1ebd84e835bc039a64c87";
+const BRUTALIST_RECIPE_V4_FINGERPRINT: &str =
+    "5448ef8d839c93571ee826e79cadb18e0c7dfb336c3740ee6bde2b209a30c03e";
+const SPOTLESS_RECIPE_V4_FINGERPRINT: &str =
+    "b9423638c5aa87c6ad3fe99e201b6b9946ff691b1e594246959f9f39ca24aea7";
+const CYBERPUNK_RECIPE_V4_FINGERPRINT: &str =
+    "c440c72c44c22a3982639b5b6c1641eb788069ea88422c6251ea855fb9a4bab3";
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDefinitionV1;
 
 #[derive(Clone, Copy)]
@@ -240,7 +240,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-light",
         "Editor Light",
         false,
-        EDITOR_LIGHT_RECIPE_V3_FINGERPRINT,
+        EDITOR_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
@@ -276,7 +276,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "editor-dark",
         "Editor Dark",
         true,
-        EDITOR_DARK_RECIPE_V3_FINGERPRINT,
+        EDITOR_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
@@ -312,7 +312,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "one-dark",
         "One Dark",
         true,
-        ONE_DARK_RECIPE_V3_FINGERPRINT,
+        ONE_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
@@ -351,7 +351,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-light",
         "Gruvbox Light",
         false,
-        GRUVBOX_LIGHT_RECIPE_V3_FINGERPRINT,
+        GRUVBOX_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
@@ -387,7 +387,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "gruvbox-dark",
         "Gruvbox Dark",
         true,
-        GRUVBOX_DARK_RECIPE_V3_FINGERPRINT,
+        GRUVBOX_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
@@ -426,7 +426,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-light",
         "Ayu Light",
         false,
-        AYU_LIGHT_RECIPE_V3_FINGERPRINT,
+        AYU_LIGHT_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
@@ -462,7 +462,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "ayu-dark",
         "Ayu Dark",
         true,
-        AYU_DARK_RECIPE_V3_FINGERPRINT,
+        AYU_DARK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
@@ -498,7 +498,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "brutalist",
         "Brutalist",
         false,
-        BRUTALIST_RECIPE_V3_FINGERPRINT,
+        BRUTALIST_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#f4f0e6",
             surface: "#fffdf5",
@@ -537,7 +537,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "spotless",
         "Spotless",
         false,
-        SPOTLESS_RECIPE_V3_FINGERPRINT,
+        SPOTLESS_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#f7f5ef",
             surface: "#ffffff",
@@ -573,7 +573,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
         "cyberpunk",
         "Cyberpunk",
         true,
-        CYBERPUNK_RECIPE_V3_FINGERPRINT,
+        CYBERPUNK_RECIPE_V4_FINGERPRINT,
         PresetPalette {
             canvas: "#020617",
             surface: "#0f172a",

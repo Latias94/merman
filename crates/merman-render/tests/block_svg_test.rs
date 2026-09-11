@@ -324,6 +324,29 @@ fn render_block_with_theme_requirement(
 }
 
 #[test]
+fn block_explicit_default_font_size_has_a_typed_terminal_receipt() {
+    for explicit in [false, true] {
+        let style = if explicit {
+            ThemeTextStyle::default().with_font_size_px(16.0).unwrap()
+        } else {
+            ThemeTextStyle::default()
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(DiagramFamilyId::BLOCK, style),
+            ))
+            .unwrap();
+        let rendered =
+            render_block_with_theme_and_engine("block\n A[\"Alpha\"]\n", &theme, Engine::new());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), usize::from(explicit));
+        assert_eq!(evidence.applied_count(), usize::from(explicit));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn block_typed_typography_reaches_layout_css_and_strict_receipt() {
     let theme = block_typography_theme("Block Sans", 22.0);
     let rendered = render_block_with_theme_and_engine(

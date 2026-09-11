@@ -598,6 +598,32 @@ pie title Source font
 }
 
 #[test]
+fn pie_explicit_default_font_size_cannot_bypass_strict_admission() {
+    for explicit in [false, true] {
+        let style = if explicit {
+            ThemeTextStyle::default().with_font_size_px(16.0).unwrap()
+        } else {
+            ThemeTextStyle::default()
+        };
+        let theme = pie_typography_theme(style);
+        let result = try_render_pie_with_theme_requirement(
+            "pie\n \"Alpha\" : 1\n",
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        if explicit {
+            let error = result.err().expect("explicit unsupported size must fail");
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::PIE, 1))
+            );
+        } else {
+            assert!(result.is_ok(), "omitted size must preserve role defaults");
+        }
+    }
+}
+
+#[test]
 fn pie_font_size_only_is_explicitly_unsupported_without_a_legacy_bridge() {
     let typography = ThemeTextStyle::default()
         .with_font_size_px(24.0)

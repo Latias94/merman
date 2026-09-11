@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::ThemeCompileValidationError;
+use super::{ThemeCompileValidationError, ThemeTypographyProperty};
 use crate::DiagramFamilyId;
 
 pub(crate) const MAX_FONT_STACK_ENTRIES: usize = 32;
@@ -183,8 +183,11 @@ impl Default for FontStack {
     }
 }
 
+/// Effective typography values together with the properties explicitly supplied by the author.
+/// Builder calls retain presence even when their value equals the renderer default.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextStyle {
+    specified: u16,
     font_stack: FontStack,
     font_size_px: f32,
     font_weight: u16,
@@ -202,6 +205,7 @@ pub struct TextStyle {
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            specified: 0,
             font_stack: FontStack::default(),
             font_size_px: 16.0,
             font_weight: 400,
@@ -219,14 +223,29 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
+    pub(crate) const fn is_specified(&self, property: ThemeTypographyProperty) -> bool {
+        self.specified & (1 << property as u16) != 0
+    }
+
+    pub(crate) fn specified_properties(
+        &self,
+    ) -> impl Iterator<Item = ThemeTypographyProperty> + '_ {
+        ThemeTypographyProperty::ALL
+            .iter()
+            .copied()
+            .filter(|property| self.is_specified(*property))
+    }
+
     pub fn with_font_stack(mut self, font_stack: FontStack) -> Self {
         self.font_stack = font_stack;
+        self.specified |= 1 << ThemeTypographyProperty::FontStack as u16;
         self
     }
 
     pub fn with_font_size_px(mut self, value: f32) -> Result<Self, ThemeCompileValidationError> {
         validate_positive(value, "typography.font_size_px")?;
         self.font_size_px = value;
+        self.specified |= 1 << ThemeTypographyProperty::FontSize as u16;
         Ok(self)
     }
 
@@ -237,11 +256,13 @@ impl TextStyle {
             });
         }
         self.font_weight = value;
+        self.specified |= 1 << ThemeTypographyProperty::FontWeight as u16;
         Ok(self)
     }
 
     pub fn with_font_style(mut self, value: crate::diagram_theme::FontStyle) -> Self {
         self.font_style = value;
+        self.specified |= 1 << ThemeTypographyProperty::FontStyle as u16;
         self
     }
 
@@ -251,6 +272,7 @@ impl TextStyle {
     ) -> Result<Self, ThemeCompileValidationError> {
         value.validate()?;
         self.line_height = value;
+        self.specified |= 1 << ThemeTypographyProperty::LineHeight as u16;
         Ok(self)
     }
 
@@ -260,37 +282,44 @@ impl TextStyle {
     ) -> Result<Self, ThemeCompileValidationError> {
         validate_finite(value, "typography.letter_spacing_px")?;
         self.letter_spacing_px = value;
+        self.specified |= 1 << ThemeTypographyProperty::LetterSpacing as u16;
         Ok(self)
     }
 
     pub fn with_word_spacing_px(mut self, value: f32) -> Result<Self, ThemeCompileValidationError> {
         validate_finite(value, "typography.word_spacing_px")?;
         self.word_spacing_px = value;
+        self.specified |= 1 << ThemeTypographyProperty::WordSpacing as u16;
         Ok(self)
     }
 
     pub fn with_transform(mut self, value: TextTransform) -> Self {
         self.transform = value;
+        self.specified |= 1 << ThemeTypographyProperty::Transform as u16;
         self
     }
 
     pub fn with_decoration(mut self, value: TextDecoration) -> Self {
         self.decoration = value;
+        self.specified |= 1 << ThemeTypographyProperty::Decoration as u16;
         self
     }
 
     pub fn with_text_align(mut self, value: TextAlign) -> Self {
         self.text_align = value;
+        self.specified |= 1 << ThemeTypographyProperty::TextAlign as u16;
         self
     }
 
     pub fn with_white_space(mut self, value: WhiteSpace) -> Self {
         self.white_space = value;
+        self.specified |= 1 << ThemeTypographyProperty::WhiteSpace as u16;
         self
     }
 
     pub fn with_wrap(mut self, value: WrapMode) -> Self {
         self.wrap = value;
+        self.specified |= 1 << ThemeTypographyProperty::Wrap as u16;
         self
     }
 

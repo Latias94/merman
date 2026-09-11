@@ -13,7 +13,7 @@ use super::typography::{
 };
 use super::{FontCatalog, FontStack, FontStyle};
 
-const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v3";
+const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v4";
 
 pub(crate) fn recipe_fingerprint(
     spec: &DiagramThemeSpec,
@@ -103,6 +103,13 @@ fn encode_typography(encoder: &mut CanonicalEncoder, typography: &TypographySpec
 }
 
 fn encode_text_style(encoder: &mut CanonicalEncoder, style: &TextStyle) {
+    encoder.field("specified-properties", |encoder| {
+        let properties = style.specified_properties().collect::<Vec<_>>();
+        encoder.sequence_len(properties.len());
+        for property in properties {
+            encoder.string(property.id());
+        }
+    });
     encoder.field("font-stack", |encoder| {
         encode_font_stack(encoder, style.font_stack())
     });
@@ -796,6 +803,98 @@ mod tests {
                 .with_graph(graph)
                 .expect("unique effect graph"),
         )
+    }
+
+    #[test]
+    fn every_explicit_typography_default_changes_recipe_identity() {
+        let baseline = TextStyle::default();
+        let cases = [
+            baseline
+                .clone()
+                .with_font_stack(baseline.font_stack().clone()),
+            baseline
+                .clone()
+                .with_font_size_px(baseline.font_size_px())
+                .unwrap(),
+            baseline
+                .clone()
+                .with_font_weight(baseline.font_weight())
+                .unwrap(),
+            baseline.clone().with_font_style(baseline.font_style()),
+            baseline
+                .clone()
+                .with_line_height(baseline.line_height())
+                .unwrap(),
+            baseline
+                .clone()
+                .with_letter_spacing_px(baseline.letter_spacing_px())
+                .unwrap(),
+            baseline
+                .clone()
+                .with_word_spacing_px(baseline.word_spacing_px())
+                .unwrap(),
+            baseline.clone().with_transform(baseline.transform()),
+            baseline.clone().with_decoration(baseline.decoration()),
+            baseline.clone().with_text_align(baseline.text_align()),
+            baseline.clone().with_white_space(baseline.white_space()),
+            baseline.clone().with_wrap(baseline.wrap()),
+        ];
+        for (property, style) in crate::diagram_theme::ThemeTypographyProperty::ALL
+            .iter()
+            .zip(cases)
+        {
+            assert_eq!(
+                style.specified_properties().collect::<Vec<_>>(),
+                [*property]
+            );
+            assert_recipe_field_changes(
+                property.id(),
+                with_default_text_style(baseline.clone()),
+                with_default_text_style(style),
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_default_typography_is_distinct_from_omission_in_rust_and_wire() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, FamilyThemeMechanism, ThemeTypographyProperty,
+        };
+        let compiler = DiagramThemeCompiler::new();
+        let omitted = compiler.compile(DiagramThemeSpec::new()).unwrap();
+        let explicit = compiler
+            .compile(with_default_text_style(
+                TextStyle::default().with_font_size_px(16.0).unwrap(),
+            ))
+            .unwrap();
+        let wire = compiler
+            .compile_spec_wire(
+                serde_json::from_value(serde_json::json!({
+                    "typography": { "default": { "font_size_px": 16.0 } }
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        assert_ne!(omitted.recipe_fingerprint(), explicit.recipe_fingerprint());
+        assert_eq!(explicit.recipe_fingerprint(), wire.recipe_fingerprint());
+        for family in [crate::DiagramFamilyId::BLOCK, crate::DiagramFamilyId::PIE] {
+            assert!(
+                !omitted
+                    .resolve(family)
+                    .family_mechanism_routes()
+                    .iter()
+                    .any(|route| route.mechanism()
+                        == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize))
+            );
+            assert!(
+                explicit
+                    .resolve(family)
+                    .family_mechanism_routes()
+                    .iter()
+                    .any(|route| route.mechanism()
+                        == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize))
+            );
+        }
     }
 
     #[test]

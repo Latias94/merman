@@ -87,8 +87,8 @@ fn tokens_only_definition_materializes_the_complete_version_one_spec() {
                 .as_slice()
         )
     );
-    assert_eq!(typography.font_size_px, Some(16.0));
-    assert_eq!(typography.font_weight, Some(400));
+    assert_eq!(typography.font_size_px, None);
+    assert_eq!(typography.font_weight, None);
     assert_eq!(typography.line_height, None);
 
     let styles = spec

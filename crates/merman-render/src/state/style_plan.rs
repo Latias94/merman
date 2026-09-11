@@ -710,45 +710,7 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
 fn configured_base_typography_properties(
     typography: &ThemeTextStyle,
 ) -> BTreeSet<ThemeTypographyProperty> {
-    let default = ThemeTextStyle::default();
-    let mut properties = BTreeSet::new();
-    if typography.font_stack() != default.font_stack() {
-        properties.insert(ThemeTypographyProperty::FontStack);
-    }
-    if (typography.font_size_px() - default.font_size_px()).abs() > f32::EPSILON {
-        properties.insert(ThemeTypographyProperty::FontSize);
-    }
-    if typography.font_weight() != default.font_weight() {
-        properties.insert(ThemeTypographyProperty::FontWeight);
-    }
-    if typography.font_style() != default.font_style() {
-        properties.insert(ThemeTypographyProperty::FontStyle);
-    }
-    if typography.line_height() != crate::diagram_theme::LineHeight::Normal {
-        properties.insert(ThemeTypographyProperty::LineHeight);
-    }
-    if typography.letter_spacing_px().abs() > f32::EPSILON {
-        properties.insert(ThemeTypographyProperty::LetterSpacing);
-    }
-    if typography.word_spacing_px().abs() > f32::EPSILON {
-        properties.insert(ThemeTypographyProperty::WordSpacing);
-    }
-    if typography.transform() != crate::diagram_theme::TextTransform::None {
-        properties.insert(ThemeTypographyProperty::Transform);
-    }
-    if typography.decoration() != crate::diagram_theme::TextDecoration::None {
-        properties.insert(ThemeTypographyProperty::Decoration);
-    }
-    if typography.text_align() != crate::diagram_theme::TextAlign::Start {
-        properties.insert(ThemeTypographyProperty::TextAlign);
-    }
-    if typography.white_space() != crate::diagram_theme::WhiteSpace::Normal {
-        properties.insert(ThemeTypographyProperty::WhiteSpace);
-    }
-    if typography.wrap() != crate::diagram_theme::ThemeWrapMode::Normal {
-        properties.insert(ThemeTypographyProperty::Wrap);
-    }
-    properties
+    typography.specified_properties().collect()
 }
 
 fn semantic_typography_property_overridden(

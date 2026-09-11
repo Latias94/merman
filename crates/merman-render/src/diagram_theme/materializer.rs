@@ -602,8 +602,13 @@ fn resolve_typography(
         })?;
     Ok(ThemeTextStyleWireV1 {
         font_stack: Some(validated_style.font_stack().families().to_vec()),
-        font_size_px: Some(validated_style.font_size_px()),
-        font_weight: Some(validated_style.font_weight()),
+        // Omission remains a renderer fallback, not an explicitly requested property.
+        font_size_px: authored
+            .and_then(|style| style.font_size_px())
+            .map(|_| validated_style.font_size_px()),
+        font_weight: authored
+            .and_then(|style| style.font_weight())
+            .map(|_| validated_style.font_weight()),
         ..ThemeTextStyleWireV1::default()
     })
 }
@@ -691,6 +696,26 @@ mod tests {
                 && compile_ordinal_palette_route(*family, target).disposition()
                     == FamilyThemeDisposition::TypedAdapter
         })
+    }
+
+    #[test]
+    fn materialized_typography_preserves_omitted_and_explicit_defaults() {
+        let omitted: ThemeDefinitionV1 = serde_json::from_value(serde_json::json!({
+            "authoring_schema_version": 1, "expansion_version": 1, "tokens": {}
+        }))
+        .unwrap();
+        let explicit: ThemeDefinitionV1 = serde_json::from_value(serde_json::json!({
+            "authoring_schema_version": 1, "expansion_version": 1,
+            "tokens": { "typography": { "font_size_px": 16.0, "font_weight": 400 } }
+        }))
+        .unwrap();
+        let omitted = resolve_typography(&omitted).unwrap();
+        let explicit = resolve_typography(&explicit).unwrap();
+        assert_eq!(omitted.font_size_px, None);
+        assert_eq!(omitted.font_weight, None);
+        assert_eq!(explicit.font_size_px, Some(16.0));
+        assert_eq!(explicit.font_weight, Some(400));
+        assert_eq!(omitted.font_stack, explicit.font_stack);
     }
 
     #[test]

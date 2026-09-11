@@ -694,9 +694,8 @@ pub(super) fn compile_base_typography_routes(
     family: DiagramFamilyId,
     style: &TextStyle,
 ) -> Vec<FamilyThemeRoute> {
-    let baseline = TextStyle::default();
     let mut routes = Vec::new();
-    if style.font_stack() != baseline.font_stack() {
+    if style.is_specified(ThemeTypographyProperty::FontStack) {
         let disposition = classify_base_typography(family, ThemeTypographyProperty::FontStack);
         let disposition = if disposition == FamilyThemeDisposition::LegacyCompatibility
             && style.font_stack().as_css().len() > MAX_LEGACY_ASSIGNMENT_STRING_BYTES
@@ -710,37 +709,37 @@ pub(super) fn compile_base_typography_routes(
             disposition,
         ));
     }
-    if style.font_size_px() != baseline.font_size_px() {
+    if style.is_specified(ThemeTypographyProperty::FontSize) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::FontSize);
     }
-    if style.font_weight() != baseline.font_weight() {
+    if style.is_specified(ThemeTypographyProperty::FontWeight) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::FontWeight);
     }
-    if style.font_style() != baseline.font_style() {
+    if style.is_specified(ThemeTypographyProperty::FontStyle) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::FontStyle);
     }
-    if style.line_height() != baseline.line_height() {
+    if style.is_specified(ThemeTypographyProperty::LineHeight) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::LineHeight);
     }
-    if style.letter_spacing_px() != baseline.letter_spacing_px() {
+    if style.is_specified(ThemeTypographyProperty::LetterSpacing) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::LetterSpacing);
     }
-    if style.word_spacing_px() != baseline.word_spacing_px() {
+    if style.is_specified(ThemeTypographyProperty::WordSpacing) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::WordSpacing);
     }
-    if style.transform() != baseline.transform() {
+    if style.is_specified(ThemeTypographyProperty::Transform) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::Transform);
     }
-    if style.decoration() != baseline.decoration() {
+    if style.is_specified(ThemeTypographyProperty::Decoration) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::Decoration);
     }
-    if style.text_align() != baseline.text_align() {
+    if style.is_specified(ThemeTypographyProperty::TextAlign) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::TextAlign);
     }
-    if style.white_space() != baseline.white_space() {
+    if style.is_specified(ThemeTypographyProperty::WhiteSpace) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::WhiteSpace);
     }
-    if style.wrap() != baseline.wrap() {
+    if style.is_specified(ThemeTypographyProperty::Wrap) {
         push_base_typography(&mut routes, family, ThemeTypographyProperty::Wrap);
     }
     routes

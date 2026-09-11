@@ -23,6 +23,25 @@ There is no public `PresentationTheme`, `HostTheme`, `PresentationProfile`, or a
 `Presentation` replacement. Product recipes belong in the host application and compose these
 owners explicitly.
 
+## Explicit typography and recipe identity
+
+Typography retains whether each property was supplied, independently of its effective value.
+`ThemeTextStyle::default()` leaves properties unspecified; calling `with_font_size_px(16.0)`
+explicitly requests that size even though 16px is the Rust default. Complete-spec JSON follows the
+same rule: omitting `font_size_px` differs from supplying `16`. A family that does not support base
+font size reports the explicit request as a residual and rejects it under `RequirePortable`.
+Source/config ownership and absent terminals still determine applicability.
+
+Authoring materialization leaves omitted size and weight absent in the complete spec. Its default
+font stack remains an intentional token-expansion choice. Explicit authored size and weight,
+including 16px and weight 400, remain present through export and reimport.
+
+Recipe fingerprint revision 4 includes typography property presence. Rebuild recipe-keyed caches
+and acceptance evidence rather than reusing revision 3 identities. Re-export presets when moving
+from older materialized specs: an old complete spec that explicitly contains 16px or weight 400 now
+correctly expresses those requests; the compiler does not guess whether those fields were once
+inserted by an older materializer. The complete-spec wire schema remains version 1.
+
 ## Rust API
 
 Select a built-in typed preset and attach the compiled value to the SVG request:
