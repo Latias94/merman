@@ -660,14 +660,14 @@ impl ExportFontEnvironment {
         let system_allowed = effective_sources.contains(&FontSource::System);
         let embedded_allowed = effective_sources.contains(&FontSource::Embedded);
         let system_db = system_allowed.then(system_fonts);
-        let mut combined_db = system_db
-            .as_deref()
-            .cloned()
-            .unwrap_or_else(usvg::fontdb::Database::new);
+        let mut fontdb = system_db
+            .as_ref()
+            .map(Arc::clone)
+            .unwrap_or_else(|| Arc::new(usvg::fontdb::Database::new()));
         let mut retained_db = usvg::fontdb::Database::new();
         let mut retained_to_combined = HashMap::new();
         let mut retained_face_ids = Vec::new();
-        let mut resolved_faces = combined_db
+        let mut resolved_faces = fontdb
             .faces()
             .map(|face| {
                 (
@@ -697,6 +697,8 @@ impl ExportFontEnvironment {
             .into();
 
         if embedded_allowed {
+            // Preserve the shared system database; only merging embedded sources needs a copy.
+            let combined_db = Arc::make_mut(&mut fontdb);
             for asset in catalog.assets() {
                 let data: Arc<dyn AsRef<[u8]> + Send + Sync> =
                     Arc::new(SharedFontData(asset.canonical_data()));
@@ -742,19 +744,11 @@ impl ExportFontEnvironment {
             }
             configure_catalog_generic_families(&mut retained_db, catalog);
             configure_fontdb_generic_families(&mut retained_db);
+            configure_catalog_generic_families(combined_db, catalog);
+            configure_fontdb_generic_families(combined_db);
         }
 
         let retained_db = Arc::new(retained_db);
-        let fontdb = if embedded_allowed {
-            configure_catalog_generic_families(&mut combined_db, catalog);
-            configure_fontdb_generic_families(&mut combined_db);
-            Arc::new(combined_db)
-        } else {
-            system_db
-                .as_ref()
-                .map(Arc::clone)
-                .ok_or(ExportError::FontSourceUnavailable)?
-        };
         let mappings = Arc::new(CatalogFamilyMappings::from_catalog(catalog));
         let recorder = Arc::new(FontResolutionRecorder::default());
         let default_family = catalog_default_family(catalog)
@@ -1709,6 +1703,28 @@ mod tests {
         )
         .unwrap();
 
+        for environment in [&embedded_environment, &system_environment] {
+            assert!(!Arc::ptr_eq(&environment.fontdb, &synthetic_system));
+            assert_eq!(
+                environment.fontdb.len(),
+                synthetic_system.len() + embedded_first.font_catalog().faces().len()
+            );
+        }
+        // Both merge orders must leave the caller's database and its face IDs intact.
+        assert_eq!(
+            synthetic_system.len(),
+            embedded_first.font_catalog().faces().len()
+        );
+        for face in synthetic_system.faces() {
+            for environment in [&embedded_environment, &system_environment] {
+                assert_eq!(
+                    environment.fontdb.face(face.id).unwrap().families,
+                    face.families
+                );
+                assert_eq!(environment.plan.faces[&face.id].source, FontSource::System);
+            }
+        }
+
         let embedded_plan = resolve_font_plan(&embedded_first, embedded_environment);
         assert_eq!(
             embedded_plan.source_mode(),
@@ -1731,13 +1747,37 @@ mod tests {
     #[test]
     fn system_only_policy_does_not_load_custom_catalog_bytes() {
         let catalog = custom_catalog(&[FontSource::Embedded, FontSource::System]);
-        let svg = sealed_svg(catalog, FontSourcePolicy::system_only());
-        let environment = ExportFontEnvironment::from_svg(&svg).unwrap();
+        let synthetic_system = font_database_from_catalog(&catalog);
+        let svg = sealed_sized_svg(catalog, FontSourcePolicy::system_only());
+        let environment = ExportFontEnvironment::from_resources(
+            svg.font_catalog(),
+            svg.font_source_policy(),
+            || Arc::clone(&synthetic_system),
+        )
+        .unwrap();
 
         assert_eq!(environment.plan.source_mode, ExportFontMode::SystemOnly);
         assert_eq!(environment.plan.loaded_embedded_face_count, 0);
         assert!(environment.retained_face_ids.is_empty());
-        assert_eq!(environment.fontdb.len(), shared_system_fontdb().len());
+        assert!(Arc::ptr_eq(&environment.fontdb, &synthetic_system));
+        assert_eq!(environment.plan.faces.len(), synthetic_system.len());
+        for face in synthetic_system.faces() {
+            assert_eq!(
+                environment.plan.faces[&face.id],
+                ExportResolvedFace {
+                    key: None,
+                    source: FontSource::System
+                }
+            );
+        }
+        assert_eq!(
+            environment.plan.catalog_assets.len(),
+            svg.font_catalog().assets().len()
+        );
+        let plan = resolve_font_plan(&svg, environment);
+        assert!(plan.used_system_fonts());
+        assert!(!plan.used_embedded_fonts());
+        assert!(!plan.unresolved_font_request());
     }
 
     #[test]
