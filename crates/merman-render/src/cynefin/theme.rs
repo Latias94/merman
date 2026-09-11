@@ -8,10 +8,12 @@ use crate::diagram_theme::{
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
-    InheritedFontStackOutcome, InheritedFontStackPlan, resolve_direct_static_fill,
+    InheritedFontStackOutcome, InheritedFontStackPlan, UnsupportedTerminalDomain,
+    reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
     unsupported_residual_for_facet,
 };
 use crate::model::CynefinDiagramLayout;
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 const CYNEFIN_TEXT_ROLE_COUNT: usize = 5;
 
@@ -178,7 +180,8 @@ impl CynefinTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
-    ) -> Self {
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
         let text_fill = theme.and_then(|theme| {
             let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
             resolve_direct_static_fill(
@@ -225,18 +228,54 @@ impl CynefinTypographyThemePlan {
                 effective_config,
                 "themeVariables.cynefin.textColor",
             ));
-        Self {
+        let mut evidence = FamilyThemeEvidence::from_theme(theme);
+        let mut unsupported_routes = cynefin_unsupported_routes(theme).into_vec();
+        if let Some(theme) = theme
+            && theme.ordinal_palette_disposition(ThemeTarget::Text)
+                == Some(FamilyThemeDisposition::Unsupported)
+        {
+            // Cynefin writes one shared text fill. Resolve its fallback without assigning
+            // ordinal identities to CSS selectors; ordinal rules retain their own residuals.
+            let mut fallbacks = FamilyThemeEvidence::from_theme(Some(theme));
+            reconcile_unsupported_terminal_domains(
+                theme,
+                &mut fallbacks,
+                &[UnsupportedTerminalDomain::static_fallbacks_only(
+                    ThemeTarget::Text,
+                    ThemeVariant::Default,
+                )
+                .with_source_owned_fill(&[config_owns_text_fill])],
+                work_meter,
+            )?;
+            let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+                target: ThemeTarget::Text,
+            };
+            if fallbacks.not_applicable_mechanisms().contains(&palette_key) {
+                evidence.mark_not_applicable(palette_key.clone());
+            }
+            for residual in fallbacks
+                .residuals()
+                .iter()
+                .filter(|item| item.key() == &palette_key)
+            {
+                unsupported_routes.push(CynefinUnsupportedRoute {
+                    key: residual.key().clone(),
+                    reason: residual.reason(),
+                });
+            }
+        }
+        Ok(Self {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
             ),
-            evidence: FamilyThemeEvidence::from_theme(theme),
-            unsupported_routes: cynefin_unsupported_routes(theme),
+            evidence,
+            unsupported_routes: unsupported_routes.into_boxed_slice(),
             text_fill,
             text_fill_routes,
             config_owns_text_fill,
             terminal_receipt: OnceLock::new(),
-        }
+        })
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -303,7 +342,19 @@ impl CynefinTypographyThemePlan {
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
         for route in &self.unsupported_routes {
-            evidence.mark_residual(route.key.clone(), route.reason);
+            let absent_text_fallback = matches!(
+                route.key,
+                FamilyThemeMechanismKey::OrdinalPalette {
+                    target: ThemeTarget::Text
+                }
+            ) && self.terminal_receipt.get().is_some_and(|receipt| {
+                !receipt.has_visible_text_fill_surface() && receipt.text_fill_counts_match()
+            });
+            if absent_text_fallback {
+                evidence.mark_not_applicable(route.key.clone());
+            } else {
+                evidence.mark_residual(route.key.clone(), route.reason);
+            }
         }
         let Some(receipt) = self.terminal_receipt.get() else {
             for (key, _) in &self.text_fill_routes {
@@ -384,6 +435,9 @@ fn cynefin_unsupported_routes(
                 FamilyThemeMechanism::RuleFacet { facet, .. } => {
                     unsupported_residual_for_facet(facet)
                 }
+                FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Text,
+                } => return None,
                 FamilyThemeMechanism::OrdinalPalette { .. } => {
                     FamilyThemeResidualReason::UnsupportedOrdinalPalette
                 }
@@ -422,7 +476,11 @@ mod tests {
         CynefinTypographyThemePlan::resolve(
             Some(&resolved),
             &MermaidConfig::from_value(serde_json::json!({})),
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
         )
+        .expect("resolve Cynefin receipt theme")
     }
 
     #[test]

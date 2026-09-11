@@ -246,7 +246,8 @@ fn prepare_cynefin_family(
     let typography_theme = crate::cynefin::CynefinTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+        execution.work_meter_ref(),
+    )?;
     let layout = crate::cynefin::layout_cynefin_diagram_typed_with_theme(
         &model,
         meta.effective_config.as_value(),

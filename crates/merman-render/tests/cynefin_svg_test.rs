@@ -7,9 +7,9 @@ use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
 };
 use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
@@ -312,6 +312,86 @@ fn cynefin_typed_text_fill_reaches_all_visible_text_selectors() {
             evidence.mermaid_compatibility_residual_count(),
             0,
             "case={case}"
+        );
+    }
+}
+
+#[test]
+fn cynefin_text_palette_only_remains_residual_when_its_fallback_is_needed() {
+    for case in ["static", "default", "config", "empty", "uncovered"] {
+        let palette =
+            OrdinalPalette::new([ThemeColorValue::parse("#abcdef").expect("valid palette color")])
+                .expect("non-empty palette");
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette);
+        if matches!(case, "static" | "default") {
+            let mut rule = ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").expect("valid text fill")),
+            )
+            .for_family(DiagramFamilyId::CYNEFIN);
+            if case == "default" {
+                rule = rule.with_variant(ThemeVariant::Default);
+            }
+            styles = styles.with_rule(rule);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .expect("compile text palette theme");
+        let engine = if case == "config" {
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": { "cynefin": { "textColor": "#123456" } }
+            })))
+        } else {
+            Engine::new()
+        };
+        let source = if case == "empty" {
+            "---\nconfig:\n  cynefin:\n    showDomainDescriptions: false\n---\ncynefin-beta\n"
+        } else {
+            CYNEFIN_TEXT_FILL_SOURCE
+        };
+        let result = try_render_cynefin_with_theme(
+            source,
+            &theme,
+            engine,
+            &portable_cynefin_environment(),
+            "cynefin-palette-fallback",
+        );
+        if case == "uncovered" {
+            let error = result
+                .err()
+                .expect("unsupported palette must remain a strict residual");
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::CYNEFIN, 1))
+            );
+            assert_eq!(error.incomplete_family_theme(), None);
+            continue;
+        }
+        let (_, rendered) = result.unwrap_or_else(|error| panic!("{case}: {error}"));
+        if case != "empty" {
+            let stylesheet = cynefin_stylesheet(rendered.svg());
+            for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
+                assert!(
+                    cynefin_rule_body(&stylesheet, "cynefin-palette-fallback", selector)
+                        .contains("fill:#123456;"),
+                    "{case}: {selector}"
+                );
+            }
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+        assert_eq!(
+            evidence.required_count(),
+            evidence.accounted_count(),
+            "{case}"
+        );
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(matches!(case, "static" | "default")),
+            "{case}"
         );
     }
 }
