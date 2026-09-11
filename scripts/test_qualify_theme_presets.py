@@ -90,7 +90,7 @@ class CliQualificationTests(unittest.TestCase):
         ]}
         self.qualification["catalog"] = copy.deepcopy(self.catalog)
         preset = self.qualification["presets"][0]
-        preset["profile"] = "native-state-sequence-system-fonts-v2"
+        preset["profile"] = "native-flowchart-state-sequence-system-fonts-v3"
         for cell in preset["cells"]:
             cell["family"] = "state"
             cell["admission"] = "host_dependent"

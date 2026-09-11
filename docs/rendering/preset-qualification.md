@@ -1,10 +1,14 @@
 # Scoped preset qualification
 
 The workspace-only Rust runner executes the exact Brutalist, Spotless, and Cyberpunk catalog
-recipes on the declared `native-state-sequence-system-fonts-v2` State/Sequence SVG/PNG profile. It checks terminal
-styles, raster coverage and label ink, admission reasons, residuals, and artifact/resource identity.
-State PNG uses 1x; Sequence PNG uses 4x so the default 0.5px lifeline has an opaque core
-for color checks. Each observation records its scenario's `png_scale`; SVG remains in diagram units.
+recipes on the declared `native-flowchart-state-sequence-system-fonts-v3` profile for
+Flowchart/State/Sequence SVG and PNG. It checks terminal styles, raster coverage and label ink,
+admission reasons, residuals, and artifact/resource identity.
+State PNG uses 1x; Flowchart and Sequence use 4x so thin lines and label paint remain observable.
+Flowchart places its labeled edge inside a contrasting subgraph: a missing translucent label
+background must fail the raster check. Qualification schema 3 replaces the previous two-family
+profile; an older receipt cannot acquire the new Flowchart cells. Each observation records its
+scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
 inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md) for other families.
 
@@ -95,10 +99,16 @@ constructors now require the profile and admission arguments; there is no implic
 Constructing a Rust cell is only constructing metadata, not issuing proof. Built-in scopes remain
 empty. The archive companion below projects fresh evidence only for its declared profile and actual
 artifact build. Flowchart now reports HostDependent without bridge residuals for the fixed
-native-candidate admission sources; it has no qualified profile yet. Sequence retains unsupported
+native-candidate admission sources; qualification additionally checks the declared title, subgraph,
+node, and labeled-edge scenario. Sequence retains unsupported
 generic-text requests only where completed role writers do not cover their fills, or other
 requested facets remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
-their existing dispositions. The positive qualification profile covers only its declared State/Sequence SVG/PNG scenarios.
+their existing dispositions. The positive qualification profile covers only its declared
+Flowchart/State/Sequence SVG/PNG scenarios (six artifact cells per native preset).
+Flowchart checks canvas, node/cluster surfaces and borders, diagram/cluster/node/edge labels,
+the directed edge and marker, and the actual translucent label background. PNG checks use
+separate regions so borders or the edge cannot replace missing label ink. These checks do not
+qualify arbitrary Flowchart sources or explicit Marker/ClusterLabel rules.
 Sequence checks actor, message, note, loop, and autonumber label assignments plus activation
 styles in SVG; PNG independently checks actor/note surfaces and label ink, message strokes, and
 unoccluded lifeline strokes. These bounded checks do not qualify arbitrary Sequence sources.
@@ -107,7 +117,7 @@ unoccluded lifeline strokes. These bounded checks do not qualify arbitrary Seque
 
 Archive qualification writes `preset-qualification.catalog.json` beside the full execution record.
 It joins the catalog returned by the exact CLI's `capabilities --json` with fresh runner-owned
-State/Sequence SVG/PNG cells. A mismatch in production metadata or output bytes rejects the join.
+Flowchart/State/Sequence SVG/PNG cells. A mismatch in production metadata or output bytes rejects the join.
 The three native candidates retain alpha maturity and report `host_dependent` under the declared
 system-font profile; the seven retained presets keep empty scope. The companion binds the final
 archive and executable hashes, source revision, host, recipe/resource identities, and scenario

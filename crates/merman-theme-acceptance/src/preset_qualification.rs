@@ -14,14 +14,17 @@ use merman::{
 };
 use sha2::{Digest as _, Sha256};
 
+#[path = "support/preset_flowchart_proof.rs"]
+mod flowchart_proof;
+
 #[path = "support/preset_state_proof.rs"]
 mod state_proof;
 
 #[path = "support/preset_sequence_proof.rs"]
 mod sequence_proof;
 
-const QUALIFICATION_SCHEMA_REVISION: u32 = 2;
-const HOST_PROFILE: &str = "native-state-sequence-system-fonts-v2";
+const QUALIFICATION_SCHEMA_REVISION: u32 = 3;
+const HOST_PROFILE: &str = "native-flowchart-state-sequence-system-fonts-v3";
 
 /// One frozen representative source used to inspect a catalog preset on both native targets.
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +54,14 @@ impl PresetQualificationSpec {
         self.png_scale
     }
 }
+
+const FLOWCHART_SPEC: PresetQualificationSpec = PresetQualificationSpec {
+    family: DiagramFamilyId::FLOWCHART,
+    source_id: "preset-native-flowchart-terminals-v1",
+    // The label background must be observable against the contrasting cluster surface.
+    png_scale: 4.0,
+    source: "---\ntitle: Approval\n---\nflowchart LR\nsubgraph phase[Review]\nA[Alpha] -->|Advance| B[Beta]\nend\n",
+};
 
 const STATE_SPEC: PresetQualificationSpec = PresetQualificationSpec {
     family: DiagramFamilyId::STATE,
@@ -167,7 +178,7 @@ impl PresetAdmissionReport {
     }
 }
 
-/// Execution-local qualification of the declared State/Sequence SVG/PNG host-dependent profile.
+/// Execution-local qualification of the declared Flowchart/State/Sequence SVG/PNG host-dependent profile.
 ///
 /// Only the production runner can construct this receipt. It is not serializable and grants no
 /// portable, all-family, stable-catalog, or C6a claim. Target receipts retain exact artifact,
@@ -259,7 +270,7 @@ impl PresetQualificationReceipt {
     }
 }
 
-/// Qualifies the three native candidates only for the declared host-dependent State/Sequence profile.
+/// Qualifies the three native candidates only for the declared host-dependent Flowchart/State/Sequence profile.
 ///
 /// No font resources, compatibility fields, or rules are injected. Missing system glyphs or
 /// semantic/visual failures reject this execution; host dependence is never promoted to Portable.
@@ -277,7 +288,7 @@ pub fn run_preset_qualification(
             detail: "preset has no declared native qualification profile".to_owned(),
         });
     }
-    let report = execute_preset(preset, &[STATE_SPEC, SEQUENCE_SPEC], true)?;
+    let report = execute_preset(preset, &[FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC], true)?;
     Ok(PresetQualificationReceipt {
         schema_revision: QUALIFICATION_SCHEMA_REVISION,
         report,
@@ -371,6 +382,7 @@ fn execute_preset(
         let evidence = merman::__theme_acceptance::theme_acceptance_evidence(document.evidence());
         if qualify {
             let verification = match spec.family {
+                DiagramFamilyId::FLOWCHART => flowchart_proof::verify(preset, &document, &png),
                 DiagramFamilyId::STATE => state_proof::verify(preset, &document, &png),
                 DiagramFamilyId::SEQUENCE => sequence_proof::verify(preset, &document, &png),
                 _ => unreachable!("qualification specs have explicit family checkers"),
@@ -439,10 +451,12 @@ mod tests {
         stale.report.resource_fingerprint[0] ^= 1;
         assert!(!stale.is_current());
         assert!(stale.catalog_entry().is_err());
-        let mut stale = original.clone();
-        stale.schema_revision += 1;
-        assert!(!stale.is_current());
-        assert!(stale.catalog_entry().is_err());
+        for revision in [1, 2, QUALIFICATION_SCHEMA_REVISION + 1] {
+            let mut stale = original.clone();
+            stale.schema_revision = revision;
+            assert!(!stale.is_current());
+            assert!(stale.catalog_entry().is_err());
+        }
         assert!(original.is_current());
         let entry = original.catalog_entry().unwrap();
         assert_eq!(entry.id, "brutalist");
@@ -454,6 +468,8 @@ mod tests {
                 .map(|cell| (cell.family_id.as_str(), cell.output_id.as_str()))
                 .collect::<Vec<_>>(),
             [
+                ("flowchart", "png"),
+                ("flowchart", "svg"),
                 ("sequence", "png"),
                 ("sequence", "svg"),
                 ("state", "png"),
@@ -473,7 +489,7 @@ mod tests {
         let renderer = Renderer::new().with_engine(Engine::new().with_site_config(
             MermaidConfig::from_value(serde_json::json!({"htmlLabels": false})),
         ));
-        for spec in [STATE_SPEC, SEQUENCE_SPEC] {
+        for spec in [FLOWCHART_SPEC, STATE_SPEC, SEQUENCE_SPEC] {
             let RenderOutput::Document(Some(document)) = renderer
                 .render(
                     RenderRequest::document(
@@ -493,10 +509,11 @@ mod tests {
                     OperationControl::new(),
                 )
                 .unwrap();
-            let verify = if spec.family == DiagramFamilyId::STATE {
-                state_proof::verify
-            } else {
-                sequence_proof::verify
+            let verify = match spec.family {
+                DiagramFamilyId::FLOWCHART => flowchart_proof::verify,
+                DiagramFamilyId::STATE => state_proof::verify,
+                DiagramFamilyId::SEQUENCE => sequence_proof::verify,
+                _ => unreachable!("qualification specs have explicit family checkers"),
             };
             verify(ThemePreset::Spotless, &document, &png).unwrap();
             let error = verify(ThemePreset::Brutalist, &document, &png).unwrap_err();

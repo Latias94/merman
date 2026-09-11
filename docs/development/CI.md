@@ -268,7 +268,7 @@ The `preset_qualification` integration target currently runs the admission stage
 catalog recipes (ten presets, three representative families, Standalone SVG plus PNG). Both the
 PR C6 step and release preflight include it. The test keeps current rejection reasons and recipe
 identities explicit; successful test execution means those observations were reproduced, not that
-the presets became qualified. The separate opaque qualification runner checks State/Sequence
+the presets became qualified. The separate opaque qualification runner checks Flowchart/State/Sequence
 SVG/PNG output for the three exact native candidate recipes under a declared HostDependent
 system-font profile. Release Preflight and the formal Release's final Linux CLI archive job bind
 those checks to the extracted binary and archive, then replay the record before their gates pass.

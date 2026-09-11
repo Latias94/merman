@@ -268,7 +268,7 @@ Sequence's generic `Text.fill` fallback is now NotApplicable in this fixed sourc
 role-label writers cover every text fill. Missing role, title, or autonumber fill coverage and
 non-fill facets retain their residuals; generic Text remains Unsupported when it would win.
 Admission alone does not prove semantic or visual preset qualification. All catalog qualified scopes
-remain empty; the scoped qualification runner covers declared State and Sequence scenarios.
+remain empty; the scoped qualification runner covers declared Flowchart, State, and Sequence scenarios.
 
 `inspect_preset_admission` binds the exact compiled recipe/resource fingerprints, source digests,
 shared document/resource identities, target receipts, and actual artifact bytes. The admission
@@ -276,13 +276,17 @@ inventory is the first stage of preset qualification; it does not issue
 `PresetQualificationReceipt`, assert semantic/visual qualification, or populate `qualified_cells`.
 
 The separate `run_preset_qualification` runner now issues an opaque, execution-local receipt for
-Brutalist, Spotless, and Cyberpunk on the declared `native-state-sequence-system-fonts-v2` profile only.
-It dispatches the exact catalog recipe through State/Sequence SVG and PNG. State checks canvas,
+Brutalist, Spotless, and Cyberpunk on the declared `native-flowchart-state-sequence-system-fonts-v3` profile only.
+Qualification schema 3 dispatches the exact catalog recipe through Flowchart/State/Sequence SVG
+and PNG. Flowchart checks a titled subgraph containing two nodes and a labeled directed edge:
+actual surfaces, borders, labels, marker and translucent background must reach SVG and PNG.
+The edge label lies over the contrasting cluster fill so a missing background remains observable.
+State checks canvas,
 node surface, border and label assignments plus raster canvas/surface coverage and label ink.
 Sequence checks actor, message, note, loop and autonumber labels, activation styles, and canvas
 assignments through the sealed SVG observer; raster checks cover actor/note surfaces and label
-ink, message strokes and visible lifeline strokes. State PNG uses 1x and Sequence PNG uses 4x
-to observe the default 0.5px lifeline color; records retain each scenario's scale. Lifeline sampling excludes observed actor,
+ink, message strokes and visible lifeline strokes. State PNG uses 1x; Flowchart and Sequence
+PNG use 4x to observe thin lines and label paint; records retain each scenario's scale. Lifeline sampling excludes observed actor,
 note and activation rectangles and rejects fully occluded lines. Both target admissions
 must remain HostDependent with only declared host-font reasons; unresolved fonts and any theme,
 source or compatibility residual reject the run. No font or rule is injected. Negative tests cover
@@ -299,8 +303,9 @@ scopes remain empty. Rust, binding JSON, Web, and Flutter now carry explicit `pr
 `admission_status` alongside each cell's family/output IDs, preserving host-dependent and future
 values without inferring portability. Generated catalog promotion still needs the profile's fresh
 evidence connected to the actual artifact build. The C7a preset
-gate remains open. These host-dependent State/Sequence scenarios cannot qualify Flowchart, arbitrary sources,
-or a portable resource profile.
+gate remains open. These host-dependent scenarios do not qualify arbitrary sources, explicit
+Marker/ClusterLabel rules, or a portable resource profile. Each native preset has six artifact cells
+under this profile; these execution-local cells do not modify the fixed C6a ledger.
 
 Preserve the seven retained recipes' compatibility behavior and the host's font policy. A test-only
 resource profile cannot qualify the unmodified catalog recipe. Do not suppress these residuals to

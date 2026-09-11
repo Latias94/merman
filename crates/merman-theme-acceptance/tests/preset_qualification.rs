@@ -98,12 +98,14 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
         assert!(receipt.is_current());
         assert_eq!(
             receipt.profile_id(),
-            "native-state-sequence-system-fonts-v2"
+            "native-flowchart-state-sequence-system-fonts-v3"
         );
-        assert_eq!(receipt.schema_revision(), 2);
+        assert_eq!(receipt.schema_revision(), 3);
         assert_eq!(receipt.report().preset(), preset);
-        assert_eq!(receipt.report().observations().len(), 4);
+        assert_eq!(receipt.report().observations().len(), 6);
         for (observation, family) in receipt.report().observations().iter().zip([
+            DiagramFamilyId::FLOWCHART,
+            DiagramFamilyId::FLOWCHART,
             DiagramFamilyId::STATE,
             DiagramFamilyId::STATE,
             DiagramFamilyId::SEQUENCE,
@@ -112,7 +114,10 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             assert_eq!(observation.spec().family_id(), family);
             assert_eq!(
                 observation.spec().png_scale(),
-                if family == DiagramFamilyId::SEQUENCE {
+                if matches!(
+                    family,
+                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
+                ) {
                     4.0
                 } else {
                     1.0
