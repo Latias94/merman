@@ -232,7 +232,7 @@ export function packageVersion(): string {
 }
 
 export function encodeOptions(
-  options?: CommonBindingOptions | string
+  options?: unknown
 ): string | undefined {
   if (options === undefined) {
     return undefined;

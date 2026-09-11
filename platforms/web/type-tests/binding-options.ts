@@ -20,6 +20,7 @@ import type {
   ThemeRadialGradientRepetition,
   ThemeCapabilityDescriptorV2,
   ThemeAuthoringTypographyV1,
+  ThemeAuthoringOptions,
   ThemeDefinitionV1,
   ThemeStylePatch,
   ThemeSupportQueryV2,
@@ -103,8 +104,14 @@ const themeDefinition: ThemeDefinitionV1 = {
   tokens: { text: "#123456", accent: "#abcdef" },
 };
 const materializedTheme = materializeTheme(themeDefinition, {
-  resources: { profile: "constrained" },
+  resources: { profile: "constrained", limits: { max_theme_encoded_bytes: 1024 } },
 });
+const themeAuthoringOptions: ThemeAuthoringOptions = {
+  resources: { limits: { max_theme_encoded_bytes: 1024 } },
+};
+materializeTheme(themeDefinition, themeAuthoringOptions);
+// @ts-expect-error theme-only limits must not leak into ordinary SVG options.
+const invalidSvgOptions: SvgBindingOptions = { resources: { limits: { max_theme_encoded_bytes: 1 } } };
 materializedTheme.spec.styles;
 
 const supportQuery: ThemeSupportQueryV2 = {

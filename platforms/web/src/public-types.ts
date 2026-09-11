@@ -720,6 +720,37 @@ interface SvgBindingFields {
 
 export type SvgBindingOptions = CommonBindingOptions & SvgBindingFields;
 
+export type ThemeResourceLimitId =
+  | "max_theme_encoded_bytes"
+  | "max_theme_base64_bytes"
+  | "max_font_asset_compressed_bytes"
+  | "max_font_asset_decoded_bytes"
+  | "max_font_catalog_decoded_bytes"
+  | "max_font_assets"
+  | "max_font_faces"
+  | "max_font_tables"
+  | "max_font_aliases"
+  | "max_font_decoded_expansion_ratio"
+  | "max_effect_graphs"
+  | "max_effect_primitives_per_graph"
+  | "max_effect_bindings"
+  | "max_effect_offset_magnitude"
+  | "max_effect_filter_region_magnitude"
+  | "max_effect_blur_magnitude"
+  | "max_effect_displacement_scale"
+  | "max_effect_turbulence_octaves";
+
+export interface ThemeAuthoringResourceOptions {
+  profile?: ResourceProfile;
+  limits?: Partial<Record<ThemeResourceLimitId, number>>;
+}
+
+export type ThemeAuthoringOptions = Omit<SvgBindingOptions, "resources" | "analysis" | "merman"> & {
+  resources?: ThemeAuthoringResourceOptions;
+  analysis?: Omit<AnalysisBindingOptions, "resources"> & { resources?: ThemeAuthoringResourceOptions };
+  merman?: Omit<AnalysisBindingOptions, "resources"> & { resources?: ThemeAuthoringResourceOptions };
+};
+
 type HostTextMeasurerEnvironmentOptions = Omit<
   RenderEnvironmentOptions,
   "text_measurement"

@@ -14,6 +14,7 @@ import type {
   MaterializedThemeWireV1,
   PresetExportV1,
   SvgBindingOptions,
+  ThemeAuthoringOptions,
   SvgPlanResult,
   ThemeCapabilityDescriptor,
   ThemeCapabilityDescriptorV1,
@@ -36,7 +37,7 @@ export function svgPlanJson(
 
 export function materializeTheme(
   definition: ThemeDefinitionV1 | string,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): MaterializedThemeWireV1 {
   return getMerman().materializeTheme(
     encodeThemeAuthoringInput(definition, "theme definition"),
@@ -46,19 +47,19 @@ export function materializeTheme(
 
 export function describeThemeSupport(
   query: ThemeSupportQueryV1,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptorV1;
 export function describeThemeSupport(
   query: ThemeSupportQueryV2,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptorV2;
 export function describeThemeSupport(
   query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptor;
 export function describeThemeSupport(
   query: ThemeSupportQueryV1 | ThemeSupportQueryV2 | string,
-  options?: SvgBindingOptions | string
+  options?: ThemeAuthoringOptions | string
 ): ThemeCapabilityDescriptor {
   return getMerman().describeThemeSupport(
     encodeThemeAuthoringInput(query, "theme support query"),
