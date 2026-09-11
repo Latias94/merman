@@ -60,7 +60,7 @@ test("observes State dark native Note text after the production Playground mount
   const wasmResponse = page.waitForResponse((response) =>
     /\/assets\/merman_wasm_bg-[\w-]+\.wasm(?:\?|$)/u.test(response.url()),
   );
-  await page.goto(`./#${hash}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
   await wasmResponse;
   await waitForPreviewSvg(page);
 

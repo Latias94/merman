@@ -1,6 +1,6 @@
 import {
   BINDING_OPTIONS_SCHEMA_VERSION,
-  type SvgBindingOptions,
+  type HostTextMeasurerSvgBindingOptions,
 } from "@mermanjs/web";
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
@@ -44,7 +44,7 @@ export function isMermanSvgPipeline(
 }
 
 export interface ConfiguredMermanOperationInput {
-  readonly bindingOptions: Readonly<SvgBindingOptions>;
+  readonly bindingOptions: Readonly<HostTextMeasurerSvgBindingOptions>;
   readonly configurationError: ErrorProjection | null;
   readonly configuredSource: string;
   readonly source: string;
@@ -217,7 +217,7 @@ function freezeConfiguredInput(
 
 function bindingOptionsForRender(
   options: NormalizedMermanOptions,
-): Readonly<SvgBindingOptions> {
+): Readonly<HostTextMeasurerSvgBindingOptions> {
   const theme = options.themePresetId
     ? Object.freeze({ preset: options.themePresetId })
     : undefined;

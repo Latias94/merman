@@ -1,8 +1,5 @@
-import {
-  BINDING_OPTIONS_SCHEMA_VERSION,
-  type MermanWasmModule,
-  type SvgBindingOptions,
-} from "@mermanjs/web";
+import type { MermanWasmModule, SvgBindingOptions } from "@mermanjs/web";
+import { BINDING_OPTIONS_SCHEMA_VERSION } from "../../../../../platforms/web/packages/full/dist/generated/resource-contract.js";
 import { createBrowserTextMeasurementSession } from "../../../../../platforms/web/packages/full/dist/runtime-render.js";
 
 import {

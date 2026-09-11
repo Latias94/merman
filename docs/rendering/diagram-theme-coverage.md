@@ -223,6 +223,16 @@ eligibility receipt requires that exact ledger; scalar cutovers and JPEG/PDF smo
 C6b equal-depth certification remains paused. Browser SVG qualification and the remaining C7a
 authoring/consumer/preset gates are not complete. These counts do not establish stable readiness.
 
+The 2026-09-11 rebuilt Web/Playground text-surface smoke run passes all 21 cases in Chromium
+and WebKit. Firefox passes 20 of 21: the Packet first byte label fails the existing 1px root-bound
+containment assertion. A local Firefox probe reports the text element at x=6px against a root at
+x=8px, while its DOM Range starts at x=9px; Chromium reports the element at x=9px. This is an open
+browser geometry discrepancy, not proof that the glyph is clipped or permission to widen the
+comparator tolerance. Keep the assertion and withhold cross-browser qualification until the
+terminal geometry/pixel evidence resolves it. The production-mounted State dark Note case passes
+in all three browsers after rebuilding the current transport artifacts and correcting the test's
+duplicate share-fragment prefix.
+
 Family paint adapters declare which targets require config-default ownership to be captured
 after detection and before theme derivation. The shared compiler binds those declarations;
 capturing ownership neither applies paint nor certifies a terminal. The legacy bridge separately
