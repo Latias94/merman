@@ -15,11 +15,14 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+import tempfile
 
 try:
     from .run_theme_acceptance import acceptance_environment
+    from .release_process import CommandRunner, run_checked
 except ImportError:
     from run_theme_acceptance import acceptance_environment
+    from release_process import CommandRunner, run_checked
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = [
@@ -43,7 +46,53 @@ def sha256_file(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def collect(root: Path) -> dict:
+def qualify_cli(
+    binary: Path, qualification: dict, *, runner: CommandRunner = subprocess.run,
+) -> dict:
+    """Bind a real CLI to fresh Rust-qualified bytes, without reimplementing their checks."""
+    binary = binary.resolve(strict=True)
+    digest = sha256_file(binary)
+    config = {"htmlLabels": False}
+    matched = 0
+    with tempfile.TemporaryDirectory(prefix="merman-preset-cli-") as temporary:
+        directory = Path(temporary)
+        config_path = directory / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        for preset in qualification["presets"]:
+            for cell in preset["cells"]:
+                source = cell["source"].encode("utf-8")
+                if hashlib.sha256(source).hexdigest() != cell["source_digest"]:
+                    raise RuntimeError("CLI qualification source digest differs from the Rust scenario")
+                command = [
+                    str(binary), "render", "--theme-preset", preset["preset"],
+                    "--format", cell["output"], "--config-file", str(config_path),
+                ]
+                if cell["output"] == "svg":
+                    command.extend(["--svg-pipeline", "resvg-safe"])
+                elif cell["output"] == "png":
+                    command.extend(["--scale", str(cell["png_scale"])])
+                else:
+                    raise RuntimeError(f"Undeclared CLI qualification target: {cell['output']}")
+                result = run_checked(command + ["-"], stdin=source, cwd=directory, runner=runner)
+                if hashlib.sha256(result.stdout).hexdigest() != cell["artifact_digest"]:
+                    raise RuntimeError(
+                        f"CLI output differs from qualified bytes: "
+                        f"{preset['preset']}/{cell['source_id']}/{cell['output']}"
+                    )
+                matched += 1
+    if matched == 0:
+        raise RuntimeError("CLI qualification requires actual target observations")
+    if sha256_file(binary) != digest:
+        raise RuntimeError("CLI executable changed during qualification")
+    return {
+        "executable_sha256": digest,
+        "render_config": config,
+        "svg_pipeline": "resvg-safe",
+        "matched_outputs": matched,
+    }
+
+
+def collect(root: Path, *, cli_binary: Path | None = None) -> dict:
     revision = clean_revision(root)
     lock_digest = sha256_file(root / "Cargo.lock")
     env = acceptance_environment(dict(os.environ))
@@ -66,11 +115,12 @@ def collect(root: Path) -> dict:
         [str(executable)], cwd=root, env=env, check=True, capture_output=True, text=True,
     )
     result = json.loads(execution.stdout)
+    cli = qualify_cli(cli_binary, result) if cli_binary is not None else None
     if (clean_revision(root) != revision or sha256_file(root / "Cargo.lock") != lock_digest
             or sha256_file(executable) != executable_digest):
         raise RuntimeError("Candidate source, lockfile, or executable changed during qualification")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source_commit": revision,
         "lockfile_sha256": lock_digest,
         "executable_sha256": executable_digest,
@@ -78,6 +128,7 @@ def collect(root: Path) -> dict:
         "rustc": subprocess.check_output(["rustc", "-Vv"], cwd=root, text=True).strip(),
         "host": {"system": platform.system(), "release": platform.release(), "machine": platform.machine()},
         "qualification": result,
+        "cli": cli,
     }
 
 
@@ -91,10 +142,11 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--output", type=Path, help="write a new execution record, normally under target/")
     mode.add_argument("--check", type=Path, help="rebuild and reexecute; reject any record mismatch")
+    parser.add_argument("--cli", type=Path, help="also match this production CLI against qualified outputs")
     args = parser.parse_args()
     try:
         expected = json.loads(args.check.read_text(encoding="utf-8")) if args.check else None
-        record = collect(ROOT)
+        record = collect(ROOT, cli_binary=args.cli)
         if args.check:
             verify_record(expected, record)
             print("Scoped preset qualification matches the clean candidate build and execution")
@@ -103,7 +155,7 @@ def main() -> int:
             args.output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             print(f"Recorded scoped preset qualification: {args.output}")
         return 0
-    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print(f"Preset qualification failed: {error}", file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.stderr:
             print(error.stderr, file=sys.stderr)

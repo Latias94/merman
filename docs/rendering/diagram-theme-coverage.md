@@ -268,7 +268,11 @@ wrong-preset artifacts, blank output, missing ink, and recipe/resource/schema dr
 
 The [clean-build qualification runner](preset-qualification.md) now records the source commit,
 lockfile, actual Release executable, toolchain/host, and complete scoped execution evidence. Its
-freshness check rebuilds and reruns qualification and rejects any record mismatch. Public qualified
+freshness check rebuilds and reruns qualification and rejects any record mismatch. The optional
+production CLI connection executes the exact sources and compares all qualified output bytes.
+Release Preflight now applies this connection to the extracted, verified CLI archive, records its
+binary/archive digests, and reexecutes both paths for record replay. This is host/CLI evidence;
+it does not qualify other binding artifacts. Public qualified
 scopes remain empty. Rust, binding JSON, Web, and Flutter now carry explicit `profile_id` and
 `admission_status` alongside each cell's family/output IDs, preserving host-dependent and future
 values without inferring portability. Generated catalog promotion still needs the profile's fresh

@@ -137,12 +137,14 @@ def semantic_surface_digest(surface: dict[str, object]) -> str:
             (
                 {
                     "id": operation["id"],
+                    "maturity": operation["maturity"],
                     "capability": operation["capability"],
                     "output": operation["output"],
                     "compiled_prerequisites": sorted(
                         operation["compiled_prerequisites"]
                     ),
                     "description": operation["description"],
+                    "input_kind": operation["input_kind"],
                     "media_type": operation["media_type"],
                     "requires_uri": operation["requires_uri"],
                     "targets": sorted(operation["targets"]),
@@ -462,6 +464,88 @@ class SuccessfulArchiveTests(unittest.TestCase):
                         target=LINUX_TARGET,
                         version=VERSION,
                     )
+
+
+class ThemeAuthoringCapabilityTests(unittest.TestCase):
+    def test_current_operation_metadata_matches_the_descriptor_owned_digest(self) -> None:
+        surface = read_json(PROJECT_ROOT, "capabilities/feature-surface-v1.json")
+        profiles = read_json(PROJECT_ROOT, "capabilities/artifact-profiles-v1.json")
+        canonical = verifier.validate_capability_authority(
+            profiles, surface, expected_path=verifier.CAPABILITY_SURFACE_PATH,
+            profiles_context="profiles", capability_context="capability surface",
+            error_factory=verifier.ArchiveVerificationError,
+        )
+        operation = next(row for row in canonical["binding_operations"]
+                         if row["id"] == "materialize-theme-json")
+        self.assertEqual(operation["maturity"], "alpha")
+        self.assertEqual(operation["input_kind"], "theme-definition-json")
+        for field in ("maturity", "input_kind"):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(surface)
+                changed["binding_operations"][0][field] = "changed-value"
+                with self.assertRaisesRegex(verifier.ArchiveVerificationError, "digest must match"):
+                    verifier.validate_capability_authority(
+                        profiles, changed, expected_path=verifier.CAPABILITY_SURFACE_PATH,
+                        profiles_context="profiles", capability_context="capability surface",
+                        error_factory=verifier.ArchiveVerificationError,
+                    )
+
+
+class PresetQualificationArchiveTests(unittest.TestCase):
+    def test_qualification_requires_explicit_host_execution(self) -> None:
+        with self.assertRaisesRegex(verifier.ArchiveVerificationError, "requires --execute"):
+            verifier.verify_release_archive(
+                Path("missing.tar.xz"), Path("missing.sha256"), target=LINUX_TARGET,
+                version=VERSION, repo_root=PROJECT_ROOT,
+                preset_qualification_output=Path("record.json"),
+            )
+
+    def test_qualification_binds_extracted_binary_and_archive_and_replays(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, checksum = write_tar(root)
+            output = root / "qualification.json"
+            observed_binaries = []
+
+            def qualify(repo_root, *, cli_binary):
+                observed_binaries.append(cli_binary.read_bytes())
+                return {"source_commit": "test-source", "cli": {"executable_sha256":
+                    hashlib.sha256(cli_binary.read_bytes()).hexdigest()}}
+
+            with (
+                mock.patch.object(verifier, "verify_runtime_contract") as runtime,
+                mock.patch.object(verifier, "collect_preset_qualification", side_effect=qualify),
+            ):
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_output=output)
+                record = json.loads(output.read_text())
+                self.assertEqual(record["cli_archive"], {
+                    "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                    "target": LINUX_TARGET, "version": VERSION,
+                })
+                self.assertEqual(observed_binaries, [required_files(LINUX_TARGET)["merman-cli"]])
+                runtime.assert_called_once()
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_check=output)
+                record["cli_archive"]["sha256"] = "stale"
+                output.write_text(json.dumps(record))
+                with self.assertRaisesRegex(RuntimeError, "Stale"):
+                    verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                                   execute=True, preset_qualification_check=output)
+
+    def test_failed_qualification_does_not_write_a_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, checksum = write_tar(root)
+            output = root / "qualification.json"
+            with (
+                mock.patch.object(verifier, "verify_runtime_contract"),
+                mock.patch.object(verifier, "collect_preset_qualification", side_effect=RuntimeError("CLI differs")),
+                self.assertRaisesRegex(RuntimeError, "CLI differs"),
+            ):
+                verify_archive(archive, checksum, target=LINUX_TARGET, version=VERSION,
+                               execute=True, preset_qualification_output=output)
+            self.assertFalse(output.exists())
 
 
 class ChecksumAndNamingTests(unittest.TestCase):

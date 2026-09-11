@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
+    from .qualify_theme_presets import collect as collect_preset_qualification, verify_record
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -48,6 +49,7 @@ if __package__:
         target_matches_host,
     )
 else:
+    from qualify_theme_presets import collect as collect_preset_qualification, verify_record
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -885,11 +887,21 @@ def verify_release_archive(
     repo_root: Path,
     verified_output: Path | None = None,
     execute: bool = False,
+    preset_qualification_output: Path | None = None,
+    preset_qualification_check: Path | None = None,
     limits: ExtractionLimits = DEFAULT_LIMITS,
     runner: CommandRunner = subprocess.run,
     host_target_checker: HostTargetChecker = target_matches_host,
 ) -> VerificationReport:
     """Verify one archive and optionally persist its checksum-bound bytes."""
+    if preset_qualification_output is not None and preset_qualification_check is not None:
+        raise ArchiveVerificationError("preset qualification output and check are mutually exclusive")
+    if (preset_qualification_output is not None or preset_qualification_check is not None) and not execute:
+        raise ArchiveVerificationError("preset qualification requires --execute on the archive host")
+    expected = (
+        json.loads(Path(preset_qualification_check).read_text(encoding="utf-8"))
+        if preset_qualification_check is not None else None
+    )
     archive = Path(archive)
     checksum = Path(checksum)
     repo_root = require_repository_root(Path(repo_root))
@@ -917,6 +929,19 @@ def verify_release_archive(
                 runner=runner,
                 host_target_checker=host_target_checker,
             )
+        if preset_qualification_output is not None or preset_qualification_check is not None:
+            record = collect_preset_qualification(
+                repo_root, cli_binary=archive_member_path(extracted.root, extracted.binary_path),
+            )
+            record["cli_archive"] = {
+                "sha256": extracted.digest, "target": target, "version": version,
+            }
+            if preset_qualification_check is not None:
+                verify_record(expected, record)
+            else:
+                output = Path(preset_qualification_output)
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         persisted = (
             persist_verified_archive(extracted, verified_output, limits=limits)
             if verified_output is not None
@@ -958,6 +983,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="execute the binary after structural verification when TARGET matches the host",
     )
+    qualification = parser.add_mutually_exclusive_group()
+    qualification.add_argument(
+        "--preset-qualification-output", type=Path,
+        help="record fresh Rust/CLI preset qualification for this exact host archive (requires --execute)",
+    )
+    qualification.add_argument(
+        "--preset-qualification-check", type=Path,
+        help="rerun qualification and compare an existing archive record (requires --execute)",
+    )
     return parser.parse_args(argv)
 
 
@@ -972,6 +1006,8 @@ def main(argv: list[str] | None = None) -> int:
         repo_root=args.repo_root,
         verified_output=args.verified_output,
         execute=args.execute,
+        preset_qualification_output=args.preset_qualification_output,
+        preset_qualification_check=args.preset_qualification_check,
     )
     print(f"verified {report.archive}")
     return 0
@@ -980,6 +1016,9 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (ArchiveVerificationError, OSError, subprocess.TimeoutExpired) as error:
+    except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print(f"verify_cli_release_archive.py: {error}", file=sys.stderr)
+        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+            detail = error.stderr.decode("utf-8", errors="replace") if isinstance(error.stderr, bytes) else error.stderr
+            print(detail, file=sys.stderr)
         raise SystemExit(1) from error

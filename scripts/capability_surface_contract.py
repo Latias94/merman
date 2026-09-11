@@ -21,6 +21,8 @@ SURFACE_FIELDS = {
 }
 OPERATION_FIELDS = {
     "id",
+    "maturity",
+    "input_kind",
     "capability",
     "output",
     "compiled_prerequisites",
@@ -211,6 +213,7 @@ def canonical_capability_surface(
         operations.append(
             {
                 "id": _string(operation["id"], f"{label}.id", error_factory),
+                "maturity": _string(operation["maturity"], f"{label}.maturity", error_factory),
                 "capability": _nullable_string(
                     operation["capability"],
                     f"{label}.capability",
@@ -227,6 +230,7 @@ def canonical_capability_surface(
                     f"{label}.description",
                     error_factory,
                 ),
+                "input_kind": _string(operation["input_kind"], f"{label}.input_kind", error_factory),
                 "media_type": _string(
                     operation["media_type"],
                     f"{label}.media_type",

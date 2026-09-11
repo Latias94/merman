@@ -38,6 +38,11 @@ impl PresetQualificationSpec {
         self.source_id
     }
 
+    /// Exact Mermaid source passed to both production target executions.
+    pub const fn source(self) -> &'static str {
+        self.source
+    }
+
     /// Requested PNG scale in this frozen scenario; SVG remains in diagram units.
     pub const fn png_scale(self) -> f32 {
         self.png_scale

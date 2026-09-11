@@ -242,7 +242,7 @@ fn ascii_capability_document() -> AsciiCapabilityDocument {
         .iter()
         .filter(|capability| capability.has_detector)
         .filter_map(|capability| {
-            let family = capability.family_id.as_str();
+            let family = capability.typed_render_family()?.diagram_type;
             known_families
                 .contains(family)
                 .then_some(AsciiDetectedTypeMappingView {
@@ -367,6 +367,23 @@ fn compiled_capability_ids() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascii_detector_mappings_preserve_public_metadata_ids() {
+        let document = ascii_capability_document();
+        for (detected_type, expected_family) in [
+            ("gitGraph", "gitgraph"),
+            ("quadrantChart", "quadrantchart"),
+            ("swimlane", "flowchart"),
+        ] {
+            let mapping = document
+                .detected_type_mappings
+                .iter()
+                .find(|mapping| mapping.detected_type == detected_type)
+                .unwrap_or_else(|| panic!("missing {detected_type} detector mapping"));
+            assert_eq!(mapping.family, expected_family);
+        }
+    }
 
     #[test]
     fn compiled_ids_never_escape_the_canonical_descriptor() {

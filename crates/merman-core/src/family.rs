@@ -327,6 +327,21 @@ pub struct DiagramFamilyCapability {
     pub config_namespace: Option<&'static str>,
 }
 
+impl DiagramFamilyCapability {
+    /// Returns the concrete render-model family behind this parser/detector ID.
+    ///
+    /// Logical families may share a render model: Swimlane uses Flowchart's model, while
+    /// metadata spellings such as `gitgraph` remain distinct from the detector's `gitGraph`.
+    pub fn typed_render_family(&self) -> Option<&'static BuiltInTypedRenderFamily> {
+        let parser = render_parser_facts()
+            .iter()
+            .find(|parser| parser.id == self.diagram_type)?;
+        built_in_typed_render_families()
+            .iter()
+            .find(|family| family.render_model_kind == parser.model_kind)
+    }
+}
+
 /// Canonical public identity for one concrete built-in typed render family.
 ///
 /// Parser aliases that share a render model contribute exactly one entry. Error and custom JSON
@@ -2210,6 +2225,25 @@ mod catalog_tests {
             Some(DiagramFamilyId::MINDMAP)
         );
         assert_eq!(operation_family_id("future-diagram", &config), None);
+    }
+
+    #[test]
+    fn detector_capabilities_resolve_shared_models_and_public_metadata_names() {
+        for (detected, metadata) in [
+            ("gitGraph", "gitgraph"),
+            ("quadrantChart", "quadrantchart"),
+            ("swimlane", "flowchart"),
+            ("classDiagram", "class"),
+        ] {
+            let capability = diagram_family_capabilities()
+                .iter()
+                .find(|capability| capability.diagram_type == detected)
+                .unwrap();
+            assert_eq!(
+                capability.typed_render_family().unwrap().diagram_type,
+                metadata
+            );
+        }
     }
 
     #[test]
